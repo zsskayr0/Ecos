@@ -23,6 +23,10 @@ services:
       - ecos-index:/data/index
       - ecos-backups:/data/backups
     profiles: ["default"]
+    # Precisa estar nas duas redes: `default` (cloudflared fala com ele) e
+    # `internal` (pra alcançar o ecos-vault-db pelo nome do serviço) — o
+    # vault-db em si fica só em `internal`, nunca em `default`.
+    networks: [default, internal]
     # Sem `depends_on: [ecos-vault-db]` de propósito: o Cofre é opcional
     # (seção 0.3, princípio 3) — `ecos-app` sobe sozinho com o profile
     # `default` e detecta o vault indisponível em runtime (`/health/ready`,

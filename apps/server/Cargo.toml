@@ -42,7 +42,9 @@ time.workspace = true
 bip39.workspace = true
 
 reqwest.workspace = true
-oauth2.workspace = true
+# `oauth2` ainda não é dependência — as rotas de calendário (seção 11.13)
+# são contrato + `NotImplemented` nesta build (ver routes/calendario.rs);
+# adicionar de volta quando a integração real entrar.
 
 notify.workspace = true
 walkdir.workspace = true
