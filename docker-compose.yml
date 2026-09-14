@@ -1,0 +1,61 @@
+# Ecos — self-hosting leve, modelo Jellyfin (seção 2 da arquitetura).
+#
+#   docker compose up -d                              # só Notas/Tarefas
+#   docker compose --profile vault --profile default up -d   # + Cofre
+#
+# `.env` (copie de `.env.example`) configura tudo que muda por instância.
+
+services:
+  ecos-app:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: ecos/app:${ECOS_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      - ECOS_VAULT_ENABLED=${ECOS_VAULT_ENABLED:-false}
+      - ECOS_VAULT_URL=http://ecos-vault-db:8090
+      - ECOS_ENV=production
+      - ECOS_SESSION_SECRET=${ECOS_SESSION_SECRET:-}
+      - ECOS_PORT=8080
+    volumes:
+      - ${ECOS_NOTES_PATH:-./data/notes}:/data/notes
+      - ecos-index:/data/index
+      - ecos-backups:/data/backups
+    profiles: ["default"]
+    # Sem `depends_on: [ecos-vault-db]` de propósito: o Cofre é opcional
+    # (seção 0.3, princípio 3) — `ecos-app` sobe sozinho com o profile
+    # `default` e detecta o vault indisponível em runtime (`/health/ready`,
+    # proxy retorna erro tratado), nunca trava a inicialização por causa
+    # dele.
+
+  ecos-vault-db:
+    build:
+      context: .
+      dockerfile: apps/vault/Dockerfile
+    image: ecos/vault-db:${ECOS_VERSION:-local}
+    restart: unless-stopped
+    networks: [internal]
+    volumes:
+      - ecos-vault:/data/vault
+      - ecos-vault-backups:/data/backups
+    profiles: ["vault"]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on: [ecos-app]
+    profiles: ["default"]
+
+networks:
+  internal:
+    internal: true # sem rota pra fora — isola o vault-db (seção 2)
+
+volumes:
+  ecos-index:
+  ecos-backups:
+  ecos-vault:
+  ecos-vault-backups:

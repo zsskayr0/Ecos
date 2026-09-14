@@ -1,0 +1,30 @@
+# Override de staging (seção 2.2) — mesmo host de produção, isolamento
+# lógico via profile/override, nunca compartilha volume com produção.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+
+services:
+  ecos-app:
+    image: ecos/app:staging
+    environment:
+      - ECOS_ENV=staging
+    volumes:
+      - ${ECOS_NOTES_PATH_STAGING:-./data/notes-staging}:/data/notes
+      - ecos-index-staging:/data/index
+      - ecos-backups-staging:/data/backups
+
+  ecos-vault-db:
+    image: ecos/vault-db:staging
+    volumes:
+      - ecos-vault-staging:/data/vault
+      - ecos-vault-backups-staging:/data/backups
+
+  cloudflared:
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN_STAGING}
+
+volumes:
+  ecos-index-staging:
+  ecos-backups-staging:
+  ecos-vault-staging:
+  ecos-vault-backups-staging:

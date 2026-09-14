@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ecos-core",
+    "apps/server",
+    "apps/vault",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+ecos-core = { path = "crates/ecos-core" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+ulid = { version = "1", features = ["serde"] }
+regex = "1"
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+axum-extra = { version = "0.9", features = ["cookie", "cookie-private", "typed-header"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "set-header", "trace", "limit"] }
+
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+rusqlite_migration = "1"
+
+argon2 = "0.5"
+subtle = "2"
+rand = "0.8"
+jsonwebtoken = "9"
+sha2 = "0.10"
+base64 = "0.22"
+time = "0.3"
+bip39 = { version = "2", features = ["rand"] }
+
+reqwest = { version = "0.12", features = ["json"] }
+oauth2 = "4"
+
+notify = "6"
+walkdir = "2"
+mdns-sd = "0.11"

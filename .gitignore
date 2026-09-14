@@ -1,0 +1,12 @@
+/target
+**/target
+.env
+.ecos/
+*.db
+*.db-shm
+*.db-wal
+/data/
+Notas/
+Tarefas/
+*.enc
+Cargo.lock.bak

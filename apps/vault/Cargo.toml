@@ -1,0 +1,45 @@
+[package]
+name = "ecos-vault-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ecos-vault-db"
+path = "src/main.rs"
+
+[features]
+# RISCO (ver plano de execução, seção "Camada de dados"): SQLCipher de
+# verdade compila OpenSSL a partir do fonte via `cc`+`perl`, o que pode não
+# estar disponível em todo ambiente Windows. `real-sqlcipher` é a build de
+# produção (Dockerfile usa esta); sem ela, cai pra SQLite puro (herdado do
+# workspace) — suficiente pra desenvolver/testar a lógica do Cofre, mas
+# **sem cifra** — nunca usar esse modo com dado financeiro real.
+default = []
+real-sqlcipher = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
+
+[dependencies]
+ecos-core.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+tokio.workspace = true
+axum = { workspace = true, features = ["multipart"] }
+tower.workspace = true
+tower-http.workspace = true
+
+rusqlite.workspace = true
+rusqlite_migration.workspace = true
+
+argon2.workspace = true
+subtle.workspace = true
+rand.workspace = true
+sha2.workspace = true
+base64.workspace = true
