@@ -17,11 +17,11 @@ interface Membro {
 }
 
 /**
- * Perfil de Equipe (seção 3.7) — `GET /equipes/:id` real. GAP-12: o
- * backend não expõe um diretório de usuários (`membro_equipe` só guarda
- * `usuario_id`/`cargo`, ver `routes/equipes.rs::listar_membros`) — sem
- * nome/handle pra ninguém além de você mesmo, os outros membros aparecem
- * pelo id (curto, mono), não um nome inventado.
+ * Team Profile (section 3.7) — real `GET /equipes/:id`. GAP-12: the
+ * backend doesn't expose a user directory (`membro_equipe` only stores
+ * `usuario_id`/`cargo`, see `routes/equipes.rs::listar_membros`) — with
+ * no name/handle for anyone but yourself, other members show up by id
+ * (short, mono), never a made-up name.
  */
 export function TeamProfileScreen() {
   const { equipeId } = useParams();

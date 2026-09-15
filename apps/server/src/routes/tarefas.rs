@@ -1,10 +1,10 @@
 //! Tarefas & Agenda (seção 11.6). Mesmo mecanismo de arquivo `.md` da Nota
 //! (seção 1.3), árvore `Tarefas/` independente da de `Notas/`.
 
-use axum::extract::{Path, Query, State};
-use axum::Json;
+use axum::extract::{Multipart, Path, Query, State};
+use axum::{Extension, Json};
 use chrono::{Datelike, NaiveDate, NaiveTime, Timelike, Utc};
-use ecos_core::types::{Espaco, EventoExternoRef, TarefaFrontMatter, TarefaStatus};
+use ecos_core::types::{Espaco, EventoExternoRef, Subtarefa, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
 use ecos_core::{frontmatter, naming, new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use crate::db::reindex::reindexar_tudo;
 use crate::error::{AppError, AppResult, CampoInvalido};
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -21,6 +22,71 @@ fn tarefas_dir(state: &AppState) -> PathBuf {
 
 fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
     state.config.notes_root.join(caminho_relativo)
+}
+
+/// Mesmo padrão já usado pra foto/desenho de Nota (arquitetura seção 1.3):
+/// anexo é um arquivo irmão do `.md`, numa subpasta `_anexos/<id>/` — nunca
+/// BLOB em banco (isso é exclusivo do Cofre). Referenciado no corpo via
+/// link relativo Markdown; o backend nunca precisa entender a referência,
+/// só preservar o arquivo.
+fn anexos_dir(state: &AppState, tarefa_id: &str, caminho_relativo: &str) -> PathBuf {
+    let pai = absoluto(state, caminho_relativo).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| tarefas_dir(state));
+    pai.join("_anexos").join(tarefa_id)
+}
+
+fn caminho_anexo_sem_colisao(dir: &std::path::Path, nome_arquivo: &str) -> PathBuf {
+    let direto = dir.join(nome_arquivo);
+    if !direto.exists() {
+        return direto;
+    }
+    let (base, extensao) = match nome_arquivo.rsplit_once('.') {
+        Some((b, e)) => (b, format!(".{e}")),
+        None => (nome_arquivo, String::new()),
+    };
+    let mut contador = 2u32;
+    loop {
+        let candidato = dir.join(format!("{base} ({contador}){extensao}"));
+        if !candidato.exists() {
+            return candidato;
+        }
+        contador += 1;
+    }
+}
+
+fn mime_por_extensao(nome_arquivo: &str) -> &'static str {
+    match nome_arquivo.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+fn eh_imagem(nome_arquivo: &str) -> bool {
+    mime_por_extensao(nome_arquivo).starts_with("image/")
+}
+
+/// Front-matter aceita `Subtarefa` completa; o payload de entrada permite
+/// `id` ausente (subtarefa nova, criada nesta chamada) — o servidor
+/// preenche com `new_id()` pra manter identidade estável nas próximas
+/// edições/toggles.
+#[derive(Debug, Deserialize)]
+pub struct SubtarefaPayload {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub titulo: String,
+    #[serde(default)]
+    pub concluida: bool,
+}
+
+fn subtarefas_de_payload(payload: Vec<SubtarefaPayload>) -> Vec<Subtarefa> {
+    payload
+        .into_iter()
+        .map(|s| Subtarefa { id: s.id.unwrap_or_else(new_id), titulo: s.titulo, concluida: s.concluida })
+        .collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,34 +108,35 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
         .db
         .with(move |conn| {
             let mut sql = String::from(
-                "SELECT id, caminho_arquivo, titulo, status, scheduled_at, duration_min, due_date, espaco, criado_em \
-                 FROM tarefa",
+                "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
+                 t.criado_em, t.prioridade, t.criado_por, u.nome_usuario \
+                 FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
             let mut condicoes = Vec::new();
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(pasta) = &q.pasta {
-                condicoes.push("COALESCE(pasta_id, '') = ?".to_string());
+                condicoes.push("COALESCE(t.pasta_id, '') = ?".to_string());
                 params.push(Box::new(pasta.clone()));
             }
             if let Some(status) = &q.status {
-                condicoes.push("status = ?".to_string());
+                condicoes.push("t.status = ?".to_string());
                 params.push(Box::new(status.clone()));
             }
             if let Some(espaco) = &q.espaco {
-                condicoes.push("espaco = ?".to_string());
+                condicoes.push("t.espaco = ?".to_string());
                 params.push(Box::new(espaco.clone()));
             }
             if let Some(data_de) = q.data_de {
-                condicoes.push("date(scheduled_at) >= date(?)".to_string());
+                condicoes.push("date(t.scheduled_at) >= date(?)".to_string());
                 params.push(Box::new(data_de.to_string()));
             }
             if let Some(data_ate) = q.data_ate {
-                condicoes.push("date(scheduled_at) <= date(?)".to_string());
+                condicoes.push("date(t.scheduled_at) <= date(?)".to_string());
                 params.push(Box::new(data_ate.to_string()));
             }
             if let Some(c) = &cursor {
-                condicoes.push("(criado_em, id) < (?, ?)".to_string());
+                condicoes.push("(t.criado_em, t.id) < (?, ?)".to_string());
                 params.push(Box::new(c.valor_ordenacao.clone()));
                 params.push(Box::new(c.id.clone()));
             }
@@ -77,7 +144,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                 sql.push_str(" WHERE ");
                 sql.push_str(&condicoes.join(" AND "));
             }
-            sql.push_str(" ORDER BY criado_em DESC, id DESC LIMIT ?");
+            sql.push_str(" ORDER BY t.criado_em DESC, t.id DESC LIMIT ?");
             params.push(Box::new(limite + 1));
 
             let mut stmt = conn.prepare(&sql)?;
@@ -94,6 +161,9 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                         "due_date": r.get::<_, Option<String>>(6)?,
                         "espaco": r.get::<_, String>(7)?,
                         "criado_em": r.get::<_, String>(8)?,
+                        "prioridade": r.get::<_, String>(9)?,
+                        "criado_por": r.get::<_, Option<String>>(10)?,
+                        "criado_por_nome": r.get::<_, Option<String>>(11)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -116,6 +186,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
 pub struct CriarTarefaPayload {
     pub titulo: String,
     #[serde(default)]
+    pub corpo: Option<String>,
+    #[serde(default)]
     pub pasta: Option<String>,
     #[serde(default)]
     pub scheduled_at: Option<chrono::DateTime<Utc>>,
@@ -124,10 +196,16 @@ pub struct CriarTarefaPayload {
     #[serde(default)]
     pub due_date: Option<NaiveDate>,
     #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub prioridade: Option<TarefaPrioridade>,
+    #[serde(default)]
+    pub subtarefas: Vec<SubtarefaPayload>,
+    #[serde(default)]
     pub espaco: Option<String>,
 }
 
-pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
     if payload.titulo.trim().is_empty() {
         return Err(AppError::validation(vec![CampoInvalido {
             campo: "titulo".into(),
@@ -158,11 +236,15 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarTaref
         scheduled_at: payload.scheduled_at,
         duration_min: payload.duration_min,
         due_date: payload.due_date,
+        tags: payload.tags,
+        prioridade: payload.prioridade.unwrap_or_default(),
+        subtarefas: subtarefas_de_payload(payload.subtarefas),
         espaco,
         evento_externo: EventoExternoRef::default(),
         criado_em: Utc::now(),
+        criado_por: Some(usuario.0.clone()),
     };
-    let conteudo = frontmatter::serialize(&fm, "")?;
+    let conteudo = frontmatter::serialize(&fm, payload.corpo.as_deref().unwrap_or(""))?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
@@ -170,7 +252,7 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarTaref
     Ok(Json(serde_json::json!({
         "id": fm.id, "tipo": "tarefa", "titulo": fm.titulo, "scheduled_at": fm.scheduled_at,
         "duration_min": fm.duration_min, "espaco": fm.espaco.to_string(), "status": "pendente",
-        "criado_em": fm.criado_em,
+        "prioridade": fm.prioridade, "criado_em": fm.criado_em,
     })))
 }
 
@@ -181,6 +263,40 @@ async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
         .with(move |conn| conn.query_row("SELECT caminho_arquivo FROM tarefa WHERE id = ?1", [&id_owned], |r| r.get(0)).optional())
         .await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
+}
+
+/// GAP-11 fechada: antes não existia `GET /tarefas/:id`, só a varredura de
+/// `listar` no cliente. Mesma forma de `notas::obter` — lê o `.md` direto,
+/// devolve front-matter inteiro + corpo.
+pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
+    let fm = doc.front_matter;
+    let pasta = pasta_relativa_do_caminho(&caminho_relativo);
+    Ok(Json(serde_json::json!({
+        "id": fm.id,
+        "titulo": fm.titulo,
+        "status": fm.status,
+        "scheduled_at": fm.scheduled_at,
+        "duration_min": fm.duration_min,
+        "due_date": fm.due_date,
+        "tags": fm.tags,
+        "prioridade": fm.prioridade,
+        "subtarefas": fm.subtarefas,
+        "espaco": fm.espaco.to_string(),
+        "criado_em": fm.criado_em,
+        "caminho_arquivo": caminho_relativo,
+        "pasta": pasta,
+        "corpo": doc.body,
+    })))
+}
+
+/// `Tarefas/<pasta.../>arquivo.md` -> `Some("pasta...")`; raiz -> `None`.
+fn pasta_relativa_do_caminho(caminho_relativo: &str) -> Option<String> {
+    let sem_raiz = caminho_relativo.strip_prefix("Tarefas/")?;
+    let pai = sem_raiz.rsplit_once('/')?.0;
+    Some(pai.to_string())
 }
 
 // Nota: `Option<T>` simples aqui — campo omitido = não mexe, campo presente
@@ -200,6 +316,14 @@ pub struct AtualizarTarefaPayload {
     pub duration_min: Option<i64>,
     #[serde(default)]
     pub due_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub corpo: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub prioridade: Option<TarefaPrioridade>,
+    #[serde(default)]
+    pub subtarefas: Option<Vec<SubtarefaPayload>>,
 }
 
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
@@ -208,6 +332,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let mut fm = doc.front_matter;
+    let mut corpo = doc.body;
 
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
@@ -220,6 +345,18 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     }
     if payload.due_date.is_some() {
         fm.due_date = payload.due_date;
+    }
+    if let Some(tags) = payload.tags {
+        fm.tags = tags;
+    }
+    if let Some(prioridade) = payload.prioridade {
+        fm.prioridade = prioridade;
+    }
+    if let Some(subtarefas) = payload.subtarefas {
+        fm.subtarefas = subtarefas_de_payload(subtarefas);
+    }
+    if let Some(novo_corpo) = payload.corpo {
+        corpo = novo_corpo;
     }
 
     let dir_destino = match payload.pasta.as_deref() {
@@ -239,12 +376,26 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         naming::caminho_sem_colisao(&dir_destino, &nome_arquivo, "md")
     };
 
-    let conteudo = frontmatter::serialize(&fm, &doc.body)?;
+    let conteudo = frontmatter::serialize(&fm, &corpo)?;
     if caminho_absoluto_destino == caminho_absoluto_atual {
         std::fs::write(&caminho_absoluto_atual, conteudo)?;
     } else {
         std::fs::write(&caminho_absoluto_destino, conteudo)?;
         std::fs::remove_file(&caminho_absoluto_atual)?;
+        // A Tarefa mudou de pasta — seus anexos são arquivos irmãos do
+        // `.md` (`_anexos/<id>/`, ver `anexos_dir`); sem mover essa pasta
+        // junto, os links Markdown no corpo continuariam válidos por
+        // caminho relativo *desde que* `_anexos` se mova com ela — então
+        // ela precisa ir junto, ou os links quebram.
+        let anexos_origem = anexos_dir(&state, &fm.id, &caminho_relativo_atual);
+        if anexos_origem.is_dir() {
+            let caminho_relativo_destino = caminho_absoluto_destino.strip_prefix(&state.config.notes_root).unwrap_or(&caminho_absoluto_destino).to_string_lossy().replace('\\', "/");
+            let anexos_destino = anexos_dir(&state, &fm.id, &caminho_relativo_destino);
+            if let Some(pai) = anexos_destino.parent() {
+                std::fs::create_dir_all(pai)?;
+            }
+            std::fs::rename(&anexos_origem, &anexos_destino)?;
+        }
     }
 
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
@@ -283,8 +434,86 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
 pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &id).await?;
     std::fs::remove_file(absoluto(&state, &caminho_relativo))?;
+    let dir_anexos = anexos_dir(&state, &id, &caminho_relativo);
+    if dir_anexos.is_dir() {
+        std::fs::remove_dir_all(&dir_anexos)?;
+    }
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+// --- Anexos (mesmo padrão de foto/desenho de Nota, arquitetura seção 1.3:
+// arquivo irmão do `.md` em `_anexos/<id>/`, referenciado no corpo via link
+// Markdown relativo — nunca BLOB em banco, isso é exclusivo do Cofre) ------
+
+/// Upload real (`multipart/form-data`, campo `arquivo`) — grava o arquivo
+/// em `_anexos/<id>/` e devolve o corpo já com a referência Markdown
+/// anexada ao final, pra o cliente atualizar o editor sem um segundo round
+/// trip. O `.md` nunca sabe que a referência existe além disso: é texto
+/// comum, editável/removível como qualquer outra linha do corpo.
+pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let campo = multipart
+        .next_field()
+        .await
+        .map_err(|_| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "multipart inválido".into() }]))?
+        .ok_or_else(|| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "nenhum arquivo enviado".into() }]))?;
+
+    let nome_original = campo.file_name().unwrap_or("anexo").to_string();
+    let bytes = campo
+        .bytes()
+        .await
+        .map_err(|_| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "falha ao ler o upload".into() }]))?;
+
+    const TAMANHO_MAXIMO_BYTES: usize = 8 * 1024 * 1024;
+    if bytes.len() > TAMANHO_MAXIMO_BYTES {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "maior que 8MB".into() }]));
+    }
+
+    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let dir = anexos_dir(&state, &id, &caminho_relativo);
+    std::fs::create_dir_all(&dir)?;
+    // `sanitizar_nome_arquivo` só troca caracteres inválidos e apara
+    // pontos nas pontas — não mexe em pontos internos, então a extensão
+    // sobrevive intacta pra um nome normal como "foto.jpg".
+    let nome_final = naming::sanitizar_nome_arquivo(&nome_original);
+    let caminho_absoluto_anexo = caminho_anexo_sem_colisao(&dir, &nome_final);
+    let nome_no_disco = caminho_absoluto_anexo.file_name().unwrap_or_default().to_string_lossy().to_string();
+    std::fs::write(&caminho_absoluto_anexo, &bytes)?;
+
+    let referencia_relativa = format!("_anexos/{id}/{nome_no_disco}");
+    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
+    let fm = doc.front_matter;
+    let linha_md = if eh_imagem(&nome_no_disco) {
+        format!("![{nome_no_disco}]({referencia_relativa})")
+    } else {
+        format!("[{nome_no_disco}]({referencia_relativa})")
+    };
+    let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
+    let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
+    std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
+
+    Ok(Json(serde_json::json!({
+        "nome_arquivo": nome_no_disco,
+        "url_relativa": referencia_relativa,
+        "tamanho_bytes": bytes.len(),
+        "corpo": novo_corpo,
+    })))
+}
+
+/// Serve o próprio arquivo (download/preview) — sem autenticação extra além
+/// da sessão já exigida por `rotas_protegidas` (seção 11.1).
+pub async fn obter_anexo(
+    State(state): State<AppState>,
+    Path((id, nome_arquivo)): Path<(String, String)>,
+) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
+    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
+    if !caminho.is_file() {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
+    let bytes = std::fs::read(&caminho)?;
+    Ok(([(axum::http::header::CONTENT_TYPE, mime_por_extensao(&nome_arquivo).to_string())], bytes))
 }
 
 // --- Agenda / capacidade (seção 4.3 do handoff, contrato seção 11.6) ------

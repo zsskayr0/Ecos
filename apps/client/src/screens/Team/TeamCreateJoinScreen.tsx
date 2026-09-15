@@ -6,9 +6,9 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAuth } from "@/lib/auth-context";
 
 /**
- * GAP-05 (resolvido): "Criar ou entrar numa Equipe" — a especificação
- * (seção 3.9) só definia o item de entrada no drawer, sem o fluxo. Agora
- * real: `POST /equipes` e `POST /convites/:codigo/aceitar`.
+ * GAP-05 (resolved): "Criar ou entrar numa Equipe" — the spec (section
+ * 3.9) only defined the drawer entry point, without the flow. Now real:
+ * `POST /equipes` and `POST /convites/:codigo/aceitar`.
  */
 export function TeamCreateJoinScreen() {
   const navigate = useNavigate();
@@ -26,9 +26,9 @@ export function TeamCreateJoinScreen() {
     try {
       const r = await equipes.criar(nome.trim());
       notificar();
-      // `perfil.equipes` (contexto de auth) vem de `/me`, buscado só uma
-      // vez no login — sem isso, a nova Equipe não aparecia no Perfil até
-      // recarregar a página inteira.
+      // `perfil.equipes` (auth context) comes from `/me`, fetched only
+      // once at login — without this, the new Team wouldn't show up in
+      // the Profile until reloading the whole page.
       await recarregarPerfil();
       navigate(`/equipe/${r.id}`);
     } catch (e) {

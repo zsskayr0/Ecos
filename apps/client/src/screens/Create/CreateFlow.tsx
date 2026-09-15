@@ -2,7 +2,8 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { captura, vault, ApiError } from "@/lib/api";
+import { captura, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
+import { hojeISO } from "@/lib/format";
 import { ChoicePopup } from "./ChoicePopup";
 import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
@@ -10,14 +11,14 @@ import { TaskForm } from "./TaskForm";
 import { TransactionForm } from "./TransactionForm";
 
 /**
- * Rascunho único e persistente da Captura (regra 5, seção 2.4): trocar de
- * tipo nunca perde o que já foi digitado. Cada form só mostra/edita o
- * subconjunto de campos relevante ao seu tipo — campos incompatíveis ficam
- * escondidos, não apagados; ao voltar pro tipo original, reaparecem
- * preenchidos.
+ * A single, persistent Capture draft (rule 5, section 2.4): switching
+ * type never loses what's already been typed. Each form only shows/edits
+ * the subset of fields relevant to its type — incompatible fields stay
+ * hidden, not erased; switching back to the original type, they reappear
+ * filled in.
  */
 export interface CapturaDraft {
-  /** Campo compatível entre os 3 tipos: título (Nota/Tarefa) ~ descrição (Transação). */
+  /** The field shared by all 3 types: title (Nota/Tarefa) ~ description (Transacao). */
   texto: string;
   corpo: string;
   tags: string[];
@@ -25,12 +26,31 @@ export interface CapturaDraft {
   scheduledAt: string | null;
   valorCentavos: number;
   categoriaId: string | null;
-  /** GAP-14: sem conta vinculada, a transação nunca entra em `saldos_por_conta`
-   * (`apps/vault/src/routes/ativacao.rs::config` soma por `conta_id`, uma
-   * transação solta não aparece em conta nenhuma) — auto-selecionada em
-   * `TransactionForm` a partir da primeira Conta existente. */
+  /** GAP-14: without a linked account, the transaction never shows up in
+   * `saldos_por_conta` (`apps/vault/src/routes/ativacao.rs::config` sums
+   * by `conta_id`; a standalone transaction shows up in no account at
+   * all) — auto-selected in `TransactionForm` from the first existing
+   * Conta. */
   contaId: string | null;
   tipoTransacao: "entrada" | "saida";
+  /** All optional on the backend (`TransacaoPayload`) — surfaced in
+   * TransactionForm's "Mais opções" so the quick chip-based form (section
+   * 3.6) stays fast by default without hiding data the Vault already
+   * supports. */
+  formaPagamento: FormaPagamento | null;
+  beneficiarioNome: string;
+  statusTransacao: "efetivada" | "pendente";
+  dataTransacao: string;
+  observacoesTransacao: string;
+  /** Tarefa extras (user feedback: "tarefas tá muito simples") — surfaced
+   * directly in the create form, not buried behind a collapse, since
+   * prioridade/data/pasta are exactly the "most important" fields the
+   * feedback asked to keep on-the-go capture focused on. */
+  dataTarefa: string;
+  prioridadeTarefa: PrioridadeTarefa;
+  tagsTarefa: string[];
+  pastaTarefa: string | null;
+  subtarefasTarefa: SubtarefaInput[];
 }
 
 export type SetDraft = Dispatch<SetStateAction<CapturaDraft>>;
@@ -45,21 +65,43 @@ export const DRAFT_VAZIO: CapturaDraft = {
   categoriaId: null,
   contaId: null,
   tipoTransacao: "saida",
+  formaPagamento: null,
+  beneficiarioNome: "",
+  statusTransacao: "efetivada",
+  dataTransacao: hojeISO(),
+  observacoesTransacao: "",
+  dataTarefa: hojeISO(),
+  prioridadeTarefa: "media",
+  tagsTarefa: [],
+  pastaTarefa: null,
+  subtarefasTarefa: [],
 };
 
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
+/** `draft.scheduledAt` only ever carries a time-of-day (`TaskForm`'s time
+ * input sets it against `new Date()`) — this swaps in the actually-chosen
+ * date (`dataTarefa`, from the cyan `DatePicker`) before it goes over the
+ * wire, so picking a future date doesn't get silently discarded. */
+function scheduledAtReal(draft: CapturaDraft): string | undefined {
+  if (!draft.scheduledAt) return undefined;
+  const hora = new Date(draft.scheduledAt);
+  const [ano, mes, dia] = draft.dataTarefa.split("-").map(Number);
+  return new Date(ano, mes - 1, dia, hora.getHours(), hora.getMinutes()).toISOString();
 }
 
-/** Monta o payload real de `POST /api/v1/captura` (seção 11.3) — só nota/tarefa (ver GAP-13 em `lib/api.ts`). */
+/** Builds the real `POST /api/v1/captura` payload (section 11.3) — note/task only (see GAP-13 in `lib/api.ts`). */
 function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<string, unknown> {
   if (tipo === "nota") {
     return { titulo: draft.texto.trim(), corpo: draft.corpo };
   }
   return {
     titulo: draft.texto.trim(),
+    corpo: draft.corpo.trim() || undefined,
     duration_min: draft.duracaoMin,
-    scheduled_at: draft.scheduledAt ?? undefined,
+    scheduled_at: scheduledAtReal(draft),
+    tags: draft.tagsTarefa,
+    prioridade: draft.prioridadeTarefa,
+    pasta: draft.pastaTarefa ?? undefined,
+    subtarefas: draft.subtarefasTarefa,
   };
 }
 
@@ -98,22 +140,31 @@ export function CreateFlow() {
     setSalvando(true);
     try {
       if (tipo === "transacao") {
+        let beneficiarioId: string | undefined;
+        if (draft.beneficiarioNome.trim()) {
+          const b = await vault.beneficiarios.criarOuEncontrar({ nome: draft.beneficiarioNome.trim() });
+          beneficiarioId = b.id;
+        }
         await vault.transacoes.criar({
           tipo: draft.tipoTransacao,
           valor_centavos: draft.valorCentavos,
           descricao: draft.texto.trim(),
           categoria_id: draft.categoriaId ?? undefined,
           conta_id: draft.contaId ?? undefined,
-          data: hoje(),
+          beneficiario_id: beneficiarioId,
+          forma_pagamento: draft.formaPagamento ?? undefined,
+          status: draft.statusTransacao,
+          observacoes: draft.observacoesTransacao.trim() || undefined,
+          data: draft.dataTransacao,
         });
       } else {
         await captura.capturar(tipo, payloadReal(tipo, draft));
       }
       notificar();
       fecharTudo();
-      // Recompensa imediata: se a Captura aconteceu de outro lugar que não
-      // a própria lista (ex. Agenda criando Tarefa), o usuário já vê o
-      // resultado sem precisar navegar manualmente.
+      // Immediate payoff: if the Capture happened somewhere other than
+      // the list itself (e.g. Agenda creating a Tarefa), the user already
+      // sees the result without having to navigate manually.
       if (tipo === "nota" && location.pathname !== "/feed") navigate("/feed");
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
     } catch (e) {

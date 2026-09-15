@@ -8,8 +8,8 @@ const OPCOES: { tipo: TipoCaptura; label: string; Icon: typeof FileText }[] = [
 ];
 
 /**
- * Popup de escolha do Feed (seção 2.4/3.6) — 3 cards de mesmo peso visual,
- * sem viés por ordem/tamanho/cor entre eles.
+ * Feed's choice popup (section 2.4/3.6) — 3 cards of equal visual weight,
+ * no bias between them by order/size/color.
  */
 export function ChoicePopup({
   onEscolher,

@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 
-/** GAP-04 (continuação): "Sobre o Ecos" listado no índice de Configurações sem conteúdo detalhado. */
+/** GAP-04 (continued): "Sobre o Ecos" listed in the Settings index with no detailed content. */
 export function AboutScreen() {
   const navigate = useNavigate();
   return (

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 export type Tema = "dark" | "light";
 const CHAVE = "ecos-tema";
 
-/** Dark é o padrão do produto (seção 1.3) — light é opt-in. */
+/** Dark is the product's default (section 1.3) — light is opt-in. */
 export function useTema() {
   const [tema, setTemaState] = useState<Tema>(() => {
     try {
@@ -18,7 +18,7 @@ export function useTema() {
     try {
       localStorage.setItem(CHAVE, tema);
     } catch {
-      /* localStorage indisponível — segue só em memória. */
+      /* localStorage unavailable — falls back to memory only. */
     }
   }, [tema]);
 

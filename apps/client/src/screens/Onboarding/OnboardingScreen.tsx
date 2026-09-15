@@ -9,9 +9,9 @@ type Passo = "splash" | "feed" | "agenda" | "cofre" | "camera" | "setup";
 const ORDEM: Passo[] = ["splash", "feed", "agenda", "cofre", "camera", "setup"];
 
 /**
- * Onboarding (seção 3.11) — splash → 3 slides de recurso (mini-visualização
- * real do componente, não ilustração de estoque) → permissão de câmera
- * justificada → escolha de setup inicial.
+ * Onboarding (section 3.11) — splash → 3 feature slides (real component
+ * mini-visualization, not stock art) → justified camera permission →
+ * initial setup choice.
  */
 export function OnboardingScreen() {
   const [passo, setPasso] = useState<Passo>("splash");

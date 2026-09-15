@@ -3,9 +3,9 @@ dist
 dist-ssr
 *.local
 *.tsbuildinfo
-# `tsconfig.node.json` é composite (exige emit) só pra checar vite.config.ts
-# via `tsc -b` — os .js/.d.ts que ele solta do lado do .ts não são pra
-# commitar, o Vite lê o .ts direto.
+# `tsconfig.node.json` is composite (requires emit) just to check
+# vite.config.ts via `tsc -b` — the .js/.d.ts it drops next to the .ts
+# aren't meant to be committed, Vite reads the .ts directly.
 /vite.config.js
 /vite.config.d.ts
 src-tauri/target

@@ -1,14 +1,21 @@
 /**
- * Converte as respostas reais de `ecos-app` (JSON solto, ver
- * `apps/server/src/routes/*`) pro shape de view (`src/lib/types.ts`) que os
- * cards/telas já esperavam quando a UI ainda consumia mock. Mantém os
- * componentes de tela estáveis mesmo com o formato de API sendo bem mais
- * enxuto que o mock (sem `contagemLinksEntrada` pronta, sem `diasOrfa`
- * calculado, etc. — o que falta fica com valor neutro, nunca inventado).
+ * Converts `ecos-app`'s real responses (loose JSON, see
+ * `apps/server/src/routes/*`) into the view shape (`src/lib/types.ts`)
+ * that cards/screens already expected back when the UI still consumed
+ * mock data. Keeps screen components stable even though the API's shape
+ * is much leaner than the mock (no ready-made `contagemLinksEntrada`, no
+ * computed `diasOrfa`, etc. — whatever's missing gets a neutral value,
+ * never an invented one).
  */
-import type { MotivoRanking, Nota, Tarefa, Espaco } from "./types";
+import type { MotivoRanking, Nota, Tarefa, Espaco, PrioridadeTarefa, Dono } from "./types";
 import type { MinhaEquipe } from "./use-minhas-equipes";
 import { corDaEquipe } from "./team-color";
+
+/** The current local user — passed by every screen via `useAuth()`. */
+export interface PerfilBasico {
+  id: string;
+  nome_usuario: string;
+}
 
 function origemEquipe(espaco: string, equipes: MinhaEquipe[]) {
   if (!espaco.startsWith("equipe:")) return undefined;
@@ -17,12 +24,33 @@ function origemEquipe(espaco: string, equipes: MinhaEquipe[]) {
   return { nome: equipe?.nome ?? "Equipe", cor: corDaEquipe(id) };
 }
 
+/** User feedback: "no feed, deve ter a foto de perfil e o nome do dono
+ * daquele item" — `criado_por_nome` (real, resolved server-side) wins
+ * whenever it exists; only items created before that column existed
+ * (`criado_por IS NULL`) fall back, and only for `espaco: pessoal` is the
+ * fallback certain (this instance has exactly one local user). A legacy
+ * Equipe item with no recorded author has no reliable name to show —
+ * "Equipe" is honest instead of invented. */
+function resolverDono(espaco: string, criadoPor: unknown, criadoPorNome: unknown, perfil: PerfilBasico | null): Dono {
+  if (typeof criadoPorNome === "string" && criadoPorNome) {
+    return { id: typeof criadoPor === "string" ? criadoPor : null, nome: criadoPorNome };
+  }
+  if (espaco === "pessoal" && perfil) {
+    return { id: perfil.id, nome: perfil.nome_usuario };
+  }
+  return { id: null, nome: "Equipe" };
+}
+
 function motivoValido(m: unknown): MotivoRanking {
   return m === "frescor" || m === "orfa" || m === "interacao" || m === "esquecimento" ? m : "frescor";
 }
 
-/** Item de Nota vindo de `GET /feed` (já tem `motivo`/`preview` calculados pelo job de ranking, seção 4). */
-export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]): Nota {
+function prioridadeValida(p: unknown): PrioridadeTarefa {
+  return p === "baixa" || p === "alta" ? p : "media";
+}
+
+/** A Nota item from `GET /feed` (already has `motivo`/`preview` computed by the ranking job, section 4). */
+export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[], perfil: PerfilBasico | null): Nota {
   const espaco = String(item.espaco ?? "pessoal");
   return {
     tipo: "nota",
@@ -34,6 +62,7 @@ export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]
     pastaId: null,
     espaco: espaco as Espaco,
     origemEquipe: origemEquipe(espaco, equipes),
+    dono: resolverDono(espaco, item.criado_por, item.criado_por_nome, perfil),
     criadoEm: String(item.atualizado_em ?? new Date().toISOString()),
     atualizadoEm: String(item.atualizado_em ?? new Date().toISOString()),
     ultimaRevisaoEm: null,
@@ -42,10 +71,22 @@ export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]
   };
 }
 
-/** `GET /notas` (listagem por pasta) — sem motivo de ranking calculado por item; ver GAP-09. */
+/** `GET /notas` (folder listing) — no per-item ranking motive; see GAP-09. */
 export function notaResumoParaView(
-  n: { id: string; titulo: string; pasta: string | null; espaco: string; criado_em: string; atualizado_em: string; ultima_revisao_em: string | null; tags: string[] },
+  n: {
+    id: string;
+    titulo: string;
+    pasta: string | null;
+    espaco: string;
+    criado_em: string;
+    atualizado_em: string;
+    ultima_revisao_em: string | null;
+    tags: string[];
+    criado_por?: string | null;
+    criado_por_nome?: string | null;
+  },
   equipes: MinhaEquipe[],
+  perfil: PerfilBasico | null,
 ): Nota {
   return {
     tipo: "nota",
@@ -57,40 +98,54 @@ export function notaResumoParaView(
     pastaId: n.pasta,
     espaco: n.espaco as Espaco,
     origemEquipe: origemEquipe(n.espaco, equipes),
+    dono: resolverDono(n.espaco, n.criado_por, n.criado_por_nome, perfil),
     criadoEm: n.criado_em,
     atualizadoEm: n.atualizado_em,
     ultimaRevisaoEm: n.ultima_revisao_em,
     contagemLinksEntrada: 0,
-    // GAP-09: `motivo` de ranking só existe hoje na tabela `feed_item`
-    // (seção 4), sem endpoint pra consultar por Nota avulsa fora do Feed —
-    // listagem de pasta mostra "Frescor" como neutro, não é ranking real.
+    // GAP-09: the ranking `motivo` only exists today in the `feed_item`
+    // table (section 4) — no endpoint to look it up for a standalone Nota
+    // outside the Feed. Folder listing shows "Frescor" as a neutral
+    // placeholder, not a real ranking.
     motivoRanking: "frescor",
   };
 }
 
 /**
- * Item `tarefa_encaixada` de `GET /feed` — o job de ranking só grava
- * `titulo`/`scheduled_at` nesse tipo de linha (ver `routes/feed.rs`,
- * `montar_card`), sem `duration_min`/`espaco`; o card mostra o que existe,
- * sem inventar duração.
+ * A `tarefa_encaixada` item from `GET /feed` (`routes/feed.rs::montar_card`).
  */
-export function tarefaDoFeed(item: Record<string, unknown>): Tarefa {
+export function tarefaDoFeed(item: Record<string, unknown>, perfil: PerfilBasico | null): Tarefa {
+  const espaco = String(item.espaco ?? "pessoal");
   return {
     tipo: "tarefa",
     id: String(item.id),
     titulo: String(item.titulo ?? "(sem título)"),
     status: "pendente",
     scheduledAt: (item.scheduled_at as string | null) ?? null,
-    durationMin: 0,
+    durationMin: Number(item.duration_min ?? 0),
     dueDate: null,
-    espaco: "pessoal",
+    espaco: espaco as Espaco,
+    dono: resolverDono(espaco, item.criado_por, item.criado_por_nome, perfil),
     encaixadaNaAgenda: true,
+    prioridade: prioridadeValida(item.prioridade),
   };
 }
 
 export function tarefaResumoParaView(
-  t: { id: string; titulo: string; status: string; scheduled_at: string | null; duration_min: number | null; due_date: string | null; espaco: string },
+  t: {
+    id: string;
+    titulo: string;
+    status: string;
+    scheduled_at: string | null;
+    duration_min: number | null;
+    due_date: string | null;
+    espaco: string;
+    prioridade?: string;
+    criado_por?: string | null;
+    criado_por_nome?: string | null;
+  },
   equipes: MinhaEquipe[],
+  perfil: PerfilBasico | null,
 ): Tarefa {
   return {
     tipo: "tarefa",
@@ -102,6 +157,8 @@ export function tarefaResumoParaView(
     dueDate: t.due_date,
     espaco: t.espaco as Espaco,
     origemEquipe: origemEquipe(t.espaco, equipes),
+    dono: resolverDono(t.espaco, t.criado_por, t.criado_por_nome, perfil),
     encaixadaNaAgenda: !!t.scheduled_at,
+    prioridade: prioridadeValida(t.prioridade),
   };
 }

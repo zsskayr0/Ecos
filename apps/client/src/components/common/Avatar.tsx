@@ -5,7 +5,7 @@ interface AvatarProps {
   url?: string;
 }
 
-/** Avatar por iniciais — nenhuma imagem de estoque, cor de identidade (Equipe) opcional. */
+/** Initials-based avatar — no stock imagery, optional identity color (Team). */
 export function Avatar({ nome, corFundo = "#3E6FA8", tamanho = 36, url }: AvatarProps) {
   const iniciais = nome
     .trim()

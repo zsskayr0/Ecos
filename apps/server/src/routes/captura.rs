@@ -4,11 +4,12 @@
 //! pro `ecos-vault-db` via o mesmo mecanismo do proxy (seção 11.14).
 
 use axum::extract::State;
-use axum::Json;
+use axum::{Extension, Json};
 use ecos_core::ErrorCode;
 use serde::Deserialize;
 
 use crate::error::{AppError, AppResult, CampoInvalido};
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::{notas, tarefas};
 use crate::state::AppState;
 
@@ -19,17 +20,21 @@ pub struct CapturaPayload {
     pub campos: serde_json::Value,
 }
 
-pub async fn capturar(State(state): State<AppState>, Json(payload): Json<CapturaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn capturar(
+    State(state): State<AppState>,
+    Extension(usuario): Extension<UsuarioAutenticado>,
+    Json(payload): Json<CapturaPayload>,
+) -> AppResult<Json<serde_json::Value>> {
     match payload.tipo.as_str() {
         "nota" => {
             let corpo: notas::CriarNotaPayload = serde_json::from_value(payload.campos)
                 .map_err(|e| AppError::validation(vec![CampoInvalido { campo: "campos".into(), motivo: e.to_string() }]))?;
-            notas::criar(State(state), Json(corpo)).await
+            notas::criar(State(state), Extension(usuario), Json(corpo)).await
         }
         "tarefa" => {
             let corpo: tarefas::CriarTarefaPayload = serde_json::from_value(payload.campos)
                 .map_err(|e| AppError::validation(vec![CampoInvalido { campo: "campos".into(), motivo: e.to_string() }]))?;
-            tarefas::criar(State(state), Json(corpo)).await
+            tarefas::criar(State(state), Extension(usuario), Json(corpo)).await
         }
         "transacao" => {
             if !state.config.vault_enabled {
@@ -63,7 +68,7 @@ pub async fn campos_compativeis() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "compartilhados": ["titulo"],
         "nota": ["titulo", "corpo", "tags", "pasta", "espaco", "modo"],
-        "tarefa": ["titulo", "pasta", "espaco", "scheduled_at", "duration_min", "due_date"],
+        "tarefa": ["titulo", "corpo", "pasta", "espaco", "scheduled_at", "duration_min", "due_date", "tags", "prioridade", "subtarefas"],
         "transacao": ["titulo (vira descricao)", "valor_centavos", "categoria_id", "conta_id", "forma_pagamento", "espaco"],
     }))
 }

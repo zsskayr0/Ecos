@@ -1,4 +1,9 @@
-/** Formatadores compartilhados — sempre centavos inteiros, nunca float (seção 1.3-A). */
+/** Shared formatters — always integer cents, never a float (section 1.3-A). */
+
+/** Today as `YYYY-MM-DD`, matching the wire format of `TransacaoApi.data` — used to default date pickers and to infer "efetivada" vs "pendente" from a future date. */
+export function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function formatMoeda(valorCentavos: number): string {
   const sinal = valorCentavos < 0 ? "-" : "";

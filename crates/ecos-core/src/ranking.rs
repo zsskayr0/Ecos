@@ -3,7 +3,7 @@
 //! 4.3). Puro cálculo — quem chama decide a cadência (job periódico,
 //! seção 4) e onde persistir o resultado (`feed_item`, ver plano de dados).
 
-use crate::types::FeedMotivo;
+use crate::types::{FeedMotivo, TarefaPrioridade};
 use chrono::{DateTime, Utc};
 
 /// `max(0, 1 - horas_desde(atualizado_em) / 72)`, sujeita a nunca passar de
@@ -46,6 +46,20 @@ pub fn esquecimento(
 /// "pular" pro topo do Feed.
 pub fn boost_transacao(criado_em: DateTime<Utc>, agora: DateTime<Utc>) -> f64 {
     frescor(criado_em, agora)
+}
+
+/// Score de uma Tarefa encaixada no Feed (handoff de front-end, seção 3.1:
+/// "o feed mostra casualmente tarefas, como se fossem ads") — quanto mais
+/// alta a prioridade, mais alto o "lance", competindo de igual pra igual
+/// com o score de Notas frescas/interagidas em vez de sempre ficar no fim
+/// da lista. Faixas deliberadamente abaixo de 1.0 mesmo em Alta: uma
+/// Tarefa não deve dominar o Feed inteiro, só aparecer com mais destaque.
+pub fn boost_tarefa_prioridade(prioridade: TarefaPrioridade) -> f64 {
+    match prioridade {
+        TarefaPrioridade::Baixa => 0.15,
+        TarefaPrioridade::Media => 0.45,
+        TarefaPrioridade::Alta => 0.85,
+    }
 }
 
 /// Os 4 scores calculados de uma vez para uma Nota/Tarefa.
@@ -156,5 +170,14 @@ mod tests {
     fn boost_transacao_usa_a_mesma_curva_do_frescor() {
         let base = agora();
         assert_eq!(boost_transacao(base, base), frescor(base, base));
+    }
+
+    #[test]
+    fn boost_tarefa_prioridade_cresce_com_a_prioridade() {
+        let baixa = boost_tarefa_prioridade(TarefaPrioridade::Baixa);
+        let media = boost_tarefa_prioridade(TarefaPrioridade::Media);
+        let alta = boost_tarefa_prioridade(TarefaPrioridade::Alta);
+        assert!(baixa < media && media < alta);
+        assert!(alta < 1.0, "mesmo Alta não deve dominar o Feed inteiro");
     }
 }

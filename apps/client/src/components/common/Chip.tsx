@@ -8,7 +8,7 @@ interface ChipProps {
   accentColor?: string;
 }
 
-/** Chip de seleção — duração de Tarefa, categoria de Transação (seção 3.6). */
+/** Selection chip — Tarefa duration, Transacao category (section 3.6). */
 export function Chip({ children, selected, onClick, icon, accentColor }: ChipProps) {
   return (
     <button

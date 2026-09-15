@@ -1,13 +1,16 @@
 /**
- * Cliente HTTP real contra `ecos-app` (e, via proxy dele, `ecos-vault-db`).
- * Contrato batendo com o código de `apps/server/src/routes/*` e
- * `apps/vault/src/routes/*` (não só a arquitetura em papel — lido direto
- * do backend real desta sessão). Base relativa (`/api/v1`) — em dev, o
- * Vite faz proxy pra `http://localhost:7023` (ver vite.config.ts); em
- * produção, `ecos-app` serve API e front do mesmo domínio.
+ * Real HTTP client against `ecos-app` (and, via its proxy, `ecos-vault-db`).
+ * Contract matches the code in `apps/server/src/routes/*` and
+ * `apps/vault/src/routes/*` (not just the paper architecture — read
+ * straight from the real backend this session). Base path is dynamic
+ * (`server-config.ts`): a relative `/api/v1` in the browser (Vite's dev
+ * proxy, or same-origin production serving) — but the compiled Tauri
+ * shell has no origin to be "the same" as, so it reads a real address the
+ * user configured in Configurações instead.
  */
+import { apiBase } from "./server-config";
 
-const BASE = "/api/v1";
+const BASE = apiBase;
 
 export class ApiError extends Error {
   constructor(
@@ -21,7 +24,7 @@ export class ApiError extends Error {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${BASE}${path}`, {
+  const resp = await fetch(`${BASE()}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -62,7 +65,7 @@ export interface Pagina<T> {
   next_cursor: string | null;
 }
 
-// --- Auth & Perfil (seção 11.1/11.2) --------------------------------------
+// --- Auth & Profile (section 11.1/11.2) -----------------------------------
 
 export const auth = {
   registrar: (nome_usuario: string, senha: string) =>
@@ -74,25 +77,26 @@ export const auth = {
   atualizarPerfil: (nome_usuario: string) => patch<{ ok: true }>("/me", { nome_usuario }),
 };
 
-// --- Captura universal (seção 11.3) ---------------------------------------
+// --- Universal capture (section 11.3) -------------------------------------
 
 export const captura = {
   /**
-   * Só pra nota/tarefa. GAP-13 (achado testando contra o backend real, não
-   * assumido): `POST /captura` não dá pra usar pra criar Transação — o
-   * discriminador externo `tipo` ("nota"|"tarefa"|"transacao") e o `tipo`
-   * próprio de `TransacaoPayload` (entrada/saida,
-   * `apps/vault/src/routes/transacoes.rs`) são o mesmo nome de campo; como
-   * `campos_compativeis()` também nunca lista "tipo" entre os campos de
-   * transacao, a leitura mais consistente é que Transação sempre deveria
-   * ir direto em `vault.transacoes.criar` (ver `CreateFlow.tsx`), não por
-   * aqui — mantido só pra nota/tarefa, que não têm esse conflito.
+   * Note/task only. GAP-13 (found testing against the real backend, not
+   * assumed up front): `POST /captura` can't be used to create a
+   * Transaction — the outer discriminator `tipo` ("nota"|"tarefa"|
+   * "transacao") and `TransacaoPayload`'s own `tipo` (entrada/saida,
+   * `apps/vault/src/routes/transacoes.rs`) are the same field name; since
+   * `campos_compativeis()` also never lists "tipo" among transacao's
+   * fields, the most consistent reading is that Transactions should
+   * always go straight through `vault.transacoes.criar` (see
+   * `CreateFlow.tsx`) instead — kept here only for note/task, which don't
+   * have this conflict.
    */
   capturar: (tipo: "nota" | "tarefa", campos: Record<string, unknown>) =>
     post<Record<string, unknown>>("/captura", { tipo, ...campos }),
 };
 
-// --- Notas (seção 11.4) ----------------------------------------------------
+// --- Notes (section 11.4) --------------------------------------------------
 
 export interface NotaResumo {
   id: string;
@@ -104,6 +108,8 @@ export interface NotaResumo {
   atualizado_em: string;
   ultima_revisao_em: string | null;
   tags: string[];
+  criado_por: string | null;
+  criado_por_nome: string | null;
 }
 
 export const notas = {
@@ -121,7 +127,7 @@ export const notas = {
   links: (id: string) => get<{ entrada: { id: string; titulo: string }[]; saida: { id: string; titulo: string }[] }>(`/notas/${id}/links`),
 };
 
-// --- Pastas (seção 11.5) ----------------------------------------------------
+// --- Folders (section 11.5) -------------------------------------------------
 
 export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string } = {}) =>
@@ -130,7 +136,23 @@ export const pastas = {
   excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string }) => del<{ ok: true }>("/pastas", payload),
 };
 
-// --- Tarefas & Agenda (seção 11.6) -----------------------------------------
+// --- Tasks & Agenda (section 11.6) ------------------------------------------
+
+export const PRIORIDADES_TAREFA = ["baixa", "media", "alta"] as const;
+export type PrioridadeTarefa = (typeof PRIORIDADES_TAREFA)[number];
+
+export interface Subtarefa {
+  id: string;
+  titulo: string;
+  concluida: boolean;
+}
+
+/** Input shape for a subtask the client is sending — `id` omitted means "new", matching `SubtarefaPayload` in `tarefas.rs`. */
+export interface SubtarefaInput {
+  id?: string;
+  titulo: string;
+  concluida: boolean;
+}
 
 export interface TarefaResumo {
   id: string;
@@ -142,15 +164,59 @@ export interface TarefaResumo {
   due_date: string | null;
   espaco: string;
   criado_em: string;
+  prioridade: PrioridadeTarefa;
+  criado_por: string | null;
+  criado_por_nome: string | null;
+}
+
+export interface TarefaDetalhe {
+  id: string;
+  titulo: string;
+  status: "pendente" | "concluida";
+  scheduled_at: string | null;
+  duration_min: number | null;
+  due_date: string | null;
+  tags: string[];
+  prioridade: PrioridadeTarefa;
+  subtarefas: Subtarefa[];
+  espaco: string;
+  criado_em: string;
+  caminho_arquivo: string;
+  pasta: string | null;
+  corpo: string;
+}
+
+export interface CriarTarefaPayload {
+  titulo: string;
+  corpo?: string;
+  pasta?: string;
+  scheduled_at?: string | null;
+  duration_min?: number;
+  due_date?: string | null;
+  tags?: string[];
+  prioridade?: PrioridadeTarefa;
+  subtarefas?: SubtarefaInput[];
+  espaco?: string;
+}
+
+export interface AtualizarTarefaPayload {
+  titulo?: string;
+  pasta?: string;
+  scheduled_at?: string;
+  duration_min?: number;
+  due_date?: string;
+  corpo?: string;
+  tags?: string[];
+  prioridade?: PrioridadeTarefa;
+  subtarefas?: SubtarefaInput[];
 }
 
 export const tarefas = {
   listar: (params: { pasta?: string; data_de?: string; data_ate?: string; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) =>
     get<Pagina<TarefaResumo>>(`/tarefas${qs(params)}`),
-  criar: (payload: { titulo: string; pasta?: string; scheduled_at?: string | null; duration_min?: number; due_date?: string | null; espaco?: string }) =>
-    post<{ id: string }>("/tarefas", payload),
-  atualizar: (id: string, payload: { titulo?: string; pasta?: string; scheduled_at?: string; duration_min?: number; due_date?: string }) =>
-    patch<{ id: string }>(`/tarefas/${id}`, payload),
+  obter: (id: string) => get<TarefaDetalhe>(`/tarefas/${id}`),
+  criar: (payload: CriarTarefaPayload) => post<{ id: string }>("/tarefas", payload),
+  atualizar: (id: string, payload: AtualizarTarefaPayload) => patch<{ id: string }>(`/tarefas/${id}`, payload),
   atualizarStatus: (id: string, status: "pendente" | "concluida") => patch<{ id: string; status: string }>(`/tarefas/${id}/status`, { status }),
   excluir: (id: string) => del<{ ok: true }>(`/tarefas/${id}`),
   capacidade: (data: string) =>
@@ -164,15 +230,29 @@ export const tarefas = {
       tempo_livre_min: number;
       estourado: boolean;
     }>(`/agenda/capacidade${qs({ data })}`),
+  /** Real multipart upload — `fetch` sets its own `Content-Type` with the
+   * boundary when given a `FormData` body, so this bypasses the shared
+   * `req()`'s JSON header instead of fighting it. */
+  anexos: {
+    enviar: async (id: string, arquivo: File) => {
+      const formData = new FormData();
+      formData.append("arquivo", arquivo);
+      const resp = await fetch(`${BASE()}/tarefas/${id}/anexos`, { method: "POST", credentials: "include", body: formData });
+      const body = await resp.json().catch(() => null);
+      if (!resp.ok) throw new ApiError(body?.error ?? "UNKNOWN", body?.message ?? `Erro ${resp.status}`, resp.status);
+      return body as { nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string };
+    },
+    urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/tarefas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
+  },
 };
 
-// --- Feed (seção 11.7) -------------------------------------------------
+// --- Feed (section 11.7) -------------------------------------------------
 
 export const feed = {
   obter: (params: { espaco?: string; cursor?: string; limit?: number } = {}) => get<Pagina<Record<string, unknown>>>(`/feed${qs(params)}`),
 };
 
-// --- Busca (seção 11.8) ------------------------------------------------
+// --- Search (section 11.8) ------------------------------------------------
 
 export const busca = {
   buscar: (q: string, params: { tipo?: "nota" | "tarefa"; espaco?: string } = {}) =>
@@ -181,7 +261,7 @@ export const busca = {
     ),
 };
 
-// --- Equipes (seção 11.10) ----------------------------------------------
+// --- Teams (section 11.10) ----------------------------------------------
 
 export const equipes = {
   listarMinhas: () => get<{ id: string; nome: string; cargo: string }[]>("/equipes"),
@@ -197,7 +277,7 @@ export const equipes = {
   aceitarConvite: (codigo: string) => post<{ ok: true }>(`/convites/${codigo}/aceitar`),
 };
 
-// --- Notificações (seção 11.11) -----------------------------------------
+// --- Notifications (section 11.11) -----------------------------------------
 
 export interface NotificacaoApi {
   id: string;
@@ -215,7 +295,7 @@ export const notificacoes = {
   marcarTodasLidas: () => post<{ ok: true }>("/notificacoes/marcar-todas-lidas"),
 };
 
-// --- Cofre / Vault (seção 11.14, via proxy /vault/*) ---------------------
+// --- Vault / Cofre (section 11.14, via /vault/* proxy) ---------------------
 
 export interface TransacaoApi {
   id: string;
@@ -257,6 +337,17 @@ export interface ContaApi {
   espaco: string;
 }
 
+export interface BeneficiarioApi {
+  id: string;
+  nome: string;
+  documento: string | null;
+  observacoes: string | null;
+}
+
+/** Matches `FORMAS_PAGAMENTO` in `apps/vault/src/routes/transacoes.rs` — a closed enum, not free text. */
+export const FORMAS_PAGAMENTO = ["pix", "pix_automatico", "ted", "cartao", "dinheiro", "boleto", "outro"] as const;
+export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number];
+
 export const vault = {
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
@@ -272,6 +363,12 @@ export const vault = {
     listar: () => get<CategoriaApi[]>("/vault/categorias"),
     criar: (payload: { nome: string; tipo?: string; icone?: string; cor?: string; espaco?: string }) => post<{ id: string }>("/vault/categorias", payload),
   },
+  beneficiarios: {
+    listar: () => get<BeneficiarioApi[]>("/vault/beneficiarios"),
+    /** `POST` is find-or-create by name (see `beneficiarios.rs`). */
+    criarOuEncontrar: (payload: { nome: string; documento?: string; observacoes?: string }) =>
+      post<{ id: string; nome: string; novo: boolean }>("/vault/beneficiarios", payload),
+  },
   transacoes: {
     listar: (params: { conta_id?: string; categoria_id?: string; status?: string; data_de?: string; data_ate?: string; cursor?: string; limit?: number } = {}) =>
       get<{ items: TransacaoApi[]; next_cursor: string | null }>(`/vault/transacoes${qs(params)}`),
@@ -283,8 +380,10 @@ export const vault = {
       descricao: string;
       categoria_id?: string;
       conta_id?: string;
+      beneficiario_id?: string;
       forma_pagamento?: string;
       status?: "efetivada" | "pendente";
+      observacoes?: string;
       espaco?: string;
     }) => post<TransacaoApi>("/vault/transacoes", payload),
     atualizar: (id: string, payload: Partial<TransacaoApi> & { tipo: string; valor_centavos: number; data: string; descricao: string }) =>

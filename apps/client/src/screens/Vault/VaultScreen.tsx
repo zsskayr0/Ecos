@@ -10,11 +10,11 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 type Fase = "carregando" | "desativado" | "precisa-ativar" | "bloqueado" | "aberto";
 
 /**
- * Cofre — card de saldo, extrato, ícone+cor por categoria (seção 3.5),
- * agora contra `ecos-vault-db` de verdade via o proxy de `ecos-app`
- * (`/api/v1/vault/*`). Três estados reais: módulo desativado
- * (`ECOS_VAULT_ENABLED=false`), ativado mas nunca configurado (primeira
- * senha) e bloqueado (senha de novo a cada abertura do processo).
+ * Vault — balance card, statement, icon+color by category (section 3.5),
+ * now against the real `ecos-vault-db` via `ecos-app`'s proxy
+ * (`/api/v1/vault/*`). Three real states: module disabled
+ * (`ECOS_VAULT_ENABLED=false`), enabled but never configured (first
+ * password), and locked (password again every time the process starts).
  */
 export function VaultScreen() {
   const { versao, notificar } = useRefreshBus();
@@ -88,9 +88,10 @@ export function VaultScreen() {
           <Icons.ShieldHalf size={13} />
           Saldo do Cofre
         </p>
-        {/* Seção 3.5 pede Space Grotesk grande, mas a regra 7 (seção 4) é
-            taxativa: JetBrains Mono pra qualquer valor monetário, sem
-            exceção — a regra geral vence a menção pontual da seção 3.5. */}
+        {/* Section 3.5 asks for large Space Grotesk, but rule 7 (section
+            4) is emphatic: JetBrains Mono for any monetary value, no
+            exceptions — the general rule wins over section 3.5's
+            one-off mention. */}
         <p className="font-mono-value text-4xl font-bold text-text-primary">{formatMoeda(saldoTotal)}</p>
       </div>
 
@@ -149,7 +150,7 @@ export function VaultScreen() {
   );
 }
 
-/** Teaser de ativação — o ícone do Cofre nunca some da nav mesmo com o módulo desativado (regra 4). */
+/** Activation teaser — the Vault icon never disappears from the nav even with the module disabled (rule 4). */
 function VaultTeaserScreen() {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 px-8 text-center">

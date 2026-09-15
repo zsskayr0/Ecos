@@ -25,7 +25,7 @@ const PERGUNTAS = [
   },
 ];
 
-/** GAP-05 (continuação): item do Drawer sem conteúdo descrito na especificação (seção 3.9) — FAQ mínima. */
+/** GAP-05 (continued): a Drawer item with no content described in the spec (section 3.9) — minimal FAQ. */
 export function HelpScreen() {
   const navigate = useNavigate();
   const [aberta, setAberta] = useState<number | null>(0);

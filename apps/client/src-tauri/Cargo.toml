@@ -1,16 +1,23 @@
 [package]
 name = "ecos-client"
 version = "0.1.0"
-description = "Ecos — cliente desktop/mobile (Tauri + React), ver ecos-arquitetura-tecnica.md seção 10"
+description = "Ecos — desktop/mobile client (Tauri + React), see ecos-arquitetura-tecnica.md section 10"
 edition = "2021"
 publish = false
 
-# Deliberadamente FORA do [workspace] raiz do repositório (Cargo.toml na
-# raiz do projeto): compilar o shell Tauri exige toolchain de GUI (WebView2
-# no Windows, webkit2gtk no Linux) que `apps/server`/`apps/vault` não
-# precisam — mantém `cargo build --workspace` na raiz rápido e sem essa
-# dependência. Ver ecos-stack-decision (memória do projeto) sobre "Rust em
-# tudo": isso não contradiz a decisão, só isola a superfície de build.
+# Deliberately OUTSIDE the repo root's [workspace] (the project root's
+# Cargo.toml): compiling the Tauri shell requires a GUI toolchain
+# (WebView2 on Windows, webkit2gtk on Linux) that `apps/server`/`apps/vault`
+# don't need — keeps `cargo build --workspace` at the root fast and free
+# of that dependency. See ecos-stack-decision (project memory) on "Rust
+# everywhere": this doesn't contradict that decision, it just isolates
+# the build surface. An empty `[workspace]` table here is what actually
+# enforces that (found the hard way running `tauri android init`): being
+# nested under the root `Cargo.toml` without it, Cargo treats this crate
+# as an implicit, unlisted workspace member and refuses to build it
+# standalone — the comment alone wasn't load-bearing.
+[workspace]
+
 [lib]
 name = "ecos_client_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

@@ -4,9 +4,9 @@ import { formatTempoRelativo, MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format"
 import { Avatar } from "@/components/common/Avatar";
 
 /**
- * Card de Nota (seção 3.1) — borda esquerda colorida = motivo dominante de
- * ranking, tag do motivo, timestamp relativo, preview, avatar/nome de
- * origem no rodapé quando é de Equipe.
+ * Nota card (section 3.1) — colored left border = dominant ranking motive,
+ * motive tag, relative timestamp, preview, origin avatar/name in the
+ * footer when it's from a Team.
  */
 export function NoteCard({ nota }: { nota: Nota }) {
   const navigate = useNavigate();
@@ -28,12 +28,18 @@ export function NoteCard({ nota }: { nota: Nota }) {
       <p className="font-body text-[15px] font-semibold leading-snug text-text-primary">{nota.titulo}</p>
       <p className="line-clamp-2 text-sm leading-snug text-text-secondary">{nota.preview}</p>
 
-      {nota.origemEquipe && (
-        <div className="mt-1 flex items-center gap-2">
-          <Avatar nome={nota.origemEquipe.nome} corFundo={nota.origemEquipe.cor} tamanho={18} />
-          <span className="text-xs text-text-muted">{nota.origemEquipe.nome}</span>
-        </div>
-      )}
+      {/* User feedback: "abaixo de cada card... deve ter a foto de perfil
+          e o nome do dono daquele item" — the individual author always
+          shows; the Team badge (when there is one) rides along next to it
+          rather than replacing it, since they answer different questions
+          ("quem" vs. "em qual Equipe"). */}
+      <div className="mt-1 flex items-center gap-2">
+        <Avatar nome={nota.dono.nome} corFundo={nota.origemEquipe?.cor} tamanho={18} />
+        <span className="text-xs text-text-muted">
+          {nota.dono.nome}
+          {nota.origemEquipe && ` · ${nota.origemEquipe.nome}`}
+        </span>
+      </div>
     </button>
   );
 }

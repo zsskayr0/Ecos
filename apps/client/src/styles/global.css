@@ -30,15 +30,15 @@ body {
   overscroll-behavior-y: contain;
 }
 
-/* Space Grotesk é só pra wordmark/H1/splash — nunca em parágrafo ou
-   label de UI densa (regra fixa, seção 1.2). */
+/* Space Grotesk is only for the wordmark/H1/splash — never in a
+   paragraph or a dense UI label (fixed rule, section 1.2). */
 .font-display {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
 }
 
-/* Valores monetários, timestamps e labels técnicos — JetBrains Mono,
-   inclusive fora do Cofre (regra 7 da seção 4). */
+/* Monetary values, timestamps, and technical labels — JetBrains Mono,
+   even outside the Vault (rule 7 of section 4). */
 .font-mono-value {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
@@ -72,8 +72,8 @@ body {
   display: none;
 }
 
-/* Espaço reservado no fim de toda tela com bottom nav flutuante, pra
-   nenhum conteúdo ficar escondido atrás da barra. */
+/* Reserved space at the bottom of every screen with the floating bottom
+   nav, so no content ends up hidden behind the bar. */
 .pb-nav-safe {
   padding-bottom: 108px;
 }

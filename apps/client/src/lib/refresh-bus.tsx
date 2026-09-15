@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 /**
- * Barramento minúsculo de "algo mudou" — sem cache/query lib de propósito
- * (escopo do front não pede isso). Qualquer tela que precisa refletir uma
- * mutação feita em outro lugar (Captura criando Nota/Tarefa/Transação,
- * por exemplo) inclui `versao` no array de dependências do próprio
- * `useEffect` de busca.
+ * Tiny "something changed" bus — deliberately no cache/query lib (the
+ * front-end scope doesn't call for one). Any screen that needs to reflect
+ * a mutation made elsewhere (Capture creating a Nota/Tarefa/Transacao, for
+ * example) includes `versao` in its own data-fetching `useEffect`'s
+ * dependency array.
  */
 interface RefreshBus {
   versao: number;
@@ -23,6 +23,6 @@ export function RefreshProvider({ children }: { children: ReactNode }) {
 
 export function useRefreshBus() {
   const ctx = useContext(RefreshContext);
-  if (!ctx) throw new Error("useRefreshBus precisa estar dentro de <RefreshProvider>");
+  if (!ctx) throw new Error("useRefreshBus must be used inside <RefreshProvider>");
   return ctx;
 }

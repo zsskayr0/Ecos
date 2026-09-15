@@ -7,9 +7,10 @@ import { corDaEquipe } from "@/lib/team-color";
 import type { Cargo } from "@/lib/types";
 
 /**
- * Perfil Pessoal — mesma estrutura visual do perfil de Equipe (seção 3.8).
- * `usuario` real só tem `nome_usuario` (sem handle/bio, ver
- * `apps/server/src/auth/mod.rs::perfil`) — nada inventado aqui.
+ * Personal Profile — same visual structure as a Team's profile
+ * (section 3.8). The real `usuario` only has `nome_usuario` (no
+ * handle/bio, see `apps/server/src/auth/mod.rs::perfil`) — nothing made
+ * up here.
  */
 export function ProfileScreen() {
   const navigate = useNavigate();

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
 /**
- * Renderização mínima e real (não simulada) de checkbox / wikilink / código
- * inline, pro preview do editor de Nota (seção 3.6). Não é um parser
- * Markdown completo — cobre exatamente o que a especificação pede.
+ * Minimal, real (not simulated) rendering of checkbox / wikilink / inline
+ * code, for the Nota editor's preview (section 3.6). Not a full Markdown
+ * parser — covers exactly what the spec asks for.
  */
 export function renderMarkdownMini(texto: string): ReactNode[] {
   return texto.split("\n").map((linha, i) => {

@@ -11,9 +11,9 @@ import { notificacoes } from "@/lib/api";
 import { corDaEquipe } from "@/lib/team-color";
 
 /**
- * Topbar — avatar (drawer) à esquerda, pill de filtro ao centro, sino de
- * notificações à direita (seção 2.2). Filtro por Equipe é opcional/temporário,
- * nunca uma tab fixa (seção 2.3, regra 6).
+ * Topbar — avatar (drawer) on the left, filter pill in the center,
+ * notification bell on the right (section 2.2). Team filter is
+ * optional/temporary, never a fixed tab (section 2.3, rule 6).
  */
 export function Topbar() {
   const { abrirDrawer, filtroEquipeId, setFiltroEquipeId } = useAppUI();

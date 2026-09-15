@@ -3,11 +3,11 @@ import { Fingerprint, AlertTriangle } from "lucide-react";
 import { ApiError } from "@/lib/api";
 
 /**
- * Tela de bloqueio antes de qualquer conteúdo do Cofre (seção 3.5) — senha
- * é o fator real hoje (`apps/vault/src/routes/ativacao.rs`); biometria de
- * dispositivo (WebAuthn) é `TODO` no backend, então "Desbloquear com
- * biometria" pede a senha do Cofre por trás — zero humor aqui (regra de
- * tom, seção 1.4), é a tela mais séria do app.
+ * Lock screen before any Vault content (section 3.5) — a password is the
+ * real factor today (`apps/vault/src/routes/ativacao.rs`); device
+ * biometrics (WebAuthn) is a backend `TODO`, so "Unlock with biometrics"
+ * asks for the Vault password under the hood — zero humor here (tone
+ * rule, section 1.4), it's the most serious screen in the app.
  */
 export function VaultLockScreen({
   primeiraVez,

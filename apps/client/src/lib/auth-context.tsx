@@ -17,17 +17,17 @@ interface AuthState {
   login: (usuario: string, senha: string) => Promise<void>;
   registrar: (nomeUsuario: string, senha: string) => Promise<{ recovery_key: string }>;
   logout: () => Promise<void>;
-  /** Chama de novo `/me` — usado depois de editar perfil, entrar em Equipe etc. */
+  /** Calls `/me` again — used after editing the profile, joining a Team, etc. */
   recarregarPerfil: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
 /**
- * Sessão real contra `ecos-app` (cookie HttpOnly, seção 5.1) — sem refresh
- * automático no backend hoje (`apps/server/src/middleware/auth_guard.rs`
- * só valida o access token de 15min, sem rota de renovação); ao expirar,
- * qualquer chamada 401 aqui derruba pra tela de login de novo.
+ * Real session against `ecos-app` (HttpOnly cookie, section 5.1) — no
+ * automatic refresh on the backend today (`apps/server/src/middleware/auth_guard.rs`
+ * only validates the 15min access token, no renewal route); once it
+ * expires, any 401 here drops back to the login screen.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("carregando");
@@ -64,12 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setErro(null);
     try {
       const resposta = await auth.registrar(nomeUsuario, senha);
-      // registrar() não abre sessão sozinho (seção 11.1) — login explícito na
-      // sequência (isso já grava o cookie no browser). De propósito, NÃO
-      // chama `recarregarPerfil()` aqui: o status global só vira
-      // "autenticado" quando a tela de recovery key for confirmada (ver
-      // AuthScreen) — a recovery key só aparece uma vez, não pode sumir
-      // porque o app trocou de tela sozinho no meio do caminho.
+      // registrar() doesn't open a session on its own (section 11.1) —
+      // explicit login right after (that already writes the browser
+      // cookie). Deliberately NOT calling `recarregarPerfil()` here: the
+      // global status only flips to "autenticado" once the recovery key
+      // screen is confirmed (see AuthScreen) — the recovery key only
+      // shows once, it can't disappear because the app switched screens
+      // on its own midway through.
       await auth.login(nomeUsuario, senha);
       return { recovery_key: resposta.recovery_key };
     } catch (e) {

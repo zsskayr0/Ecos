@@ -8,7 +8,7 @@ interface PillProps {
   withCaret?: boolean;
 }
 
-/** Pill de filtro do topbar (seção 2.2) — "Tudo" por padrão. */
+/** Topbar filter pill (section 2.2) — "Tudo" (All) by default. */
 export function Pill({ children, onClick, active, withCaret }: PillProps) {
   return (
     <button

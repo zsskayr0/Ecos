@@ -1,77 +1,79 @@
 # Ecos
 
-Sistema pessoal de produtividade **local-first**: Notas e Tarefas vivem como
-arquivos `.md` numa pasta sua; o Cofre (financeiro) é opcional, isolado num
-banco criptografado; tudo self-hosted via Docker + Cloudflare Tunnel. Ver
-[`ecos-arquitetura-tecnica.md`](./ecos-arquitetura-tecnica.md) para a
-arquitetura completa (modelo de dados, segurança, sync, API).
+**Local-first** personal productivity system: Notas and Tarefas live as
+`.md` files in a folder of your own; the Cofre (finance) is optional,
+isolated in an encrypted database; everything self-hosted via Docker +
+Cloudflare Tunnel. See
+[`ecos-arquitetura-tecnica.md`](./ecos-arquitetura-tecnica.md) for the
+full architecture (data model, security, sync, API).
 
-## Estrutura
+## Structure
 
 ```
 ecos/
-├── crates/ecos-core/   # tipos + regras de negócio compartilhadas (parsing de
-│                         front-matter/wikilink, recorrência, ranking do Feed)
+├── crates/ecos-core/   # shared types + business rules (front-matter/wikilink
+│                         parsing, recurrence, Feed ranking)
 ├── apps/
-│   ├── server/         # ecos-app (Axum) — API pública, hub de sync
-│   ├── vault/          # ecos-vault-db (Axum) — Cofre, rede interna só
-│   └── client/         # cliente Tauri + React (front-end completo, ver apps/client/README.md)
+│   ├── server/         # ecos-app (Axum) — public API, sync hub
+│   ├── vault/           # ecos-vault-db (Axum) — Cofre, internal network only
+│   └── client/          # Tauri + React client (complete front end, see apps/client/README.md)
 ├── docker-compose.yml
 ├── docker-compose.staging.yml
 └── docs/README-cofre.md
 ```
 
-O cliente (`apps/client`, Tauri/React) implementa as 12 telas do front-end
-a partir da especificação de marca/design (ver `apps/client/README.md`
-para como rodar e as lacunas sinalizadas); consome dados mockados até a
-integração real contra as rotas abaixo estar ligada na UI.
+The client (`apps/client`, Tauri/React) implements the front end's 12
+screens from the brand/design spec (see `apps/client/README.md` for how
+to run it and the flagged gaps) and talks to the real backend end to end
+— no mocked data outside its Onboarding flow.
 
-## Build & testes
+## Build & tests
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 ```
 
-## Rodar localmente (sem Docker)
+## Run locally (without Docker)
 
 ```bash
-# Notas/Tarefas — sem Cofre
+# Notas/Tarefas — no Cofre
 ECOS_NOTES_PATH=./data/notes cargo run -p ecos-app
 
-# Cofre, em outro terminal
+# Cofre, in another terminal
 ECOS_VAULT_DB_PATH=./data/vault/ecos-vault.db cargo run -p ecos-vault-db
 ```
 
-`ecos-app` sobe em `http://localhost:7023`, `ecos-vault-db` em
-`http://localhost:8090`. Primeiro acesso: `POST /api/v1/auth/registrar`.
-Para ligar o proxy do Cofre no `ecos-app`, defina
-`ECOS_VAULT_ENABLED=true` e `ECOS_VAULT_URL=http://localhost:8090`.
+`ecos-app` comes up on `http://localhost:7023`, `ecos-vault-db` on
+`http://localhost:8090`. First access: `POST /api/v1/auth/registrar`.
+To turn on the Cofre proxy in `ecos-app`, set
+`ECOS_VAULT_ENABLED=true` and `ECOS_VAULT_URL=http://localhost:8090`.
 
-## Rodar via Docker
+## Run via Docker
 
 ```bash
-cp .env.example .env   # ajuste ECOS_NOTES_PATH e CF_TUNNEL_TOKEN
-docker compose up -d                              # só Notas/Tarefas
+cp .env.example .env   # set ECOS_NOTES_PATH and CF_TUNNEL_TOKEN
+docker compose up -d                              # Notas/Tarefas only
 docker compose --profile vault --profile default up -d   # + Cofre
 ```
 
-Ativação do Cofre: [`docs/README-cofre.md`](./docs/README-cofre.md).
+Cofre activation: [`docs/README-cofre.md`](./docs/README-cofre.md).
 
-## Limitações conhecidas desta fundação
+## Known limitations of this foundation
 
-Documentadas inline no código (`// TODO` / comentários `RISCO:`), não
-escondidas:
+Documented inline in the code (`// TODO` / `RISCO:` comments), not
+hidden:
 
-- **SQLCipher real** (`apps/vault`, feature `real-sqlcipher`) não compila
-  neste ambiente de desenvolvimento Windows — falta um Perl completo pro
-  build do OpenSSL vendorizado. O `Dockerfile` de produção (Debian) instala
-  `perl`+`build-essential` e ativa a feature; sem ela, o Vault roda sem
-  cifra — nunca usar esse modo com dado financeiro real.
-- OAuth Google Calendar/Microsoft Graph/Google Drive, push
-  UnifiedPush/FCM, biometria WebAuthn e OCR (Tesseract/`leptess`) têm
-  contrato de API completo mas lógica `TODO` — dependem de credenciais
-  externas ou hardware que não dá pra validar aqui.
-- Sync direto LAN: pareamento por código e tabela `dispositivo` são reais;
-  anúncio mDNS roda; a transferência de arquivo cifrada entre dispositivos
-  pareados ainda não está implementada.
+- **Real SQLCipher** (`apps/vault`, `real-sqlcipher` feature) doesn't
+  compile in this Windows dev environment — missing a full Perl for
+  building the vendored OpenSSL. The production `Dockerfile` (Debian)
+  installs `perl`+`build-essential` and enables the feature; without it,
+  the Vault runs unencrypted — never use that mode with real financial
+  data.
+- Google Calendar/Microsoft Graph/Google Drive OAuth, UnifiedPush/FCM
+  push, WebAuthn biometrics, and OCR (Tesseract/`leptess`) have a
+  complete API contract but `TODO` logic — they depend on external
+  credentials or hardware that can't be validated here.
+- Direct LAN sync: pairing by code and the `dispositivo` table are real;
+  mDNS announcement runs; encrypted file transfer between paired devices
+  isn't implemented yet.

@@ -8,11 +8,19 @@ use crate::db::{reindex, IndexDb};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use ecos_core::ranking::Scores;
-use ecos_core::types::FeedMotivo;
+use ecos_core::types::{FeedMotivo, TarefaPrioridade};
 use rusqlite::params;
 use serde::Deserialize;
 use serde_json::json;
 use std::time::Duration;
+
+fn prioridade_de_str(s: &str) -> TarefaPrioridade {
+    match s {
+        "baixa" => TarefaPrioridade::Baixa,
+        "alta" => TarefaPrioridade::Alta,
+        _ => TarefaPrioridade::Media,
+    }
+}
 
 pub fn iniciar(state: AppState) {
     tokio::spawn(async move {
@@ -158,15 +166,39 @@ async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
     let inicio = hoje.and_hms_opt(0, 0, 0).unwrap().and_utc().to_rfc3339();
     let fim = hoje.succ_opt().unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().to_rfc3339();
 
+    let linhas: Vec<(String, String, String, String)> = db
+        .with({
+            let inicio = inicio.clone();
+            let fim = fim.clone();
+            move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, espaco, scheduled_at, prioridade FROM tarefa \
+                     WHERE status = 'pendente' AND scheduled_at >= ?1 AND scheduled_at < ?2",
+                )?;
+                let linhas = stmt
+                    .query_map(params![inicio, fim], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, String>(2)?, r.get(3)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(linhas)
+            }
+        })
+        .await?;
+
     db.with(move |conn| {
         let tx = conn.unchecked_transaction()?;
         tx.execute("DELETE FROM feed_item WHERE tipo = 'tarefa_encaixada'", [])?;
-        tx.execute(
-            "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em) \
-             SELECT id, 'tarefa_encaixada', NULL, 0, NULL, espaco, scheduled_at \
-             FROM tarefa WHERE status = 'pendente' AND scheduled_at >= ?1 AND scheduled_at < ?2",
-            params![inicio, fim],
-        )?;
+        for (id, espaco, scheduled_at, prioridade) in &linhas {
+            // Boost pela prioridade (seção 3.1 do handoff: "o feed mostra
+            // casualmente tarefas, como se fossem ads") em vez de um score
+            // fixo — antes toda Tarefa ficava no fim do Feed, agora uma
+            // Tarefa de prioridade Alta compete de igual pra igual com uma
+            // Nota fresca.
+            let score = ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(prioridade));
+            tx.execute(
+                "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em) \
+                 VALUES (?1, 'tarefa_encaixada', NULL, ?2, NULL, ?3, ?4)",
+                params![id, score, espaco, scheduled_at],
+            )?;
+        }
         tx.commit()
     })
     .await?;

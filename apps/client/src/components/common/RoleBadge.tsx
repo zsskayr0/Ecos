@@ -1,8 +1,9 @@
 import type { Cargo } from "@/lib/types";
 
 /**
- * Cargo de Equipe — cores distintas, sem hierarquia visual excessiva
- * (seção 3.7): âmbar só pro Dono, os outros dois discretos em cinza-azulado.
+ * Team role — distinct colors, without excessive visual hierarchy
+ * (section 3.7): amber only for the Owner, the other two discreet in
+ * blue-gray.
  */
 const estilos: Record<Cargo, { label: string; className: string }> = {
   dono: { label: "Dono", className: "text-warning border-warning/40 bg-warning/10" },

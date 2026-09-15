@@ -13,6 +13,9 @@ import { FolderCreateScreen } from "@/screens/Notes/FolderCreateScreen";
 import { SearchScreen } from "@/screens/Search/SearchScreen";
 import { AgendaScreen } from "@/screens/Agenda/AgendaScreen";
 import { TaskDetailScreen } from "@/screens/Agenda/TaskDetailScreen";
+import { TaskFoldersRootScreen } from "@/screens/Tasks/TaskFoldersRootScreen";
+import { TaskFolderScreen } from "@/screens/Tasks/TaskFolderScreen";
+import { TaskFolderCreateScreen } from "@/screens/Tasks/TaskFolderCreateScreen";
 import { VaultScreen } from "@/screens/Vault/VaultScreen";
 import { TransactionDetailScreen } from "@/screens/Vault/TransactionDetailScreen";
 import { TeamProfileScreen } from "@/screens/Team/TeamProfileScreen";
@@ -22,15 +25,25 @@ import { ProfileEditScreen } from "@/screens/Profile/ProfileEditScreen";
 import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen";
 import { OnboardingScreen } from "@/screens/Onboarding/OnboardingScreen";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
+import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
+import { precisaConfigurarServidor } from "@/lib/server-config";
 import { SyncBackupScreen } from "@/screens/Settings/SyncBackupScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 
-/** Portão real de autenticação (seção 5.1) — sem isso, nada abaixo fala com `ecos-app` de verdade. */
+/** Real authentication gate (section 5.1) — without it, nothing below actually talks to `ecos-app`. */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
+
+  // The Tauri shell (desktop/Android) has no working default address —
+  // asking "who's logged in" before the user has told it *where* to ask
+  // would just be a network error. User feedback: "deixa configurável no
+  // próprio app" (`server-config.ts`).
+  if (precisaConfigurarServidor()) {
+    return <ServerConfigScreen primeiraVez />;
+  }
 
   if (status === "carregando") {
     return (
@@ -53,9 +66,9 @@ export default function App() {
           <BrowserRouter>
             <AuthGate>
               <Routes>
-                {/* Onboarding é um fluxo próprio, sem nav/topbar (seção 3.11) — telas de
-                    recurso são mini-visualizações reais de componente, mas não dependem
-                    do backend (não precisam de rede pra existir). */}
+                {/* Onboarding is its own flow, with no nav/topbar (section 3.11) — feature
+                    slides are real component mini-visualizations, but don't depend on
+                    the backend (no network needed for them to exist). */}
                 <Route path="/onboarding" element={<OnboardingScreen />} />
 
                 <Route element={<AppShell />}>
@@ -73,6 +86,14 @@ export default function App() {
                   <Route path="/agenda" element={<AgendaScreen />} />
                   <Route path="/tarefa/:id" element={<TaskDetailScreen />} />
 
+                  {/* Folder-browsing mode for Tarefas, reachable from the Drawer
+                      (section 3.9) — Agenda (bottom nav) stays the calendar/
+                      time-blocking view; this is the by-folder view, same
+                      relationship Notas has to its own folder screens. */}
+                  <Route path="/tarefas" element={<TaskFoldersRootScreen />} />
+                  <Route path="/tarefas/pasta/nova" element={<TaskFolderCreateScreen />} />
+                  <Route path="/tarefas/pasta/:pastaId" element={<TaskFolderScreen />} />
+
                   <Route path="/cofre" element={<VaultScreen />} />
                   <Route path="/cofre/transacao/:id" element={<TransactionDetailScreen />} />
 
@@ -85,6 +106,7 @@ export default function App() {
                   <Route path="/notificacoes" element={<NotificationsScreen />} />
 
                   <Route path="/configuracoes" element={<SettingsScreen />} />
+                  <Route path="/configuracoes/servidor" element={<ServerConfigScreen />} />
                   <Route path="/configuracoes/sync" element={<SyncBackupScreen />} />
                   <Route path="/configuracoes/privacidade" element={<PrivacyVaultScreen />} />
                   <Route path="/configuracoes/aparencia" element={<AparenciaScreen />} />

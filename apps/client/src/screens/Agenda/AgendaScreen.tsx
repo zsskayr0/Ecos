@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ListChecks, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CalendarClock } from "lucide-react";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+type ModoAgenda = "mes" | "semana" | "dia";
+
 function paraISO(d: Date) {
   return d.toISOString().slice(0, 10);
+}
+
+function somarDias(d: Date, n: number) {
+  const novo = new Date(d);
+  novo.setDate(novo.getDate() + n);
+  return novo;
 }
 
 function gerarDiasDoMes(referencia: Date) {
@@ -20,6 +28,11 @@ function gerarDiasDoMes(referencia: Date) {
   return { offset, totalDias, ano, mes };
 }
 
+/** Sunday-start week (matching the month grid's "D S T Q Q S S" header) containing `d`. */
+function inicioDaSemana(d: Date) {
+  return somarDias(d, -d.getDay());
+}
+
 interface Capacidade {
   disponivel_producao_min: number;
   consumido_tarefas_min: number;
@@ -27,20 +40,19 @@ interface Capacidade {
 }
 
 /**
- * Agenda — calendário mensal + lista de time-blocks do dia (seção 3.4),
- * lendo `GET /tarefas` e `GET /agenda/capacidade` de verdade — isso fecha
- * o GAP-03 da rodada anterior (capacidade não era mais placeholder de 6h
- * fixo, agora vem do Perfil de Rotina real, `apps/server/src/routes/tarefas.rs`).
- * Blocos de pagamento previsto/nota com prazo do mock anterior saíram: não
- * existe endpoint que componha isso hoje, só Tarefa entra na Agenda real.
+ * Agenda — monthly/weekly/daily calendar + the day's time-block list
+ * (section 3.4), reading real `GET /tarefas` and `GET /agenda/capacidade`.
+ * User feedback: "a agenda continua intacta ali, com funções de calendário
+ * mensal, semanal e diário" — the three views share one selected-day state
+ * and the same task list below; only the picker widget above it changes.
  */
 export function AgendaScreen() {
   const navigate = useNavigate();
   const { versao } = useRefreshBus();
+  const [modo, setModo] = useState<ModoAgenda>("mes");
+  const [diaAtual, setDiaAtual] = useState(() => new Date());
   const hoje = new Date();
-  const [diaSelecionado, setDiaSelecionado] = useState(hoje.getDate());
-  const { offset, totalDias, ano, mes } = gerarDiasDoMes(hoje);
-  const dataStr = paraISO(new Date(ano, mes, diaSelecionado));
+  const dataStr = paraISO(diaAtual);
 
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [capacidade, setCapacidade] = useState<Capacidade | null>(null);
@@ -68,41 +80,31 @@ export function AgendaScreen() {
     };
   }, [dataStr, versao]);
 
+  const ehHojeFn = (d: Date) => paraISO(d) === paraISO(hoje);
+
   return (
     <div className="px-4 pt-1">
-      <h1 className="mb-4 font-display text-2xl capitalize text-text-primary">
-        {hoje.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
-      </h1>
-
-      <div className="mb-4 grid grid-cols-7 gap-y-2 rounded-card bg-surface-1 p-3">
-        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
-          <div key={i} className="text-center text-xs font-medium text-text-muted">
-            {d}
-          </div>
+      <div className="mb-4 flex justify-center rounded-pill bg-surface-2 p-1 self-center w-fit mx-auto">
+        {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => setModo(m)}
+            className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
+          >
+            {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
+          </button>
         ))}
-        {Array.from({ length: offset }).map((_, i) => (
-          <div key={`vazio-${i}`} />
-        ))}
-        {Array.from({ length: totalDias }, (_, i) => i + 1).map((dia) => {
-          const ativo = dia === diaSelecionado;
-          const ehHoje = dia === hoje.getDate();
-          return (
-            <button
-              key={dia}
-              onClick={() => setDiaSelecionado(dia)}
-              className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm ${
-                ativo
-                  ? "bg-steel-700 font-semibold text-white"
-                  : ehHoje
-                    ? "border border-steel-500 text-text-primary"
-                    : "text-text-secondary"
-              }`}
-            >
-              {dia}
-            </button>
-          );
-        })}
       </div>
+
+      {modo === "mes" && (
+        <VisaoMes diaAtual={diaAtual} hoje={hoje} onMudarMes={(delta) => setDiaAtual((d) => new Date(d.getFullYear(), d.getMonth() + delta, Math.min(d.getDate(), 28)))} onSelecionar={setDiaAtual} />
+      )}
+      {modo === "semana" && (
+        <VisaoSemana diaAtual={diaAtual} hoje={hoje} onMudarSemana={(delta) => setDiaAtual((d) => somarDias(d, delta * 7))} onSelecionar={setDiaAtual} />
+      )}
+      {modo === "dia" && (
+        <VisaoDia diaAtual={diaAtual} onMudarDia={(delta) => setDiaAtual((d) => somarDias(d, delta))} />
+      )}
 
       {erro && (
         <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
@@ -138,7 +140,7 @@ export function AgendaScreen() {
                 <button
                   key={t.id}
                   onClick={() => navigate(`/tarefa/${t.id}`)}
-                  className={`flex items-center gap-3 rounded-2xl border-l-4 bg-surface-1 p-3.5 text-left ${concluida ? "border-success" : "border-cyan"}`}
+                  className={`flex items-center gap-3 rounded-2xl border-l-4 bg-surface-1 p-3.5 text-left ${concluida ? "border-success" : t.prioridade === "alta" ? "border-error" : "border-cyan"}`}
                 >
                   {concluida ? (
                     <CheckCircle2 size={18} strokeWidth={1.75} className="shrink-0 text-success" />
@@ -156,6 +158,106 @@ export function AgendaScreen() {
             })
         )}
       </div>
+    </div>
+  );
+}
+
+function VisaoMes({ diaAtual, hoje, onMudarMes, onSelecionar }: { diaAtual: Date; hoje: Date; onMudarMes: (delta: number) => void; onSelecionar: (d: Date) => void }) {
+  const { offset, totalDias, ano, mes } = gerarDiasDoMes(diaAtual);
+  const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between">
+        <button onClick={() => onMudarMes(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Mês anterior">
+          <ChevronLeft size={18} />
+        </button>
+        <h1 className="font-display text-xl capitalize text-text-primary">{nomeMes}</h1>
+        <button onClick={() => onMudarMes(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próximo mês">
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="mb-4 grid grid-cols-7 gap-y-2 rounded-card bg-surface-1 p-3">
+        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
+          <div key={i} className="text-center text-xs font-medium text-text-muted">
+            {d}
+          </div>
+        ))}
+        {Array.from({ length: offset }).map((_, i) => (
+          <div key={`vazio-${i}`} />
+        ))}
+        {Array.from({ length: totalDias }, (_, i) => i + 1).map((dia) => {
+          const data = new Date(ano, mes, dia);
+          const ativo = paraISO(data) === paraISO(diaAtual);
+          const ehHoje = paraISO(data) === paraISO(hoje);
+          return (
+            <button
+              key={dia}
+              onClick={() => onSelecionar(data)}
+              className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm ${
+                ativo ? "bg-steel-700 font-semibold text-white" : ehHoje ? "border border-steel-500 text-text-primary" : "text-text-secondary"
+              }`}
+            >
+              {dia}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function VisaoSemana({ diaAtual, hoje, onMudarSemana, onSelecionar }: { diaAtual: Date; hoje: Date; onMudarSemana: (delta: number) => void; onSelecionar: (d: Date) => void }) {
+  const inicio = inicioDaSemana(diaAtual);
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
+  const rotulo = `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, 6).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
+
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between">
+        <button onClick={() => onMudarSemana(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Semana anterior">
+          <ChevronLeft size={18} />
+        </button>
+        <h1 className="font-display text-lg text-text-primary">{rotulo}</h1>
+        <button onClick={() => onMudarSemana(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próxima semana">
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="mb-4 grid grid-cols-7 gap-1 rounded-card bg-surface-1 p-3">
+        {dias.map((data) => {
+          const ativo = paraISO(data) === paraISO(diaAtual);
+          const ehHoje = paraISO(data) === paraISO(hoje);
+          return (
+            <button key={paraISO(data)} onClick={() => onSelecionar(data)} className="flex flex-col items-center gap-1">
+              <span className="text-[10px] font-medium uppercase text-text-muted">{data.toLocaleDateString("pt-BR", { weekday: "narrow" })}</span>
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm ${
+                  ativo ? "bg-steel-700 font-semibold text-white" : ehHoje ? "border border-steel-500 text-text-primary" : "text-text-secondary"
+                }`}
+              >
+                {data.getDate()}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function VisaoDia({ diaAtual, onMudarDia }: { diaAtual: Date; onMudarDia: (delta: number) => void }) {
+  const rotulo = diaAtual.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  return (
+    <div className="mb-4 flex items-center justify-between rounded-card bg-surface-1 p-3">
+      <button onClick={() => onMudarDia(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Dia anterior">
+        <ChevronLeft size={18} />
+      </button>
+      <h1 className="font-display text-lg capitalize text-text-primary">{rotulo}</h1>
+      <button onClick={() => onMudarDia(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próximo dia">
+        <ChevronRight size={18} />
+      </button>
     </div>
   );
 }

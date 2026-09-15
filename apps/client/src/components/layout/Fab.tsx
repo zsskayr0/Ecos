@@ -3,10 +3,10 @@ import { useLocation } from "react-router-dom";
 import { useAppUI } from "@/lib/ui-context";
 
 /**
- * FAB flutuante, canto inferior direito, fora da nav (seção 2.1). Gradiente
- * cyan→violeta; inverte pra violeta→cyan dentro do Cofre. Comportamento
- * contextual por origem (seção 2.4): Feed abre popup de escolha, Agenda
- * abre Tarefa direto, Cofre abre Transação direto.
+ * Floating FAB, bottom-right corner, outside the nav (section 2.1).
+ * Cyan→violet gradient; flips to violet→cyan inside the Vault. Contextual
+ * behavior by origin (section 2.4): Feed opens the choice popup, Agenda
+ * opens the Tarefa form directly, Vault opens the Transacao form directly.
  */
 export function Fab() {
   const location = useLocation();

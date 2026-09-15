@@ -4,7 +4,7 @@
 //! contrário.
 
 use axum::extract::{Path, Query, State};
-use axum::Json;
+use axum::{Extension, Json};
 use chrono::Utc;
 use ecos_core::types::{Espaco, NotaFrontMatter, NotaModo};
 use ecos_core::{frontmatter, naming, new_id, ErrorCode};
@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use crate::db::reindex::reindexar_tudo;
 use crate::error::{AppError, AppResult, CampoInvalido};
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -36,6 +37,10 @@ pub struct NotaResumo {
     pub atualizado_em: String,
     pub ultima_revisao_em: Option<String>,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub criado_por: Option<String>,
+    #[serde(default)]
+    pub criado_por_nome: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,12 +56,14 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
-    let linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>)> = state
+    #[allow(clippy::type_complexity)]
+    let linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>, Option<String>, Option<String>)> = state
         .db
         .with(move |conn| {
             let mut sql = String::from(
-                "SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em \
-                 FROM nota n",
+                "SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em, \
+                 n.criado_por, u.nome_usuario \
+                 FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por",
             );
             let mut condicoes: Vec<String> = Vec::new();
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -101,6 +108,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                         r.get(5)?,
                         r.get(6)?,
                         r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -112,7 +121,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     let visiveis = if tem_mais { &linhas[..limite as usize] } else { &linhas[..] };
 
     let mut items = Vec::with_capacity(visiveis.len());
-    for (id, titulo, modo, pasta, espaco, criado_em, atualizado_em, ultima_revisao_em) in visiveis {
+    for (id, titulo, modo, pasta, espaco, criado_em, atualizado_em, ultima_revisao_em, criado_por, criado_por_nome) in visiveis {
         let tags = tags_da_nota(&state, id).await?;
         items.push(NotaResumo {
             id: id.clone(),
@@ -124,11 +133,13 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
             atualizado_em: atualizado_em.clone(),
             ultima_revisao_em: ultima_revisao_em.clone(),
             tags,
+            criado_por: criado_por.clone(),
+            criado_por_nome: criado_por_nome.clone(),
         });
     }
 
     let next_cursor = if tem_mais {
-        visiveis.last().map(|(id, _, _, _, _, _, atualizado_em, _)| codificar(atualizado_em, id))
+        visiveis.last().map(|(id, _, _, _, _, _, atualizado_em, ..)| codificar(atualizado_em, id))
     } else {
         None
     };
@@ -165,7 +176,7 @@ pub struct CriarNotaPayload {
     pub modo: Option<NotaModo>,
 }
 
-pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     if payload.titulo.trim().is_empty() {
         return Err(AppError::validation(vec![CampoInvalido {
             campo: "titulo".into(),
@@ -201,6 +212,7 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarNotaP
         espaco,
         tarefa_vinculada_id: None,
         ultima_revisao_em: None,
+        criado_por: Some(usuario.0.clone()),
     };
     let corpo = payload.corpo.unwrap_or_default();
     let conteudo = frontmatter::serialize(&front_matter, &corpo)?;

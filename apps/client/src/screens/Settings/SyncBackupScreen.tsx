@@ -4,9 +4,9 @@ import { CheckCircle2, ChevronLeft, Download, Upload } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 
 /**
- * Sincronização & Backup — tela própria, não item de lista genérico: é a
- * maior ansiedade de quem usa local-first (seção 3.12). Card de status,
- * barra de armazenamento, toggle de backup automático, export/restore.
+ * Sync & Backup — its own screen, not a generic list item: it's the
+ * biggest anxiety for a local-first user (section 3.12). Status card,
+ * storage bar, auto-backup toggle, export/restore.
  */
 export function SyncBackupScreen() {
   const navigate = useNavigate();

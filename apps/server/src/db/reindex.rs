@@ -5,7 +5,7 @@
 //! interação, que só existem no próprio índice).
 
 use super::IndexDb;
-use ecos_core::types::{CalendarioProvider, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaStatus};
+use ecos_core::types::{CalendarioProvider, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
 use ecos_core::{frontmatter, wikilink};
 use rusqlite::params;
 use sha2::{Digest, Sha256};
@@ -24,6 +24,14 @@ fn tarefa_status_str(status: TarefaStatus) -> &'static str {
     match status {
         TarefaStatus::Pendente => "pendente",
         TarefaStatus::Concluida => "concluida",
+    }
+}
+
+fn tarefa_prioridade_str(prioridade: TarefaPrioridade) -> &'static str {
+    match prioridade {
+        TarefaPrioridade::Baixa => "baixa",
+        TarefaPrioridade::Media => "media",
+        TarefaPrioridade::Alta => "alta",
     }
 }
 
@@ -238,6 +246,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tx.execute("DELETE FROM links_nota", [])?;
         tx.execute("DELETE FROM nota_tag", [])?;
         tx.execute("DELETE FROM nota", [])?;
+        tx.execute("DELETE FROM tarefa_tag", [])?;
         tx.execute("DELETE FROM tarefa", [])?;
         tx.execute("DELETE FROM documento_cache", [])?;
         tx.execute("DELETE FROM pasta_cache", [])?;
@@ -257,8 +266,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             let fm = &item.front_matter;
             tx.execute(
                 "INSERT INTO nota (id, caminho_arquivo, titulo, modo, pasta_id, espaco, criado_em, \
-                 atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL)",
+                 atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca, criado_por) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, ?11)",
                 params![
                     fm.id,
                     item.caminho_relativo,
@@ -270,6 +279,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                     fm.atualizado_em.to_rfc3339(),
                     fm.ultima_revisao_em.map(|d| d.to_rfc3339()),
                     item.hash_conteudo,
+                    fm.criado_por,
                 ],
             )?;
 
@@ -313,8 +323,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             let fm = &item.front_matter;
             tx.execute(
                 "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
-                 due_date, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     fm.id,
                     item.caminho_relativo,
@@ -323,13 +333,20 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                     fm.scheduled_at.map(|d| d.to_rfc3339()),
                     fm.duration_min,
                     fm.due_date.map(|d| d.to_string()),
+                    tarefa_prioridade_str(fm.prioridade),
+                    item.pasta_id,
                     fm.espaco.to_string(),
                     fm.evento_externo.provider.map(calendario_provider_str),
                     fm.evento_externo.event_id,
                     fm.evento_externo.synced_at.map(|d| d.to_rfc3339()),
                     fm.criado_em.to_rfc3339(),
+                    fm.criado_por,
                 ],
             )?;
+
+            for tag in &fm.tags {
+                tx.execute("INSERT OR IGNORE INTO tarefa_tag (tarefa_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
+            }
 
             tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
 

@@ -4,11 +4,11 @@ import { Loader2 } from "lucide-react";
 const LIMIAR_PX = 64;
 
 /**
- * Puxar pra atualizar — arrastar a partir do topo da página (scroll em 0)
- * refaz a busca de dados da tela, sem nenhuma ligação com a Busca (seção
- * 3.1/3.3 são coisas separadas). Pointer Events (mesmo mecanismo já usado
- * no resto do produto para captura de traço, ver arquitetura seção 1.3),
- * então funciona igual em touch e mouse.
+ * Pull to refresh — dragging down from the top of the page (scroll at 0)
+ * redoes the screen's data fetch, with no connection to Search (sections
+ * 3.1/3.3 are separate things). Pointer Events (the same mechanism the
+ * rest of the product already uses for stroke capture, see architecture
+ * section 1.3), so it works the same on touch and mouse.
  */
 export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promise<void> | void; children: ReactNode }) {
   const [puxado, setPuxado] = useState(0);
@@ -29,7 +29,7 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promis
       setPuxado(0);
       return;
     }
-    // Resistência — puxar o dobro só avança metade, fica mais previsível.
+    // Resistance — pulling twice as far only advances half as much, feels more predictable.
     setPuxado(Math.min(delta * 0.5, LIMIAR_PX * 1.4));
   }
 

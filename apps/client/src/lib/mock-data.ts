@@ -1,9 +1,10 @@
 /**
- * Dados mockados — a integração real já existe (`src/lib/api.ts`, contra
- * `ecos-app`/`ecos-vault-db` de verdade). Este arquivo sobrevive só pro
- * Onboarding (`src/screens/Onboarding/OnboardingScreen.tsx`), que precisa
- * de conteúdo decorativo pras mini-visualizações de slide sem depender de
- * rede/sessão — nenhuma outra tela deve voltar a importar daqui.
+ * Mocked data — the real integration already exists (`src/lib/api.ts`,
+ * against the real `ecos-app`/`ecos-vault-db`). This file survives only
+ * for Onboarding (`src/screens/Onboarding/OnboardingScreen.tsx`), which
+ * needs decorative content for its slide mini-visualizations without
+ * depending on network/session — no other screen should import from here
+ * again.
  */
 import type {
   CategoriaTransacao,
@@ -75,6 +76,7 @@ export const notas: Nota[] = [
     tags: ["produto", "ideia"],
     pastaId: "p-ideias",
     espaco: "pessoal",
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     criadoEm: horasAtras(2),
     atualizadoEm: horasAtras(2),
     ultimaRevisaoEm: null,
@@ -91,6 +93,7 @@ export const notas: Nota[] = [
     pastaId: "p-trabalho",
     espaco: "equipe:eq-trabalho",
     origemEquipe: { nome: "Squad Orion", cor: equipeTrabalho.cor },
+    dono: { id: "user-2", nome: "Carla Nunes" },
     criadoEm: horasAtras(5),
     atualizadoEm: horasAtras(1),
     ultimaRevisaoEm: horasAtras(1),
@@ -107,6 +110,7 @@ export const notas: Nota[] = [
     pastaId: "p-familia",
     espaco: "equipe:eq-familia",
     origemEquipe: { nome: "Família", cor: equipeFamilia.cor },
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     criadoEm: diasAtras(12),
     atualizadoEm: diasAtras(12),
     ultimaRevisaoEm: null,
@@ -123,6 +127,7 @@ export const notas: Nota[] = [
     tags: ["pessoal"],
     pastaId: null,
     espaco: "pessoal",
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     criadoEm: diasAtras(34),
     atualizadoEm: diasAtras(34),
     ultimaRevisaoEm: null,
@@ -138,6 +143,7 @@ export const notas: Nota[] = [
     tags: ["leitura"],
     pastaId: "p-ideias",
     espaco: "pessoal",
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     criadoEm: diasAtras(1),
     atualizadoEm: horasAtras(20),
     ultimaRevisaoEm: diasAtras(1),
@@ -154,6 +160,7 @@ export const notas: Nota[] = [
     pastaId: "p-trabalho",
     espaco: "equipe:eq-trabalho",
     origemEquipe: { nome: "Squad Orion", cor: equipeTrabalho.cor },
+    dono: { id: "user-3", nome: "Bruno Silva" },
     criadoEm: diasAtras(3),
     atualizadoEm: diasAtras(3),
     ultimaRevisaoEm: null,
@@ -170,6 +177,7 @@ export const notas: Nota[] = [
     pastaId: "p-familia",
     espaco: "equipe:eq-familia",
     origemEquipe: { nome: "Família", cor: equipeFamilia.cor },
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     criadoEm: horasAtras(30),
     atualizadoEm: horasAtras(30),
     ultimaRevisaoEm: null,
@@ -188,7 +196,9 @@ export const tarefas: Tarefa[] = [
     durationMin: 45,
     dueDate: null,
     espaco: "pessoal",
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     encaixadaNaAgenda: true,
+    prioridade: "alta",
   },
   {
     tipo: "tarefa",
@@ -200,7 +210,9 @@ export const tarefas: Tarefa[] = [
     dueDate: null,
     espaco: "equipe:eq-trabalho",
     origemEquipe: { nome: "Squad Orion", cor: equipeTrabalho.cor },
+    dono: { id: "user-4", nome: "Ivi Tanaka" },
     encaixadaNaAgenda: true,
+    prioridade: "media",
   },
   {
     tipo: "tarefa",
@@ -211,11 +223,13 @@ export const tarefas: Tarefa[] = [
     durationMin: 15,
     dueDate: null,
     espaco: "pessoal",
+    dono: { id: usuarioAtual.id, nome: usuarioAtual.nome },
     encaixadaNaAgenda: false,
+    prioridade: "baixa",
   },
 ];
 
-/** Feed: intercalado ~1 tarefa a cada 4–5 notas (seção 3.1). */
+/** Feed: interleaved, ~1 task for every 4-5 notes (section 3.1). */
 export const feedItens: FeedItem[] = [
   notas[0],
   notas[1],

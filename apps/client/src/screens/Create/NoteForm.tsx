@@ -10,7 +10,7 @@ interface Props {
   salvando?: boolean;
 }
 
-/** Formulário de Nota — toolbar de Markdown + preview real (seção 3.6). */
+/** Nota form — Markdown toolbar + real preview (section 3.6). */
 export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
 

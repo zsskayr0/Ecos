@@ -96,27 +96,49 @@ async fn montar_card(state: &AppState, linha: &LinhaFeed) -> Result<serde_json::
     match linha.tipo.as_str() {
         "nota" => {
             let id = linha.id.clone();
-            let titulo_e_preview: Option<(String, String)> = state
+            // User feedback: "no feed, deve ter a foto de perfil e o nome
+            // do dono daquele item" — `nota_fts` alone doesn't carry
+            // `criado_por`, so this joins back to `nota`/`usuario`.
+            let dados: Option<(String, String, Option<String>, Option<String>)> = state
                 .db
                 .with(move |conn| {
-                    conn.query_row("SELECT titulo, substr(corpo, 1, 240) FROM nota_fts WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
-                        .optional()
+                    conn.query_row(
+                        "SELECT nf.titulo, substr(nf.corpo, 1, 240), n.criado_por, u.nome_usuario \
+                         FROM nota_fts nf JOIN nota n ON n.id = nf.id LEFT JOIN usuario u ON u.id = n.criado_por \
+                         WHERE nf.id = ?1",
+                        [&id],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                    )
+                    .optional()
                 })
                 .await?;
-            let (titulo, preview) = titulo_e_preview.unwrap_or_default();
+            let (titulo, preview, criado_por, criado_por_nome) = dados.unwrap_or_default();
             Ok(serde_json::json!({
                 "id": linha.id, "tipo": "nota", "motivo": linha.motivo, "dado_bruto": dado_bruto,
                 "titulo": titulo, "preview": preview, "espaco": linha.espaco, "atualizado_em": linha.atualizado_em,
+                "criado_por": criado_por, "criado_por_nome": criado_por_nome,
             }))
         }
         "tarefa_encaixada" => {
             let id = linha.id.clone();
-            let dados: Option<(String, Option<String>)> = state
+            let dados: Option<(String, Option<String>, String, i64, Option<String>, Option<String>)> = state
                 .db
-                .with(move |conn| conn.query_row("SELECT titulo, scheduled_at FROM tarefa WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?))).optional())
+                .with(move |conn| {
+                    conn.query_row(
+                        "SELECT t.titulo, t.scheduled_at, t.prioridade, t.duration_min, t.criado_por, u.nome_usuario \
+                         FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por WHERE t.id = ?1",
+                        [&id],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, Option<i64>>(3)?.unwrap_or(0), r.get(4)?, r.get(5)?)),
+                    )
+                    .optional()
+                })
                 .await?;
-            let (titulo, scheduled_at) = dados.unwrap_or_default();
-            Ok(serde_json::json!({ "id": linha.id, "tipo": "tarefa_encaixada", "titulo": titulo, "scheduled_at": scheduled_at }))
+            let (titulo, scheduled_at, prioridade, duration_min, criado_por, criado_por_nome) = dados.unwrap_or_default();
+            Ok(serde_json::json!({
+                "id": linha.id, "tipo": "tarefa_encaixada", "titulo": titulo, "scheduled_at": scheduled_at,
+                "prioridade": prioridade, "duration_min": duration_min, "espaco": linha.espaco,
+                "criado_por": criado_por, "criado_por_nome": criado_por_nome,
+            }))
         }
         "transacao" => {
             if !state.config.vault_enabled {

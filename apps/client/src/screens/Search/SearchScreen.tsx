@@ -12,7 +12,7 @@ interface Resultado {
   transacoes: TransacaoApi[];
 }
 
-/** Busca — repouso: recentes + atalhos. Resultado: agrupado por tipo, termo destacado em cyan (seção 3.3). */
+/** Search — at rest: recents + shortcuts. With results: grouped by type, term highlighted in cyan (section 3.3). */
 export function SearchScreen() {
   const navigate = useNavigate();
   const [termo, setTermo] = useState("");
@@ -56,7 +56,7 @@ export function SearchScreen() {
           try {
             localStorage.setItem("ecos-buscas-recentes", JSON.stringify(proximo));
           } catch {
-            /* localStorage indisponível — só não persiste entre sessões */
+            /* localStorage unavailable — just doesn't persist across sessions */
           }
           return proximo;
         });
@@ -168,7 +168,7 @@ function Grupo({ titulo, vazio, children }: { titulo: string; vazio: boolean; ch
   );
 }
 
-/** Escapa HTML antes de reintroduzir os marcadores `[...]` do `snippet()` FTS5 como `<span>` (evita injeção via conteúdo da própria Nota). */
+/** Escapes HTML before reintroducing FTS5's `snippet()` `[...]` markers as `<span>` (avoids injection via the Nota's own content). */
 function trechoParaHtml(trecho: string) {
   const escapado = trecho.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return escapado.replace(/\[/g, '<span class="text-cyan">').replace(/\]/g, "</span>");

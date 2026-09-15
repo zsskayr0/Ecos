@@ -4,13 +4,13 @@ import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 
 /**
- * GAP-07: não é uma das 12 telas da especificação de front (que assume
- * identidade já resolvida) — mas "identidade local à instância, sem conta
- * em nuvem" (arquitetura seção 5.1) exige login/registro reais pra
- * qualquer outra tela funcionar contra o backend de verdade. Registro só é
- * aceito enquanto a instância não tiver nenhum usuário (primeiro boot);
- * depois disso, `POST /auth/registrar` responde 409 e a UI já orienta a
- * pedir convite de Equipe em vez de insistir em "criar conta".
+ * GAP-07: not one of the 12 screens in the front-end spec (which assumes
+ * identity is already resolved) — but "identity local to the instance, no
+ * cloud account" (architecture section 5.1) requires real login/register
+ * for any other screen to work against the real backend. Registration is
+ * only accepted while the instance has no user yet (first boot); after
+ * that, `POST /auth/registrar` responds 409 and the UI already points to
+ * asking for a Team invite instead of insisting on "create account".
  */
 export function AuthScreen() {
   const { login, registrar } = useAuth();
@@ -118,7 +118,7 @@ function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
       await navigator.clipboard.writeText(recoveryKey);
       setCopiado(true);
     } catch {
-      /* clipboard indisponível — usuário copia manualmente da tela */
+      /* clipboard unavailable — the user copies it manually from the screen */
     }
   }
 

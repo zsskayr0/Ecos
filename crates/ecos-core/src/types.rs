@@ -95,6 +95,13 @@ pub struct NotaFrontMatter {
     pub tarefa_vinculada_id: Option<String>,
     #[serde(default)]
     pub ultima_revisao_em: Option<DateTime<Utc>>,
+    /// `usuario_id` de quem criou — sempre o único usuário local em
+    /// `espaco: pessoal`, mas em `espaco: equipe:*` pode ser qualquer
+    /// membro (feedback do usuário: "no feed, deve ter a foto de perfil e
+    /// o nome do dono daquele item"). `None` só em itens criados antes
+    /// desta coluna existir (migration 0003) — nunca inventado depois.
+    #[serde(default)]
+    pub criado_por: Option<String>,
 }
 
 /// Linha do índice local para Nota (cache derivado — seção 1.1/1.3).
@@ -144,6 +151,36 @@ pub struct EventoExternoRef {
     pub synced_at: Option<DateTime<Utc>>,
 }
 
+/// Prioridade da Tarefa — além de orientar o usuário, alimenta o boost de
+/// score que a insere no Feed (seção 4, `ecos_core::ranking::boost_tarefa_prioridade`):
+/// o Feed "casualmente mostra tarefas, como se fossem ads" (handoff de
+/// front-end) e prioridade é o que decide o quão forte esse anúncio é.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TarefaPrioridade {
+    Baixa,
+    Media,
+    Alta,
+}
+
+impl Default for TarefaPrioridade {
+    fn default() -> Self {
+        TarefaPrioridade::Media
+    }
+}
+
+/// Subtarefa — item de checklist estruturado da Tarefa, distinto do corpo
+/// Markdown livre (que também aceita `- [ ]`, mas sem progresso rastreável
+/// por item). Vive no front-matter, não em tabela própria — mesmo
+/// tratamento que `tags` já recebe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Subtarefa {
+    pub id: String,
+    pub titulo: String,
+    #[serde(default)]
+    pub concluida: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TarefaFrontMatter {
     pub id: String,
@@ -155,10 +192,19 @@ pub struct TarefaFrontMatter {
     pub duration_min: Option<i64>,
     #[serde(default)]
     pub due_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub prioridade: TarefaPrioridade,
+    #[serde(default)]
+    pub subtarefas: Vec<Subtarefa>,
     pub espaco: Espaco,
     #[serde(default)]
     pub evento_externo: EventoExternoRef,
     pub criado_em: DateTime<Utc>,
+    /// See `NotaFrontMatter::criado_por` — same rationale, same migration.
+    #[serde(default)]
+    pub criado_por: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +216,8 @@ pub struct TarefaIndexada {
     pub scheduled_at: Option<DateTime<Utc>>,
     pub duration_min: Option<i64>,
     pub due_date: Option<NaiveDate>,
+    pub tags: Vec<String>,
+    pub prioridade: TarefaPrioridade,
     pub espaco: Espaco,
     pub evento_externo: EventoExternoRef,
     pub criado_em: DateTime<Utc>,

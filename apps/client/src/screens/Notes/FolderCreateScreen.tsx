@@ -4,7 +4,7 @@ import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { pastas, ApiError } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
-/** `POST /api/v1/pastas` — Pasta é só um diretório novo sob `Notas/` (seção 1.3/1.5). */
+/** `POST /api/v1/pastas` — a Pasta is just a new directory under `Notas/` (section 1.3/1.5). */
 export function FolderCreateScreen() {
   const navigate = useNavigate();
   const { notificar } = useRefreshBus();

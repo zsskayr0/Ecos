@@ -3,10 +3,10 @@ import { ChevronLeft, Moon, Sun } from "lucide-react";
 import { useTema } from "@/lib/theme";
 
 /**
- * GAP-04 (continuação): "Aparência" está listada no índice de Configurações
- * (seção 3.12) sem detalhamento de conteúdo. Assumido o mínimo consistente
- * com a especificação: alternar dark/light, já que ambos os modos têm
- * paleta própria fechada na seção 1.3 — dark como padrão do produto.
+ * GAP-04 (continued): "Aparência" is listed in the Settings index
+ * (section 3.12) with no content detail. Assumed the minimum consistent
+ * with the spec: toggling dark/light, since both modes have their own
+ * closed palette in section 1.3 — dark as the product's default.
  */
 export function AparenciaScreen() {
   const navigate = useNavigate();

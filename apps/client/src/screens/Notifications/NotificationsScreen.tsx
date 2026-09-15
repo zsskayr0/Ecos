@@ -13,7 +13,7 @@ const ABAS: { valor: NotificacaoApi["categoria"] | "tudo"; label: string }[] = [
   { valor: "equipes", label: "Equipes" },
 ];
 
-/** Cor por área — violeta é exclusivo do Cofre em qualquer lugar da UI (regra 3, seção 1.3). */
+/** Color by area — violet is exclusive to the Vault everywhere in the UI (rule 3, section 1.3). */
 const COR_AREA: Record<NotificacaoApi["categoria"], string> = {
   cofre: "text-violet",
   agenda: "text-cyan",
@@ -33,7 +33,7 @@ function agruparPorData(itens: NotificacaoApi[]) {
   return grupos;
 }
 
-/** Notificações — agrupadas por data, abas por área, bolinha de não-lida (seção 3.10), `GET /notificacoes` real. */
+/** Notifications — grouped by date, tabs by area, unread dot (section 3.10), real `GET /notificacoes`. */
 export function NotificationsScreen() {
   const navigate = useNavigate();
   const { versao, notificar } = useRefreshBus();
@@ -56,7 +56,7 @@ export function NotificationsScreen() {
         await notificacoesApi.marcarLida(n.id);
         notificar();
       } catch {
-        /* silencioso — não bloqueia a leitura */
+        /* silent — doesn't block reading it */
       }
     }
   }

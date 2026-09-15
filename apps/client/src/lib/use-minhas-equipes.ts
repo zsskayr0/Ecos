@@ -9,11 +9,11 @@ export interface MinhaEquipe {
 }
 
 /**
- * `GET /equipes` (seção 11.10) — usado pra rotular Nota/Tarefa de Equipe no
- * Feed/Notas sem duplicar a chamada em cada card. Reobserva `versao` do
- * refresh bus: sem isso, criar/entrar numa Equipe só aparecia no Drawer e
- * no Perfil depois de recarregar a página inteira (o hook buscava só uma
- * vez, no primeiro mount) — bug real, não intencional.
+ * `GET /equipes` (section 11.10) — used to label a Team's Nota/Tarefa in
+ * the Feed/Notas without duplicating the call in every card. Watches the
+ * refresh bus's `versao`: without that, creating/joining a Team only
+ * showed up in the Drawer and Profile after reloading the whole page (the
+ * hook fetched only once, on first mount) — a real, unintentional bug.
  */
 export function useMinhasEquipes() {
   const [equipes, setEquipes] = useState<MinhaEquipe[]>([]);

@@ -17,11 +17,12 @@ interface NotaCompleta {
 }
 
 /**
- * Leitura + edição real de uma Nota (`GET`/`PATCH`/`DELETE /notas/:id`).
- * GAP-02: não é uma das 12 telas do inventário (que só especifica o card e
- * o formulário de Captura) — construída como o destino honesto e mínimo do
- * toque no card, reaproveitando o preview de Markdown do editor (seção 3.6).
- * Delete não-crítico aqui — humor leve permitido (seção 1.4).
+ * Real read + edit of a Nota (`GET`/`PATCH`/`DELETE /notas/:id`).
+ * GAP-02: not one of the 12 screens in the inventory (which only
+ * specifies the card and the Capture form) — built as the honest, minimal
+ * destination for tapping the card, reusing the editor's Markdown preview
+ * (section 3.6). Non-critical delete here — light humor is allowed
+ * (section 1.4).
  */
 export function NoteDetailScreen() {
   const { id } = useParams();
@@ -76,7 +77,7 @@ export function NoteDetailScreen() {
       setNota(atualizada);
       notificar();
     } catch {
-      /* silencioso — ação secundária, não crítica */
+      /* silent — a secondary, non-critical action */
     }
   }
 

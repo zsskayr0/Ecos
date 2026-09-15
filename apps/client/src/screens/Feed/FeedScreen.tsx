@@ -10,32 +10,34 @@ import { feed, ApiError } from "@/lib/api";
 import { notaDoFeed, tarefaDoFeed } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAppUI } from "@/lib/ui-context";
+import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import type { FeedItem } from "@/lib/types";
 
 /**
- * Feed — stream vertical intercalado Nota/Tarefa (seção 3.1), lendo
- * `GET /api/v1/feed` de verdade (resultado pré-calculado pelo job de
- * ranking, `apps/server/src/jobs/ranking`). Buscar só existe no ícone da
- * bottom nav (seção 2.1) — nenhum atalho duplicado aqui em cima; arrastar
- * a partir do topo só atualiza a página (`PullToRefresh`), sem nenhuma
- * relação com Busca (correção de GAP-01: "pull-to-search" virou só
- * "pull-to-refresh", a Busca mora exclusivamente na nav).
+ * Feed — vertical stream interleaving Nota/Tarefa (section 3.1), reading
+ * the real `GET /api/v1/feed` (result pre-computed by the ranking job,
+ * `apps/server/src/jobs/ranking`). Search only exists as the bottom nav's
+ * icon (section 2.1) — no duplicate shortcut up here; dragging from the
+ * top just refreshes the page (`PullToRefresh`), with no relation to
+ * Search (GAP-01 fix: "pull-to-search" became just "pull-to-refresh",
+ * Search lives exclusively in the nav).
  *
- * O job de ranking não roda por request (seção 4) — ele grava `feed_item`
- * periodicamente (mínimo 30s, `ranking_interval_secs.max(30)` no
- * servidor). Capturar uma Nota chama `notificar()` na hora, mas o Feed
- * ainda pode não ter o item novo no primeiro refetch, porque o job real
- * ainda não rodou — sem repolling, a tela parecia "só atualizar quando eu
- * resetava a página" (o usuário tinha que forçar um refetch manual depois
- * que o job já tinha passado). Isso poll a cada 10s enquanto o Feed está
- * aberto, sem precisar de gesto nenhum.
+ * The ranking job doesn't run per request (section 4) — it writes
+ * `feed_item` periodically (minimum 30s, `ranking_interval_secs.max(30)`
+ * on the server). Capturing a Nota calls `notificar()` right away, but
+ * the Feed might not have the new item on the first refetch yet, because
+ * the real job hasn't run — without repolling, the screen felt like it
+ * "only updated when I reset the page" (the user had to force a manual
+ * refetch after the job had already run). This polls every 10s while the
+ * Feed is open, no gesture required.
  */
 const INTERVALO_POLL_MS = 10_000;
 export function FeedScreen() {
   const navigate = useNavigate();
   const { filtroEquipeId } = useAppUI();
   const { equipes } = useMinhasEquipes();
+  const { perfil } = useAuth();
   const { versao } = useRefreshBus();
   const [itens, setItens] = useState<FeedItem[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -46,9 +48,9 @@ export function FeedScreen() {
       const pagina = await feed.obter({ espaco: filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined, limit: 40 });
       const mapeados = pagina.items
         .map((item): FeedItem | null => {
-          if (item.tipo === "nota") return notaDoFeed(item, equipes);
-          if (item.tipo === "tarefa_encaixada") return tarefaDoFeed(item);
-          return null; // "transacao" e outros tipos não têm card próprio no Feed hoje
+          if (item.tipo === "nota") return notaDoFeed(item, equipes, perfil);
+          if (item.tipo === "tarefa_encaixada") return tarefaDoFeed(item, perfil);
+          return null; // "transacao" and other types have no card of their own in the Feed yet
         })
         .filter((x): x is FeedItem => x !== null);
       setItens(mapeados);
@@ -56,7 +58,7 @@ export function FeedScreen() {
       setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o Feed. O ecos-app está rodando?");
       setItens([]);
     }
-  }, [filtroEquipeId, equipes]);
+  }, [filtroEquipeId, equipes, perfil]);
 
   useEffect(() => {
     carregar();

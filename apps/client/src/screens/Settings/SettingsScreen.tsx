@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, User, Users, RefreshCw, ShieldCheck, Bell, Palette, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, User, Users, RefreshCw, ShieldCheck, Bell, Palette, Info, Server } from "lucide-react";
+import { obterServidorBaseUrl } from "@/lib/server-config";
 
 /**
- * Índice de Configurações (seção 3.12) — Conta / Sistema / Sobre.
- * Sincronização & Backup e Privacidade & Cofre são telas próprias (seção
- * própria abaixo); Notificações e Aparência não têm conteúdo detalhado na
- * especificação — ver GAP-04.
+ * Settings index (section 3.12) — Account / System / About.
+ * Sincronização&Backup and Privacidade&Cofre are their own screens (own
+ * section below); Notificações and Aparência have no detailed content in
+ * the spec — see GAP-04.
  */
 export function SettingsScreen() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export function SettingsScreen() {
       </Secao>
 
       <Secao titulo="Sistema">
+        <Item Icon={Server} label="Servidor" onClick={() => navigate("/configuracoes/servidor")} valor={obterServidorBaseUrl() ?? "Padrão"} />
         <Item Icon={RefreshCw} label="Sincronização & Backup" onClick={() => navigate("/configuracoes/sync")} />
         <Item Icon={ShieldCheck} label="Privacidade & Cofre" onClick={() => navigate("/configuracoes/privacidade")} />
         <Item Icon={Bell} label="Notificações" onClick={() => navigate("/notificacoes")} />
@@ -68,9 +70,9 @@ function Item({
   );
 }
 
-/* GAP-04: a especificação lista "Notificações" e "Aparência" como itens de
-   Sistema (seção 3.12) mas não descreve seu conteúdo (diferente de
-   Sincronização&Backup e Privacidade&Cofre, detalhadas). "Notificações"
-   aqui reaproveita a tela de Notificações (seção 3.10) como destino mais
-   próximo; "Aparência" ainda não tem tela própria — ver
-   AparenciaScreen.tsx para o placeholder assumido (toggle de tema). */
+/* GAP-04: the spec lists "Notificações" and "Aparência" as System items
+   (section 3.12) but doesn't describe their content (unlike Sincronização
+   &Backup and Privacidade&Cofre, which are detailed). "Notificações"
+   here reuses the Notifications screen (section 3.10) as the closest
+   destination; "Aparência" doesn't have its own screen yet — see
+   AparenciaScreen.tsx for the assumed placeholder (theme toggle). */

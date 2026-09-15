@@ -5,7 +5,7 @@ import { Avatar } from "@/components/common/Avatar";
 import { useAuth } from "@/lib/auth-context";
 import { auth, ApiError } from "@/lib/api";
 
-/** Edição de perfil — só `nome_usuario` é real (`PATCH /me`); bio/handle não existem no backend. */
+/** Profile edit — only `nome_usuario` is real (`PATCH /me`); bio/handle don't exist in the backend. */
 export function ProfileEditScreen() {
   const navigate = useNavigate();
   const { perfil, recarregarPerfil } = useAuth();

@@ -1,4 +1,4 @@
-import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut } from "lucide-react";
+import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { corDaEquipe } from "@/lib/team-color";
 
-/** Drawer lateral via avatar (seção 3.9). */
+/** Side drawer via the avatar (section 3.9). */
 export function Drawer() {
   const { drawerAberto, fecharDrawer } = useAppUI();
   const { perfil, logout } = useAuth();
@@ -22,9 +22,10 @@ export function Drawer() {
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Painel primeiro (esquerda), backdrop depois (`flex-1`, ocupa o
-          resto à direita) — a ordem no flex é o que decide de que lado o
-          drawer abre; invertida, ele abria da direita. */}
+      {/* Panel first (left), backdrop after (`flex-1`, takes up the rest
+          on the right) — the order in the flex is what decides which
+          side the drawer opens from; reversed, it opened from the
+          right. */}
       <div className="flex h-full w-[82%] max-w-xs flex-col gap-6 bg-surface-1 p-5 ecos-fade-in">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -45,6 +46,18 @@ export function Drawer() {
         >
           <User size={18} strokeWidth={1.75} className="text-steel-300" />
           Perfil
+        </button>
+
+        {/* Agenda (bottom nav) stays the calendar/time-blocking view;
+            Tarefas ganhou pastas (user feedback) e esse é o modo de
+            navegar por elas — não ocupa slot da nav (seção 2.1: 5 ícones
+            fixos), mora no Drawer como qualquer outra seção de sistema. */}
+        <button
+          onClick={() => ir("/tarefas")}
+          className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"
+        >
+          <ListChecks size={18} strokeWidth={1.75} className="text-cyan" />
+          Tarefas
         </button>
 
         <div>

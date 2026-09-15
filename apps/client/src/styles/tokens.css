@@ -1,19 +1,19 @@
 /**
- * Design tokens do Ecos — fonte única de verdade de cor.
- * Espelha ecos-prompt-execucao-frontend.md, seção 1.3, literalmente.
- * Não adicionar/trocar tom aqui sem atualizar a especificação primeiro.
+ * Ecos design tokens — the single source of truth for color.
+ * Mirrors ecos-prompt-execucao-frontend.md, section 1.3, literally.
+ * Don't add/change a shade here without updating the spec first.
  *
- * Cada cor existe em duas formas: o hex literal (`--ecos-*`, usado em CSS
- * solto — gradientes inline, etc.) e o triplet RGB (`--ecos-*-rgb`, usado
- * pelo Tailwind pra gerar utilitários com opacidade — `bg-cyan/10`,
- * `border-violet/25` — via `rgb(var(--x-rgb) / <alpha>)`, ver
- * tailwind.config.cjs `withOpacity`). Trocar um valor exige atualizar os
- * dois.
+ * Each color exists in two forms: the literal hex (`--ecos-*`, used in
+ * loose CSS — inline gradients, etc.) and the RGB triplet (`--ecos-*-rgb`,
+ * used by Tailwind to generate opacity-aware utilities — `bg-cyan/10`,
+ * `border-violet/25` — via `rgb(var(--x-rgb) / <alpha>)`, see
+ * tailwind.config.cjs's `withOpacity`). Changing a value means updating
+ * both.
  *
- * Dark mode é o padrão do produto (data-theme="dark" ou ausência do
- * atributo). Light mode é opt-in via Configurações > Aparência
- * (data-theme="light") — tela de Aparência em si não está detalhada
- * na especificação, ver GAP-06 em src/screens/Settings/SettingsScreen.tsx.
+ * Dark mode is the product's default (data-theme="dark" or no attribute
+ * at all). Light mode is opt-in via Settings > Appearance
+ * (data-theme="light") — the Appearance screen itself isn't detailed in
+ * the spec, see GAP-06 in src/screens/Settings/SettingsScreen.tsx.
  */
 
 :root,
@@ -52,12 +52,11 @@
   --ecos-text-primary: #0f1729;
   --ecos-text-primary-rgb: 15 23 41;
 
-  /* GAP: a especificação (seção 1.3) só define --ecos-text-primary-light.
-     text-secondary/text-muted do light mode não têm tom oficial — os
-     valores abaixo foram interpolados a partir do mesmo deslocamento de
-     luminância usado no dark mode, mantendo o matiz azulado da paleta
-     light. Ajustar se o design system oficial vier a especificar os tons
-     exatos. */
+  /* GAP: the spec (section 1.3) only defines --ecos-text-primary-light.
+     Light mode's text-secondary/text-muted have no official shade — the
+     values below were interpolated from the same luminance offset used
+     in dark mode, keeping the light palette's blue tint. Adjust if the
+     official design system comes to specify the exact shades. */
   --ecos-text-secondary: #3d4a63;
   --ecos-text-secondary-rgb: 61 74 99;
   --ecos-text-muted: #6d7994;
@@ -66,8 +65,8 @@
   color-scheme: light;
 }
 
-/* Acento de marca e semânticas do ranking — mesmos valores em ambos os
-   modos (seção 1.3), por isso vivem fora dos blocos de tema acima. */
+/* Brand accent and ranking semantics — same values in both modes
+   (section 1.3), which is why they live outside the theme blocks above. */
 :root {
   --ecos-steel-700: #1e3a5f;
   --ecos-steel-700-rgb: 30 58 95;

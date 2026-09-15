@@ -1,11 +1,12 @@
 /**
- * GAP-08: o schema real de `equipe` (ver ecos-arquitetura-tecnica.md, seção
- * 1.3 "Equipe / Membro") só tem `id` e `nome` — sem cor de identidade. A
- * especificação de front (seção 3.2/3.7) pede "ícone de pasta colorido por
- * Equipe" e "avatar/cor da Equipe" como se isso viesse do backend. Até o
- * schema ganhar esse campo, a cor é derivada deterministicamente do id da
- * Equipe (mesmo id → mesma cor sempre, sem precisar persistir nada) —
- * nunca usa violeta, reservado ao Cofre em qualquer lugar da UI (regra 3).
+ * GAP-08: the real `equipe` schema (see ecos-arquitetura-tecnica.md,
+ * section 1.3 "Equipe / Membro") only has `id` and `nome` — no identity
+ * color. The front-end spec (section 3.2/3.7) asks for a "folder icon
+ * colored by Team" and "Team avatar/color" as if that came from the
+ * backend. Until the schema gets that field, the color is derived
+ * deterministically from the Team's id (same id → always the same color,
+ * nothing to persist) — never violet, reserved for the Vault everywhere
+ * in the UI (rule 3).
  */
 const PALETA = ["#5B8FC7", "#7DD3FC", "#22C55E", "#F59E0B", "#8FB4DC", "#3E6FA8"];
 

@@ -8,8 +8,9 @@ interface EmptyStateProps {
 }
 
 /**
- * Estado vazio — "é onde a marca mais aparece" (seção 1.4). Copy calibrada
- * (humor sutil) deve vir de quem chama este componente, não daqui.
+ * Empty state — "it's where the brand shows up the most" (section 1.4).
+ * Calibrated copy (subtle humor) should come from the caller, not from
+ * here.
  */
 export function EmptyState({ icon: Icon, title, subtitle, action }: EmptyStateProps) {
   return (

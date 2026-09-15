@@ -9,9 +9,9 @@ const TIPOS: { tipo: TipoCaptura; label: string }[] = [
 ];
 
 /**
- * Casca comum dos 3 formulários de Captura. O segmented control de tipo
- * fica sempre visível e habilitado — trocar de tipo é sempre permitido
- * (regra 5), o `CreateFlow` é quem preserva o rascunho ao trocar.
+ * Common shell for the 3 Capture forms. The type segmented control stays
+ * visible and enabled at all times — switching type is always allowed
+ * (rule 5), `CreateFlow` is what preserves the draft when switching.
  */
 export function FormShell({
   tipoAtivo,

@@ -6,10 +6,10 @@ import { Toggle } from "@/components/common/Toggle";
 const FRASE_CONFIRMACAO = "apagar meu cofre";
 
 /**
- * Privacidade & Cofre (seção 3.12) — biometria obrigatória (ligado por
- * padrão), "ocultar valores no Feed" (desligado por padrão), zona de risco
- * isolada visualmente, por último, longe de toggles inofensivos. Zero
- * humor nesta tela inteira (regra de tom, seção 1.4).
+ * Privacy & Vault (section 3.12) — mandatory biometrics (on by default),
+ * "hide amounts in the Feed" (off by default), a visually isolated danger
+ * zone, last, away from harmless toggles. Zero humor across this entire
+ * screen (tone rule, section 1.4).
  */
 export function PrivacyVaultScreen() {
   const navigate = useNavigate();

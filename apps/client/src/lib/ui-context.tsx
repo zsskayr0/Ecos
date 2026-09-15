@@ -7,13 +7,13 @@ interface AppUIState {
   abrirDrawer: () => void;
   fecharDrawer: () => void;
 
-  /** null = nenhum popup/form de criação aberto; string = tipo em edição. */
+  /** null = no create popup/form open; string = the type being edited. */
   capturaAberta: TipoCaptura | "escolha" | null;
   abrirCaptura: (inicial: TipoCaptura | "escolha") => void;
   trocarTipoCaptura: (tipo: TipoCaptura) => void;
   fecharCaptura: () => void;
 
-  /** Filtro de Equipe do topbar (seção 2.3) — null = "Tudo". */
+  /** Topbar's Team filter (section 2.3) — null = "All". */
   filtroEquipeId: string | null;
   setFiltroEquipeId: (id: string | null) => void;
 }
@@ -47,6 +47,6 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
 
 export function useAppUI() {
   const ctx = useContext(AppUIContext);
-  if (!ctx) throw new Error("useAppUI precisa estar dentro de <AppUIProvider>");
+  if (!ctx) throw new Error("useAppUI must be used inside <AppUIProvider>");
   return ctx;
 }

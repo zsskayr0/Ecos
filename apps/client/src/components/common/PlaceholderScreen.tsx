@@ -2,9 +2,9 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, type LucideIcon } from "lucide-react";
 
 /**
- * Tela mínima e honesta pra rotas que o inventário de telas (seção 3) não
- * cobre em detalhe — nunca inventa fluxo, só sinaliza a lacuna e dá um
- * caminho de volta.
+ * Minimal, honest screen for routes the screen inventory (section 3)
+ * doesn't cover in detail — never invents a flow, just flags the gap and
+ * gives a way back.
  */
 export function PlaceholderScreen({ icon: Icon, titulo, gap }: { icon: LucideIcon; titulo: string; gap: string }) {
   const navigate = useNavigate();

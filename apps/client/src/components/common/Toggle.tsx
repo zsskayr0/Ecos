@@ -4,7 +4,7 @@ interface ToggleProps {
   disabled?: boolean;
 }
 
-/** Toggle — sem ripple/Material Design (regra 1); traço simples, cor de marca no "ligado". */
+/** Toggle — no ripple/Material Design (rule 1); a plain stroke, brand color when "on". */
 export function Toggle({ checked, onChange, disabled }: ToggleProps) {
   return (
     <button

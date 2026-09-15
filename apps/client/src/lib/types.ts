@@ -1,11 +1,11 @@
 /**
- * Tipos do domínio Ecos, no formato que a UI consome.
+ * Ecos domain types, in the shape the UI consumes.
  *
- * Espelham o modelo de dados real (`ecos-arquitetura-tecnica.md`, seção 1),
- * mas simplificados pro contrato de tela — a integração real (ver seção 5
- * do prompt de execução) troca `src/lib/mock-data.ts` por chamadas HTTP
- * reais a `ecos-app`/`ecos-vault-db`, mantendo estes tipos como o shape
- * esperado pela UI.
+ * Mirror the real data model (`ecos-arquitetura-tecnica.md`, section 1),
+ * but simplified for the screen contract — the real integration (see
+ * section 5 of the execution prompt) swaps `src/lib/mock-data.ts` for real
+ * HTTP calls to `ecos-app`/`ecos-vault-db`, keeping these types as the
+ * shape the UI expects.
  */
 
 export type Espaco = "pessoal" | `equipe:${string}`;
@@ -15,7 +15,7 @@ export type MotivoRanking = "frescor" | "orfa" | "interacao" | "esquecimento";
 export interface Equipe {
   id: string;
   nome: string;
-  cor: string; // hex — cor de identidade da Equipe (avatar, borda de pasta, tag)
+  cor: string; // hex — Team identity color (avatar, folder border, tag)
   contagemMembros: number;
   contagemNotas: number;
   contagemTarefas: number;
@@ -41,6 +41,14 @@ export interface Usuario {
   equipes: { equipe: Equipe; cargo: Cargo }[];
 }
 
+/** Who created the item — always the sole local user for `espaco: pessoal`;
+ * a real per-item author for `espaco: equipe:*` (user feedback: "no feed,
+ * deve ter a foto de perfil e o nome do dono daquele item"). */
+export interface Dono {
+  id: string | null;
+  nome: string;
+}
+
 export interface Nota {
   tipo: "nota";
   id: string;
@@ -51,6 +59,7 @@ export interface Nota {
   pastaId: string | null;
   espaco: Espaco;
   origemEquipe?: { nome: string; cor: string; avatarUrl?: string };
+  dono: Dono;
   criadoEm: string;
   atualizadoEm: string;
   ultimaRevisaoEm: string | null;
@@ -58,6 +67,8 @@ export interface Nota {
   motivoRanking: MotivoRanking;
   diasOrfa?: number;
 }
+
+export type PrioridadeTarefa = "baixa" | "media" | "alta";
 
 export interface Tarefa {
   tipo: "tarefa";
@@ -69,7 +80,9 @@ export interface Tarefa {
   dueDate: string | null;
   espaco: Espaco;
   origemEquipe?: { nome: string; cor: string; avatarUrl?: string };
+  dono: Dono;
   encaixadaNaAgenda: boolean;
+  prioridade: PrioridadeTarefa;
 }
 
 export type FeedItem = Nota | Tarefa;
@@ -80,7 +93,7 @@ export interface CategoriaTransacao {
   id: string;
   nome: string;
   tipo: CategoriaTransacaoTipo;
-  icone: string; // nome do ícone lucide-react
+  icone: string; // lucide-react icon name
   cor: string;
 }
 
