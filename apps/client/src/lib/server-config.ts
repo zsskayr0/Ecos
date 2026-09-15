@@ -19,10 +19,24 @@ export function obterServidorBaseUrl(): string | null {
   }
 }
 
+/** Real bug found testing on a real device: a user typing just
+ * `192.168.1.5:7023` (no `http://`) produced a value that `fetch()`
+ * resolves as a *relative path* against the app's own origin instead of
+ * an absolute URL — every request silently landed back on the Tauri
+ * WebView's own `index.html` (SPA fallback, real `200`) instead of ever
+ * reaching `ecos-app`, and nothing in `req()` treated that as an error
+ * (see the fix there) — the failure was invisible until something tried
+ * to use the "empty" data and crashed. Assuming `http://` when no scheme
+ * is given closes the gap at the source. */
+function normalizarUrl(bruta: string): string {
+  const semBarraFinal = bruta.trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(semBarraFinal) ? semBarraFinal : `http://${semBarraFinal}`;
+}
+
 export function definirServidorBaseUrl(url: string | null): void {
   try {
     if (url && url.trim()) {
-      localStorage.setItem(CHAVE, url.trim().replace(/\/+$/, ""));
+      localStorage.setItem(CHAVE, normalizarUrl(url));
     } else {
       localStorage.removeItem(CHAVE);
     }

@@ -8,11 +8,12 @@ import { ApiError, auth } from "@/lib/api";
  * Where the compiled app finds `ecos-app` — user feedback: "deixa
  * configurável no próprio app" (instead of baking one address in at build
  * time). Only the Tauri shell truly needs this; the browser build always
- * has a working relative default (`/api/v1`), so this screen doubles as
- * the first-run gate for Tauri (see `App.tsx`) and a normal Settings item
- * everywhere else.
+ * has a working relative default (`/api/v1`). The first-run version of
+ * this decision now has its own guided flow (`ConectarServidorScreen`,
+ * reachable before login) — this screen is the plain "edit it later" form
+ * for Configurações → Servidor.
  */
-export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = {}) {
+export function ServerConfigScreen() {
   const navigate = useNavigate();
   const [url, setUrl] = useState(obterServidorBaseUrl() ?? "");
   const [testando, setTestando] = useState(false);
@@ -23,8 +24,7 @@ export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = 
     setTestando(true);
     setErro(null);
     setResultado(null);
-    const limpa = url.trim().replace(/\/+$/, "");
-    definirServidorBaseUrl(limpa || null);
+    definirServidorBaseUrl(url.trim() || null);
     try {
       // `/me` exige sessão — um 401 já prova que o servidor respondeu
       // (é isso que importa aqui), só um erro de rede/CORS é falha real.
@@ -33,12 +33,6 @@ export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = 
         throw e;
       });
       setResultado("ok");
-      if (primeiraVez) {
-        // Recarrega pra o AuthGate reavaliar do zero com a base nova —
-        // mais simples e confiável que replicar aqui a lógica de
-        // `AuthProvider.recarregarPerfil()`.
-        window.location.reload();
-      }
     } catch {
       setResultado("erro");
       setErro("Não consegui falar com esse endereço. Confira se o ecos-app está rodando e acessível dessa rede.");
@@ -50,11 +44,9 @@ export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <div className="mb-5 flex items-center gap-2">
-        {!primeiraVez && (
-          <button onClick={() => navigate(-1)} className="text-text-muted">
-            <ChevronLeft size={22} />
-          </button>
-        )}
+        <button onClick={() => navigate(-1)} className="text-text-muted">
+          <ChevronLeft size={22} />
+        </button>
         <h1 className="font-display text-xl text-text-primary">Servidor</h1>
       </div>
 
@@ -80,7 +72,7 @@ export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = 
       {resultado === "ok" && (
         <div className="mt-4 flex items-start gap-2 rounded-2xl border border-success/40 bg-success/10 p-3 text-sm text-success">
           <CheckCircle2 size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-          Conectado. {primeiraVez ? "Abrindo o Ecos..." : "Endereço salvo."}
+          Conectado. Endereço salvo.
         </div>
       )}
       {resultado === "erro" && erro && (
@@ -95,10 +87,10 @@ export function ServerConfigScreen({ primeiraVez }: { primeiraVez?: boolean } = 
         disabled={testando || (!url.trim() && estaNoTauri())}
         className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
       >
-        {testando ? "Testando..." : primeiraVez ? "Conectar" : "Salvar"}
+        {testando ? "Testando..." : "Salvar"}
       </button>
 
-      {!primeiraVez && url && (
+      {url && (
         <button
           onClick={() => {
             definirServidorBaseUrl(null);

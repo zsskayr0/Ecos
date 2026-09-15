@@ -36,12 +36,23 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (resp.status === 204) return undefined as T;
 
   const contentType = resp.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json") ? await resp.json().catch(() => null) : null;
+  const ehJson = contentType.includes("application/json");
+  const body = ehJson ? await resp.json().catch(() => null) : null;
 
   if (!resp.ok) {
     const code = body?.error ?? "UNKNOWN";
     const message = body?.message ?? `Erro ${resp.status}`;
     throw new ApiError(code, message, resp.status, body?.campos);
+  }
+  // Real bug found on Android: a misconfigured server address (missing
+  // `http://`, see `server-config.ts`) made `fetch()` land back on the
+  // Tauri shell's own `index.html` — a real `200`, just never from
+  // `ecos-app`. Silently returning `null` there let every caller treat
+  // "wrong server" as "empty success" (e.g. `equipes.find` on a `null`
+  // array), crashing far from the actual cause with no visible error.
+  // A `2xx` response that isn't JSON is never a valid Ecos API reply.
+  if (!ehJson) {
+    throw new ApiError("RESPOSTA_INESPERADA", "O servidor respondeu, mas não como a API do Ecos esperava — confira o endereço em Configurações → Servidor.", resp.status);
   }
   return body as T;
 }

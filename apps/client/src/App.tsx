@@ -26,6 +26,7 @@ import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen
 import { OnboardingScreen } from "@/screens/Onboarding/OnboardingScreen";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
 import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
+import { ConectarServidorScreen } from "@/screens/Onboarding/ConectarServidorScreen";
 import { precisaConfigurarServidor } from "@/lib/server-config";
 import { SyncBackupScreen } from "@/screens/Settings/SyncBackupScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
@@ -42,7 +43,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // would just be a network error. User feedback: "deixa configurável no
   // próprio app" (`server-config.ts`).
   if (precisaConfigurarServidor()) {
-    return <ServerConfigScreen primeiraVez />;
+    return <ConectarServidorScreen />;
   }
 
   if (status === "carregando") {
