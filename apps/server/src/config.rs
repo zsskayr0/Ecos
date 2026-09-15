@@ -98,7 +98,7 @@ impl Config {
 
         Ok(Self {
             ambiente,
-            porta: env_u16("ECOS_PORT", 8080),
+            porta: env_u16("ECOS_PORT", 7023),
             notes_root,
             index_db_path,
             vault_enabled: env_bool("ECOS_VAULT_ENABLED", false),

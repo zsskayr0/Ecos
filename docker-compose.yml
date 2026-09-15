@@ -17,7 +17,7 @@ services:
       - ECOS_VAULT_URL=http://ecos-vault-db:8090
       - ECOS_ENV=production
       - ECOS_SESSION_SECRET=${ECOS_SESSION_SECRET:-}
-      - ECOS_PORT=8080
+      - ECOS_PORT=7023
     volumes:
       - ${ECOS_NOTES_PATH:-./data/notes}:/data/notes
       - ecos-index:/data/index

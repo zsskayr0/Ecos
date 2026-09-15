@@ -32,7 +32,7 @@ USER ecos
 
 ENV ECOS_NOTES_PATH=/data/notes \
     ECOS_INDEX_DB_PATH=/data/index/ecos-index.db \
-    ECOS_PORT=8080
+    ECOS_PORT=7023
 
-EXPOSE 8080
+EXPOSE 7023
 ENTRYPOINT ["/usr/local/bin/ecos-app"]

@@ -1,0 +1,94 @@
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ecos-base);
+  color: var(--ecos-text-primary);
+  font-family: "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
+}
+
+/* Space Grotesk é só pra wordmark/H1/splash — nunca em parágrafo ou
+   label de UI densa (regra fixa, seção 1.2). */
+.font-display {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+}
+
+/* Valores monetários, timestamps e labels técnicos — JetBrains Mono,
+   inclusive fora do Cofre (regra 7 da seção 4). */
+.font-mono-value {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.ecos-input {
+  width: 100%;
+  border-radius: 16px;
+  background: var(--ecos-surface-2);
+  color: var(--ecos-text-primary);
+  padding: 0.75rem 1rem;
+  font-size: 15px;
+  font-family: "Inter", sans-serif;
+}
+.ecos-input::placeholder {
+  color: var(--ecos-text-muted);
+}
+.ecos-input:focus {
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Espaço reservado no fim de toda tela com bottom nav flutuante, pra
+   nenhum conteúdo ficar escondido atrás da barra. */
+.pb-nav-safe {
+  padding-bottom: 108px;
+}
+
+@keyframes ecos-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ecos-fade-in {
+  animation: ecos-fade-in 180ms ease-out;
+}

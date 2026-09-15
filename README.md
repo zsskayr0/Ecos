@@ -14,15 +14,17 @@ ecos/
 │                         front-matter/wikilink, recorrência, ranking do Feed)
 ├── apps/
 │   ├── server/         # ecos-app (Axum) — API pública, hub de sync
-│   └── vault/          # ecos-vault-db (Axum) — Cofre, rede interna só
+│   ├── vault/          # ecos-vault-db (Axum) — Cofre, rede interna só
+│   └── client/         # cliente Tauri + React (front-end completo, ver apps/client/README.md)
 ├── docker-compose.yml
 ├── docker-compose.staging.yml
 └── docs/README-cofre.md
 ```
 
-O cliente (Tauri/React) não está neste repositório ainda — esta é a
-fundação de infraestrutura, modelo de dados e backend (ver
-`ecos-arquitetura-tecnica.md`, seção 10.1).
+O cliente (`apps/client`, Tauri/React) implementa as 12 telas do front-end
+a partir da especificação de marca/design (ver `apps/client/README.md`
+para como rodar e as lacunas sinalizadas); consome dados mockados até a
+integração real contra as rotas abaixo estar ligada na UI.
 
 ## Build & testes
 
@@ -41,7 +43,7 @@ ECOS_NOTES_PATH=./data/notes cargo run -p ecos-app
 ECOS_VAULT_DB_PATH=./data/vault/ecos-vault.db cargo run -p ecos-vault-db
 ```
 
-`ecos-app` sobe em `http://localhost:8080`, `ecos-vault-db` em
+`ecos-app` sobe em `http://localhost:7023`, `ecos-vault-db` em
 `http://localhost:8090`. Primeiro acesso: `POST /api/v1/auth/registrar`.
 Para ligar o proxy do Cofre no `ecos-app`, defina
 `ECOS_VAULT_ENABLED=true` e `ECOS_VAULT_URL=http://localhost:8090`.

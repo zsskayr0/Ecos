@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+# `tsconfig.node.json` é composite (exige emit) só pra checar vite.config.ts
+# via `tsc -b` — os .js/.d.ts que ele solta do lado do .ts não são pra
+# commitar, o Vite lê o .ts direto.
+/vite.config.js
+/vite.config.d.ts
+src-tauri/target
+src-tauri/gen
