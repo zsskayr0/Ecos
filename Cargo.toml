@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "crates/ecos-core",
-    "apps/server",
-    "apps/vault",
+    "app/server",
+    "app/vault",
 ]
 
 [workspace.package]
@@ -30,7 +30,7 @@ tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["macros", "multipart"] }
 axum-extra = { version = "0.9", features = ["cookie", "cookie-private", "typed-header"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "set-header", "trace", "limit"] }
+tower-http = { version = "0.5", features = ["cors", "set-header", "trace", "limit", "fs"] }
 
 rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 rusqlite_migration = "1"
@@ -46,7 +46,7 @@ bip39 = { version = "2", features = ["rand"] }
 
 # rustls em vez de native-tls: evita depender de OpenSSL do sistema pra
 # compilar `ecos-app` (só o `ecos-vault-db` precisa de toolchain OpenSSL,
-# e só pra SQLCipher — ver apps/vault/Cargo.toml).
+# e só pra SQLCipher — ver app/vault/Cargo.toml).
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 notify = "6"

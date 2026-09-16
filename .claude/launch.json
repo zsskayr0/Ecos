@@ -4,7 +4,7 @@
     {
       "name": "ecos-client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/client"],
+      "runtimeArgs": ["run", "dev", "--prefix", "app/client"],
       "port": 1420
     }
   ]

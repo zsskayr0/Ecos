@@ -1,0 +1,9 @@
+target/
+notes/
+data/
+app/client/node_modules/
+app/client/dist/
+app/client/vite.config.js
+app/client/vite.config.d.ts
+app/client/src-tauri/target/
+.git/

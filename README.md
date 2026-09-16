@@ -13,17 +13,18 @@ full architecture (data model, security, sync, API).
 ecos/
 ├── crates/ecos-core/   # shared types + business rules (front-matter/wikilink
 │                         parsing, recurrence, Feed ranking)
-├── apps/
+├── app/
 │   ├── server/         # ecos-app (Axum) — public API, sync hub
 │   ├── vault/           # ecos-vault-db (Axum) — Cofre, internal network only
-│   └── client/          # Tauri + React client (complete front end, see apps/client/README.md)
+│   └── client/          # Tauri + React client (complete front end, see app/client/README.md)
+├── notes/               # ECOS_NOTES_PATH default — Notas/ e Tarefas/ dentro
 ├── docker-compose.yml
 ├── docker-compose.staging.yml
 └── docs/README-cofre.md
 ```
 
-The client (`apps/client`, Tauri/React) implements the front end's 12
-screens from the brand/design spec (see `apps/client/README.md` for how
+The client (`app/client`, Tauri/React) implements the front end's 12
+screens from the brand/design spec (see `app/client/README.md` for how
 to run it and the flagged gaps) and talks to the real backend end to end
 — no mocked data outside its Onboarding flow.
 
@@ -64,7 +65,7 @@ Cofre activation: [`docs/README-cofre.md`](./docs/README-cofre.md).
 Documented inline in the code (`// TODO` / `RISCO:` comments), not
 hidden:
 
-- **Real SQLCipher** (`apps/vault`, `real-sqlcipher` feature) doesn't
+- **Real SQLCipher** (`app/vault`, `real-sqlcipher` feature) doesn't
   compile in this Windows dev environment — missing a full Perl for
   building the vendored OpenSSL. The production `Dockerfile` (Debian)
   installs `perl`+`build-essential` and enables the feature; without it,

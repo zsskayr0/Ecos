@@ -9,7 +9,7 @@ services:
   ecos-app:
     build:
       context: .
-      dockerfile: apps/server/Dockerfile
+      dockerfile: app/server/Dockerfile
     image: ecos/app:${ECOS_VERSION:-local}
     restart: unless-stopped
     environment:
@@ -19,7 +19,7 @@ services:
       - ECOS_SESSION_SECRET=${ECOS_SESSION_SECRET:-}
       - ECOS_PORT=7023
     volumes:
-      - ${ECOS_NOTES_PATH:-./data/notes}:/data/notes
+      - ${ECOS_NOTES_PATH:-./notes}:/data/notes
       - ecos-index:/data/index
       - ecos-backups:/data/backups
     profiles: ["default"]
@@ -36,7 +36,7 @@ services:
   ecos-vault-db:
     build:
       context: .
-      dockerfile: apps/vault/Dockerfile
+      dockerfile: app/vault/Dockerfile
     image: ecos/vault-db:${ECOS_VERSION:-local}
     restart: unless-stopped
     networks: [internal]
