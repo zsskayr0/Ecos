@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
+import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
+import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
 import { formatTempoRelativo } from "@/lib/format";
-import { renderMarkdownMini } from "@/lib/markdown-mini";
+import { MarkdownPreview } from "@/lib/markdown-mini";
 import { EmptyState } from "@/components/common/EmptyState";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
+import { CorpoEditor } from "@/components/editor/CorpoEditor";
+import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 interface NotaCompleta {
@@ -35,6 +40,7 @@ export function NoteDetailScreen() {
   const [corpoEdit, setCorpoEdit] = useState("");
   const [confirmandoDelete, setConfirmandoDelete] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -96,92 +102,55 @@ export function NoteDetailScreen() {
 
   if (naoEncontrada) {
     return (
-      <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
-          <ChevronLeft />
-        </button>
+      <div className="ecos-detail-page">
+        <DetailHeader onBack={() => navigate(-1)} />
+        <div className="ecos-detail-content">
         <EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." />
+        </div>
       </div>
     );
   }
 
   if (!nota) {
     return (
-      <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
-          <ChevronLeft />
-        </button>
+      <div className="ecos-detail-page">
+        <DetailHeader onBack={() => navigate(-1)} />
+        <div className="ecos-detail-content">
         <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 pt-1 pb-nav-safe">
-      <div className="mb-3 flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-text-muted">
-          <ChevronLeft size={18} />
-          Voltar
-        </button>
-        {!editando && (
-          <div className="flex items-center gap-3">
-            <button onClick={entrarEdicao} className="flex items-center gap-1.5 text-sm text-steel-300">
-              <Pencil size={14} />
-              Editar
-            </button>
-            <button onClick={() => setConfirmandoDelete(true)} className="flex items-center gap-1.5 text-sm text-error">
-              <Trash2 size={14} />
-              Apagar
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="ecos-detail-page min-w-0">
+      <DetailHeader onBack={() => navigate(-1)} actions={<>
+        {!editando && <button type="button" onClick={entrarEdicao} className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} />Editar</button>}
+        {editando && <button type="button" disabled={salvando || enviandoAnexo} onClick={() => setEditando(false)} className={`${DETAIL_ACTION} text-text-secondary`}>Cancelar</button>}
+        <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
+      </>} />
+      <div className="ecos-detail-content">
 
       {erro && (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+        <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
           {erro}
         </div>
       )}
 
-      {confirmandoDelete && (
-        <div className="mb-4 rounded-2xl border border-error/40 bg-error/[0.06] p-4">
-          <p className="mb-3 text-sm text-text-primary">
-            Apagar essa nota? Ela não vai sentir sua falta, mas confirma mesmo assim.
-          </p>
-          <div className="flex gap-2">
-            <button onClick={() => setConfirmandoDelete(false)} className="flex-1 rounded-2xl bg-surface-2 py-2.5 text-sm font-medium text-text-primary">
-              Cancelar
-            </button>
-            <button onClick={excluir} disabled={salvando} className="flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-white disabled:opacity-40">
-              {salvando ? "Apagando..." : "Apagar"}
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta nota?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir} />
 
       {editando ? (
-        <div className="flex flex-col gap-4">
-          <input value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} className="w-full bg-transparent font-display text-2xl text-text-primary focus:outline-none" />
-          <textarea
-            value={corpoEdit}
-            onChange={(e) => setCorpoEdit(e.target.value)}
-            rows={10}
-            className="w-full resize-none rounded-2xl bg-surface-2 p-4 font-body text-[15px] text-text-primary focus:outline-none"
-          />
-          <div className="flex gap-2">
-            <button onClick={() => setEditando(false)} className="flex-1 rounded-2xl bg-surface-2 py-3 text-sm font-medium text-text-primary">
-              Cancelar
-            </button>
-            <button onClick={salvar} disabled={salvando} className="flex-1 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white disabled:opacity-40">
-              {salvando ? "Salvando..." : "Salvar"}
-            </button>
-          </div>
+        <div className="flex min-w-0 flex-col gap-6">
+          <input aria-label="Título da nota" value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
+          <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" />
+          <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
+          {(tituloEdit !== nota.titulo || corpoEdit !== nota.corpo || (salvando && !confirmandoDelete)) && <FloatingSaveButton onSave={salvar} disabled={!tituloEdit.trim() || enviandoAnexo || confirmandoDelete} saving={salvando} />}
         </div>
       ) : (
         <>
-          <h1 className="mb-1 font-display text-2xl text-text-primary">{nota.titulo}</h1>
-          <div className="mb-4 flex items-center gap-3 text-xs text-text-muted">
+          <h1 className="mb-3 break-words font-display text-2xl text-text-primary">{nota.titulo}</h1>
+          <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
             <span>Atualizada {formatTempoRelativo(nota.atualizado_em)}</span>
             {!nota.ultima_revisao_em && (
               <button onClick={marcarRevisado} className="flex items-center gap-1 text-steel-300">
@@ -191,8 +160,8 @@ export function NoteDetailScreen() {
             )}
           </div>
 
-          <div className="mb-4 rounded-2xl border border-border bg-surface-1 p-4 text-sm">
-            {nota.corpo.trim() ? renderMarkdownMini(nota.corpo) : <p className="text-text-muted">Nota vazia.</p>}
+          <div className="mb-6 min-w-0 break-words rounded-2xl border border-border bg-surface-1 p-5 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">
+            {nota.corpo.trim() ? <MarkdownPreview corpo={nota.corpo} itemId={id} tipo="nota" /> : <p className="text-text-muted">Nota vazia.</p>}
           </div>
 
           {nota.tags.length > 0 && (
@@ -207,6 +176,7 @@ export function NoteDetailScreen() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

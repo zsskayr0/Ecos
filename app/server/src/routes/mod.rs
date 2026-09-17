@@ -2,12 +2,15 @@
 //! rota exige cookie de sessão válido (seção 11.1), exceto `/health` e
 //! `/auth/*`.
 
+pub mod anexos_comuns;
 pub mod busca;
 pub mod calendario;
 pub mod captura;
 pub mod equipes;
 pub mod feed;
 pub mod health;
+pub mod media;
+pub mod lixeira;
 pub mod notas;
 pub mod notificacoes;
 pub mod pagination;
@@ -22,7 +25,7 @@ use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
 use axum::middleware::from_fn_with_state;
 use axum::routing::{delete, get, patch, post};
-use axum::Router;
+use axum::{extract::DefaultBodyLimit, Router};
 use std::time::Duration;
 
 /// Rotas sensíveis (login, recuperação) levam um limite mais rígido que o
@@ -30,6 +33,7 @@ use std::time::Duration;
 fn rotas_auth_sensiveis() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(crate::auth::login))
+        .route("/auth/refresh", post(crate::auth::refresh))
         .route("/auth/recuperar-senha", post(crate::auth::recuperar_senha))
         .layer(RateLimitLayer::new(10, Duration::from_secs(60)))
 }
@@ -52,12 +56,21 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/notas/:id", get(notas::obter).patch(notas::atualizar).delete(notas::excluir))
         .route("/notas/:id/links", get(notas::links))
         .route("/notas/:id/pagina", get(notas::obter_pagina).patch(notas::atualizar_pagina))
+        .route("/notas/:id/anexos", post(notas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
+        .route("/notas/:id/anexos/:nome_arquivo", get(notas::obter_anexo))
+        // Axum limita multipart a 2 MB por padrão. A biblioteca aceita até
+        // 120 MB (validado no handler), então a camada precisa comportar a
+        // requisição completa antes de ela chegar ao `Multipart`.
+        .route("/media", get(media::listar).post(media::enviar).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
+        .route("/media/arquivo/*caminho", get(media::obter_arquivo).delete(media::excluir))
+        .route("/lixeira", get(media::listar_lixeira))
+        .route("/lixeira/:id/restaurar", post(media::restaurar))
         .route("/pastas", get(pastas::listar).post(pastas::criar).patch(pastas::renomear).delete(pastas::excluir))
         .route("/documentos/:hash", get(pastas::documento))
         .route("/tarefas", get(tarefas::listar).post(tarefas::criar))
         .route("/tarefas/:id", get(tarefas::obter).patch(tarefas::atualizar).delete(tarefas::excluir))
         .route("/tarefas/:id/status", patch(tarefas::atualizar_status))
-        .route("/tarefas/:id/anexos", post(tarefas::enviar_anexo))
+        .route("/tarefas/:id/anexos", post(tarefas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/tarefas/:id/anexos/:nome_arquivo", get(tarefas::obter_anexo))
         .route("/agenda/capacidade", get(tarefas::capacidade))
         .route("/feed", get(feed::obter))
@@ -94,7 +107,13 @@ pub fn montar(state: AppState) -> Router {
         .route("/auth/registrar", post(crate::auth::registrar))
         .route("/auth/logout", post(crate::auth::logout))
         .merge(rotas_auth_sensiveis())
-        .merge(rotas_protegidas(state.clone()));
+        .merge(rotas_protegidas(state.clone()))
+        .fallback(|| async {
+            (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({
+                "error": "NOT_FOUND",
+                "message": "Esta operação não está disponível no servidor Ecos. Atualize o servidor e tente novamente."
+            })))
+        });
 
     Router::new()
         .route("/health", get(health::liveness))

@@ -26,7 +26,11 @@ struct Limiter {
 }
 
 impl Limiter {
-    fn permitir(&self, ip: IpAddr) -> bool {
+    /// `Ok(())` libera a requisição; `Err(segundos)` bloqueia e diz quanto
+    /// falta até a janela mais antiga expirar — o cliente usa isso pra
+    /// mostrar uma contagem regressiva real (seção UX: "como na tela de
+    /// bloqueio de um celular") em vez de só "tente de novo mais tarde".
+    fn permitir(&self, ip: IpAddr) -> Result<(), u64> {
         let mut mapa = self.janelas.lock().expect("mutex do rate limiter nunca deve ser envenenado");
         let agora = Instant::now();
         let fila = mapa.entry(ip).or_default();
@@ -38,10 +42,12 @@ impl Limiter {
             }
         }
         if fila.len() >= self.max_por_janela {
-            false
+            let frente = *fila.front().expect("len >= max_por_janela > 0 implica fila não vazia");
+            let restante = self.janela.saturating_sub(agora.duration_since(frente));
+            Err(restante.as_secs() + 1)
         } else {
             fila.push_back(agora);
-            true
+            Ok(())
         }
     }
 }
@@ -102,9 +108,22 @@ where
 
         Box::pin(async move {
             if let Some(ip) = ip {
-                if !limiter.permitir(ip) {
-                    let corpo: ErrorInfo = ErrorCode::RateLimited.into();
-                    return Ok((StatusCode::TOO_MANY_REQUESTS, axum::Json(corpo)).into_response());
+                if let Err(retry_after_secs) = limiter.permitir(ip) {
+                    let info: ErrorInfo = ErrorCode::RateLimited.into();
+                    // `retry_after_segundos` além do contrato padrão
+                    // `{error, message}` (seção 7) — só usado aqui, pro
+                    // cliente montar uma contagem regressiva real em vez
+                    // de um texto genérico "tente mais tarde".
+                    let corpo = serde_json::json!({
+                        "error": info.error,
+                        "message": info.message,
+                        "retry_after_segundos": retry_after_secs,
+                    });
+                    let mut resp = (StatusCode::TOO_MANY_REQUESTS, axum::Json(corpo)).into_response();
+                    if let Ok(valor) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
+                        resp.headers_mut().insert(axum::http::header::RETRY_AFTER, valor);
+                    }
+                    return Ok(resp);
                 }
             }
             inner.call(req).await
@@ -124,10 +143,10 @@ mod tests {
             janela: Duration::from_millis(50),
         };
         let ip: IpAddr = "127.0.0.1".parse().unwrap();
-        assert!(limiter.permitir(ip));
-        assert!(limiter.permitir(ip));
-        assert!(!limiter.permitir(ip));
+        assert!(limiter.permitir(ip).is_ok());
+        assert!(limiter.permitir(ip).is_ok());
+        assert!(limiter.permitir(ip).is_err());
         std::thread::sleep(Duration::from_millis(60));
-        assert!(limiter.permitir(ip));
+        assert!(limiter.permitir(ip).is_ok());
     }
 }

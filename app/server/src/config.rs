@@ -31,6 +31,16 @@ pub struct Config {
     /// uma porta só em produção). `None` em desenvolvimento, onde o Vite
     /// dev server continua servindo a UI com HMR.
     pub static_dir: Option<PathBuf>,
+    /// Cookie de sessão `Secure` (seção 5.1) exige HTTPS — mas o modelo
+    /// "self-hosted na LAN" (seção 2, sem `cloudflared`) serve tudo em
+    /// `http://` puro pro IP do PC; um cookie `Secure` nesse caso é
+    /// silenciosamente descartado pelo navegador (login "funciona" — 200
+    /// — mas a sessão nunca gruda). Default `false` por isso; ligar
+    /// `ECOS_COOKIE_SECURE=true` quando há HTTPS de verdade na frente
+    /// (túnel Cloudflare termina TLS na borda, mas encaminha HTTP puro
+    /// pro `ecos-app` — mesmo em produção via túnel isto deve ficar
+    /// `false`, a não ser que exista um proxy TLS local próprio).
+    pub cookie_secure: bool,
 }
 
 fn env_bool(key: &str, default: bool) -> bool {
@@ -93,6 +103,10 @@ impl Config {
             .into();
         std::fs::create_dir_all(notes_root.join("Notas"))?;
         std::fs::create_dir_all(notes_root.join("Tarefas"))?;
+        // Mídias são ativos globais do cofre, não cópias escondidas ao lado
+        // de cada Markdown. `src/Media` é deliberadamente simples de
+        // navegar/backup e não se confunde com Notas ou Tarefas.
+        std::fs::create_dir_all(notes_root.join("src").join("Media"))?;
         std::fs::create_dir_all(notes_root.join(".ecos"))?;
 
         let index_db_path = std::env::var("ECOS_INDEX_DB_PATH")
@@ -112,6 +126,7 @@ impl Config {
             session_secret,
             ranking_interval_secs: env_u64("ECOS_RANKING_INTERVAL_SECS", 300),
             static_dir: std::env::var("ECOS_STATIC_DIR").ok().map(PathBuf::from).filter(|p| p.is_dir()),
+            cookie_secure: env_bool("ECOS_COOKIE_SECURE", false),
         })
     }
 }

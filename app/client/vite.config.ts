@@ -7,9 +7,9 @@ import react from "@vitejs/plugin-react";
 // process points at this port in dev, see src-tauri/tauri.conf.json).
 // Porta do backend: 7023 é a porta "de fábrica" (`cargo run -p ecos-app`),
 // mas nesta máquina já está ocupada pelo container `nexus-server` (outro
-// projeto) — o ecos-app Docker publica em 7123 (ver
+// projeto) — o ecos-app Docker publica em 4090 (ver
 // docker-compose.override.yml). Configurável via env pra outras máquinas.
-const backendPort = process.env.ECOS_BACKEND_PORT || 7123;
+const backendPort = process.env.ECOS_BACKEND_PORT || 4090;
 
 export default defineConfig({
   plugins: [react()],

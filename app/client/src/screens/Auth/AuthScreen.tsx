@@ -31,6 +31,22 @@ export function AuthScreen() {
   const [erroLocal, setErroLocal] = useState<string | null>(null);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [precisaConvite, setPrecisaConvite] = useState(false);
+  const [bloqueadoAte, setBloqueadoAte] = useState<number | null>(null);
+  const [agora, setAgora] = useState(() => Date.now());
+
+  // Contagem regressiva real (tela de bloqueio de celular) em vez de só
+  // um texto "tente mais tarde" — o servidor manda quanto falta em
+  // segundos (`retry_after_segundos`, seção rate limit).
+  useEffect(() => {
+    if (bloqueadoAte === null) return;
+    const id = setInterval(() => setAgora(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [bloqueadoAte]);
+
+  const restanteSegundos = bloqueadoAte !== null ? Math.max(0, Math.ceil((bloqueadoAte - agora) / 1000)) : 0;
+  useEffect(() => {
+    if (bloqueadoAte !== null && restanteSegundos === 0) setBloqueadoAte(null);
+  }, [bloqueadoAte, restanteSegundos]);
 
   useEffect(() => {
     let cancelado = false;
@@ -67,6 +83,10 @@ export function AuthScreen() {
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 409) setPrecisaConvite(true);
+        if (e.status === 429 && e.retryAfterSegundos) {
+          setBloqueadoAte(Date.now() + e.retryAfterSegundos * 1000);
+          setAgora(Date.now());
+        }
         setErroLocal(e.campos?.map((c) => `${c.campo}: ${c.motivo}`).join(" · ") || e.message);
       } else {
         setErroLocal("Não foi possível conectar ao ecos-app. Ele está rodando?");
@@ -131,20 +151,32 @@ export function AuthScreen() {
           {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 8 caracteres.</span>}
         </label>
 
-        {erroLocal && (
-          <div className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-            <span>
-              {erroLocal}
-              {precisaConvite && " Peça um convite de Equipe pra alguém que já tem conta nesta instância."}
-            </span>
+        {bloqueadoAte !== null ? (
+          <div className="flex flex-col items-center gap-1 rounded-2xl border border-error/40 bg-error/10 p-4 text-center">
+            <AlertTriangle size={18} className="text-error" strokeWidth={1.75} />
+            <p className="text-sm text-error">Muitas tentativas em pouco tempo.</p>
+            <p className="font-mono-value text-2xl tabular-nums text-text-primary">
+              {String(Math.floor(restanteSegundos / 60)).padStart(2, "0")}:{String(restanteSegundos % 60).padStart(2, "0")}
+            </p>
+            <p className="text-xs text-text-muted">Tente de novo quando o contador zerar.</p>
           </div>
+        ) : (
+          erroLocal && (
+            <div className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
+              <span>
+                {erroLocal}
+                {precisaConvite && " Peça um convite de Equipe pra alguém que já tem conta nesta instância."}
+              </span>
+            </div>
+          )
         )}
 
         <button
           type="submit"
           disabled={
             carregando ||
+            bloqueadoAte !== null ||
             !nomeUsuario.trim() ||
             senha.length < (modo === "registro" ? 8 : 1) ||
             (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim()))

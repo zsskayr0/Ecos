@@ -3,18 +3,20 @@
 //! escrita aqui grava o arquivo primeiro e depois reindexa, nunca o
 //! contrário.
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::{Extension, Json};
 use chrono::Utc;
 use ecos_core::types::{Espaco, NotaFrontMatter, NotaModo};
 use ecos_core::{frontmatter, naming, new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::db::reindex::reindexar_tudo;
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
+use crate::routes::anexos_comuns::mime_por_extensao;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -29,6 +31,7 @@ fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
 #[derive(Debug, Serialize)]
 pub struct NotaResumo {
     pub id: String,
+    pub corpo: String,
     pub titulo: String,
     pub modo: String,
     pub pasta: Option<String>,
@@ -57,13 +60,13 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
     #[allow(clippy::type_complexity)]
-    let linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>, Option<String>, Option<String>)> = state
+    let linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>, Option<String>, Option<String>, String)> = state
         .db
         .with(move |conn| {
             let mut sql = String::from(
                 "SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em, \
-                 n.criado_por, u.nome_usuario \
-                 FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por",
+                 n.criado_por, u.nome_usuario, COALESCE(nf.corpo, '') \
+                 FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por LEFT JOIN nota_fts nf ON nf.id = n.id",
             );
             let mut condicoes: Vec<String> = Vec::new();
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -110,6 +113,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                         r.get(7)?,
                         r.get(8)?,
                         r.get(9)?,
+                        r.get(10)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -120,11 +124,35 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     let tem_mais = linhas.len() as i64 > limite;
     let visiveis = if tem_mais { &linhas[..limite as usize] } else { &linhas[..] };
 
+    // Uma única consulta para as tags evita N+1 queries (e N aquisições do
+    // mutex SQLite) ao abrir uma pasta com muitas notas.
+    let ids: Vec<String> = visiveis.iter().map(|(id, ..)| id.clone()).collect();
+    let tags_por_nota: HashMap<String, Vec<String>> = if ids.is_empty() {
+        HashMap::new()
+    } else {
+        state
+            .db
+            .with(move |conn| {
+                let marcadores = std::iter::repeat("?").take(ids.len()).collect::<Vec<_>>().join(", ");
+                let sql = format!("SELECT nota_id, tag FROM nota_tag WHERE nota_id IN ({marcadores}) ORDER BY tag");
+                let mut stmt = conn.prepare(&sql)?;
+                let mut mapa: HashMap<String, Vec<String>> = HashMap::new();
+                let linhas = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                for linha in linhas {
+                    let (nota_id, tag) = linha?;
+                    mapa.entry(nota_id).or_default().push(tag);
+                }
+                Ok(mapa)
+            })
+            .await?
+    };
+
     let mut items = Vec::with_capacity(visiveis.len());
-    for (id, titulo, modo, pasta, espaco, criado_em, atualizado_em, ultima_revisao_em, criado_por, criado_por_nome) in visiveis {
-        let tags = tags_da_nota(&state, id).await?;
+    for (id, titulo, modo, pasta, espaco, criado_em, atualizado_em, ultima_revisao_em, criado_por, criado_por_nome, corpo) in visiveis {
+        let tags = tags_por_nota.get(id).cloned().unwrap_or_default();
         items.push(NotaResumo {
             id: id.clone(),
+            corpo: corpo.clone(),
             titulo: titulo.clone(),
             modo: modo.clone(),
             pasta: pasta.clone(),
@@ -145,19 +173,6 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     };
 
     Ok(Json(Pagina { items, next_cursor }))
-}
-
-async fn tags_da_nota(state: &AppState, nota_id: &str) -> AppResult<Vec<String>> {
-    let nota_id = nota_id.to_string();
-    let tags = state
-        .db
-        .with(move |conn| {
-            let mut stmt = conn.prepare("SELECT tag FROM nota_tag WHERE nota_id = ?1 ORDER BY tag")?;
-            let tags = stmt.query_map([&nota_id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
-            Ok(tags)
-        })
-        .await?;
-    Ok(tags)
 }
 
 #[derive(Debug, Deserialize)]
@@ -340,7 +355,9 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 /// de escopo do reindex síncrono, por isso não é lida aqui.
 pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &id).await?;
-    std::fs::remove_file(absoluto(&state, &caminho_relativo))?;
+    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
+    crate::routes::lixeira::mover(&state, &caminho_relativo, "nota", &doc.front_matter.titulo, &anexos_dir(&state, &id, &caminho_relativo))?;
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -409,4 +426,47 @@ pub async fn atualizar_pagina(State(state): State<AppState>, Path(id): Path<Stri
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("pagina.json"), serde_json::to_string_pretty(&payload).unwrap_or_default())?;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+// --- Anexos (biblioteca global `src/Media`, referenciada em Markdown) -----
+
+/// Upload real (`multipart/form-data`, campo `arquivo`) — grava em
+/// `src/Media/AAAA-MM/` e devolve o corpo já com a referência Markdown anexada
+/// ao final, pro cliente atualizar o editor sem um segundo round trip.
+pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let midia = crate::routes::media::enviar_para_biblioteca(&state, multipart).await?;
+    let referencia_relativa = midia.caminho;
+    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
+    let mut fm = doc.front_matter;
+    fm.atualizado_em = Utc::now();
+    let linha_md = if midia.mime.starts_with("image/") {
+        format!("![{}]({referencia_relativa})", midia.nome)
+    } else {
+        format!("[{}]({referencia_relativa})", midia.nome)
+    };
+    let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
+    let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
+    std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
+    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+
+    Ok(Json(serde_json::json!({
+        "nome_arquivo": midia.nome,
+        "url_relativa": referencia_relativa,
+        "tamanho_bytes": midia.tamanho_bytes,
+        "corpo": novo_corpo,
+    })))
+}
+
+/// Serve o próprio arquivo (download/preview) — sem autenticação extra além
+/// da sessão já exigida por `rotas_protegidas` (seção 11.1).
+pub async fn obter_anexo(State(state): State<AppState>, Path((id, nome_arquivo)): Path<(String, String)>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
+    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
+    if !caminho.is_file() {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
+    let bytes = std::fs::read(&caminho)?;
+    Ok(([(axum::http::header::CONTENT_TYPE, mime_por_extensao(&nome_arquivo).to_string())], bytes))
 }

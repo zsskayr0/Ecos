@@ -2,6 +2,9 @@ import { useNavigate } from "react-router-dom";
 import type { Nota } from "@/lib/types";
 import { formatTempoRelativo, MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format";
 import { Avatar } from "@/components/common/Avatar";
+import { useState } from "react";
+import { Paperclip } from "lucide-react";
+import { anexosDaNota, previewDaNota } from "@/lib/note-media";
 
 /**
  * Nota card (section 3.1) — colored left border = dominant ranking motive,
@@ -11,6 +14,10 @@ import { Avatar } from "@/components/common/Avatar";
 export function NoteCard({ nota }: { nota: Nota }) {
   const navigate = useNavigate();
   const cores = MOTIVO_CLASSES[nota.motivoRanking];
+  const anexos = anexosDaNota(nota.corpo ?? "", nota.id);
+  const imagem = anexos.find((a) => a.imagem);
+  const [imagemComErro, setImagemComErro] = useState<string | null>(null);
+  const preview = nota.corpo ? previewDaNota(nota.corpo, nota.id) : nota.preview;
 
   return (
     <button
@@ -26,7 +33,9 @@ export function NoteCard({ nota }: { nota: Nota }) {
       </div>
 
       <p className="font-body text-[15px] font-semibold leading-snug text-text-primary">{nota.titulo}</p>
-      <p className="line-clamp-2 text-sm leading-snug text-text-secondary">{nota.preview}</p>
+      {preview && <p className="line-clamp-2 text-sm leading-snug text-text-secondary">{preview}</p>}
+      {imagem && imagem.url !== imagemComErro && <img src={imagem.url} alt={imagem.nome} loading="lazy" onError={() => setImagemComErro(imagem.url)} className="h-44 w-full rounded-xl object-cover" />}
+      {anexos.filter((a) => !a.imagem).map((a, i) => <span key={`${a.url}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2"><Paperclip size={14} className="shrink-0 text-text-muted" /><span className="flex-1 truncate text-xs text-text-secondary">{a.nome}</span><span className="text-[10px] font-medium text-text-muted">{a.tipo}</span></span>)}
 
       {/* User feedback: "abaixo de cada card... deve ter a foto de perfil
           e o nome do dono daquele item" — the individual author always

@@ -9,7 +9,12 @@
 # *dentro* do container, só o mapeamento externo muda. Escolhida 4090
 # porque agora ele serve UI+API juntos (ver ECOS_STATIC_DIR/main.rs),
 # uma porta só, como Immich/Jellyfin.
+#
+# Sem "127.0.0.1:" na frente de propósito: isso restringiria a porta ao
+# próprio PC (loopback) — o celular/outro dispositivo na LAN nunca
+# conseguiria conectar. Publicando em todas as interfaces (0.0.0.0
+# implícito), qualquer um na mesma rede alcança pelo IP do PC.
 services:
   ecos-app:
     ports:
-      - "127.0.0.1:4090:7023"
+      - "4090:7023"

@@ -8,9 +8,26 @@
  * shell has no origin to be "the same" as, so it reads a real address the
  * user configured in Configurações instead.
  */
-import { apiBase } from "./server-config";
+import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
+import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
+import { invoke } from "@tauri-apps/api/core";
 
 const BASE = apiBase;
+
+function mensagemHttp(status: number): string {
+  switch (status) {
+    case 400: case 422: return "Confira os dados informados e tente novamente.";
+    case 401: return "Sua sessão expirou. Entre novamente para continuar.";
+    case 403: return "Você não tem permissão para realizar esta ação.";
+    case 404: return "O item ou serviço solicitado não foi encontrado no servidor.";
+    case 405: return "O servidor não aceita esta operação. Atualize o servidor Ecos e tente novamente.";
+    case 409: return "O item foi alterado. Atualize a tela e tente novamente.";
+    case 413: return "O arquivo excede o limite de envio. Escolha um arquivo de até 120 MB.";
+    case 429: return "Você fez muitas solicitações. Aguarde um momento e tente novamente.";
+    case 502: case 503: case 504: return "O servidor está indisponível. Aguarde um momento e tente novamente.";
+    default: return "O servidor não conseguiu concluir a operação. Tente novamente.";
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -18,20 +35,47 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public campos?: { campo: string; motivo: string }[],
+    /** Só em 429 (`RateLimited`) — segundos até poder tentar de novo. */
+    public retryAfterSegundos?: number,
   ) {
-    super(message);
+    const detalhes = campos?.map((c) => `${c.campo}: ${c.motivo}`).join("; ");
+    super(detalhes || (!message || /^Erro \d+$/.test(message) || status === 401 || (status >= 500 && /^Erro interno/i.test(message)) ? mensagemHttp(status) : message));
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${BASE()}${path}`, {
+async function renovarSessaoDesktop(): Promise<boolean> {
+  if (!estaNoTauri()) return false;
+  const servidor = obterServidorBaseUrl();
+  if (!servidor) return false;
+  try {
+    const accessToken = await invoke<string>("renovar_sessao_desktop", { servidor });
+    definirAccessToken(accessToken);
+    return true;
+  } catch {
+    definirAccessToken(null);
+    return false;
+  }
+}
+
+async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): Promise<T> {
+  const accessToken = obterAccessToken();
+  let resp: Response;
+  try {
+    resp = await fetch(`${BASE()}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      // Fallback pro cliente Tauri (cookie cross-origin não sobrevive —
+      // ver server-config.ts). No navegador não existe token guardado,
+      // então isto não muda nada ali; o cookie same-origin já resolve.
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...init?.headers,
     },
-  });
+    });
+  } catch {
+    throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
+  }
 
   if (resp.status === 204) return undefined as T;
 
@@ -39,10 +83,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const ehJson = contentType.includes("application/json");
   const body = ehJson ? await resp.json().catch(() => null) : null;
 
+  if (resp.status === 401 && !tentouRenovar && !path.startsWith("/auth/")) {
+    if (await renovarSessaoDesktop()) return req<T>(path, init, true);
+  }
+
   if (!resp.ok) {
     const code = body?.error ?? "UNKNOWN";
-    const message = body?.message ?? `Erro ${resp.status}`;
-    throw new ApiError(code, message, resp.status, body?.campos);
+    const message = body?.message ?? mensagemHttp(resp.status);
+    throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos);
   }
   // Real bug found on Android: a misconfigured server address (missing
   // `http://`, see `server-config.ts`) made `fetch()` land back on the
@@ -82,8 +130,27 @@ export const auth = {
   status: () => get<{ instancia_vazia: boolean }>("/auth/status"),
   registrar: (nome_usuario: string, senha: string, nome?: string) =>
     post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome }),
-  login: (usuario: string, senha: string) => post<{ usuario_id: string }>("/auth/login", { usuario, senha }),
-  logout: () => post<void>("/auth/logout"),
+  login: async (usuario: string, senha: string) => {
+    if (estaNoTauri()) {
+      const servidor = obterServidorBaseUrl();
+      if (!servidor) throw new ApiError("SERVIDOR_NAO_CONFIGURADO", "Configure o endereço do servidor antes de entrar.", 400);
+      const access_token = await invoke<string>("login_desktop", { servidor, usuario, senha });
+      definirAccessToken(access_token);
+      return { usuario_id: "", access_token };
+    }
+    const resposta = await post<{ usuario_id: string; access_token: string }>("/auth/login", { usuario, senha });
+    definirAccessToken(resposta.access_token);
+    return resposta;
+  },
+  logout: async () => {
+    definirAccessToken(null);
+    if (estaNoTauri()) {
+      const servidor = obterServidorBaseUrl();
+      if (servidor) await invoke("logout_desktop", { servidor });
+      return;
+    }
+    await post<void>("/auth/logout");
+  },
   perfil: () =>
     get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; equipes: { id: string; nome: string; cargo: string }[] }>("/me"),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
@@ -112,6 +179,7 @@ export const captura = {
 
 export interface NotaResumo {
   id: string;
+  corpo: string;
   titulo: string;
   modo: string;
   pasta: string | null;
@@ -137,6 +205,21 @@ export const notas = {
     patch<{ id: string }>(`/notas/${id}`, payload),
   excluir: (id: string) => del<{ ok: true }>(`/notas/${id}`),
   links: (id: string) => get<{ entrada: { id: string; titulo: string }[]; saida: { id: string; titulo: string }[] }>(`/notas/${id}/links`),
+  /** Mirror de `tarefas.anexos` (mesmo padrão de backend, `notas.rs::enviar_anexo`)
+   * — real multipart upload, então usa `fetch` direto em vez de `req()`
+   * (que sempre manda `Content-Type: application/json`, incompatível com
+   * `FormData`). Ao contrário da versão de Tarefa, esta já manda
+   * `Authorization: Bearer` quando existe token guardado — sem isso o
+   * upload dentro do app Tauri falharia com 401 mesmo logado, pelo mesmo
+   * motivo do cookie cross-origin corrigido no login. */
+  anexos: {
+    enviar: async (id: string, arquivo: File) => {
+      const formData = new FormData();
+      formData.append("arquivo", arquivo);
+      return req<{ nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string }>(`/notas/${id}/anexos`, { method: "POST", body: formData });
+    },
+    urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/notas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
+  },
 };
 
 // --- Folders (section 11.5) -------------------------------------------------
@@ -146,6 +229,33 @@ export const pastas = {
     get<{ subpastas: { caminho: string; nome: string; contagem_itens: number }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
   criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
   excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string }) => del<{ ok: true }>("/pastas", payload),
+};
+
+// --- Media ---------------------------------------------------------------
+
+export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string }
+export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
+export const lixeira = {
+  listar: () => get<ItemLixeira[]>("/lixeira"),
+  restaurar: (id: string) => post<{ ok: true }>(`/lixeira/${encodeURIComponent(id)}/restaurar`),
+};
+
+/** Biblioteca global: o mesmo caminho Markdown pode ser usado por qualquer
+ * Nota ou Tarefa, sem criar uma nova cópia do arquivo. */
+export const media = {
+  listar: () => get<Midia[]>("/media"),
+  excluir: (caminho: string) => req<{ ok: true }>(media.urlArquivo(caminho).slice(BASE().length), { method: "DELETE" }),
+  enviar: async (arquivo: File) => {
+    if (arquivo.size > 120 * 1024 * 1024) throw new ApiError("ARQUIVO_GRANDE", "O arquivo excede 120 MB. Escolha um arquivo menor.", 413);
+    if (!arquivo.size) throw new ApiError("ARQUIVO_VAZIO", "O arquivo está vazio. Escolha outro arquivo.", 422);
+    const formData = new FormData();
+    formData.append("arquivo", arquivo);
+    const item = await req<Midia>("/media", { method: "POST", body: formData });
+    if (!item?.caminho || !item?.mime) throw new ApiError("RESPOSTA_INESPERADA", "O servidor não confirmou o envio do arquivo. Atualize o servidor Ecos e tente novamente.", 502);
+    return item;
+  },
+  referencia: (item: Midia) => `${item.mime.startsWith("image/") ? "!" : ""}[${item.nome.replace(/[\\\[\]]/g, "_")}](${item.caminho.split("/").map((p) => encodeURIComponent(p).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16)}`)).join("/")})`,
+  urlArquivo: (caminho: string) => `${BASE()}/media/arquivo/${caminho.replace(/^src\/Media\//, "").split("/").map((p) => { try { return encodeURIComponent(decodeURIComponent(p)); } catch { return encodeURIComponent(p); } }).join("/")}`,
 };
 
 // --- Tasks & Agenda (section 11.6) ------------------------------------------
@@ -214,9 +324,9 @@ export interface CriarTarefaPayload {
 export interface AtualizarTarefaPayload {
   titulo?: string;
   pasta?: string;
-  scheduled_at?: string;
+  scheduled_at?: string | null;
   duration_min?: number;
-  due_date?: string;
+  due_date?: string | null;
   corpo?: string;
   tags?: string[];
   prioridade?: PrioridadeTarefa;
@@ -249,10 +359,7 @@ export const tarefas = {
     enviar: async (id: string, arquivo: File) => {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
-      const resp = await fetch(`${BASE()}/tarefas/${id}/anexos`, { method: "POST", credentials: "include", body: formData });
-      const body = await resp.json().catch(() => null);
-      if (!resp.ok) throw new ApiError(body?.error ?? "UNKNOWN", body?.message ?? `Erro ${resp.status}`, resp.status);
-      return body as { nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string };
+      return req<{ nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string }>(`/tarefas/${id}/anexos`, { method: "POST", body: formData });
     },
     urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/tarefas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
   },

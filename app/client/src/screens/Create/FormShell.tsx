@@ -28,9 +28,9 @@ export function FormShell({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-base">
-      <div className="flex h-full w-full max-w-md flex-col">
-        <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+14px)] pb-3">
-          <button onClick={onFechar} aria-label="Fechar">
+      <div className={`flex h-full min-w-0 w-full flex-col ${tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
+        <div className="ecos-capture-header flex items-center justify-between">
+          <button onClick={onFechar} aria-label="Fechar" className="flex min-h-12 min-w-12 items-center justify-center rounded-xl">
             <X size={22} className="text-text-muted" />
           </button>
           <div className="flex rounded-pill bg-surface-2 p-1">
@@ -38,7 +38,7 @@ export function FormShell({
               <button
                 key={tipo}
                 onClick={() => onTrocarTipo(tipo)}
-                className={`rounded-pill px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`min-h-11 rounded-pill px-3 py-1.5 text-sm font-medium transition-colors ${
                   tipoAtivo === tipo ? "bg-surface-3 text-text-primary" : "text-text-muted"
                 }`}
               >
@@ -46,11 +46,11 @@ export function FormShell({
               </button>
             ))}
           </div>
-          <div className="w-[22px]" />
+          <div className="hidden w-12 shrink-0 sm:block" />
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pb-8">
+        <div className="ecos-capture-content min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+16px)]">
           {erro && (
-            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+            <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
               {erro}
             </div>

@@ -62,3 +62,22 @@ export function estaNoTauri(): boolean {
 export function precisaConfigurarServidor(): boolean {
   return estaNoTauri() && !obterServidorBaseUrl();
 }
+
+/** Real bug: the Tauri WebView's own origin (`tauri://localhost` /
+ * `http://tauri.localhost`) is never the same as wherever `ecos-app`
+ * runs — a `SameSite=Strict` session cookie (section 5.1) is simply never
+ * sent on that cross-origin request, CORS or not (`allow_credentials`
+ * only decides whether the *response* is readable, not whether the
+ * *cookie* goes out). The browser build never needs this: same-origin
+ * cookies work exactly as designed there. */
+// Nunca persista access tokens no WebView. O desktop mantém o refresh token
+// no Credential Manager e repõe este valor efêmero após abrir o app.
+let accessTokenEmMemoria: string | null = null;
+
+export function obterAccessToken(): string | null {
+  return accessTokenEmMemoria;
+}
+
+export function definirAccessToken(token: string | null): void {
+  accessTokenEmMemoria = token;
+}

@@ -11,6 +11,79 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ecos-safe-top: env(safe-area-inset-top, 0px);
+  --ecos-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ecos-safe-left: env(safe-area-inset-left, 0px);
+  --ecos-safe-right: env(safe-area-inset-right, 0px);
+  --ecos-editor-sticky-top: 12px;
+}
+
+.ecos-detail-header {
+  padding-top: calc(max(var(--ecos-safe-top), 32px) + 16px);
+  padding-bottom: 12px;
+  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
+  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
+}
+
+.ecos-detail-content {
+  padding-top: 28px;
+  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
+  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
+  padding-bottom: 24px;
+}
+
+.ecos-capture-header {
+  padding-top: calc(max(var(--ecos-safe-top), 24px) + 16px);
+  padding-bottom: 16px;
+  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
+  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
+}
+
+.ecos-capture-content {
+  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
+  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
+}
+
+.ecos-confirm-dialog {
+  width: min(420px, calc(100% - var(--ecos-safe-left) - var(--ecos-safe-right) - 32px));
+  max-height: calc(100dvh - var(--ecos-safe-top) - var(--ecos-safe-bottom) - 48px);
+  margin: auto;
+  padding: 24px;
+  border-radius: 16px;
+}
+
+.ecos-editor-floating {
+  top: var(--ecos-editor-sticky-top);
+}
+
+.ecos-autogrow {
+  overflow: hidden;
+  resize: none;
+  scroll-margin-top: calc(var(--ecos-editor-sticky-top) + 160px);
+  scroll-margin-bottom: 180px;
+}
+
+.ecos-floating-save {
+  bottom: calc(88px + var(--ecos-safe-bottom));
+  right: max(20px, calc(var(--ecos-safe-right) + 16px));
+}
+
+.ecos-detail-page {
+  padding-bottom: 72px;
+}
+
+@media (min-width: 768px) {
+  .ecos-floating-save { right: max(32px, calc((100vw - 1152px) / 2 + 32px), calc(var(--ecos-safe-right) + 16px)); }
+  .ecos-detail-header, .ecos-capture-header { padding-top: calc(var(--ecos-safe-top) + 16px); }
+  .ecos-detail-content {
+    padding-top: 32px;
+    padding-bottom: 32px;
+    padding-left: max(32px, calc(var(--ecos-safe-left) + 16px));
+    padding-right: max(32px, calc(var(--ecos-safe-right) + 16px));
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -75,7 +148,7 @@ body {
 /* Reserved space at the bottom of every screen with the floating bottom
    nav, so no content ends up hidden behind the bar. */
 .pb-nav-safe {
-  padding-bottom: 108px;
+  padding-bottom: calc(108px + var(--ecos-safe-bottom));
 }
 
 @keyframes ecos-fade-in {

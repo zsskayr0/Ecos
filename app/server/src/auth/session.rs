@@ -52,35 +52,41 @@ pub fn hash_refresh_token(valor: &str) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-pub fn cookie_sessao(valor: String) -> Cookie<'static> {
+/// `secure`: `false` por padrão (self-host na LAN via `http://`, ver
+/// `Config::cookie_secure`) — um cookie `Secure` em `http://` puro é
+/// descartado pelo navegador sem aviso, não é "mais seguro nesse caso",
+/// só quebra o login silenciosamente.
+pub fn cookie_sessao(valor: String, secure: bool) -> Cookie<'static> {
     Cookie::build((NOME_COOKIE_SESSAO, valor))
         .http_only(true)
-        .secure(true)
+        .secure(secure)
         .same_site(SameSite::Strict)
         .path("/")
         .max_age(time::Duration::minutes(DURACAO_ACCESS_TOKEN_MIN))
         .build()
 }
 
-pub fn cookie_refresh(valor: String) -> Cookie<'static> {
+pub fn cookie_refresh(valor: String, secure: bool) -> Cookie<'static> {
     Cookie::build((NOME_COOKIE_REFRESH, valor))
         .http_only(true)
-        .secure(true)
+        .secure(secure)
         .same_site(SameSite::Strict)
         .path("/api/v1/auth")
         .max_age(time::Duration::days(DURACAO_REFRESH_DIAS))
         .build()
 }
 
-/// Cookies "removidos" (idade zero) usados em `/auth/logout`.
-pub fn cookie_sessao_expirado() -> Cookie<'static> {
-    let mut c = cookie_sessao(String::new());
+/// Cookies "removidos" (idade zero) usados em `/auth/logout` — `secure`
+/// só afeta o atributo do cabeçalho; um cookie de idade zero é removido
+/// pelo navegador de qualquer forma.
+pub fn cookie_sessao_expirado(secure: bool) -> Cookie<'static> {
+    let mut c = cookie_sessao(String::new(), secure);
     c.set_max_age(time::Duration::seconds(0));
     c
 }
 
-pub fn cookie_refresh_expirado() -> Cookie<'static> {
-    let mut c = cookie_refresh(String::new());
+pub fn cookie_refresh_expirado(secure: bool) -> Cookie<'static> {
+    let mut c = cookie_refresh(String::new(), secure);
     c.set_max_age(time::Duration::seconds(0));
     c
 }

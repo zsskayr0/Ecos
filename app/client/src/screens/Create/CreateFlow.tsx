@@ -4,6 +4,7 @@ import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { captura, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
 import { hojeISO } from "@/lib/format";
+import { taskTags } from "@/lib/task-fields";
 import { ChoicePopup } from "./ChoicePopup";
 import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
@@ -42,10 +43,7 @@ export interface CapturaDraft {
   statusTransacao: "efetivada" | "pendente";
   dataTransacao: string;
   observacoesTransacao: string;
-  /** Tarefa extras (user feedback: "tarefas tá muito simples") — surfaced
-   * directly in the create form, not buried behind a collapse, since
-   * prioridade/data/pasta are exactly the "most important" fields the
-   * feedback asked to keep on-the-go capture focused on. */
+  /** Optional task properties; mobile capture reveals these on demand. */
   dataTarefa: string;
   prioridadeTarefa: PrioridadeTarefa;
   tagsTarefa: string[];
@@ -59,7 +57,7 @@ export const DRAFT_VAZIO: CapturaDraft = {
   texto: "",
   corpo: "",
   tags: [],
-  duracaoMin: 30,
+  duracaoMin: 5,
   scheduledAt: null,
   valorCentavos: 0,
   categoriaId: null,
@@ -70,19 +68,16 @@ export const DRAFT_VAZIO: CapturaDraft = {
   statusTransacao: "efetivada",
   dataTransacao: hojeISO(),
   observacoesTransacao: "",
-  dataTarefa: hojeISO(),
-  prioridadeTarefa: "media",
+  dataTarefa: "",
+  prioridadeTarefa: "baixa",
   tagsTarefa: [],
   pastaTarefa: null,
   subtarefasTarefa: [],
 };
 
-/** `draft.scheduledAt` only ever carries a time-of-day (`TaskForm`'s time
- * input sets it against `new Date()`) — this swaps in the actually-chosen
- * date (`dataTarefa`, from the cyan `DatePicker`) before it goes over the
- * wire, so picking a future date doesn't get silently discarded. */
+/** Keep the explicitly selected date and local time together on the wire. */
 function scheduledAtReal(draft: CapturaDraft): string | undefined {
-  if (!draft.scheduledAt) return undefined;
+  if (!draft.scheduledAt || !draft.dataTarefa) return undefined;
   const hora = new Date(draft.scheduledAt);
   const [ano, mes, dia] = draft.dataTarefa.split("-").map(Number);
   return new Date(ano, mes - 1, dia, hora.getHours(), hora.getMinutes()).toISOString();
@@ -98,7 +93,8 @@ function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<strin
     corpo: draft.corpo.trim() || undefined,
     duration_min: draft.duracaoMin,
     scheduled_at: scheduledAtReal(draft),
-    tags: draft.tagsTarefa,
+    due_date: draft.dataTarefa || undefined,
+    tags: taskTags(draft.tagsTarefa, draft.corpo),
     prioridade: draft.prioridadeTarefa,
     pasta: draft.pastaTarefa ?? undefined,
     subtarefas: draft.subtarefasTarefa,

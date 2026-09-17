@@ -58,6 +58,7 @@ export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]
     id: String(item.id),
     titulo: String(item.titulo ?? "(sem título)"),
     preview: String(item.preview ?? ""),
+    corpo: String(item.corpo ?? ""),
     modo: "texto",
     tags: [],
     pastaId: null,
@@ -78,6 +79,7 @@ export function notaResumoParaView(
     id: string;
     titulo: string;
     pasta: string | null;
+    corpo?: string;
     espaco: string;
     criado_em: string;
     atualizado_em: string;
@@ -94,6 +96,7 @@ export function notaResumoParaView(
     id: n.id,
     titulo: n.titulo,
     preview: "",
+    corpo: n.corpo ?? "",
     modo: "texto",
     tags: n.tags,
     pastaId: n.pasta,

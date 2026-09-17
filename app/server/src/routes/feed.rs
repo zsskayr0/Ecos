@@ -103,7 +103,7 @@ async fn montar_card(state: &AppState, linha: &LinhaFeed) -> Result<serde_json::
                 .db
                 .with(move |conn| {
                     conn.query_row(
-                        "SELECT nf.titulo, substr(nf.corpo, 1, 240), n.criado_por, u.nome_usuario \
+                        "SELECT nf.titulo, nf.corpo, n.criado_por, u.nome_usuario \
                          FROM nota_fts nf JOIN nota n ON n.id = nf.id LEFT JOIN usuario u ON u.id = n.criado_por \
                          WHERE nf.id = ?1",
                         [&id],
@@ -115,7 +115,7 @@ async fn montar_card(state: &AppState, linha: &LinhaFeed) -> Result<serde_json::
             let (titulo, preview, criado_por, criado_por_nome) = dados.unwrap_or_default();
             Ok(serde_json::json!({
                 "id": linha.id, "tipo": "nota", "motivo": linha.motivo, "dado_bruto": dado_bruto,
-                "titulo": titulo, "preview": preview, "espaco": linha.espaco, "atualizado_em": linha.atualizado_em,
+                "titulo": titulo, "preview": preview.chars().take(240).collect::<String>(), "corpo": preview, "espaco": linha.espaco, "atualizado_em": linha.atualizado_em,
                 "criado_por": criado_por, "criado_por_nome": criado_por_nome,
             }))
         }

@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use crate::db::reindex::reindexar_tudo;
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
+use crate::routes::anexos_comuns::mime_por_extensao;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -34,40 +35,8 @@ fn anexos_dir(state: &AppState, tarefa_id: &str, caminho_relativo: &str) -> Path
     pai.join("_anexos").join(tarefa_id)
 }
 
-fn caminho_anexo_sem_colisao(dir: &std::path::Path, nome_arquivo: &str) -> PathBuf {
-    let direto = dir.join(nome_arquivo);
-    if !direto.exists() {
-        return direto;
-    }
-    let (base, extensao) = match nome_arquivo.rsplit_once('.') {
-        Some((b, e)) => (b, format!(".{e}")),
-        None => (nome_arquivo, String::new()),
-    };
-    let mut contador = 2u32;
-    loop {
-        let candidato = dir.join(format!("{base} ({contador}){extensao}"));
-        if !candidato.exists() {
-            return candidato;
-        }
-        contador += 1;
-    }
-}
-
-fn mime_por_extensao(nome_arquivo: &str) -> &'static str {
-    match nome_arquivo.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "pdf" => "application/pdf",
-        "txt" => "text/plain",
-        _ => "application/octet-stream",
-    }
-}
-
-fn eh_imagem(nome_arquivo: &str) -> bool {
-    mime_por_extensao(nome_arquivo).starts_with("image/")
-}
+// `caminho_anexo_sem_colisao`, `mime_por_extensao`, `eh_imagem` — ver
+// `routes::anexos_comuns` (compartilhado com o upload de anexo de Nota).
 
 /// Front-matter aceita `Subtarefa` completa; o payload de entrada permite
 /// `id` ausente (subtarefa nova, criada nesta chamada) — o servidor
@@ -128,11 +97,11 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                 params.push(Box::new(espaco.clone()));
             }
             if let Some(data_de) = q.data_de {
-                condicoes.push("date(t.scheduled_at) >= date(?)".to_string());
+                condicoes.push("date(COALESCE(t.scheduled_at, t.due_date)) >= date(?)".to_string());
                 params.push(Box::new(data_de.to_string()));
             }
             if let Some(data_ate) = q.data_ate {
-                condicoes.push("date(t.scheduled_at) <= date(?)".to_string());
+                condicoes.push("date(COALESCE(t.scheduled_at, t.due_date)) <= date(?)".to_string());
                 params.push(Box::new(data_ate.to_string()));
             }
             if let Some(c) = &cursor {
@@ -234,10 +203,10 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         titulo: payload.titulo.clone(),
         status: TarefaStatus::Pendente,
         scheduled_at: payload.scheduled_at,
-        duration_min: payload.duration_min,
+        duration_min: Some(payload.duration_min.unwrap_or(5)),
         due_date: payload.due_date,
         tags: payload.tags,
-        prioridade: payload.prioridade.unwrap_or_default(),
+        prioridade: payload.prioridade.unwrap_or(TarefaPrioridade::Baixa),
         subtarefas: subtarefas_de_payload(payload.subtarefas),
         espaco,
         evento_externo: EventoExternoRef::default(),
@@ -299,23 +268,50 @@ fn pasta_relativa_do_caminho(caminho_relativo: &str) -> Option<String> {
     Some(pai.to_string())
 }
 
-// Nota: `Option<T>` simples aqui — campo omitido = não mexe, campo presente
-// (mesmo `null`) também é tratado como "não mexe" pelos tipos de data
-// abaixo. Limpar `scheduled_at`/`duration_min`/`due_date` de volta pra
-// `null` via PATCH fica fora desta primeira versão (exigiria um esquema de
-// Option duplo dedicado); remover o agendamento por ora é recriar a Tarefa.
+// Omitted property preserves the value; explicit null clears it.
+fn nullable_patch<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+#[cfg(test)]
+mod nullable_task_dates_tests {
+    use super::AtualizarTarefaPayload;
+
+    #[test]
+    fn omitted_dates_are_preserved_and_null_dates_are_cleared() {
+        let omitted: AtualizarTarefaPayload = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(omitted.scheduled_at.is_none());
+        assert!(omitted.due_date.is_none());
+        let clear: AtualizarTarefaPayload = serde_json::from_str(r#"{"scheduled_at":null,"due_date":null}"#).unwrap();
+        assert_eq!(clear.scheduled_at, Some(None));
+        assert_eq!(clear.due_date, Some(None));
+    }
+
+    #[test]
+    fn explicit_dates_are_deserialized_and_invalid_values_are_rejected() {
+        let set: AtualizarTarefaPayload = serde_json::from_str(r#"{"scheduled_at":"2026-09-20T12:00:00Z","due_date":"2026-09-20"}"#).unwrap();
+        assert!(set.scheduled_at.unwrap().is_some());
+        assert_eq!(set.due_date.unwrap().unwrap().to_string(), "2026-09-20");
+        assert!(serde_json::from_str::<AtualizarTarefaPayload>(r#"{"due_date":"not-a-date"}"#).is_err());
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AtualizarTarefaPayload {
     #[serde(default)]
     pub titulo: Option<String>,
     #[serde(default)]
     pub pasta: Option<String>,
-    #[serde(default)]
-    pub scheduled_at: Option<chrono::DateTime<Utc>>,
+    #[serde(default, deserialize_with = "nullable_patch")]
+    pub scheduled_at: Option<Option<chrono::DateTime<Utc>>>,
     #[serde(default)]
     pub duration_min: Option<i64>,
-    #[serde(default)]
-    pub due_date: Option<NaiveDate>,
+    #[serde(default, deserialize_with = "nullable_patch")]
+    pub due_date: Option<Option<NaiveDate>>,
     #[serde(default)]
     pub corpo: Option<String>,
     #[serde(default)]
@@ -337,14 +333,14 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
     }
-    if payload.scheduled_at.is_some() {
-        fm.scheduled_at = payload.scheduled_at;
+    if let Some(scheduled_at) = payload.scheduled_at {
+        fm.scheduled_at = scheduled_at;
     }
     if payload.duration_min.is_some() {
         fm.duration_min = payload.duration_min;
     }
-    if payload.due_date.is_some() {
-        fm.due_date = payload.due_date;
+    if let Some(due_date) = payload.due_date {
+        fm.due_date = due_date;
     }
     if let Some(tags) = payload.tags {
         fm.tags = tags;
@@ -433,70 +429,42 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
 
 pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &id).await?;
-    std::fs::remove_file(absoluto(&state, &caminho_relativo))?;
+    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let dir_anexos = anexos_dir(&state, &id, &caminho_relativo);
-    if dir_anexos.is_dir() {
-        std::fs::remove_dir_all(&dir_anexos)?;
-    }
+    crate::routes::lixeira::mover(&state, &caminho_relativo, "tarefa", &doc.front_matter.titulo, &dir_anexos)?;
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-// --- Anexos (mesmo padrão de foto/desenho de Nota, arquitetura seção 1.3:
-// arquivo irmão do `.md` em `_anexos/<id>/`, referenciado no corpo via link
-// Markdown relativo — nunca BLOB em banco, isso é exclusivo do Cofre) ------
+// --- Anexos: ativos globais em `src/Media`, por link Markdown ------------
 
 /// Upload real (`multipart/form-data`, campo `arquivo`) — grava o arquivo
-/// em `_anexos/<id>/` e devolve o corpo já com a referência Markdown
+/// na biblioteca `src/Media/AAAA-MM/` e devolve o corpo já com a referência Markdown
 /// anexada ao final, pra o cliente atualizar o editor sem um segundo round
 /// trip. O `.md` nunca sabe que a referência existe além disso: é texto
 /// comum, editável/removível como qualquer outra linha do corpo.
-pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
-    let campo = multipart
-        .next_field()
-        .await
-        .map_err(|_| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "multipart inválido".into() }]))?
-        .ok_or_else(|| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "nenhum arquivo enviado".into() }]))?;
-
-    let nome_original = campo.file_name().unwrap_or("anexo").to_string();
-    let bytes = campo
-        .bytes()
-        .await
-        .map_err(|_| AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "falha ao ler o upload".into() }]))?;
-
-    const TAMANHO_MAXIMO_BYTES: usize = 8 * 1024 * 1024;
-    if bytes.len() > TAMANHO_MAXIMO_BYTES {
-        return Err(AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "maior que 8MB".into() }]));
-    }
-
+pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &id).await?;
-    let dir = anexos_dir(&state, &id, &caminho_relativo);
-    std::fs::create_dir_all(&dir)?;
-    // `sanitizar_nome_arquivo` só troca caracteres inválidos e apara
-    // pontos nas pontas — não mexe em pontos internos, então a extensão
-    // sobrevive intacta pra um nome normal como "foto.jpg".
-    let nome_final = naming::sanitizar_nome_arquivo(&nome_original);
-    let caminho_absoluto_anexo = caminho_anexo_sem_colisao(&dir, &nome_final);
-    let nome_no_disco = caminho_absoluto_anexo.file_name().unwrap_or_default().to_string_lossy().to_string();
-    std::fs::write(&caminho_absoluto_anexo, &bytes)?;
-
-    let referencia_relativa = format!("_anexos/{id}/{nome_no_disco}");
+    let midia = crate::routes::media::enviar_para_biblioteca(&state, multipart).await?;
+    let referencia_relativa = midia.caminho;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let fm = doc.front_matter;
-    let linha_md = if eh_imagem(&nome_no_disco) {
-        format!("![{nome_no_disco}]({referencia_relativa})")
+    let linha_md = if midia.mime.starts_with("image/") {
+        format!("![{}]({referencia_relativa})", midia.nome)
     } else {
-        format!("[{nome_no_disco}]({referencia_relativa})")
+        format!("[{}]({referencia_relativa})", midia.nome)
     };
     let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
     let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
     std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
+    reindexar_tudo(&state.db, &state.config.notes_root).await?;
 
     Ok(Json(serde_json::json!({
-        "nome_arquivo": nome_no_disco,
+        "nome_arquivo": midia.nome,
         "url_relativa": referencia_relativa,
-        "tamanho_bytes": bytes.len(),
+        "tamanho_bytes": midia.tamanho_bytes,
         "corpo": novo_corpo,
     })))
 }

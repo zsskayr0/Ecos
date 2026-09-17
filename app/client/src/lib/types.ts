@@ -51,6 +51,7 @@ export interface Dono {
 
 export interface Nota {
   tipo: "nota";
+  corpo?: string;
   id: string;
   titulo: string;
   preview: string;

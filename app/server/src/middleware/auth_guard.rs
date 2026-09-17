@@ -19,16 +19,33 @@ use crate::state::AppState;
 #[derive(Debug, Clone)]
 pub struct UsuarioAutenticado(pub String);
 
+/// Cookie primeiro (navegador, mesma origem — inclui o build servido pelo
+/// próprio `ecos-app`); `Authorization: Bearer` como alternativa pro
+/// cliente Tauri, cuja origem (`tauri://localhost` / `http://tauri.localhost`)
+/// nunca é a mesma do servidor — um cookie `SameSite=Strict` (seção 5.1)
+/// nunca acompanha essa requisição cross-origin, CORS não muda isso (CORS
+/// só decide se o navegador *permite ler a resposta*, não se ele *envia*
+/// um cookie Strict num pedido de outra origem). Sem essa alternativa o
+/// app nativo nunca ficaria logado, só o navegador.
+fn extrair_token(req: &Request<Body>) -> Option<String> {
+    if let Some(auth) = req.headers().get(axum::http::header::AUTHORIZATION) {
+        if let Ok(valor) = auth.to_str() {
+            if let Some(token) = valor.strip_prefix("Bearer ") {
+                return Some(token.to_string());
+            }
+        }
+    }
+    CookieJar::from_headers(req.headers())
+        .get(session::NOME_COOKIE_SESSAO)
+        .map(|c| c.value().to_string())
+}
+
 pub async fn exigir_sessao(
     State(state): State<AppState>,
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, AppError> {
-    let jar = CookieJar::from_headers(req.headers());
-    let token = jar
-        .get(session::NOME_COOKIE_SESSAO)
-        .map(|c| c.value().to_string())
-        .ok_or(AppError::new(ErrorCode::Unauthorized))?;
+    let token = extrair_token(&req).ok_or(AppError::new(ErrorCode::Unauthorized))?;
 
     let claims = session::validar_access_token(&token, &state.config.session_secret)
         .ok_or(AppError::new(ErrorCode::Unauthorized))?;

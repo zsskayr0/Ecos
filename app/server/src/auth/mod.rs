@@ -8,6 +8,7 @@ pub mod recovery;
 pub mod session;
 
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::{Extension, Json};
 use axum_extra::extract::cookie::CookieJar;
 use ecos_core::{new_id, ErrorCode};
@@ -119,7 +120,27 @@ pub struct LoginPayload {
     pub senha: String,
 }
 
-pub async fn login(State(state): State<AppState>, jar: CookieJar, Json(payload): Json<LoginPayload>) -> AppResult<(CookieJar, Json<serde_json::Value>)> {
+#[derive(Debug, Deserialize)]
+pub struct RefreshPayload {
+    /// O cliente desktop envia este valor apenas pelo comando Rust, depois de
+    /// lê-lo do Credential Manager. Navegadores usam o cookie HttpOnly.
+    pub refresh_token: Option<String>,
+}
+
+fn resposta_sessao(access_token: String, refresh_token: String, headers: &HeaderMap) -> serde_json::Value {
+    // Só o comando nativo precisa receber o refresh para guardá-lo no cofre
+    // do SO. Não o exponha à aplicação web normal.
+    let refresh_desktop = headers
+        .get("x-ecos-native-client")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v == "1");
+    serde_json::json!({
+        "access_token": access_token,
+        "refresh_token": if refresh_desktop { Some(refresh_token) } else { None::<String> },
+    })
+}
+
+pub async fn login(State(state): State<AppState>, headers: HeaderMap, jar: CookieJar, Json(payload): Json<LoginPayload>) -> AppResult<(CookieJar, Json<serde_json::Value>)> {
     let nome_usuario = payload.usuario.trim().to_string();
     let linha: Option<(String, String)> = state
         .db
@@ -159,15 +180,62 @@ pub async fn login(State(state): State<AppState>, jar: CookieJar, Json(payload):
         .await?;
 
     let jar = jar
-        .add(session::cookie_sessao(access))
-        .add(session::cookie_refresh(refresh_valor));
+        .add(session::cookie_sessao(access.clone(), state.config.cookie_secure))
+        .add(session::cookie_refresh(refresh_valor.clone(), state.config.cookie_secure));
 
-    Ok((jar, Json(serde_json::json!({ "usuario_id": usuario_id }))))
+    // `access_token` no corpo além do cookie — o navegador ignora esse
+    // campo e usa o cookie normalmente; o cliente Tauri (sem cookie
+    // cross-origin viável, ver `auth_guard::extrair_token`) guarda isto e
+    // manda como `Authorization: Bearer`.
+    let mut resposta = resposta_sessao(access, refresh_valor, &headers);
+    resposta["usuario_id"] = serde_json::Value::String(usuario_id);
+    Ok((jar, Json(resposta)))
 }
 
-pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> AppResult<CookieJar> {
-    if let Some(refresh) = jar.get(session::NOME_COOKIE_REFRESH) {
-        let hash = session::hash_refresh_token(refresh.value());
+/// Renova e rotaciona um refresh token. A atualização condicional garante
+/// que um refresh antigo só pode ser usado uma vez, inclusive sob corrida.
+pub async fn refresh(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    payload: Option<Json<RefreshPayload>>,
+) -> AppResult<(CookieJar, Json<serde_json::Value>)> {
+    let refresh_atual = payload
+        .and_then(|Json(p)| p.refresh_token)
+        .or_else(|| jar.get(session::NOME_COOKIE_REFRESH).map(|c| c.value().to_string()));
+    let Some(refresh_atual) = refresh_atual.filter(|v| !v.is_empty()) else {
+        return Err(AppError::new(ErrorCode::Unauthorized));
+    };
+    let hash_atual = session::hash_refresh_token(&refresh_atual);
+    let novo_refresh = session::gerar_refresh_token();
+    let novo_hash = session::hash_refresh_token(&novo_refresh);
+    let agora = chrono::Utc::now();
+    let expira_em = (agora + chrono::Duration::days(session::DURACAO_REFRESH_DIAS)).to_rfc3339();
+    let usuario_id: Option<String> = state.db.with(move |conn| {
+        let mut stmt = conn.prepare(
+            "UPDATE sessao SET refresh_token_hash = ?1, expira_em = ?2 \
+             WHERE refresh_token_hash = ?3 AND revogado_em IS NULL AND expira_em > ?4 \
+             RETURNING usuario_id",
+        )?;
+        stmt.query_row(rusqlite::params![novo_hash, expira_em, hash_atual, agora.to_rfc3339()], |r| r.get(0)).optional()
+    }).await?;
+    let Some(usuario_id) = usuario_id else {
+        return Err(AppError::new(ErrorCode::Unauthorized));
+    };
+    let access = session::emitir_access_token(&usuario_id, &state.config.session_secret)
+        .map_err(|_| AppError::new(ErrorCode::InternalError))?;
+    let novo_jar = jar
+        .add(session::cookie_sessao(access.clone(), state.config.cookie_secure))
+        .add(session::cookie_refresh(novo_refresh.clone(), state.config.cookie_secure));
+    Ok((novo_jar, Json(resposta_sessao(access, novo_refresh, &headers))))
+}
+
+pub async fn logout(State(state): State<AppState>, jar: CookieJar, payload: Option<Json<RefreshPayload>>) -> AppResult<CookieJar> {
+    let refresh = payload
+        .and_then(|Json(p)| p.refresh_token)
+        .or_else(|| jar.get(session::NOME_COOKIE_REFRESH).map(|c| c.value().to_string()));
+    if let Some(refresh) = refresh {
+        let hash = session::hash_refresh_token(&refresh);
         state
             .db
             .with(move |conn| {
@@ -179,8 +247,8 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> AppResult<
             .await?;
     }
     Ok(jar
-        .add(session::cookie_sessao_expirado())
-        .add(session::cookie_refresh_expirado()))
+        .add(session::cookie_sessao_expirado(state.config.cookie_secure))
+        .add(session::cookie_refresh_expirado(state.config.cookie_secure)))
 }
 
 #[derive(Debug, Deserialize)]
@@ -343,6 +411,8 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
             tx.commit()
         })
         .await?;
-    let jar = jar.add(session::cookie_sessao_expirado()).add(session::cookie_refresh_expirado());
+    let jar = jar
+        .add(session::cookie_sessao_expirado(state.config.cookie_secure))
+        .add(session::cookie_refresh_expirado(state.config.cookie_secure));
     Ok((jar, Json(serde_json::json!({ "ok": true }))))
 }

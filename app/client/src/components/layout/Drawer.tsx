@@ -1,4 +1,4 @@
-import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks } from "lucide-react";
+import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks, Library, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
@@ -26,7 +26,7 @@ export function Drawer() {
           on the right) — the order in the flex is what decides which
           side the drawer opens from; reversed, it opened from the
           right. */}
-      <div className="flex h-full w-[82%] max-w-xs flex-col gap-6 bg-surface-1 p-5 ecos-fade-in">
+      <div className="flex h-full w-[82%] max-w-xs flex-col gap-6 overflow-y-auto bg-surface-1 p-5 ecos-fade-in">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={44} />
@@ -59,6 +59,14 @@ export function Drawer() {
           <ListChecks size={18} strokeWidth={1.75} className="text-cyan" />
           Tarefas
         </button>
+        <button
+          onClick={() => ir("/media")}
+          className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"
+        >
+          <Library size={18} strokeWidth={1.75} className="text-steel-300" />
+          Media
+        </button>
+        <button onClick={() => ir("/lixeira")} className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"><Trash2 size={18} strokeWidth={1.75} className="text-steel-300" />Lixeira</button>
 
         <div>
           <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Equipes</p>

@@ -76,7 +76,7 @@ export function SearchScreen() {
   );
 
   return (
-    <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)]">
+    <div className="px-4 pt-1">
       <div className="mb-5 flex items-center gap-2">
         <button onClick={() => navigate(-1)} className="text-text-muted">
           <ChevronLeft size={22} />

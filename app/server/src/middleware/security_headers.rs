@@ -44,5 +44,5 @@ pub fn cors_mesma_origem() -> CorsLayer {
         .allow_origin(AllowOrigin::list(origens_tauri))
         .allow_credentials(true)
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::PUT, Method::DELETE])
-        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
 }

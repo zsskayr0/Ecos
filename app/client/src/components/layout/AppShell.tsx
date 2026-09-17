@@ -5,7 +5,7 @@ import { Fab } from "./Fab";
 import { Drawer } from "./Drawer";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
 
-const ROTAS_BASE_COM_TOPBAR = ["/feed", "/notas", "/agenda", "/cofre", "/tarefas"];
+const ROTAS_BASE_COM_TOPBAR = ["/feed", "/notas", "/agenda", "/cofre", "/tarefas", "/media", "/busca", "/lixeira"];
 /** Folder-browsing sub-routes keep the topbar too (avatar/notifications
  * shouldn't disappear just because you went one level deeper) — but not
  * `/pasta/nova` (a form screen with its own back+cancel header) and not
@@ -19,19 +19,21 @@ function temTopbar(pathname: string): boolean {
   return ROTAS_BASE_COM_TOPBAR.includes(pathname) || REGEX_PASTA_COM_TOPBAR.test(pathname);
 }
 
-/** App shell — topbar+nav+FAB on the browsing screens (Feed/Notas/Agenda/Cofre/Tarefas, folders included); Busca and detail screens have their own header. */
+/** O cabeçalho compartilhado acompanha as telas de navegação e pastas.
+ * Menus, perfis e formulários usam seus próprios cabeçalhos. */
 export function AppShell() {
   const location = useLocation();
   const comTopbar = temTopbar(location.pathname);
+  const documentoAberto = location.pathname.startsWith("/tarefa/") || location.pathname.startsWith("/notas/nota/");
 
   return (
-    <div className="mx-auto min-h-full max-w-md bg-base">
+    <div className={`mx-auto min-h-full bg-base ${documentoAberto ? "max-w-6xl" : "max-w-md"}`}>
       {comTopbar && <Topbar />}
       <main className="pb-nav-safe">
         <Outlet />
       </main>
       <BottomNav />
-      <Fab />
+      {!documentoAberto && <Fab />}
       <Drawer />
       <CreateFlow />
     </div>

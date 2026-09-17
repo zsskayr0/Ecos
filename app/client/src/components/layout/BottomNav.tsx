@@ -17,7 +17,7 @@ const ITENS = [
 
 export function BottomNav() {
   return (
-    <nav className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-md">
+    <nav className="fixed inset-x-4 bottom-[calc(16px+var(--ecos-safe-bottom))] z-40 mx-auto max-w-md">
       {/* py-3 (12px) + 2.5px on each side = the bar is 5px thicker overall. */}
       <div className="flex items-center justify-between rounded-[28px] border border-border/60 bg-surface-1/70 px-6 py-[14.5px] shadow-nav backdrop-blur-nav">
         {ITENS.map(({ to, label, Icon }) => (

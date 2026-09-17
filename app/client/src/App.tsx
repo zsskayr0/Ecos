@@ -33,6 +33,8 @@ import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
+import { MediaScreen } from "@/screens/Media/MediaScreen";
+import { TrashScreen } from "@/screens/Trash/TrashScreen";
 
 /** Real authentication gate (section 5.1) — without it, nothing below actually talks to `ecos-app`. */
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -94,6 +96,8 @@ export default function App() {
                   <Route path="/tarefas" element={<TaskFoldersRootScreen />} />
                   <Route path="/tarefas/pasta/nova" element={<TaskFolderCreateScreen />} />
                   <Route path="/tarefas/pasta/:pastaId" element={<TaskFolderScreen />} />
+                  <Route path="/media" element={<MediaScreen />} />
+                  <Route path="/lixeira" element={<TrashScreen />} />
 
                   <Route path="/cofre" element={<VaultScreen />} />
                   <Route path="/cofre/transacao/:id" element={<TransactionDetailScreen />} />

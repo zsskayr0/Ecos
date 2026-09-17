@@ -45,9 +45,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const p = await auth.perfil();
       setPerfil(p);
       setStatus("autenticado");
-    } catch {
-      setPerfil(null);
-      setStatus("deslogado");
+    } catch (e) {
+      // Uma perda temporária de rede não deve apagar uma sessão válida nem
+      // mandar a pessoa de volta ao login. Apenas 401 significa credencial
+      // inválida depois da tentativa de renovação feita pelo cliente HTTP.
+      if (e instanceof ApiError && e.status === 401) {
+        setPerfil(null);
+        setStatus("deslogado");
+      } else {
+        setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
+      }
     }
   }, []);
 
