@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Folder, FolderPlus, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { pastas, tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { tarefaResumoParaView } from "@/lib/adapters";
-import { TaskCard } from "@/components/cards/TaskCard";
-import { TaskListRow } from "@/components/cards/TaskListRow";
+import { ListaDeItens } from "@/components/views/ListaDeItens";
+import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
@@ -27,6 +27,7 @@ export function TaskFoldersRootScreen() {
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [soltas, setSoltas] = useState<TarefaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [ordem, setOrdem] = useState<"criacao" | "titulo" | "prioridade" | "prazo">("criacao");
 
   useEffect(() => {
     // `pasta: ""` is the loose-items filter for Tarefa (`COALESCE(pasta_id,
@@ -44,7 +45,7 @@ export function TaskFoldersRootScreen() {
     <div className="px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Pastas de Tarefas</h1>
-        <ViewModeToggle modo={modo} onMudar={setModo} />
+        <div className="flex items-center gap-2"><label className="sr-only" htmlFor="ordem-tarefas">Ordenar tarefas</label><select id="ordem-tarefas" value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="h-9 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-secondary"><option value="criacao">Criação recente</option><option value="titulo">Título A–Z</option><option value="prioridade">Prioridade</option><option value="prazo">Prazo</option></select><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {erro && (
@@ -54,31 +55,16 @@ export function TaskFoldersRootScreen() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {subpastas?.map((p) => (
-          <button
-            key={p.caminho}
-            onClick={() => navigate(`/tarefas/pasta/${encodeURIComponent(p.caminho)}`)}
-            className="flex flex-col items-start gap-3 rounded-card bg-surface-1 p-4 text-left"
-          >
-            <Folder size={28} strokeWidth={1.5} className="text-cyan" />
-            <div>
-              <p className="font-body text-[15px] font-semibold text-text-primary">{p.nome}</p>
-              <p className="text-xs text-text-muted">{p.contagem_itens} itens</p>
-            </div>
-          </button>
-        ))}
-        <button
-          onClick={() => navigate("/tarefas/pasta/nova")}
-          className="flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-dashed border-border text-text-muted"
-        >
-          <FolderPlus size={22} strokeWidth={1.5} />
-          <span className="text-xs font-medium">Nova pasta</span>
-        </button>
-      </div>
+      <PastasGrade
+        chave="tarefas"
+        corIcone="text-cyan"
+        pastas={subpastas ?? []}
+        aoAbrir={(p) => navigate(`/tarefas/pasta/${encodeURIComponent(p.caminho)}`)}
+        aoCriar={() => navigate("/tarefas/pasta/nova")}
+      />
 
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Sem pasta</p>
-      <div className={modo === "cards" ? "flex flex-col gap-3" : "flex flex-col gap-2"}>
+      <div>
         {soltas === null ? (
           <p className="py-6 text-center text-sm text-text-muted">Carregando...</p>
         ) : soltas.length === 0 ? (
@@ -86,13 +72,12 @@ export function TaskFoldersRootScreen() {
             Nenhuma tarefa solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          soltas.map((t) =>
-            modo === "cards" ? (
-              <TaskCard key={t.id} tarefa={tarefaResumoParaView(t, equipes, perfil)} />
-            ) : (
-              <TaskListRow key={t.id} tarefa={tarefaResumoParaView(t, equipes, perfil)} />
-            ),
-          )
+          <ListaDeItens chave="tarefas" mostrarCriada modo={modo} itens={soltas.slice().sort((a, b) => {
+            if (ordem === "titulo") return a.titulo.localeCompare(b.titulo, "pt-BR");
+            if (ordem === "prioridade") return ({ alta: 0, media: 1, baixa: 2 }[a.prioridade] - { alta: 0, media: 1, baixa: 2 }[b.prioridade]) || b.criado_em.localeCompare(a.criado_em);
+            if (ordem === "prazo") return (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31");
+            return b.criado_em.localeCompare(a.criado_em);
+          }).map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

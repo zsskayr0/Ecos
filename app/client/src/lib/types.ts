@@ -84,6 +84,12 @@ export interface Tarefa {
   dono: Dono;
   encaixadaNaAgenda: boolean;
   prioridade: PrioridadeTarefa;
+  /** Última edição (o servidor cai pra data de criação em tarefas nunca editadas). */
+  atualizadoEm?: string;
+  criadoEm?: string;
+  /** Pasta e tags só vêm da listagem de tarefas (o feed não as traz). */
+  pasta?: string | null;
+  tags?: string[];
 }
 
 export type FeedItem = Nota | Tarefa;

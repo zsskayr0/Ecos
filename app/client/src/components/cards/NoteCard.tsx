@@ -1,6 +1,7 @@
-import { useNavigate } from "react-router-dom";
+import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Nota } from "@/lib/types";
-import { formatTempoRelativo, MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format";
+import { MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format";
+import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { Avatar } from "@/components/common/Avatar";
 import { useState } from "react";
 import { Paperclip } from "lucide-react";
@@ -12,7 +13,7 @@ import { anexosDaNota, previewDaNota } from "@/lib/note-media";
  * footer when it's from a Team.
  */
 export function NoteCard({ nota }: { nota: Nota }) {
-  const navigate = useNavigate();
+  const abrirDocumento = useAbrirDocumento();
   const cores = MOTIVO_CLASSES[nota.motivoRanking];
   const anexos = anexosDaNota(nota.corpo ?? "", nota.id);
   const imagem = anexos.find((a) => a.imagem);
@@ -21,7 +22,7 @@ export function NoteCard({ nota }: { nota: Nota }) {
 
   return (
     <button
-      onClick={() => navigate(`/notas/nota/${nota.id}`)}
+      onClick={(e) => abrirDocumento(`/notas/nota/${nota.id}`, e)}
       className={`flex w-full flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${cores.border}`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -29,7 +30,6 @@ export function NoteCard({ nota }: { nota: Nota }) {
           {MOTIVO_LABEL[nota.motivoRanking]}
           {nota.motivoRanking === "orfa" && nota.diasOrfa ? ` · ${nota.diasOrfa}d` : ""}
         </span>
-        <span className="shrink-0 text-xs text-text-muted">{formatTempoRelativo(nota.atualizadoEm)}</span>
       </div>
 
       <p className="font-body text-[15px] font-semibold leading-snug text-text-primary">{nota.titulo}</p>
@@ -47,6 +47,7 @@ export function NoteCard({ nota }: { nota: Nota }) {
         <span className="text-xs text-text-muted">
           {nota.dono.nome}
           {nota.origemEquipe && ` · ${nota.origemEquipe.nome}`}
+          {nota.atualizadoEm && <> · <TempoEdicao iso={nota.atualizadoEm} /></>}
         </span>
       </div>
     </button>

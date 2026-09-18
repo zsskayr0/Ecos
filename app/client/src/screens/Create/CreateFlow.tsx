@@ -1,10 +1,11 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { captura, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
+import { notas, tarefas, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
 import { hojeISO } from "@/lib/format";
 import { taskTags } from "@/lib/task-fields";
+import { pastaDoCaminho, type PastaContexto } from "@/lib/pasta-contexto";
 import { ChoicePopup } from "./ChoicePopup";
 import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
@@ -49,6 +50,9 @@ export interface CapturaDraft {
   tagsTarefa: string[];
   pastaTarefa: string | null;
   subtarefasTarefa: SubtarefaInput[];
+  /** Pasta e tags escolhidas na Nota (as `#hashtags` do texto são somadas ao salvar). */
+  pastaNota: string | null;
+  tagsNota: string[];
 }
 
 export type SetDraft = Dispatch<SetStateAction<CapturaDraft>>;
@@ -73,7 +77,15 @@ export const DRAFT_VAZIO: CapturaDraft = {
   tagsTarefa: [],
   pastaTarefa: null,
   subtarefasTarefa: [],
+  pastaNota: null,
+  tagsNota: [],
 };
+
+const CHAVE_RASCUNHO = "ecos.capture-draft.v1";
+function lerRascunho(): CapturaDraft {
+  try { return { ...DRAFT_VAZIO, ...JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? "null") }; }
+  catch { return DRAFT_VAZIO; }
+}
 
 /** Keep the explicitly selected date and local time together on the wire. */
 function scheduledAtReal(draft: CapturaDraft): string | undefined {
@@ -86,7 +98,12 @@ function scheduledAtReal(draft: CapturaDraft): string | undefined {
 /** Builds the real `POST /api/v1/captura` payload (section 11.3) — note/task only (see GAP-13 in `lib/api.ts`). */
 function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<string, unknown> {
   if (tipo === "nota") {
-    return { titulo: draft.texto.trim(), corpo: draft.corpo };
+    return {
+      titulo: draft.texto.trim(),
+      corpo: draft.corpo,
+      tags: taskTags(draft.tagsNota, draft.corpo),
+      pasta: draft.pastaNota ?? undefined,
+    };
   }
   return {
     titulo: draft.texto.trim(),
@@ -101,20 +118,47 @@ function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<strin
   };
 }
 
-export function CreateFlow() {
+export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
+  embedded?: boolean;
+  onTitleChange?: (title: string) => void;
+  /** No desktop as rotas das abas não são a do app: o shell diz em que pasta a pessoa está (`null` = em nenhuma). No mobile vem da rota. */
+  pastaContexto?: PastaContexto | null;
+}) {
   const { capturaAberta, fecharCaptura, trocarTipoCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
-  const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
+  const [draft, setDraft] = useState<CapturaDraft>(lerRascunho);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
+  const ultimoEnvio = useRef<string | null>(null);
+  const envioEmCurso = useRef(false);
+
+  useEffect(() => { onTitleChange?.(draft.texto.trim()); }, [draft.texto, onTitleChange]);
+  useEffect(() => { try { localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(draft)); } catch { /* cache indisponível */ } }, [draft]);
+
+  // Dentro de uma pasta, a Tarefa/Nota nova já nasce nela — uma vez por captura, para não brigar com a escolha da pessoa.
+  const contexto = pastaContexto !== undefined ? pastaContexto : pastaDoCaminho(location.pathname);
+  const padraoAplicado = useRef({ nota: false, tarefa: false });
+  useEffect(() => {
+    if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
+    if (padraoAplicado.current[capturaAberta]) return;
+    padraoAplicado.current[capturaAberta] = true;
+    if (contexto?.tipo !== capturaAberta) return;
+    const pasta = contexto.pasta;
+    setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
+  }, [capturaAberta, contexto?.tipo, contexto?.pasta]);
 
   if (!capturaAberta) return null;
 
   function fecharTudo() {
+    padraoAplicado.current = { nota: false, tarefa: false };
     fecharCaptura();
     setDraft(DRAFT_VAZIO);
+    setItemCriado(null);
+    ultimoEnvio.current = null;
+    try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
     setErro(null);
   }
 
@@ -122,7 +166,7 @@ export function CreateFlow() {
     return <ChoicePopup onEscolher={(tipo: TipoCaptura) => trocarTipoCaptura(tipo)} onFechar={fecharTudo} />;
   }
 
-  async function salvar() {
+  const salvar = useCallback(async () => {
     const tipo = capturaAberta as TipoCaptura;
     setErro(null);
     if (!draft.texto.trim()) {
@@ -133,6 +177,8 @@ export function CreateFlow() {
       setErro("O valor da transação deve ser maior que zero.");
       return;
     }
+    if (envioEmCurso.current) return;
+    envioEmCurso.current = true;
     setSalvando(true);
     try {
       if (tipo === "transacao") {
@@ -153,25 +199,50 @@ export function CreateFlow() {
           observacoes: draft.observacoesTransacao.trim() || undefined,
           data: draft.dataTransacao,
         });
+      } else if (tipo === "nota") {
+        const dados = payloadReal("nota", draft);
+        if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
+        else {
+          const criado = await notas.criar(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] });
+          setItemCriado({ tipo: "nota", id: criado.id });
+        }
       } else {
-        await captura.capturar(tipo, payloadReal(tipo, draft));
+        const dados = payloadReal("tarefa", draft);
+        if (itemCriado?.tipo === "tarefa") await tarefas.atualizar(itemCriado.id, dados);
+        else {
+          const criado = await tarefas.criar(dados as unknown as Parameters<typeof tarefas.criar>[0]);
+          setItemCriado({ tipo: "tarefa", id: criado.id });
+        }
       }
       notificar();
+      ultimoEnvio.current = JSON.stringify({ tipo, draft });
+      if (tipo === "nota" || tipo === "tarefa") {
+        try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
+        return;
+      }
       fecharTudo();
-      // Immediate payoff: if the Capture happened somewhere other than
-      // the list itself (e.g. Agenda creating a Tarefa), the user already
-      // sees the result without having to navigate manually.
-      if (tipo === "nota" && location.pathname !== "/feed") navigate("/feed");
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível salvar. O ecos-app está rodando?");
     } finally {
+      envioEmCurso.current = false;
       setSalvando(false);
     }
-  }
+  }, [capturaAberta, draft, fecharTudo, itemCriado, location.pathname, navigate, notificar]);
+
+  // A primeira pausa após digitar cria o item; as pausas seguintes o atualizam.
+  // O rascunho local é escrito imediatamente, portanto fechar a janela não perde texto.
+  useEffect(() => {
+    if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
+    if (!draft.texto.trim()) return;
+    const chave = JSON.stringify({ tipo: capturaAberta, draft });
+    if (ultimoEnvio.current === chave || salvando) return;
+    const timer = window.setTimeout(() => { void salvar(); }, 600);
+    return () => window.clearTimeout(timer);
+  }, [capturaAberta, draft, salvar, salvando]);
 
   return (
-    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={fecharTudo} erro={erro}>
+    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={fecharTudo} erro={erro} embedded={embedded}>
       {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}

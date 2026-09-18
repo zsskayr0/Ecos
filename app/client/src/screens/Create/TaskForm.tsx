@@ -1,4 +1,6 @@
 import { TaskComposer } from "@/components/editor/TaskComposer";
+import { TaskPriority } from "@/components/common/TaskPriority";
+import { Cloud } from "lucide-react";
 import { taskScheduledAt, type TaskFields } from "@/lib/task-fields";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
@@ -14,10 +16,9 @@ function fieldsFromDraft(draft: CapturaDraft): TaskFields {
 export function TaskForm({ draft, setDraft, onSalvar, salvando }: {
   draft: CapturaDraft; setDraft: SetDraft; onSalvar: () => void; salvando?: boolean;
 }) {
-  return <div className="min-w-0 md:pt-4">
-    <h1 className="mb-2 font-display text-2xl text-text-primary">Nova tarefa</h1>
-    <p className="mb-6 hidden text-sm text-text-secondary md:block">Capture uma ideia. Desenvolva quando precisar.</p>
-    <div className="pt-5 md:pt-0"><TaskComposer value={fieldsFromDraft(draft)} saving={salvando} onSave={onSalvar}
+  return <div className="min-w-0 py-5 md:pt-4">
+    <TaskComposer value={fieldsFromDraft(draft)} saving={salvando} onSave={onSalvar} showPriority={false}
+      titleActions={<TaskPriority compact value={draft.prioridadeTarefa} onChange={(prioridade) => setDraft((previous) => ({ ...previous, prioridadeTarefa: prioridade }))} disabled={salvando} />}
       onChange={(patch) => setDraft((previous) => {
         const value = { ...fieldsFromDraft(previous), ...patch };
         return {
@@ -26,6 +27,7 @@ export function TaskForm({ draft, setDraft, onSalvar, salvando }: {
           duracaoMin: value.duracao, corpo: value.corpo, tagsTarefa: value.tags,
           pastaTarefa: value.pasta, subtarefasTarefa: value.subtarefas,
         };
-      })} /></div>
+      })} />
+    <p className="mt-3 flex items-center gap-2 text-sm text-text-secondary"><Cloud size={16} className="text-steel-300" />{salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}</p>
   </div>;
 }

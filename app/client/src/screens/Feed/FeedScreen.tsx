@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, AlertTriangle } from "lucide-react";
-import { NoteCard } from "@/components/cards/NoteCard";
-import { TaskCard } from "@/components/cards/TaskCard";
+import { ListaDeItens } from "@/components/views/ListaDeItens";
+import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PullToRefresh } from "@/components/common/PullToRefresh";
 import { Rss } from "lucide-react";
@@ -41,6 +41,7 @@ export function FeedScreen() {
   const { versao } = useRefreshBus();
   const [itens, setItens] = useState<FeedItem[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [visualizacao, setVisualizacao] = useModoVisualizacao("feed");
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -49,7 +50,7 @@ export function FeedScreen() {
       const mapeados = pagina.items
         .map((item): FeedItem | null => {
           if (item.tipo === "nota") return notaDoFeed(item, equipes, perfil);
-          if (item.tipo === "tarefa_encaixada") return tarefaDoFeed(item, perfil);
+          if (item.tipo === "tarefa_encaixada") return tarefaDoFeed(item, equipes, perfil);
           return null; // "transacao" and other types have no card of their own in the Feed yet
         })
         .filter((x): x is FeedItem => x !== null);
@@ -69,6 +70,7 @@ export function FeedScreen() {
   return (
     <PullToRefresh onRefresh={carregar}>
       <div className="flex flex-col gap-3 px-4 pt-1">
+        <div className="flex items-center justify-end"><ViewModeToggle modo={visualizacao} onMudar={setVisualizacao} /></div>
         {filtroEquipeId && (
           <button
             onClick={() => navigate("/feed")}
@@ -95,9 +97,7 @@ export function FeedScreen() {
             subtitle="Toque no + e capture a primeira coisa que estiver na sua cabeça agora."
           />
         ) : (
-          itens.map((item) =>
-            item.tipo === "nota" ? <NoteCard key={item.id} nota={item} /> : <TaskCard key={item.id} tarefa={item} />,
-          )
+          <ListaDeItens itens={itens} modo={visualizacao} chave="feed" mostrarCriada mostrarMotivo />
         )}
       </div>
     </PullToRefresh>

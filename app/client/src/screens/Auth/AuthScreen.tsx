@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Copy, KeyRound } from "lucide-react";
+import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
+import logoIcone from "@/assets/brand/ecos-icone.svg";
 
 /**
  * GAP-07: not one of the 12 screens in the front-end spec (which assumes
@@ -27,6 +28,7 @@ export function AuthScreen() {
   const [primeiroNome, setPrimeiroNome] = useState("");
   const [sobrenome, setSobrenome] = useState("");
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroLocal, setErroLocal] = useState<string | null>(null);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
@@ -101,94 +103,189 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col justify-center gap-8 px-6 py-10">
-      <div className="text-center">
-        <p className="font-display text-4xl text-text-primary">Ecos</p>
-        <p className="mt-1 text-sm text-text-secondary">Seu cofre vivo de notas, tempo e dinheiro.</p>
-      </div>
+    <div className="min-h-screen bg-base lg:grid lg:h-screen lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)] lg:overflow-hidden">
+      <AuthArt />
 
-      {instanciaVazia ? (
-        <p className="text-center text-sm text-text-secondary">
-          Esta é uma instância nova — crie a primeira conta, que se torna a administradora.
-        </p>
-      ) : (
-        <div className="flex rounded-pill bg-surface-2 p-1 self-center">
-          <button
-            onClick={() => setModo("login")}
-            className={`rounded-pill px-5 py-2 text-sm font-medium ${modo === "login" ? "bg-surface-3 text-text-primary" : "text-text-muted"}`}
-          >
-            Entrar
-          </button>
-          <button
-            onClick={() => setModo("registro")}
-            className={`rounded-pill px-5 py-2 text-sm font-medium ${modo === "registro" ? "bg-surface-3 text-text-primary" : "text-text-muted"}`}
-          >
-            Criar conta
-          </button>
-        </div>
-      )}
-
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        {modo === "registro" && (
-          <div className="flex gap-3">
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Nome</span>
-              <input value={primeiroNome} onChange={(e) => setPrimeiroNome(e.target.value)} className="ecos-input" autoFocus />
-            </label>
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Sobrenome</span>
-              <input value={sobrenome} onChange={(e) => setSobrenome(e.target.value)} className="ecos-input" />
-            </label>
+      {/* Só esta coluna rola (cadastro é mais alto que o login) — a arte fica fixa na altura da janela. */}
+      <div className="flex min-h-screen flex-col overflow-y-auto px-6 py-10 lg:min-h-0 lg:px-14">
+        <div className="mx-auto my-auto flex w-full max-w-sm flex-col gap-7">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <img src={logoIcone} alt="" className="h-16 w-16" />
+            <p className="font-display text-3xl font-bold text-text-primary">Ecos</p>
           </div>
-        )}
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Usuário</span>
-          <input value={nomeUsuario} onChange={(e) => setNomeUsuario(e.target.value)} className="ecos-input" autoFocus={modo === "login"} />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Senha</span>
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className="ecos-input" />
-          {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 8 caracteres.</span>}
-        </label>
 
-        {bloqueadoAte !== null ? (
-          <div className="flex flex-col items-center gap-1 rounded-2xl border border-error/40 bg-error/10 p-4 text-center">
-            <AlertTriangle size={18} className="text-error" strokeWidth={1.75} />
-            <p className="text-sm text-error">Muitas tentativas em pouco tempo.</p>
-            <p className="font-mono-value text-2xl tabular-nums text-text-primary">
-              {String(Math.floor(restanteSegundos / 60)).padStart(2, "0")}:{String(restanteSegundos % 60).padStart(2, "0")}
+          {instanciaVazia ? (
+            <p className="text-center text-sm text-text-secondary">
+              Esta é uma instância nova — crie a primeira conta, que se torna a administradora.
             </p>
-            <p className="text-xs text-text-muted">Tente de novo quando o contador zerar.</p>
-          </div>
-        ) : (
-          erroLocal && (
-            <div className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-              <span>
-                {erroLocal}
-                {precisaConvite && " Peça um convite de Equipe pra alguém que já tem conta nesta instância."}
-              </span>
+          ) : (
+            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-surface-1 p-1">
+              {(["login", "registro"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setModo(m)}
+                  className={`rounded-xl py-2.5 text-sm font-semibold transition-colors ${
+                    modo === m ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-secondary"
+                  }`}
+                >
+                  {m === "login" ? "Entrar" : "Criar conta"}
+                </button>
+              ))}
             </div>
-          )
-        )}
+          )}
 
-        <button
-          type="submit"
-          disabled={
-            carregando ||
-            bloqueadoAte !== null ||
-            !nomeUsuario.trim() ||
-            senha.length < (modo === "registro" ? 8 : 1) ||
-            (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim()))
-          }
-          className="mt-2 rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
-        >
-          {carregando ? "Um momento..." : modo === "login" ? "Entrar" : "Criar conta"}
-        </button>
-      </form>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4">
+            {modo === "registro" && (
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-2">
+                  <span className="text-sm font-semibold text-text-primary">Nome</span>
+                  <input value={primeiroNome} onChange={(e) => setPrimeiroNome(e.target.value)} className="ecos-input" placeholder="Seu nome" autoFocus />
+                </label>
+                <label className="flex flex-1 flex-col gap-2">
+                  <span className="text-sm font-semibold text-text-primary">Sobrenome</span>
+                  <input value={sobrenome} onChange={(e) => setSobrenome(e.target.value)} className="ecos-input" placeholder="Sobrenome" />
+                </label>
+              </div>
+            )}
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-semibold text-text-primary">Usuário</span>
+              <input
+                value={nomeUsuario}
+                onChange={(e) => setNomeUsuario(e.target.value)}
+                className="ecos-input"
+                placeholder="Seu usuário"
+                autoComplete="username"
+                autoFocus={modo === "login"}
+              />
+            </label>
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-semibold text-text-primary">Senha</span>
+              <div className="relative">
+                <input
+                  type={mostrarSenha ? "text" : "password"}
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="ecos-input pr-12"
+                  placeholder="Sua senha"
+                  autoComplete={modo === "login" ? "current-password" : "new-password"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenha((v) => !v)}
+                  aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                >
+                  {mostrarSenha ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
+                </button>
+              </div>
+              {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 8 caracteres.</span>}
+            </label>
 
-      <p className="text-center text-xs text-text-muted">
-        Identidade local desta instância — sem conta em nuvem de terceiro (seção 5.1).
+            {bloqueadoAte !== null ? (
+              <div className="flex flex-col items-center gap-1 rounded-2xl border border-error/40 bg-error/10 p-4 text-center">
+                <AlertTriangle size={18} className="text-error" strokeWidth={1.75} />
+                <p className="text-sm text-error">Muitas tentativas em pouco tempo.</p>
+                <p className="font-mono-value text-2xl tabular-nums text-text-primary">
+                  {String(Math.floor(restanteSegundos / 60)).padStart(2, "0")}:{String(restanteSegundos % 60).padStart(2, "0")}
+                </p>
+                <p className="text-xs text-text-muted">Tente de novo quando o contador zerar.</p>
+              </div>
+            ) : (
+              erroLocal && (
+                <div className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
+                  <span>
+                    {erroLocal}
+                    {precisaConvite && " Peça um convite de Equipe pra alguém que já tem conta nesta instância."}
+                  </span>
+                </div>
+              )
+            )}
+
+            <button
+              type="submit"
+              disabled={
+                carregando ||
+                bloqueadoAte !== null ||
+                !nomeUsuario.trim() ||
+                senha.length < (modo === "registro" ? 8 : 1) ||
+                (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim()))
+              }
+              className="mt-1 rounded-2xl bg-text-primary py-3.5 text-center font-body text-[15px] font-semibold text-base transition-opacity disabled:opacity-40"
+            >
+              {carregando ? "Um momento..." : modo === "login" ? "Entrar" : "Criar conta"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CURVAS = [
+  { d: "M -60 990 C 170 830, 300 650, 470 520 S 700 300, 880 240", cor: "var(--ecos-cyan)", duracao: "9s", atraso: "0s" },
+  { d: "M 40 1010 C 250 870, 380 700, 545 600 S 770 420, 900 390", cor: "var(--ecos-violet)", duracao: "11s", atraso: "-4s" },
+  { d: "M -140 900 C 50 760, 240 730, 380 560 S 620 210, 840 110", cor: "var(--ecos-steel-400)", duracao: "13s", atraso: "-8s" },
+];
+
+/** Cada camada é um trecho da curva com o mesmo ponto de frente — juntas formam um cometa que esmaece na cauda. */
+const CAMADAS = [
+  { comprimento: 0.4, opacidade: 0.12, largura: 2 },
+  { comprimento: 0.24, opacidade: 0.24, largura: 2 },
+  { comprimento: 0.12, opacidade: 0.45, largura: 2.2 },
+  { comprimento: 0.04, opacidade: 0.95, largura: 2.6 },
+];
+const COMPRIMENTO_MAX = 0.4;
+
+/** Painel decorativo — só em telas largas; sempre escuro (é arte, não acompanha o tema), com curvas de luz na paleta da marca. */
+function AuthArt() {
+  return (
+    <div aria-hidden className="auth-arte relative hidden overflow-hidden lg:block">
+      <div className="auth-arte-brilho auth-arte-brilho-a" />
+      <div className="auth-arte-brilho auth-arte-brilho-b" />
+
+      <svg viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full">
+        <defs>
+          <filter id="brilho" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1200" height="1400">
+            <feGaussianBlur stdDeviation="5" result="desfoque" />
+            <feMerge>
+              <feMergeNode in="desfoque" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {CURVAS.map((curva) => (
+          <g key={curva.d} style={{ color: curva.cor }}>
+            <path d={curva.d} pathLength={1} className="auth-linha-base" />
+            <g filter="url(#brilho)">
+              {CAMADAS.map((camada) => (
+                <path
+                  key={camada.comprimento}
+                  d={curva.d}
+                  pathLength={1}
+                  className="auth-linha-luz"
+                  style={
+                    {
+                      strokeDasharray: `${camada.comprimento} 3`,
+                      strokeOpacity: camada.opacidade,
+                      strokeWidth: camada.largura,
+                      "--de": camada.comprimento,
+                      "--ate": camada.comprimento - (1 + COMPRIMENTO_MAX),
+                      animationDuration: curva.duracao,
+                      animationDelay: curva.atraso,
+                    } as React.CSSProperties
+                  }
+                />
+              ))}
+            </g>
+          </g>
+        ))}
+      </svg>
+
+      <div className="auth-arte-vinheta" />
+      <p className="absolute bottom-10 left-10 max-w-xs font-display text-2xl font-bold leading-snug text-white/90">
+        Seu cofre vivo de notas, tempo e dinheiro.
       </p>
     </div>
   );

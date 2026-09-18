@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAbrirDocumento } from "@/lib/documento-popup";
 import { ChevronLeft, Search as SearchIcon, Clock, Sparkles } from "lucide-react";
 import { busca, vault, ApiError, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
@@ -15,6 +16,7 @@ interface Resultado {
 /** Search — at rest: recents + shortcuts. With results: grouped by type, term highlighted in cyan (section 3.3). */
 export function SearchScreen() {
   const navigate = useNavigate();
+  const abrirDocumento = useAbrirDocumento();
   const [termo, setTermo] = useState("");
   const [debounced, setDebounced] = useState("");
   const [resultados, setResultados] = useState<Resultado | null>(null);
@@ -130,7 +132,7 @@ export function SearchScreen() {
         <div className="flex flex-col gap-6 pb-nav-safe">
           <Grupo titulo="Notas" vazio={resultados.notas.length === 0}>
             {resultados.notas.map((n) => (
-              <button key={n.id} onClick={() => navigate(`/notas/nota/${n.id}`)} className="w-full rounded-xl bg-surface-1 px-3.5 py-3 text-left">
+              <button key={n.id} onClick={(e) => abrirDocumento(`/notas/nota/${n.id}`, e)} className="w-full rounded-xl bg-surface-1 px-3.5 py-3 text-left">
                 <p className="text-[15px] font-medium text-text-primary">{destacar(n.titulo, debounced)}</p>
                 <p className="text-xs text-text-muted" dangerouslySetInnerHTML={{ __html: trechoParaHtml(n.trecho) }} />
               </button>
@@ -138,7 +140,7 @@ export function SearchScreen() {
           </Grupo>
           <Grupo titulo="Tarefas" vazio={resultados.tarefas.length === 0}>
             {resultados.tarefas.map((t) => (
-              <button key={t.id} onClick={() => navigate(`/tarefa/${t.id}`)} className="w-full rounded-xl bg-surface-1 px-3.5 py-3 text-left">
+              <button key={t.id} onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} className="w-full rounded-xl bg-surface-1 px-3.5 py-3 text-left">
                 <p className="text-[15px] font-medium text-text-primary">{destacar(t.titulo, debounced)}</p>
                 <p className="text-xs text-text-muted">{t.status}</p>
               </button>

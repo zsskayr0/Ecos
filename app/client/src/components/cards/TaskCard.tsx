@@ -1,8 +1,9 @@
 import { CalendarClock, Flame } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Tarefa } from "@/lib/types";
 import { formatDuracao } from "@/lib/format";
 import { Avatar } from "@/components/common/Avatar";
+import { TempoEdicao } from "@/components/common/TempoEdicao";
 
 /** Priority isn't just informational on this card — it's the "bid" that
  * decided how prominently the ranking job surfaced this Tarefa in the Feed
@@ -16,14 +17,14 @@ const FUNDO_POR_PRIORIDADE = { baixa: "bg-cyan/[0.04]", media: "bg-cyan/[0.06]",
  * tint, a subtle border, an "Encaixada na sua agenda" label.
  */
 export function TaskCard({ tarefa }: { tarefa: Tarefa }) {
-  const navigate = useNavigate();
+  const abrirDocumento = useAbrirDocumento();
   const hora = tarefa.scheduledAt
     ? new Date(tarefa.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : null;
 
   return (
     <button
-      onClick={() => navigate(`/tarefa/${tarefa.id}`)}
+      onClick={(e) => abrirDocumento(`/tarefa/${tarefa.id}`, e)}
       className={`flex w-full flex-col gap-2 rounded-card border p-4 text-left ${BORDA_POR_PRIORIDADE[tarefa.prioridade]} ${FUNDO_POR_PRIORIDADE[tarefa.prioridade]}`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -50,6 +51,7 @@ export function TaskCard({ tarefa }: { tarefa: Tarefa }) {
         <span className="text-xs text-text-muted">
           {tarefa.dono.nome}
           {tarefa.origemEquipe && ` · ${tarefa.origemEquipe.nome}`}
+          {tarefa.atualizadoEm && <> · <TempoEdicao iso={tarefa.atualizadoEm} /></>}
         </span>
       </div>
     </button>

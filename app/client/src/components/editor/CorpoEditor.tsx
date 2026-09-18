@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import { Bold, Italic, Strikethrough, List, ListChecks, Quote, Code, Link2, Minus, Heading1, Heading2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough } from "lucide-react";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
 
@@ -15,6 +15,8 @@ interface Props {
   rows?: number;
   /** Tasks use one wide writing canvas, with preview available on demand. */
   layout?: "split" | "document";
+  /** Tarefas existentes abrem a descrição em leitura, mantendo a edição a um clique. */
+  initialPreview?: boolean;
 }
 
 /**
@@ -31,11 +33,12 @@ interface Props {
  * completa é a própria "aba de cima" pedida, sem seção separada ocupando
  * a tela pequena. Desktop mantém textarea + preview lado a lado.
  */
-export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split" }: Props) {
+export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false }: Props) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const ehMobile = useIsMobile();
-  const [preview, setPreview] = useState(false);
-  const [more, setMore] = useState(false);
+  const [preview, setPreview] = useState(initialPreview);
+  const [cursor, setCursor] = useState(0);
+  const [emojiAberto, setEmojiAberto] = useState(false);
 
   function resizeArea() {
     const area = areaRef.current;
@@ -101,34 +104,161 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
     });
   }
 
-  if (layout === "document") return <div className="min-w-0 rounded-xl border border-border bg-surface-2" data-corpo-editor>
-    <div className="ecos-editor-floating sticky z-20 rounded-t-xl border-b border-border bg-surface-2 shadow-sm" data-editor-toolbar>
-    <div className="flex flex-wrap items-center justify-between gap-2 p-2">
-      <span className="px-2 text-sm text-text-secondary">Markdown</span>
-      <button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)} className="min-h-11 rounded-lg px-3 text-sm text-steel-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400">{preview ? `Editar ${tipo === "tarefa" ? "descrição" : "conteúdo"}` : `Pré-visualizar ${tipo === "tarefa" ? "descrição" : "conteúdo"}`}</button>
-    </div>
-    {!preview && <div className="flex flex-wrap items-center gap-1 border-t border-border p-1" role="group" aria-label="Formatação da descrição">
-        <ToolbarBtn Icon={Heading2} label="Título" onClick={() => prefixarLinhaAtual("## ")} />
-        <ToolbarBtn Icon={Bold} label="Negrito" onClick={() => envolverSelecao("**")} />
-        <ToolbarBtn Icon={Italic} label="Itálico" onClick={() => envolverSelecao("_")} />
-        <ToolbarBtn Icon={ListChecks} label="Checklist" onClick={() => prefixarLinhaAtual("- [ ] ")} />
-        <ToolbarBtn Icon={List} label="Lista" onClick={() => prefixarLinhaAtual("- ")} />
-        <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="min-h-11 rounded-lg px-3 text-sm text-text-secondary">{more ? "Menos" : "Mais"}</button>
-        {more && <div className="flex w-full flex-wrap gap-1 border-t border-border pt-1">
-          <ToolbarBtn Icon={Heading1} label="Título 1" onClick={() => prefixarLinhaAtual("# ")} />
-          <ToolbarBtn Icon={Strikethrough} label="Tachado" onClick={() => envolverSelecao("~~")} />
-          <ToolbarBtn Icon={Quote} label="Citação" onClick={() => prefixarLinhaAtual("> ")} />
-          <ToolbarBtn Icon={Code} label="Código" onClick={() => envolverSelecao("`")} />
-          <ToolbarBtn Icon={Link2} label="Wikilink" onClick={() => envolverSelecao("[[", "]]")} />
-          <ToolbarBtn Icon={Minus} label="Linha horizontal" onClick={() => inserirNoCursor("\n---\n")} />
-        </div>}
-      </div>}
-    </div>
-    {preview ? <div className="min-h-64 min-w-0 break-words rounded-b-xl bg-surface-1 p-5 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-secondary">Escreva um conteúdo para ver a prévia.</p>}</div> :
-      <textarea ref={areaRef} aria-label={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} value={corpo} onChange={(e) => onCorpoChange(e.target.value)} placeholder={placeholder} rows={rows}
-        className="ecos-autogrow block min-h-64 w-full min-w-0 rounded-b-xl bg-transparent p-5 font-body text-[16px] text-text-primary placeholder:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-steel-400" />
+  // ---- Layout "document" (descrição de Tarefa): barra única no topo, sempre Markdown por baixo ----
+
+  /** Prefixos de bloco que o Markdown aceita — trocar de tipo (lista → citação) tira o anterior. */
+  const PREFIXOS_BLOCO = [/^#{1,6}\s+/, /^>\s?/, /^[-*+]\s\[[ xX]\]\s/, /^[-*+]\s/, /^\d+\.\s/];
+  const semPrefixoBloco = (linha: string) => {
+    for (const r of PREFIXOS_BLOCO) {
+      const m = r.exec(linha);
+      if (m) return linha.slice(m[0].length);
     }
-  </div>;
+    return linha;
+  };
+  const inicioDaLinha = (pos: number) => (pos === 0 ? 0 : corpo.lastIndexOf("\n", pos - 1) + 1);
+
+  function substituir(inicio: number, fim: number, texto: string, selecao?: [number, number]) {
+    const el = areaRef.current;
+    onCorpoChange(corpo.slice(0, inicio) + texto + corpo.slice(fim));
+    requestAnimationFrame(() => {
+      el?.focus();
+      const [i, f] = selecao ?? [inicio + texto.length, inicio + texto.length];
+      el?.setSelectionRange(i, f);
+    });
+  }
+
+  /** Aplica `fn` a cada linha que a seleção toca (uma linha só, se for só o cursor). */
+  function transformarLinhas(fn: (linha: string, indice: number) => string) {
+    const el = areaRef.current;
+    if (!el) return;
+    const inicio = inicioDaLinha(el.selectionStart);
+    let fim = corpo.indexOf("\n", el.selectionEnd);
+    if (fim === -1) fim = corpo.length;
+    const texto = corpo.slice(inicio, fim).split("\n").map(fn).join("\n");
+    substituir(inicio, fim, texto, el.selectionStart === el.selectionEnd ? undefined : [inicio, inicio + texto.length]);
+  }
+
+  /** Lista/citação alternam: se todas as linhas já têm o prefixo, ele sai; senão entra (trocando o de outro tipo). */
+  function alternarBloco(detecta: RegExp, prefixo: (n: number) => string) {
+    const el = areaRef.current;
+    if (!el) return;
+    const inicio = inicioDaLinha(el.selectionStart);
+    let fim = corpo.indexOf("\n", el.selectionEnd);
+    if (fim === -1) fim = corpo.length;
+    const todasJa = corpo.slice(inicio, fim).split("\n").every((l) => !l.trim() || detecta.test(l));
+    let n = 0;
+    transformarLinhas((l) => (!l.trim() ? l : todasJa ? semPrefixoBloco(l) : prefixo(n++) + semPrefixoBloco(l)));
+  }
+
+  function aplicarEstilo(valor: string) {
+    const nivel = valor === "h1" ? 1 : valor === "h2" ? 2 : valor === "h3" ? 3 : 0;
+    transformarLinhas((l) => {
+      if (!l.trim()) return l;
+      if (!nivel) return l.replace(/^#{1,6}\s+/, "");
+      return `${"#".repeat(nivel)} ${semPrefixoBloco(l)}`;
+    });
+  }
+
+  /** Negrito/itálico/tachado alternam: já envolvido → desembrulha; senão envolve e mantém o texto selecionado. */
+  function alternarInline(marca: string) {
+    const el = areaRef.current;
+    if (!el) return;
+    const a = el.selectionStart;
+    const b = el.selectionEnd;
+    const envolvido = a >= marca.length && corpo.slice(a - marca.length, a) === marca && corpo.slice(b, b + marca.length) === marca;
+    if (envolvido) substituir(a - marca.length, b + marca.length, corpo.slice(a, b), [a - marca.length, b - marca.length]);
+    else substituir(a, b, marca + corpo.slice(a, b) + marca, [a + marca.length, b + marca.length]);
+  }
+
+  function inserirLink() {
+    const el = areaRef.current;
+    if (!el) return;
+    const a = el.selectionStart;
+    const b = el.selectionEnd;
+    const texto = corpo.slice(a, b) || "texto";
+    const urlInicio = a + texto.length + 3;
+    substituir(a, b, `[${texto}](https://)`, [urlInicio, urlInicio + 8]);
+  }
+
+  function limparFormatacao() {
+    const el = areaRef.current;
+    if (!el) return;
+    let a = el.selectionStart;
+    let b = el.selectionEnd;
+    if (a === b) {
+      a = inicioDaLinha(a);
+      b = corpo.indexOf("\n", b);
+      if (b === -1) b = corpo.length;
+    }
+    // Checklists ficam: o parser do backend depende delas.
+    const limpo = corpo
+      .slice(a, b)
+      .replace(/(\*\*|~~|`)(.+?)\1/g, "$2")
+      .replace(/(^|[^\w])_(.+?)_(?=$|[^\w])/g, "$1$2")
+      .replace(/^(\s*)(#{1,6}\s+|>\s?|[-*+]\s(?!\[[ xX]\])|\d+\.\s)/gm, "$1");
+    substituir(a, b, limpo, [a, a + limpo.length]);
+  }
+
+  function aoTeclarNaDescricao(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const tecla = e.key.toLowerCase();
+    if (tecla === "b") { e.preventDefault(); alternarInline("**"); }
+    else if (tecla === "i") { e.preventDefault(); alternarInline("_"); }
+  }
+
+  if (layout === "document") {
+    const linhaFim = corpo.indexOf("\n", cursor);
+    const linhaAtual = corpo.slice(inicioDaLinha(cursor), linhaFim === -1 ? corpo.length : linhaFim);
+    const estiloAtual = /^# /.test(linhaAtual) ? "h1" : /^## /.test(linhaAtual) ? "h2" : /^### /.test(linhaAtual) ? "h3" : "p";
+    const tam = ehMobile ? "h-11 w-11" : "h-8 w-8";
+    const separador = <span aria-hidden className="mx-1 h-5 w-px bg-border" />;
+
+    return <div className="min-w-0 rounded-xl border border-border bg-surface-1 transition-colors focus-within:border-violet/70" data-corpo-editor>
+      <div className="ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b border-border bg-surface-1 px-2 py-1.5" data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
+        {!preview && <>
+          <div className="relative">
+            <select aria-label="Estilo do texto" value={estiloAtual} onChange={(e) => aplicarEstilo(e.target.value)}
+              className={`${ehMobile ? "h-11" : "h-8"} appearance-none rounded-lg bg-transparent pl-2 pr-7 text-sm text-text-secondary hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
+              <option value="p" className="bg-surface-2">Normal</option>
+              <option value="h1" className="bg-surface-2">Título 1</option>
+              <option value="h2" className="bg-surface-2">Título 2</option>
+              <option value="h3" className="bg-surface-2">Título 3</option>
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+          </div>
+          {separador}
+          <ToolbarBtn Icon={Bold} label="Negrito (Ctrl+B)" tamanho={tam} onClick={() => alternarInline("**")} />
+          <ToolbarBtn Icon={Italic} label="Itálico (Ctrl+I)" tamanho={tam} onClick={() => alternarInline("_")} />
+          <ToolbarBtn Icon={Strikethrough} label="Tachado" tamanho={tam} onClick={() => alternarInline("~~")} />
+          {separador}
+          <ToolbarBtn Icon={ListOrdered} label="Lista numerada" tamanho={tam} onClick={() => alternarBloco(/^\d+\.\s/, (n) => `${n + 1}. `)} />
+          <ToolbarBtn Icon={List} label="Lista com marcadores" tamanho={tam} onClick={() => alternarBloco(/^[-*+]\s(?!\[[ xX]\])/, () => "- ")} />
+          <ToolbarBtn Icon={ListChecks} label="Checklist" tamanho={tam} onClick={() => alternarBloco(/^[-*+]\s\[[ xX]\]\s/, () => "- [ ] ")} />
+          <ToolbarBtn Icon={Quote} label="Citação" tamanho={tam} onClick={() => alternarBloco(/^>\s?/, () => "> ")} />
+          {separador}
+          <ToolbarBtn Icon={Link} label="Link" tamanho={tam} onClick={inserirLink} />
+          <ToolbarBtn Icon={Brackets} label="Wikilink [[nota]]" tamanho={tam} onClick={() => envolverSelecao("[[", "]]")} />
+          <ToolbarBtn Icon={Code} label="Código" tamanho={tam} onClick={() => alternarInline("`")} />
+          <ToolbarBtn Icon={Minus} label="Linha horizontal" tamanho={tam} onClick={() => inserirNoCursor("\n---\n")} />
+          {separador}
+          <div className="relative">
+            <ToolbarBtn Icon={Smile} label="Emoji" tamanho={tam} onClick={() => setEmojiAberto((v) => !v)} />
+            {emojiAberto && <SeletorEmoji aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />}
+          </div>
+          <ToolbarBtn Icon={RemoveFormatting} label="Limpar formatação" tamanho={tam} onClick={limparFormatacao} />
+        </>}
+        <button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)} title={preview ? "Editar descrição" : "Pré-visualizar descrição"} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+          className={`ml-auto flex ${ehMobile ? "h-11" : "h-8"} items-center gap-2 rounded-lg px-2.5 text-sm text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
+          {preview ? <><Pencil size={15} strokeWidth={1.75} />Editar descrição</> : <Eye size={16} strokeWidth={1.75} />}
+        </button>
+      </div>
+      {preview
+        ? <div className="min-h-40 min-w-0 break-words rounded-b-xl p-4 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
+        : <textarea ref={areaRef} aria-label={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} value={corpo} onChange={(e) => { onCorpoChange(e.target.value); setCursor(e.target.selectionStart); }}
+            onSelect={(e) => setCursor(e.currentTarget.selectionStart)} onKeyDown={aoTeclarNaDescricao} placeholder={placeholder} rows={rows}
+            className="ecos-autogrow block min-h-40 w-full min-w-0 rounded-b-xl bg-transparent p-4 font-body text-[15px] leading-relaxed text-text-primary placeholder:text-text-secondary focus:outline-none" />}
+    </div>;
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -169,7 +299,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   );
 }
 
-function ToolbarBtn({ Icon, onClick, label, disabled }: { Icon: typeof Bold; onClick: () => void; label: string; disabled?: boolean }) {
+function ToolbarBtn({ Icon, onClick, label, disabled, tamanho = "h-11 w-11" }: { Icon: typeof Bold; onClick: () => void; label: string; disabled?: boolean; tamanho?: string }) {
   return (
     <button
       type="button"
@@ -177,9 +307,25 @@ function ToolbarBtn({ Icon, onClick, label, disabled }: { Icon: typeof Bold; onC
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-40"
+      className={`flex ${tamanho} shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40`}
     >
       <Icon size={17} strokeWidth={1.75} />
     </button>
   );
+}
+
+const EMOJIS = ["😀", "😄", "😊", "😉", "😍", "🤔", "😅", "😢", "😡", "👍", "👎", "👏", "🙏", "💪", "🔥", "⭐", "✨", "💡", "✅", "❌", "⚠️", "❗", "❓", "📌", "📎", "📅", "⏰", "📝", "📚", "💰", "🚀", "🎯", "🔒", "🎉", "❤️", "👀"];
+
+function SeletorEmoji({ aoEscolher, aoFechar }: { aoEscolher: (emoji: string) => void; aoFechar: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) aoFechar(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") aoFechar(); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc); };
+  }, [aoFechar]);
+  return <div ref={ref} role="dialog" aria-label="Escolher emoji" className="absolute left-0 top-full z-40 mt-1 grid w-64 grid-cols-9 gap-0.5 rounded-xl border border-border bg-surface-2 p-1.5 shadow-nav ecos-fade-in">
+    {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => aoEscolher(emoji)} className="flex h-7 w-7 items-center justify-center rounded-md text-base hover:bg-surface-3">{emoji}</button>)}
+  </div>;
 }

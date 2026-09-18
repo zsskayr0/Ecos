@@ -35,7 +35,7 @@ fn nome_humano_com_id(nome: &str) -> String {
 }
 
 #[derive(Serialize)]
-pub struct MidiaResumo { pub caminho: String, pub nome: String, pub tamanho_bytes: u64, pub mime: String }
+pub struct MidiaResumo { pub caminho: String, pub nome: String, pub tamanho_bytes: u64, pub mime: String, pub enviado_em: String }
 
 pub async fn enviar_para_biblioteca(state: &AppState, mut multipart: Multipart) -> AppResult<MidiaResumo> {
     let campo = multipart.next_field().await.map_err(|_| AppError::new(ErrorCode::ValidationError).with_message("O envio do arquivo está incompleto ou inválido. Selecione o arquivo novamente."))?
@@ -56,7 +56,7 @@ pub async fn enviar_para_biblioteca(state: &AppState, mut multipart: Multipart) 
         AppError::new(ErrorCode::InternalError).with_message("Não foi possível guardar o arquivo no servidor. Verifique o espaço disponível e a permissão da pasta de mídia.")
     })?;
     let caminho = format!("src/Media/{pasta}/{nome}");
-    Ok(MidiaResumo { caminho, nome: naming::sanitizar_nome_arquivo(&original), tamanho_bytes: bytes.len() as u64, mime: mime_por_extensao(&original).to_string() })
+    Ok(MidiaResumo { caminho, nome: naming::sanitizar_nome_arquivo(&original), tamanho_bytes: bytes.len() as u64, mime: mime_por_extensao(&original).to_string(), enviado_em: agora.to_rfc3339() })
 }
 
 pub async fn enviar(State(state): State<AppState>, multipart: Multipart) -> AppResult<Json<MidiaResumo>> {
@@ -70,11 +70,13 @@ pub async fn listar(State(state): State<AppState>) -> AppResult<Json<Vec<MidiaRe
         for entry in walkdir::WalkDir::new(&raiz).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
             let Ok(rel) = entry.path().strip_prefix(&state.config.notes_root) else { continue };
             let nome = entry.file_name().to_string_lossy().to_string();
-            let tamanho_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            itens.push(MidiaResumo { caminho: rel.to_string_lossy().replace('\\', "/"), mime: mime_por_extensao(&nome).to_string(), nome: nome_legivel(&nome), tamanho_bytes });
+            let metadata = entry.metadata().ok();
+            let tamanho_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+            let enviado_em = metadata.and_then(|m| m.modified().ok()).map(chrono::DateTime::<Utc>::from).unwrap_or_else(Utc::now).to_rfc3339();
+            itens.push(MidiaResumo { caminho: rel.to_string_lossy().replace('\\', "/"), mime: mime_por_extensao(&nome).to_string(), nome: nome_legivel(&nome), tamanho_bytes, enviado_em });
         }
     }
-    itens.sort_by(|a, b| b.caminho.cmp(&a.caminho));
+    itens.sort_by(|a, b| b.enviado_em.cmp(&a.enviado_em));
     Ok(Json(itens))
 }
 

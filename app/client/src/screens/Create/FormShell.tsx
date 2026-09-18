@@ -19,15 +19,17 @@ export function FormShell({
   onFechar,
   erro,
   children,
+  embedded = false,
 }: {
   tipoAtivo: TipoCaptura;
   onTrocarTipo: (tipo: TipoCaptura) => void;
   onFechar: () => void;
   erro?: string | null;
   children: ReactNode;
+  embedded?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-base">
+    <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`}>
       <div className={`flex h-full min-w-0 w-full flex-col ${tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
         <div className="ecos-capture-header flex items-center justify-between">
           <button onClick={onFechar} aria-label="Fechar" className="flex min-h-12 min-w-12 items-center justify-center rounded-xl">

@@ -202,6 +202,9 @@ pub struct TarefaFrontMatter {
     #[serde(default)]
     pub evento_externo: EventoExternoRef,
     pub criado_em: DateTime<Utc>,
+    /// Última edição (criação, PATCH ou mudança de status). Ausente em arquivos antigos — o índice usa o mtime do arquivo até a próxima edição.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atualizado_em: Option<DateTime<Utc>>,
     /// See `NotaFrontMatter::criado_por` — same rationale, same migration.
     #[serde(default)]
     pub criado_por: Option<String>,
@@ -747,5 +750,18 @@ mod tests {
         assert_eq!(json, "\"equipe:eq_01\"");
         let de: Espaco = serde_json::from_str("\"pessoal\"").unwrap();
         assert_eq!(de, Espaco::Pessoal);
+    }
+
+    #[test]
+    fn tarefa_antiga_sem_atualizado_em_continua_legivel() {
+        let src = "---\nid: t1\ntitulo: Antiga\nstatus: pendente\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\n---\ncorpo\n";
+        let doc = crate::frontmatter::parse::<TarefaFrontMatter>(src).unwrap();
+        assert!(doc.front_matter.atualizado_em.is_none());
+
+        let mut fm = doc.front_matter;
+        fm.atualizado_em = Some(fm.criado_em);
+        let serializado = crate::frontmatter::serialize(&fm, "corpo\n").unwrap();
+        let de_novo = crate::frontmatter::parse::<TarefaFrontMatter>(&serializado).unwrap();
+        assert_eq!(de_novo.front_matter.atualizado_em, Some(fm.criado_em));
     }
 }

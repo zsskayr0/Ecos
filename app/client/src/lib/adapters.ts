@@ -60,14 +60,14 @@ export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]
     preview: String(item.preview ?? ""),
     corpo: String(item.corpo ?? ""),
     modo: "texto",
-    tags: [],
-    pastaId: null,
+    tags: Array.isArray(item.tags) ? (item.tags as string[]) : [],
+    pastaId: typeof item.pasta === "string" ? item.pasta : null,
     espaco: espaco as Espaco,
     origemEquipe: origemEquipe(espaco, equipes),
     dono: resolverDono(espaco, item.criado_por, item.criado_por_nome, perfil),
-    criadoEm: String(item.atualizado_em ?? new Date().toISOString()),
+    criadoEm: String(item.criado_em ?? item.atualizado_em ?? new Date().toISOString()),
     atualizadoEm: String(item.atualizado_em ?? new Date().toISOString()),
-    ultimaRevisaoEm: null,
+    ultimaRevisaoEm: typeof item.ultima_revisao_em === "string" ? item.ultima_revisao_em : null,
     contagemLinksEntrada: 0,
     motivoRanking: motivoValido(item.motivo),
   };
@@ -118,7 +118,7 @@ export function notaResumoParaView(
 /**
  * A `tarefa_encaixada` item from `GET /feed` (`routes/feed.rs::montar_card`).
  */
-export function tarefaDoFeed(item: Record<string, unknown>, perfil: PerfilBasico | null): Tarefa {
+export function tarefaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[], perfil: PerfilBasico | null): Tarefa {
   const espaco = String(item.espaco ?? "pessoal");
   return {
     tipo: "tarefa",
@@ -129,9 +129,14 @@ export function tarefaDoFeed(item: Record<string, unknown>, perfil: PerfilBasico
     durationMin: Number(item.duration_min ?? 0),
     dueDate: null,
     espaco: espaco as Espaco,
+    origemEquipe: origemEquipe(espaco, equipes),
     dono: resolverDono(espaco, item.criado_por, item.criado_por_nome, perfil),
     encaixadaNaAgenda: true,
     prioridade: prioridadeValida(item.prioridade),
+    atualizadoEm: typeof item.atualizado_em === "string" ? item.atualizado_em : undefined,
+    criadoEm: typeof item.criado_em === "string" ? item.criado_em : undefined,
+    pasta: typeof item.pasta === "string" ? item.pasta : null,
+    tags: Array.isArray(item.tags) ? (item.tags as string[]) : [],
   };
 }
 
@@ -147,6 +152,10 @@ export function tarefaResumoParaView(
     prioridade?: string;
     criado_por?: string | null;
     criado_por_nome?: string | null;
+    atualizado_em?: string;
+    criado_em?: string;
+    pasta?: string | null;
+    tags?: string[];
   },
   equipes: MinhaEquipe[],
   perfil: PerfilBasico | null,
@@ -164,5 +173,9 @@ export function tarefaResumoParaView(
     dono: resolverDono(t.espaco, t.criado_por, t.criado_por_nome, perfil),
     encaixadaNaAgenda: !!t.scheduled_at,
     prioridade: prioridadeValida(t.prioridade),
+    atualizadoEm: t.atualizado_em ?? t.criado_em,
+    criadoEm: t.criado_em,
+    pasta: t.pasta ?? null,
+    tags: t.tags ?? [],
   };
 }

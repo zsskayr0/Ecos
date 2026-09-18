@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
-import { formatTempoRelativo } from "@/lib/format";
+import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
-import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { TituloJanelaContext } from "@/lib/documento-popup";
+import { useIsDesktop } from "@/lib/use-viewport";
+import { NoteEditorDesktop } from "./NoteEditorDesktop";
 
 interface NotaCompleta {
   id: string;
@@ -29,10 +31,11 @@ interface NotaCompleta {
  * (section 3.6). Non-critical delete here — light humor is allowed
  * (section 1.4).
  */
-export function NoteDetailScreen() {
+function NoteDetailMobile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { notificar } = useRefreshBus();
+  const definirTituloJanela = useContext(TituloJanelaContext);
   const [nota, setNota] = useState<NotaCompleta | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [editando, setEditando] = useState(false);
@@ -51,10 +54,33 @@ export function NoteDetailScreen() {
       .catch(() => setNaoEncontrada(true));
   }, [id]);
 
+  useEffect(() => { definirTituloJanela?.((editando ? tituloEdit : nota?.titulo ?? "").trim()); }, [definirTituloJanela, editando, nota?.titulo, tituloEdit]);
+
+  // Rascunho local imediato + envio após uma pequena pausa; voltar ou fechar
+  // não descarta o texto enquanto o servidor estiver disponível.
+  useEffect(() => {
+    if (!editando || !id || !nota || (tituloEdit === nota.titulo && corpoEdit === nota.corpo)) return;
+    try { localStorage.setItem(`ecos.note-draft.v1:${id}`, JSON.stringify({ titulo: tituloEdit, corpo: corpoEdit })); } catch { /* cache indisponível */ }
+    const timer = window.setTimeout(async () => {
+      setSalvando(true); setErro(null);
+      try {
+        await notas.atualizar(id, { titulo: tituloEdit, corpo: corpoEdit });
+        setNota((atual) => atual ? { ...atual, titulo: tituloEdit, corpo: corpoEdit } : atual);
+        try { localStorage.removeItem(`ecos.note-draft.v1:${id}`); } catch { /* cache indisponível */ }
+        notificar();
+      } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível sincronizar as alterações."); }
+      finally { setSalvando(false); }
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [id, nota, editando, tituloEdit, corpoEdit, notificar]);
+
   function entrarEdicao() {
     if (!nota) return;
-    setTituloEdit(nota.titulo);
-    setCorpoEdit(nota.corpo);
+    try {
+      const rascunho = id ? JSON.parse(localStorage.getItem(`ecos.note-draft.v1:${id}`) ?? "null") : null;
+      setTituloEdit(typeof rascunho?.titulo === "string" ? rascunho.titulo : nota.titulo);
+      setCorpoEdit(typeof rascunho?.corpo === "string" ? rascunho.corpo : nota.corpo);
+    } catch { setTituloEdit(nota.titulo); setCorpoEdit(nota.corpo); }
     setEditando(true);
   }
 
@@ -145,13 +171,12 @@ export function NoteDetailScreen() {
           <input aria-label="Título da nota" value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
           <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" />
           <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
-          {(tituloEdit !== nota.titulo || corpoEdit !== nota.corpo || (salvando && !confirmandoDelete)) && <FloatingSaveButton onSave={salvar} disabled={!tituloEdit.trim() || enviandoAnexo || confirmandoDelete} saving={salvando} />}
         </div>
       ) : (
         <>
           <h1 className="mb-3 break-words font-display text-2xl text-text-primary">{nota.titulo}</h1>
           <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-            <span>Atualizada {formatTempoRelativo(nota.atualizado_em)}</span>
+            <span>Editada <TempoEdicao iso={nota.atualizado_em} /></span>
             {!nota.ultima_revisao_em && (
               <button onClick={marcarRevisado} className="flex items-center gap-1 text-steel-300">
                 <CheckCircle2 size={12} />
@@ -179,4 +204,9 @@ export function NoteDetailScreen() {
       </div>
     </div>
   );
+}
+
+/** Desktop: editor direto no padrão da Tarefa; mobile: leitura com botão Editar, como antes. */
+export function NoteDetailScreen() {
+  return useIsDesktop() ? <NoteEditorDesktop /> : <NoteDetailMobile />;
 }

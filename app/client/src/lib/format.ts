@@ -59,3 +59,46 @@ export const MOTIVO_CLASSES: Record<string, { border: string; text: string; bg: 
   interacao: { border: "border-interacao", text: "text-interacao", bg: "bg-interacao/10" },
   esquecimento: { border: "border-esquecimento", text: "text-esquecimento", bg: "bg-esquecimento/10" },
 };
+
+/** Último segmento de um caminho de mídia, já decodificado (`src/Media/relat%C3%B3rio.pdf` → `relatório.pdf`). */
+export function nomeDoArquivo(caminho: string): string {
+  const ultimo = caminho.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(ultimo);
+  } catch {
+    return ultimo;
+  }
+}
+
+const doisDigitos = (n: number) => String(n).padStart(2, "0");
+const contar = (n: number, singular: string, plural: string) => `${n} ${n === 1 ? singular : plural}`;
+
+/**
+ * Última edição, como num feed: relativo enquanto recente ("agora", "há 30 minutos",
+ * "há 3 horas", "há 2 dias" — até 3 dias), depois a data e a hora ("15/09 - 12:46") e,
+ * quando não é o ano corrente, a data completa ("12/04/2024 - 12:30").
+ */
+export function formatUltimaEdicao(iso: string, agora: Date = new Date()): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+  const MINUTO = 60_000;
+  const HORA = 60 * MINUTO;
+  const DIA = 24 * HORA;
+  const diff = Math.max(0, agora.getTime() - data.getTime());
+
+  if (diff < MINUTO) return "agora";
+  if (diff < HORA) return `há ${contar(Math.floor(diff / MINUTO), "minuto", "minutos")}`;
+  if (diff < DIA) return `há ${contar(Math.floor(diff / HORA), "hora", "horas")}`;
+  if (diff <= 3 * DIA) return `há ${contar(Math.floor(diff / DIA), "dia", "dias")}`;
+
+  const hora = `${doisDigitos(data.getHours())}:${doisDigitos(data.getMinutes())}`;
+  const diaMes = `${doisDigitos(data.getDate())}/${doisDigitos(data.getMonth() + 1)}`;
+  return data.getFullYear() === agora.getFullYear() ? `${diaMes} - ${hora}` : `${diaMes}/${data.getFullYear()} - ${hora}`;
+}
+
+/** "15/09/2026 às 12:46" — para o tooltip do horário relativo. */
+export function formatDataHoraCompleta(iso: string): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+  return `${doisDigitos(data.getDate())}/${doisDigitos(data.getMonth() + 1)}/${data.getFullYear()} às ${doisDigitos(data.getHours())}:${doisDigitos(data.getMinutes())}`;
+}

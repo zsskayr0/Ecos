@@ -119,7 +119,7 @@ body {
 
 .ecos-input {
   width: 100%;
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--ecos-surface-2);
   color: var(--ecos-text-primary);
   padding: 0.75rem 1rem;
@@ -164,4 +164,89 @@ body {
 
 .ecos-fade-in {
   animation: ecos-fade-in 180ms ease-out;
+}
+
+/* ---- Login: curvas de luz animadas (painel decorativo) ---- */
+.auth-arte {
+  background: #05060a;
+}
+.auth-arte-brilho {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.35;
+  animation: auth-deriva 26s ease-in-out infinite alternate;
+}
+.auth-arte-brilho-a {
+  width: 60%;
+  height: 45%;
+  left: 20%;
+  bottom: 5%;
+  background: radial-gradient(closest-side, rgb(var(--ecos-cyan-rgb) / 0.55), transparent);
+}
+.auth-arte-brilho-b {
+  width: 55%;
+  height: 40%;
+  right: -5%;
+  top: 8%;
+  background: radial-gradient(closest-side, rgb(var(--ecos-violet-rgb) / 0.5), transparent);
+  animation-duration: 32s;
+  animation-direction: alternate-reverse;
+}
+.auth-arte-vinheta {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 60% 45%, transparent 35%, rgb(5 6 10 / 0.75) 100%);
+  pointer-events: none;
+}
+.auth-linha-base {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.07);
+  stroke-width: 1.2;
+}
+.auth-linha-luz {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  animation: auth-varre 9s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+@keyframes auth-varre {
+  0% { stroke-dashoffset: var(--de); }
+  75%, 100% { stroke-dashoffset: var(--ate); }
+}
+@keyframes auth-deriva {
+  from { transform: translate3d(-4%, 3%, 0) scale(1); }
+  to { transform: translate3d(5%, -4%, 0) scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-linha-luz { animation: none; stroke-dashoffset: -0.6; }
+  .auth-arte-brilho { animation: none; }
+}
+
+/* ---- Saída de abas e janelas do desktop (durações em desktop/movimento.ts) ---- */
+@keyframes ecos-aba-sai {
+  from { max-width: var(--ecos-aba-w, 200px); opacity: 1; }
+  to { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; border-right-width: 0; }
+}
+.ecos-aba-saindo {
+  overflow: hidden;
+  pointer-events: none;
+  animation: ecos-aba-sai 180ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+@keyframes ecos-conteudo-sai {
+  to { opacity: 0; transform: scale(0.985); }
+}
+.ecos-conteudo-saindo {
+  pointer-events: none;
+  animation: ecos-conteudo-sai 180ms ease-in forwards;
+}
+@keyframes ecos-janela-sai {
+  to { opacity: 0; transform: translateZ(0) translateY(8px) scale(0.97); }
+}
+.ecos-janela-saindo {
+  pointer-events: none;
+  animation: ecos-janela-sai 160ms ease-in forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo { animation: none; }
 }

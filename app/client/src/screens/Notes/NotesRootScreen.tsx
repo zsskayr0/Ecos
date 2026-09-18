@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Folder, FolderPlus, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { pastas, notas as notasApi, ApiError, type NotaResumo } from "@/lib/api";
 import { notaResumoParaView } from "@/lib/adapters";
-import { NoteCard } from "@/components/cards/NoteCard";
-import { NoteListRow } from "@/components/cards/NoteListRow";
+import { ListaDeItens } from "@/components/views/ListaDeItens";
+import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
@@ -34,6 +34,7 @@ export function NotesRootScreen() {
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [soltas, setSoltas] = useState<NotaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [ordem, setOrdem] = useState<"edicao" | "criacao" | "titulo">("edicao");
 
   useEffect(() => {
     Promise.all([pastas.listar({ tipo: "nota" }), notasApi.listar({ limit: 100 })])
@@ -48,7 +49,7 @@ export function NotesRootScreen() {
     <div className="px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Notas</h1>
-        <ViewModeToggle modo={modo} onMudar={setModo} />
+        <div className="flex items-center gap-2"><label className="sr-only" htmlFor="ordem-notas">Ordenar notas</label><select id="ordem-notas" value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="h-9 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-secondary"><option value="edicao">Última edição</option><option value="criacao">Criação recente</option><option value="titulo">Título A–Z</option></select><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {erro && (
@@ -58,31 +59,16 @@ export function NotesRootScreen() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {subpastas?.map((p) => (
-          <button
-            key={p.caminho}
-            onClick={() => navigate(`/notas/pasta/${encodeURIComponent(p.caminho)}`)}
-            className="flex flex-col items-start gap-3 rounded-card bg-surface-1 p-4 text-left"
-          >
-            <Folder size={28} strokeWidth={1.5} className="text-steel-300" />
-            <div>
-              <p className="font-body text-[15px] font-semibold text-text-primary">{p.nome}</p>
-              <p className="text-xs text-text-muted">{p.contagem_itens} itens</p>
-            </div>
-          </button>
-        ))}
-        <button
-          onClick={() => navigate("/notas/pasta/nova")}
-          className="flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-dashed border-border text-text-muted"
-        >
-          <FolderPlus size={22} strokeWidth={1.5} />
-          <span className="text-xs font-medium">Nova pasta</span>
-        </button>
-      </div>
+      <PastasGrade
+        chave="notas"
+        corIcone="text-steel-300"
+        pastas={subpastas ?? []}
+        aoAbrir={(p) => navigate(`/notas/pasta/${encodeURIComponent(p.caminho)}`)}
+        aoCriar={() => navigate("/notas/pasta/nova")}
+      />
 
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Sem pasta</p>
-      <div className={modo === "cards" ? "flex flex-col gap-3" : "flex flex-col gap-2"}>
+      <div>
         {soltas === null ? (
           <p className="py-6 text-center text-sm text-text-muted">Carregando...</p>
         ) : soltas.length === 0 ? (
@@ -90,13 +76,7 @@ export function NotesRootScreen() {
             Nenhuma nota solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          soltas.map((n) =>
-            modo === "cards" ? (
-              <NoteCard key={n.id} nota={notaResumoParaView(n, equipes, perfil)} />
-            ) : (
-              <NoteListRow key={n.id} nota={notaResumoParaView(n, equipes, perfil)} />
-            ),
-          )
+          <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={soltas.slice().sort((a, b) => ordem === "titulo" ? a.titulo.localeCompare(b.titulo, "pt-BR") : ordem === "criacao" ? b.criado_em.localeCompare(a.criado_em) : b.atualizado_em.localeCompare(a.atualizado_em)).map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
     </div>

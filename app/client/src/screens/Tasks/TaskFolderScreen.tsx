@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Folder, AlertTriangle } from "lucide-react";
-import { TaskCard } from "@/components/cards/TaskCard";
-import { TaskListRow } from "@/components/cards/TaskListRow";
+import { ListaDeItens } from "@/components/views/ListaDeItens";
+import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { EmptyState } from "@/components/common/EmptyState";
 import { tarefas as tarefasApi, pastas as pastasApi, ApiError, type TarefaResumo } from "@/lib/api";
@@ -66,33 +66,24 @@ export function TaskFolderScreen() {
       )}
 
       {subpastas.length > 0 && (
-        <div className="mb-4 flex gap-2 overflow-x-auto no-scrollbar">
-          {subpastas.map((sp) => (
-            <button
-              key={sp.caminho}
-              onClick={() => navigate(`/tarefas/pasta/${encodeURIComponent(sp.caminho)}`)}
-              className="flex shrink-0 items-center gap-2 rounded-xl bg-surface-1 px-3 py-2 text-sm text-text-primary"
-            >
-              <Folder size={14} className="text-cyan" />
-              {sp.nome}
-            </button>
-          ))}
+        <div className="mb-4">
+          <PastasGrade
+            chave="tarefas"
+            titulo="Subpastas"
+            corIcone="text-cyan"
+            pastas={subpastas}
+            aoAbrir={(p) => navigate(`/tarefas/pasta/${encodeURIComponent(p.caminho)}`)}
+          />
         </div>
       )}
 
-      <div className={modo === "cards" ? "flex flex-col gap-3" : "flex flex-col gap-2"}>
+      <div>
         {itens === null ? (
           <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
         ) : itens.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira tarefa aqui." />
         ) : (
-          itens.map((t) =>
-            modo === "cards" ? (
-              <TaskCard key={t.id} tarefa={tarefaResumoParaView(t, equipes, perfil)} />
-            ) : (
-              <TaskListRow key={t.id} tarefa={tarefaResumoParaView(t, equipes, perfil)} />
-            ),
-          )
+          <ListaDeItens chave="tarefas" mostrarCriada modo={modo} itens={itens.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useAbrirDocumento } from "@/lib/documento-popup";
 import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
@@ -47,8 +47,8 @@ interface Capacidade {
  * and the same task list below; only the picker widget above it changes.
  */
 export function AgendaScreen() {
-  const navigate = useNavigate();
-  const { versao } = useRefreshBus();
+  const abrirDocumento = useAbrirDocumento();
+  const { versao, notificar } = useRefreshBus();
   const [modo, setModo] = useState<ModoAgenda>("mes");
   const [diaAtual, setDiaAtual] = useState(() => new Date());
   const hoje = new Date();
@@ -57,6 +57,16 @@ export function AgendaScreen() {
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [capacidade, setCapacidade] = useState<Capacidade | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  async function planejarTarefa(dado: string, data: Date) {
+    try {
+      const tarefa = JSON.parse(dado) as { id: string; duracao: number };
+      const inicio = new Date(data.getFullYear(), data.getMonth(), data.getDate(), 9, 0).toISOString();
+      await tarefasApi.timeEntries.criar(tarefa.id, { tipo: "planejado", inicio_em: inicio, duracao_min: Math.max(1, tarefa.duracao) });
+      notificar();
+    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível planejar a tarefa."); }
+  }
+
 
   useEffect(() => {
     let vivo = true;
@@ -97,7 +107,7 @@ export function AgendaScreen() {
       </div>
 
       {modo === "mes" && (
-        <VisaoMes diaAtual={diaAtual} hoje={hoje} onMudarMes={(delta) => setDiaAtual((d) => new Date(d.getFullYear(), d.getMonth() + delta, Math.min(d.getDate(), 28)))} onSelecionar={setDiaAtual} />
+        <VisaoMes diaAtual={diaAtual} hoje={hoje} onMudarMes={(delta) => setDiaAtual((d) => new Date(d.getFullYear(), d.getMonth() + delta, Math.min(d.getDate(), 28)))} onSelecionar={setDiaAtual} onPlanejarTarefa={planejarTarefa} />
       )}
       {modo === "semana" && (
         <VisaoSemana diaAtual={diaAtual} hoje={hoje} onMudarSemana={(delta) => setDiaAtual((d) => somarDias(d, delta * 7))} onSelecionar={setDiaAtual} />
@@ -139,7 +149,7 @@ export function AgendaScreen() {
               return (
                 <button
                   key={t.id}
-                  onClick={() => navigate(`/tarefa/${t.id}`)}
+                  onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)}
                   className={`flex items-center gap-3 rounded-2xl border-l-4 bg-surface-1 p-3.5 text-left ${concluida ? "border-success" : t.prioridade === "alta" ? "border-error" : "border-cyan"}`}
                 >
                   {concluida ? (
@@ -162,7 +172,7 @@ export function AgendaScreen() {
   );
 }
 
-function VisaoMes({ diaAtual, hoje, onMudarMes, onSelecionar }: { diaAtual: Date; hoje: Date; onMudarMes: (delta: number) => void; onSelecionar: (d: Date) => void }) {
+function VisaoMes({ diaAtual, hoje, onMudarMes, onSelecionar, onPlanejarTarefa }: { diaAtual: Date; hoje: Date; onMudarMes: (delta: number) => void; onSelecionar: (d: Date) => void; onPlanejarTarefa: (dado: string, data: Date) => void }) {
   const { offset, totalDias, ano, mes } = gerarDiasDoMes(diaAtual);
   const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
@@ -195,6 +205,8 @@ function VisaoMes({ diaAtual, hoje, onMudarMes, onSelecionar }: { diaAtual: Date
             <button
               key={dia}
               onClick={() => onSelecionar(data)}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-ecos-task")) e.preventDefault(); }}
+              onDrop={(e) => { const dado = e.dataTransfer.getData("application/x-ecos-task"); if (dado) { e.preventDefault(); onPlanejarTarefa(dado, data); } }}
               className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm ${
                 ativo ? "bg-steel-700 font-semibold text-white" : ehHoje ? "border border-steel-500 text-text-primary" : "text-text-secondary"
               }`}

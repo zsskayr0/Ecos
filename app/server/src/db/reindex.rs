@@ -5,6 +5,7 @@
 //! interação, que só existem no próprio índice).
 
 use super::IndexDb;
+use chrono::{DateTime, Utc};
 use ecos_core::types::{CalendarioProvider, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
 use ecos_core::{frontmatter, wikilink};
 use rusqlite::params;
@@ -62,6 +63,8 @@ struct TarefaColetada {
     front_matter: TarefaFrontMatter,
     caminho_relativo: String,
     pasta_id: Option<String>,
+    /// mtime do arquivo — reserva de `atualizado_em` para tarefas anteriores ao campo.
+    modificado_em: Option<DateTime<Utc>>,
 }
 
 struct DocumentoColetado {
@@ -183,6 +186,7 @@ fn coletar_tarefas(vault_root: &Path, tarefas_dir: &Path, erros: &mut Vec<String
             Ok(doc) => out.push(TarefaColetada {
                 pasta_id: pasta_relativa(tarefas_dir, path),
                 caminho_relativo: caminho_relativo_str(vault_root, path),
+                modificado_em: entry.metadata().ok().and_then(|m| m.modified().ok()).map(DateTime::<Utc>::from),
                 front_matter: doc.front_matter,
             }),
             Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
@@ -323,8 +327,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             let fm = &item.front_matter;
             tx.execute(
                 "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
-                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     fm.id,
                     item.caminho_relativo,
@@ -341,6 +345,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                     fm.evento_externo.synced_at.map(|d| d.to_rfc3339()),
                     fm.criado_em.to_rfc3339(),
                     fm.criado_por,
+                    fm.atualizado_em.or(item.modificado_em).unwrap_or(fm.criado_em).to_rfc3339(),
                 ],
             )?;
 

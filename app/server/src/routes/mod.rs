@@ -70,6 +70,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/tarefas", get(tarefas::listar).post(tarefas::criar))
         .route("/tarefas/:id", get(tarefas::obter).patch(tarefas::atualizar).delete(tarefas::excluir))
         .route("/tarefas/:id/status", patch(tarefas::atualizar_status))
+        .route("/tarefas/:id/time-entries", get(tarefas::listar_time_entries).post(tarefas::criar_time_entry))
         .route("/tarefas/:id/anexos", post(tarefas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/tarefas/:id/anexos/:nome_arquivo", get(tarefas::obter_anexo))
         .route("/agenda/capacidade", get(tarefas::capacidade))

@@ -1,7 +1,10 @@
-import type { CapturaDraft, SetDraft } from "./CreateFlow";
+import { useState } from "react";
+import { Cloud } from "lucide-react";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
-import { useState } from "react";
+import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
+import { descriptionTags } from "@/lib/task-fields";
+import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
 interface Props {
   draft: CapturaDraft;
@@ -10,37 +13,41 @@ interface Props {
   salvando?: boolean;
 }
 
-/** Nota form: título, corpo e campo Anexos independente do primeiro save. */
+/** Nova nota, no mesmo padrão da edição: título, pasta e tags à mão, anexos e o editor. */
 export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   return (
-    <div className="flex min-w-0 flex-col gap-6 pt-6">
+    <div className="flex min-w-0 flex-col gap-4 py-5 md:pt-4">
       <input
         value={draft.texto}
         onChange={(e) => setDraft((d) => ({ ...d, texto: e.target.value }))}
         placeholder="Título da nota"
         aria-label="Título da nota"
-        className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary placeholder:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
+        className="ecos-input min-w-0 !rounded-lg border border-border !py-3 !text-xl text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400"
         autoFocus
       />
+
+      <NoteOrganizer
+        pasta={draft.pastaNota}
+        onPasta={(pastaNota) => setDraft((d) => ({ ...d, pastaNota }))}
+        tags={draft.tagsNota}
+        tagsNoTexto={descriptionTags(draft.corpo)}
+        onTags={(tagsNota) => setDraft((d) => ({ ...d, tagsNota }))}
+        disabled={salvando}
+      />
+
+      <AttachmentsField tipo="nota" corpo={draft.corpo} onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
 
       <CorpoEditor
         corpo={draft.corpo}
         onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))}
         tipo="nota"
-        placeholder={"Escreva aqui. Use [[Nota]] pra linkar, `código` inline, - [ ] pra checkbox..."}
-        rows={7}
+        placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias."
+        rows={10}
         layout="document"
       />
 
-      <AttachmentsField tipo="nota" corpo={draft.corpo} onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))} onBusyChange={setEnviandoAnexo} />
-      <button
-        onClick={onSalvar}
-        disabled={!draft.texto.trim() || salvando || enviandoAnexo}
-        className="mt-2 min-h-12 rounded-2xl border-8 border-base bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
-      >
-        {salvando ? "Salvando..." : "Salvar Nota"}
-      </button>
+      <p className="flex items-center gap-2 text-sm text-text-secondary"><Cloud size={16} className="text-steel-300" />{enviandoAnexo || salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}</p>
     </div>
   );
 }

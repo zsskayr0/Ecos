@@ -261,7 +261,7 @@ export const pastas = {
 
 // --- Media ---------------------------------------------------------------
 
-export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string }
+export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string; enviado_em: string }
 export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
 export const lixeira = {
   listar: () => get<ItemLixeira[]>("/lixeira"),
@@ -281,6 +281,18 @@ export const media = {
     const item = await req<Midia>("/media", { method: "POST", body: formData });
     if (!item?.caminho || !item?.mime) throw new ApiError("RESPOSTA_INESPERADA", "O servidor não confirmou o envio do arquivo. Atualize o servidor Ecos e tente novamente.", 502);
     return item;
+  },
+  /** Bytes do arquivo, para leitores próprios (PDF) — `<iframe>`/`<embed>` são bloqueados pelo CSP do servidor e do Tauri. */
+  baixar: async (caminho: string): Promise<ArrayBuffer> => {
+    const accessToken = obterAccessToken();
+    let resp: Response;
+    try {
+      resp = await fetch(media.urlArquivo(caminho), { credentials: "include", headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+    } catch {
+      throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos.", 0);
+    }
+    if (!resp.ok) throw new ApiError("ARQUIVO_INDISPONIVEL", "Não foi possível baixar o arquivo.", resp.status);
+    return resp.arrayBuffer();
   },
   referencia: (item: Midia) => `${item.mime.startsWith("image/") ? "!" : ""}[${item.nome.replace(/[\\\[\]]/g, "_")}](${item.caminho.split("/").map((p) => encodeURIComponent(p).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16)}`)).join("/")})`,
   urlArquivo: (caminho: string) => `${BASE()}/media/arquivo/${caminho.replace(/^src\/Media\//, "").split("/").map((p) => { try { return encodeURIComponent(decodeURIComponent(p)); } catch { return encodeURIComponent(p); } }).join("/")}`,
@@ -314,6 +326,11 @@ export interface TarefaResumo {
   due_date: string | null;
   espaco: string;
   criado_em: string;
+  /** Última edição; servidores anteriores ao campo não enviam. */
+  atualizado_em?: string;
+  /** Só a listagem traz; servidores anteriores não enviam. */
+  pasta?: string | null;
+  tags?: string[];
   prioridade: PrioridadeTarefa;
   criado_por: string | null;
   criado_por_nome: string | null;
@@ -331,6 +348,7 @@ export interface TarefaDetalhe {
   subtarefas: Subtarefa[];
   espaco: string;
   criado_em: string;
+  atualizado_em?: string;
   caminho_arquivo: string;
   pasta: string | null;
   corpo: string;
@@ -362,12 +380,21 @@ export interface AtualizarTarefaPayload {
 }
 
 export const tarefas = {
-  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) =>
-    get<Pagina<TarefaResumo>>(`/tarefas${qs(params)}`),
+  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
+    // `pasta=` vazio é o filtro "só as sem pasta" (`COALESCE(pasta_id, '') = ''` no servidor); `qs` descarta vazios, então ele vai à parte.
+    const { pasta, ...resto } = params;
+    const base = qs(resto);
+    const filtroPasta = pasta === undefined ? "" : `${base ? "&" : "?"}pasta=${encodeURIComponent(pasta)}`;
+    return get<Pagina<TarefaResumo>>(`/tarefas${base}${filtroPasta}`);
+  },
   obter: (id: string) => get<TarefaDetalhe>(`/tarefas/${id}`),
   criar: (payload: CriarTarefaPayload) => post<{ id: string }>("/tarefas", payload),
   atualizar: (id: string, payload: AtualizarTarefaPayload) => patch<{ id: string }>(`/tarefas/${id}`, payload),
   atualizarStatus: (id: string, status: "pendente" | "concluida") => patch<{ id: string; status: string }>(`/tarefas/${id}/status`, { status }),
+  timeEntries: {
+    listar: (id: string) => get<{ id: string; tipo: "planejado" | "real"; inicio_em: string; fim_em: string | null; duracao_min: number; foco: string; criado_em: string }[]>(`/tarefas/${id}/time-entries`),
+    criar: (id: string, payload: { tipo: "planejado" | "real"; inicio_em: string; duracao_min: number; foco?: string }) => post<{ id: string }>(`/tarefas/${id}/time-entries`, payload),
+  },
   excluir: (id: string) => del<{ ok: true }>(`/tarefas/${id}`),
   capacidade: (data: string) =>
     get<{

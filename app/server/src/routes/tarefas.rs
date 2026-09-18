@@ -69,6 +69,28 @@ pub struct ListarQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CriarTimeEntryPayload { pub tipo: String, pub inicio_em: chrono::DateTime<Utc>, pub duracao_min: i64, #[serde(default)] pub foco: String }
+
+pub async fn listar_time_entries(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    let itens = state.db.with(move |conn| {
+        let mut stmt = conn.prepare("SELECT id,tipo,inicio_em,fim_em,duracao_min,foco,criado_em FROM tarefa_time_entry WHERE tarefa_id=? ORDER BY inicio_em DESC")?;
+        let rows = stmt.query_map([id], |r| Ok(serde_json::json!({
+            "id": r.get::<_, String>(0)?, "tipo": r.get::<_, String>(1)?, "inicio_em": r.get::<_, String>(2)?,
+            "fim_em": r.get::<_, Option<String>>(3)?, "duracao_min": r.get::<_, i64>(4)?, "foco": r.get::<_, String>(5)?, "criado_em": r.get::<_, String>(6)?
+        })))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }).await?;
+    Ok(Json(itens))
+}
+
+pub async fn criar_time_entry(State(state): State<AppState>, Path(tarefa_id): Path<String>, Json(payload): Json<CriarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
+    if !matches!(payload.tipo.as_str(), "planejado" | "real") || payload.duracao_min <= 0 { return Err(AppError::validation(vec![CampoInvalido { campo: "time_entry".into(), motivo: "tipo ou duração inválidos".into() }])); }
+    let id = new_id(); let agora = Utc::now().to_rfc3339(); let inicio = payload.inicio_em.to_rfc3339(); let fim = (payload.inicio_em + chrono::Duration::minutes(payload.duracao_min)).to_rfc3339(); let tipo = payload.tipo; let foco = payload.foco; let retorno = id.clone();
+    state.db.with(move |conn| { conn.execute("INSERT INTO tarefa_time_entry(id,tarefa_id,tipo,inicio_em,fim_em,duracao_min,foco,criado_em) VALUES(?,?,?,?,?,?,?,?)", rusqlite::params![id,tarefa_id,tipo,inicio,fim,payload.duracao_min,foco,agora])?; Ok(()) }).await?;
+    Ok(Json(serde_json::json!({"id": retorno})))
+}
+
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
@@ -78,7 +100,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
         .with(move |conn| {
             let mut sql = String::from(
                 "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
-                 t.criado_em, t.prioridade, t.criado_por, u.nome_usuario \
+                 t.criado_em, t.prioridade, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, \
+                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id) \
                  FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
             let mut condicoes = Vec::new();
@@ -133,6 +156,9 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                         "prioridade": r.get::<_, String>(9)?,
                         "criado_por": r.get::<_, Option<String>>(10)?,
                         "criado_por_nome": r.get::<_, Option<String>>(11)?,
+                        "atualizado_em": r.get::<_, String>(12)?,
+                        "pasta": r.get::<_, Option<String>>(13)?,
+                        "tags": serde_json::from_str::<Vec<String>>(&r.get::<_, String>(14)?).unwrap_or_default(),
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -198,6 +224,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let nome_arquivo = naming::sanitizar_nome_arquivo(&payload.titulo);
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &nome_arquivo, "md");
 
+    let agora = Utc::now();
     let fm = TarefaFrontMatter {
         id: new_id(),
         titulo: payload.titulo.clone(),
@@ -210,7 +237,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         subtarefas: subtarefas_de_payload(payload.subtarefas),
         espaco,
         evento_externo: EventoExternoRef::default(),
-        criado_em: Utc::now(),
+        criado_em: agora,
+        atualizado_em: Some(agora),
         criado_por: Some(usuario.0.clone()),
     };
     let conteudo = frontmatter::serialize(&fm, payload.corpo.as_deref().unwrap_or(""))?;
@@ -221,7 +249,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     Ok(Json(serde_json::json!({
         "id": fm.id, "tipo": "tarefa", "titulo": fm.titulo, "scheduled_at": fm.scheduled_at,
         "duration_min": fm.duration_min, "espaco": fm.espaco.to_string(), "status": "pendente",
-        "prioridade": fm.prioridade, "criado_em": fm.criado_em,
+        "prioridade": fm.prioridade, "criado_em": fm.criado_em, "atualizado_em": fm.atualizado_em,
     })))
 }
 
@@ -255,6 +283,7 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
         "subtarefas": fm.subtarefas,
         "espaco": fm.espaco.to_string(),
         "criado_em": fm.criado_em,
+        "atualizado_em": fm.atualizado_em.unwrap_or(fm.criado_em),
         "caminho_arquivo": caminho_relativo,
         "pasta": pasta,
         "corpo": doc.body,
@@ -372,6 +401,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         naming::caminho_sem_colisao(&dir_destino, &nome_arquivo, "md")
     };
 
+    fm.atualizado_em = Some(Utc::now());
     let conteudo = frontmatter::serialize(&fm, &corpo)?;
     if caminho_absoluto_destino == caminho_absoluto_atual {
         std::fs::write(&caminho_absoluto_atual, conteudo)?;
@@ -420,6 +450,7 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let mut fm = doc.front_matter;
     fm.status = novo_status;
+    fm.atualizado_em = Some(Utc::now());
     let conteudo = frontmatter::serialize(&fm, &doc.body)?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
