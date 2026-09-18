@@ -10,3 +10,5 @@ Notas/
 Tarefas/
 *.enc
 Cargo.lock.bak
+
+.claude/

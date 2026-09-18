@@ -17,7 +17,7 @@ ecos/
 │   ├── server/         # ecos-app (Axum) — public API, sync hub
 │   ├── vault/           # ecos-vault-db (Axum) — Cofre, internal network only
 │   └── client/          # Tauri + React client (complete front end, see app/client/README.md)
-├── notes/               # ECOS_NOTES_PATH default — Notas/ e Tarefas/ dentro
+├── (fora do repo) ../ecos-notes/  # ECOS_NOTES_PATH default — Notas/ e Tarefas/ dentro
 ├── docker-compose.yml
 ├── docker-compose.staging.yml
 └── docs/README-cofre.md

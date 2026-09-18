@@ -5,6 +5,9 @@
 #
 # `.env` (copie de `.env.example`) configura tudo que muda por instância.
 
+# Nome fixo: preserva os volumes existentes (ecos-tasksandnotes_*) mesmo com a pasta se chamando ecos-app.
+name: ecos-tasksandnotes
+
 services:
   ecos-app:
     build:
@@ -19,7 +22,7 @@ services:
       - ECOS_SESSION_SECRET=${ECOS_SESSION_SECRET:-}
       - ECOS_PORT=7023
     volumes:
-      - ${ECOS_NOTES_PATH:-./notes}:/data/notes
+      - ${ECOS_NOTES_PATH:-../ecos-notes}:/data/notes
       - ecos-index:/data/index
       - ecos-backups:/data/backups
     profiles: ["default"]
