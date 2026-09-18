@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Folder, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronLeft, Filter, Folder, AlertTriangle } from "lucide-react";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
@@ -21,6 +21,8 @@ export function FolderScreen() {
   const { perfil } = useAuth();
   const { versao } = useRefreshBus();
   const [modo, setModo] = useModoVisualizacao("notas");
+  const [filtroAberto, setFiltroAberto] = useState(false);
+  const [tagsFiltro, setTagsFiltro] = useState<"todos" | "com-tags" | "sem-tags">("todos");
 
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[]>([]);
   const [notas, setNotas] = useState<NotaResumo[] | null>(null);
@@ -57,6 +59,7 @@ export function FolderScreen() {
         </h1>
         <ViewModeToggle modo={modo} onMudar={setModo} />
       </div>
+      <div className="relative mb-4"><button type="button" onClick={() => setFiltroAberto((aberto) => !aberto)} aria-haspopup="menu" aria-expanded={filtroAberto} className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm ${tagsFiltro !== "todos" ? "border-steel-400 bg-steel-700/20 text-steel-200" : "border-border bg-surface-1 text-text-secondary hover:bg-surface-2"}`}><Filter size={16} />Filtrar{tagsFiltro !== "todos" ? " (ativo)" : ""}<ChevronDown size={15} className={filtroAberto ? "rotate-180" : ""} /></button>{filtroAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-56 rounded-xl border border-border bg-surface-1 p-3 shadow-nav"><p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Tags</p>{(["todos", "com-tags", "sem-tags"] as const).map((filtro) => <button key={filtro} type="button" onClick={() => setTagsFiltro(filtro)} className={`flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm ${tagsFiltro === filtro ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{filtro === "todos" ? "Todas as notas" : filtro === "com-tags" ? "Com tags" : "Sem tags"}</button>)}</div>}</div>
 
       {erro && (
         <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
@@ -83,7 +86,7 @@ export function FolderScreen() {
         ) : notas.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira nota aqui." />
         ) : (
-          <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={notas.map((n) => notaResumoParaView(n, equipes, perfil))} />
+          <ListaDeItens chave="notas" mostrarCriada exibirFiltros={false} modo={modo} itens={notas.filter((n) => tagsFiltro === "todos" || (tagsFiltro === "com-tags" ? n.tags.length > 0 : n.tags.length === 0)).map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
     </div>

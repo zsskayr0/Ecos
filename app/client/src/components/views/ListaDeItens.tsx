@@ -21,10 +21,12 @@ interface Props {
   mostrarCriada?: boolean;
   /** A tabela mostra o motivo do ranking — só faz sentido no Feed, onde ele é real. */
   mostrarMotivo?: boolean;
+  /** Em telas de pasta, o filtro é renderizado no cabeçalho da própria pasta. */
+  exibirFiltros?: boolean;
 }
 
 /** Uma lista de notas e/ou tarefas em qualquer das visualizações: feed (cards), lista compacta, tabela ou grade. */
-export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo }: Props) {
+export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true }: Props) {
   const desktop = useIsDesktop();
   const efetivo = modoEfetivo(modo, desktop);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -117,12 +119,12 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo 
   const filtrosAtivos = [tipoFiltro !== "todos" && (tipoFiltro === "nota" ? "Notas" : "Tarefas"), statusFiltro !== "todos" && (statusFiltro === "pendente" ? "Pendentes" : "Concluídas"), prioridadeFiltro !== "todos" && `Prioridade ${prioridadeFiltro}`].filter(Boolean) as string[];
   const cabecalhoFiltros = <div className="relative mb-3 flex min-h-10 items-center gap-2"><button type="button" onClick={() => setFiltrosAbertos((aberto) => !aberto)} aria-haspopup="menu" aria-expanded={filtrosAbertos} className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors ${filtrosAtivos.length ? "border-steel-400 bg-steel-700/20 text-steel-200" : "border-border bg-surface-1 text-text-secondary hover:bg-surface-2"}`}><Filter size={16} />Filtrar{filtrosAtivos.length ? ` (${filtrosAtivos.length})` : ""}<ChevronDown size={15} className={filtrosAbertos ? "rotate-180 transition-transform" : "transition-transform"} /></button>{filtrosAtivos.map((filtro) => <span key={filtro} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs text-text-secondary">{filtro}</span>)}{filtrosAbertos && <div role="menu" aria-label="Filtros" className="absolute left-0 top-full z-30 mt-1 w-72 rounded-xl border border-border bg-surface-1 p-3 shadow-nav"><div className="space-y-3"><fieldset><legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Tipo</legend><div className="flex gap-1">{(["todos", "nota", "tarefa"] as const).map((tipo) => <button key={tipo} type="button" onClick={() => setTipoFiltro(tipo)} className={`min-h-9 rounded-md px-2.5 text-xs ${tipoFiltro === tipo ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{tipo === "todos" ? "Todos" : tipo === "nota" ? "Notas" : "Tarefas"}</button>)}</div></fieldset><fieldset><legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Status</legend><div className="flex gap-1">{(["todos", "pendente", "concluida"] as const).map((status) => <button key={status} type="button" onClick={() => setStatusFiltro(status)} className={`min-h-9 rounded-md px-2.5 text-xs ${statusFiltro === status ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{status === "todos" ? "Todos" : status === "pendente" ? "Pendentes" : "Concluídas"}</button>)}</div></fieldset><fieldset><legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Prioridade</legend><div className="flex gap-1">{(["todos", "baixa", "media", "alta"] as const).map((prioridade) => <button key={prioridade} type="button" onClick={() => setPrioridadeFiltro(prioridade)} className={`min-h-9 rounded-md px-2.5 text-xs ${prioridadeFiltro === prioridade ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{prioridade === "todos" ? "Todas" : prioridade[0].toUpperCase() + prioridade.slice(1)}</button>)}</div></fieldset><button type="button" onClick={() => { setTipoFiltro("todos"); setStatusFiltro("todos"); setPrioridadeFiltro("todos"); }} className="min-h-9 text-xs text-steel-300 hover:text-text-primary">Limpar filtros</button></div></div>}</div>;
 
-  if (efetivo === "tabela") return <>{cabecalhoFiltros}{acoes}<TabelaItens itens={itensVisiveis} chave={chave} mostrarCriada={mostrarCriada} mostrarMotivo={mostrarMotivo} selecionados={selecionados} onSelecionar={selecionar} /></>;
-  if (efetivo === "grade") return <>{cabecalhoFiltros}{acoes}<GradeItens itens={itensVisiveis} selecionados={selecionados} onSelecionar={selecionar} /></>;
+  if (efetivo === "tabela") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<TabelaItens itens={itensVisiveis} chave={chave} mostrarCriada={mostrarCriada} mostrarMotivo={mostrarMotivo} selecionados={selecionados} onSelecionar={selecionar} /></>;
+  if (efetivo === "grade") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<GradeItens itens={itensVisiveis} selecionados={selecionados} onSelecionar={selecionar} /></>;
 
   const lista = efetivo === "lista";
   return (
-    <div>{cabecalhoFiltros}{acoes}<div className={lista ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
+    <div>{exibirFiltros && cabecalhoFiltros}{acoes}<div className={lista ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
       {itensVisiveis.map((item) =>
         item.tipo === "nota" ? (
           envolver(item, lista ? <NoteListRow nota={item} /> : <NoteCard nota={item} />)

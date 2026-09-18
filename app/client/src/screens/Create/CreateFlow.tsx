@@ -150,8 +150,6 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
   }, [capturaAberta, contexto?.tipo, contexto?.pasta]);
 
-  if (!capturaAberta) return null;
-
   function fecharTudo() {
     padraoAplicado.current = { nota: false, tarefa: false };
     fecharCaptura();
@@ -160,10 +158,6 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     ultimoEnvio.current = null;
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
     setErro(null);
-  }
-
-  if (capturaAberta === "escolha") {
-    return <ChoicePopup onEscolher={(tipo: TipoCaptura) => trocarTipoCaptura(tipo)} onFechar={fecharTudo} />;
   }
 
   const salvar = useCallback(async () => {
@@ -240,6 +234,12 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     const timer = window.setTimeout(() => { void salvar(); }, 600);
     return () => window.clearTimeout(timer);
   }, [capturaAberta, draft, salvar, salvando]);
+
+  if (!capturaAberta) return null;
+
+  if (capturaAberta === "escolha") {
+    return <ChoicePopup onEscolher={(tipo: TipoCaptura) => trocarTipoCaptura(tipo)} onFechar={fecharTudo} />;
+  }
 
   return (
     <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={fecharTudo} erro={erro} embedded={embedded}>

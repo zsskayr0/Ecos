@@ -135,14 +135,14 @@ export function TaskComposer({ editedAt, value, onChange, onSave, saving = false
     <AttachmentsField tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} compact />
     <div ref={grade} className="grid min-w-0 gap-7 md:gap-0" style={largo ? { gridTemplateColumns: `minmax(0,1fr) ${LARGURA_DIVISORIA}px ${larguraSidebar}px` } : undefined}>
       <div className="min-w-0 space-y-6 md:pr-3">
-        <section aria-label="Descrição" className={`${expanded || hasDescription || descriptionOpened ? "block" : "hidden"} md:block`}>
+        <section aria-label="Descrição" className="block">
           <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => { setDescriptionOpened(true); onChange({ corpo }); }} initialPreview
             rows={10} layout="document" placeholder="Contexto, decisões, links ou um projeto inteiro… Use #tags para organizar." />
         </section>
         <button type="button" aria-expanded={expanded} aria-controls={`${id}-subtasks ${id}-planning`} onClick={() => setExpanded(!expanded)}
           className="flex min-h-12 w-full flex-col gap-2 border-t border-border pt-5 text-left md:hidden">
           <span className="flex w-full items-center gap-2 text-sm font-medium text-text-primary"><SlidersHorizontal size={17} />Mais detalhes<ChevronDown size={18} className={`ml-auto transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} /></span>
-          <span className="text-sm text-text-secondary">{hasDescription || descriptionOpened ? "Agenda, subtarefas e organização" : "Descrição, agenda e organização"}{value.subtarefas.length > 0 ? ` · ${value.subtarefas.length} subtarefas` : ""}</span>
+          <span className="text-sm text-text-secondary">"Agenda, subtarefas e organização"{value.subtarefas.length > 0 ? ` · ${value.subtarefas.length} subtarefas` : ""}</span>
         </button>
       </div>
       {largo && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar descrição e planejamento"

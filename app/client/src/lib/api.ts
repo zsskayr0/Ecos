@@ -256,6 +256,7 @@ export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string } = {}) =>
     get<{ subpastas: { caminho: string; nome: string; contagem_itens: number }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
   criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
+  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string }) => patch<{ ok: true }>("/pastas", payload),
   excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string }) => del<{ ok: true }>("/pastas", payload),
 };
 
