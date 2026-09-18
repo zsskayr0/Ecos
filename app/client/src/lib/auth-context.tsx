@@ -54,6 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("deslogado");
       } else {
         setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
+        // No authenticated session exists during first load. A connection
+        // failure must not leave startup stuck forever in "carregando".
+        setStatus((previous) => previous === "carregando" ? "deslogado" : previous);
       }
     }
   }, []);
@@ -66,12 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setErro(null);
     try {
       await auth.login(usuario, senha);
-      await recarregarPerfil();
+      const p = await auth.perfil();
+      setPerfil(p);
+      setStatus("autenticado");
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível entrar.");
       throw e;
     }
-  }, [recarregarPerfil]);
+  }, []);
 
   const registrar = useCallback(async (nomeUsuario: string, senha: string, nome: string) => {
     setErro(null);

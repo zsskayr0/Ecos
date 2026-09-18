@@ -43,12 +43,38 @@ export class ApiError extends Error {
   }
 }
 
-async function renovarSessaoDesktop(): Promise<boolean> {
+async function comandoAuthNativo<T>(command: string, args: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(command, args);
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      const native = error as { code?: string; message: unknown; status?: number; retry_after_segundos?: number };
+      const status = typeof native.status === "number" ? native.status : 0;
+      // ApiError's generic 401 text is appropriate for API requests, but login
+      // needs the native authentication message (rather than "session expired").
+      const wrapped = new ApiError(native.code ?? "AUTH_NATIVA", String(native.message), status, undefined, native.retry_after_segundos);
+      wrapped.message = String(native.message);
+      throw wrapped;
+    }
+    throw new ApiError("AUTH_NATIVA", "Não foi possível executar a autenticação nativa. Atualize o aplicativo Ecos.", 0);
+  }
+}
+
+let renovacaoNativa: Promise<boolean> | null = null;
+
+async function renovarSessaoNativa(): Promise<boolean> {
+  if (renovacaoNativa) return renovacaoNativa;
+  renovacaoNativa = executarRenovacaoNativa();
+  try { return await renovacaoNativa; }
+  finally { renovacaoNativa = null; }
+}
+
+async function executarRenovacaoNativa(): Promise<boolean> {
   if (!estaNoTauri()) return false;
   const servidor = obterServidorBaseUrl();
   if (!servidor) return false;
   try {
-    const accessToken = await invoke<string>("renovar_sessao_desktop", { servidor });
+    const accessToken = await comandoAuthNativo<string>("renovar_sessao_desktop", { servidor });
     definirAccessToken(accessToken);
     return true;
   } catch {
@@ -84,7 +110,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
   const body = ehJson ? await resp.json().catch(() => null) : null;
 
   if (resp.status === 401 && !tentouRenovar && !path.startsWith("/auth/")) {
-    if (await renovarSessaoDesktop()) return req<T>(path, init, true);
+    if (await renovarSessaoNativa()) return req<T>(path, init, true);
   }
 
   if (!resp.ok) {
@@ -134,7 +160,9 @@ export const auth = {
     if (estaNoTauri()) {
       const servidor = obterServidorBaseUrl();
       if (!servidor) throw new ApiError("SERVIDOR_NAO_CONFIGURADO", "Configure o endereço do servidor antes de entrar.", 400);
-      const access_token = await invoke<string>("login_desktop", { servidor, usuario, senha });
+      // Legacy command name; Rust selects Windows Credential Manager or
+      // Android's native-memory session using target-specific implementations.
+      const access_token = await comandoAuthNativo<string>("login_desktop", { servidor, usuario, senha });
       definirAccessToken(access_token);
       return { usuario_id: "", access_token };
     }
@@ -146,7 +174,7 @@ export const auth = {
     definirAccessToken(null);
     if (estaNoTauri()) {
       const servidor = obterServidorBaseUrl();
-      if (servidor) await invoke("logout_desktop", { servidor });
+      if (servidor) await comandoAuthNativo("logout_desktop", { servidor });
       return;
     }
     await post<void>("/auth/logout");

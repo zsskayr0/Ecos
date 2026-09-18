@@ -48,6 +48,13 @@ and every call comes back 401.
 Building the Android APK (tested working on this machine — Android SDK,
 NDK 28.2, and the four `*-linux-android` Rust targets already installed):
 
+Authentication storage: Windows uses Credential Manager. Android keeps the
+refresh credential only in native process memory (not WebView storage or a
+plaintext file), renews it while the process is alive, and requires login
+again after the process is terminated. Durable Android login requires a
+future Keystore-backed implementation. Native authentication failures are
+reported separately from connectivity failures.
+
 ```bash
 cd app/client
 npx tauri android init                       # once, generates gen/android
