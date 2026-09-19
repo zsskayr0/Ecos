@@ -1,13 +1,14 @@
 {
   "name": "ecos-client",
   "private": true,
-  "version": "0.2.1-alpha",
+  "version": "0.2.2-alpha",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "android:aplicar": "node scripts/aplicar-android.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",

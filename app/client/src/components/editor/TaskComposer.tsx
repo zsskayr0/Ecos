@@ -11,6 +11,7 @@ import { CorpoEditor } from "./CorpoEditor";
 import { TaskDateTimePicker } from "./TaskDateTimePicker";
 import { EquipeSelector } from "./EquipeSelector";
 import { TitleField } from "@/components/common/TitleField";
+import { formatDataHoraCompleta } from "@/lib/format";
 
 const LABELS = { baixa: "Baixa", media: "Média", alta: "Alta" };
 const FIELD = "ecos-input min-w-0 !rounded-lg border border-border !text-[16px] text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400";
@@ -30,13 +31,15 @@ function lerLarguraSidebar(): number {
 }
 const ACTION = "flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-2 text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
 
-export function TaskComposer({ editedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange }: {
+export function TaskComposer({ editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange }: {
   value: TaskFields; onChange: (patch: Partial<TaskFields>) => void; onSave: () => void;
   saving?: boolean; itemId?: string; editing?: boolean; dirty?: boolean;
   /** false quando quem hospeda o compositor já oferece o próprio botão Salvar fixo (desktop). */
   floatingSave?: boolean; showPriority?: boolean; titleActions?: ReactNode; timePanel?: ReactNode; onUploadingChange?: (uploading: boolean) => void;
   /** Última edição (só em tarefa existente) — aparece no rodapé no formato de feed. */
   editedAt?: string;
+  /** Quando a tarefa foi concluída (ISO) — só aparece se houver. */
+  completedAt?: string | null;
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
@@ -193,7 +196,7 @@ export function TaskComposer({ editedAt, value, onChange, onSave, saving = false
       </aside>
     </div>
     <footer className="flex flex-col gap-3 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">
-      <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>
+      <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>
     </footer>
     {editing && floatingSave && (dirty || saving) && <FloatingSaveButton onSave={onSave} disabled={!value.titulo.trim() || uploading} saving={saving} />}
   </div>;

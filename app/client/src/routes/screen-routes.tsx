@@ -17,6 +17,7 @@ import { VaultScreen } from "@/screens/Vault/VaultScreen";
 import { TransactionDetailScreen } from "@/screens/Vault/TransactionDetailScreen";
 import { TeamProfileScreen } from "@/screens/Team/TeamProfileScreen";
 import { TeamCreateJoinScreen } from "@/screens/Team/TeamCreateJoinScreen";
+import { TeamsScreen } from "@/screens/Team/TeamsScreen";
 import { ProfileScreen } from "@/screens/Profile/ProfileScreen";
 import { ProfileEditScreen } from "@/screens/Profile/ProfileEditScreen";
 import { RotinaScreen } from "@/screens/Profile/RotinaScreen";
@@ -27,6 +28,7 @@ import { SyncBackupScreen } from "@/screens/Settings/SyncBackupScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
+import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 import { MediaScreen } from "@/screens/Media/MediaScreen";
 import { FileViewerScreen } from "@/screens/Media/FileViewerScreen";
@@ -71,6 +73,7 @@ export const screenRoutes = (
     <Route path="/cofre/transacao/:id" element={<TransactionDetailScreen />} />
 
     <Route path="/equipe/nova" element={<TeamCreateJoinScreen />} />
+    <Route path="/equipes" element={<TeamsScreen />} />
     <Route path="/equipe/:equipeId" element={<TeamProfileScreen />} />
 
     <Route path="/perfil" element={<ProfileScreen />} />
@@ -84,6 +87,7 @@ export const screenRoutes = (
     <Route path="/configuracoes/sync" element={<SyncBackupScreen />} />
     <Route path="/configuracoes/privacidade" element={<PrivacyVaultScreen />} />
     <Route path="/configuracoes/aparencia" element={<AparenciaScreen />} />
+    <Route path="/configuracoes/calendario" element={<CalendarPreferencesScreen />} />
     <Route path="/configuracoes/sobre" element={<AboutScreen />} />
 
     <Route path="/ajuda" element={<HelpScreen />} />

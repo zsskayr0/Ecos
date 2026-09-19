@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -8,40 +9,64 @@ import { DesktopShell } from "@/desktop/DesktopShell";
 import { screenRoutes } from "@/routes/screen-routes";
 import { AuthScreen } from "@/screens/Auth/AuthScreen";
 import { OnboardingScreen } from "@/screens/Onboarding/OnboardingScreen";
-import { ConectarServidorScreen } from "@/screens/Onboarding/ConectarServidorScreen";
+import { ConectarServidorScreen, useFluxoConectar } from "@/screens/Onboarding/ConectarServidorScreen";
+import { CarregandoScreen } from "@/screens/Onboarding/CarregandoScreen";
+import { PalcoIntro } from "@/components/layout/PalcoIntro";
+import { ReceptorCompartilhamento } from "@/components/layout/ReceptorCompartilhamento";
 import { precisaConfigurarServidor } from "@/lib/server-config";
 
-/** Real authentication gate (section 5.1) — without it, nothing below actually talks to `ecos-app`. */
+/** Tempo mínimo da abertura (ms): sem isso, num servidor rápido a marca piscaria e sumiria antes de dar pra ver. */
+const ABERTURA_MINIMA_MS = 900;
+
+/**
+ * Real authentication gate (section 5.1) — without it, nothing below actually talks to `ecos-app`.
+ *
+ * Tudo que vem antes do app (carregando → boas-vindas → onde está o Ecos → login) roda dentro de UM `PalcoIntro`:
+ * como ele é sempre o mesmo elemento na mesma posição, a arte de fundo não reinicia e só a etapa da direita troca,
+ * com transição. Quem já está logado passa direto, sem abertura.
+ */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
+  const fluxoConectar = useFluxoConectar();
+  const [abertura, setAbertura] = useState(true);
+  useEffect(() => {
+    const t = window.setTimeout(() => setAbertura(false), ABERTURA_MINIMA_MS);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // The Tauri shell (desktop/Android) has no working default address —
   // asking "who's logged in" before the user has told it *where* to ask
   // would just be a network error. User feedback: "deixa configurável no
   // próprio app" (`server-config.ts`).
-  if (precisaConfigurarServidor()) {
-    return <ConectarServidorScreen />;
-  }
+  const semServidor = precisaConfigurarServidor();
+  if (!semServidor && status === "autenticado") return <>{children}</>;
 
-  if (status === "carregando") {
+  if (abertura || (!semServidor && status === "carregando")) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="font-display text-2xl text-text-muted">Ecos</p>
-      </div>
+      <PalcoIntro etapa="carregando">
+        <CarregandoScreen />
+      </PalcoIntro>
+    );
+  }
+  if (semServidor) {
+    return (
+      <PalcoIntro etapa={`conectar:${fluxoConectar.passo}`} direcao={fluxoConectar.direcao}>
+        <ConectarServidorScreen fluxo={fluxoConectar} />
+      </PalcoIntro>
     );
   }
   if (status === "indisponivel") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="font-display text-2xl text-text-muted">Ecos</p>
-        <p role="status" className="text-sm text-text-secondary">O servidor não respondeu. Sua sessão continua salva — tentando reconectar…</p>
-      </div>
+      <PalcoIntro etapa="indisponivel">
+        <CarregandoScreen mensagem="O servidor não respondeu." aviso="Sua sessão continua salva — tentando reconectar…" />
+      </PalcoIntro>
     );
   }
-  if (status === "deslogado") {
-    return <AuthScreen />;
-  }
-  return <>{children}</>;
+  return (
+    <PalcoIntro etapa="login">
+      <AuthScreen />
+    </PalcoIntro>
+  );
 }
 
 /**
@@ -74,6 +99,7 @@ export default function App() {
         <AppUIProvider>
           <AuthGate>
             <Shell />
+            <ReceptorCompartilhamento />
           </AuthGate>
         </AppUIProvider>
       </RefreshProvider>

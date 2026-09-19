@@ -1,0 +1,73 @@
+/* Introdução (carregando → boas-vindas → servidor → login) — palco em components/layout/PalcoIntro.tsx. */
+
+.intro-palco { --intro-saida: 200ms; --intro-entrada: 520ms; --intro-curva: cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* ---- Troca de etapa: sai suave (desfoque + recuo), entra deslizando da direção do fluxo ---- */
+.intro-etapa { will-change: transform, opacity, filter; }
+.intro-etapa-entrando { animation: intro-entra var(--intro-entrada) var(--intro-curva) both; }
+.intro-etapa-entrando[data-direcao="voltar"] { animation-name: intro-entra-voltando; }
+.intro-etapa-saindo { animation: intro-sai var(--intro-saida) ease-in both; pointer-events: none; }
+
+@keyframes intro-entra {
+  from { opacity: 0; transform: translate3d(28px, 0, 0) scale(0.985); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes intro-entra-voltando {
+  from { opacity: 0; transform: translate3d(-28px, 0, 0) scale(0.985); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes intro-sai {
+  from { opacity: 1; transform: none; filter: blur(0); }
+  to { opacity: 0; transform: translate3d(-18px, 0, 0) scale(0.99); filter: blur(4px); }
+}
+
+/* Os filhos diretos da etapa aparecem em cascata (título, texto, opções), como um eco se propagando. */
+.intro-etapa-entrando > .intro-cascata > * { animation: intro-cascata 560ms var(--intro-curva) both; }
+.intro-etapa-entrando > .intro-cascata > *:nth-child(1) { animation-delay: 60ms; }
+.intro-etapa-entrando > .intro-cascata > *:nth-child(2) { animation-delay: 130ms; }
+.intro-etapa-entrando > .intro-cascata > *:nth-child(3) { animation-delay: 200ms; }
+.intro-etapa-entrando > .intro-cascata > *:nth-child(4) { animation-delay: 270ms; }
+.intro-etapa-entrando > .intro-cascata > *:nth-child(n + 5) { animation-delay: 340ms; }
+@keyframes intro-cascata {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- Ondas de eco: a cada etapa nova, dois anéis saem da logo e se dissipam ---- */
+.intro-ondas { position: absolute; left: 3rem; top: 3rem; width: 77px; height: 72px; pointer-events: none; }
+.intro-onda {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid rgb(var(--ecos-cyan-rgb) / 0.55);
+  box-shadow: 0 0 24px rgb(var(--ecos-cyan-rgb) / 0.25), inset 0 0 18px rgb(var(--ecos-violet-rgb) / 0.2);
+  animation: intro-onda 1500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.intro-onda-2 { animation-delay: 220ms; border-color: rgb(var(--ecos-violet-rgb) / 0.5); }
+@keyframes intro-onda {
+  from { opacity: 0.9; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(9); }
+}
+
+/* ---- Carregando ---- */
+.intro-barra { position: relative; height: 3px; width: 100%; overflow: hidden; border-radius: 9999px; background: rgb(255 255 255 / 0.08); }
+.intro-barra::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--ecos-cyan), var(--ecos-violet), transparent);
+  animation: intro-barra 1.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes intro-barra {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(260%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-etapa-entrando, .intro-etapa-saindo,
+  .intro-etapa-entrando > .intro-cascata > * { animation: none; }
+  .intro-ondas { display: none; }
+  .intro-barra::after { animation: none; width: 100%; opacity: 0.5; }
+}

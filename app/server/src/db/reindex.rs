@@ -387,8 +387,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             let fm = &item.front_matter;
             tx.execute(
                 "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
-                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em, concluida_em) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
                 params![
                     fm.id,
                     item.caminho_relativo,
@@ -406,6 +406,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                     fm.criado_em.to_rfc3339(),
                     fm.criado_por,
                     fm.atualizado_em.or(item.modificado_em).unwrap_or(fm.criado_em).to_rfc3339(),
+                    // Concluída antes do campo existir: a última edição é a melhor aproximação até a próxima mudança de status.
+                    (if fm.status == TarefaStatus::Concluida { fm.concluida_em.or(fm.atualizado_em).or(item.modificado_em) } else { None }).map(|d| d.to_rfc3339()),
                 ],
             )?;
 
@@ -441,4 +443,48 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         erros,
         adiados,
     })
+}
+
+#[cfg(test)]
+mod testes_concluida_em {
+    use super::*;
+
+    fn tarefa(id: &str, status: &str, extra: &str) -> String {
+        format!("---\nid: {id}\ntitulo: T {id}\nstatus: {status}\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\n{extra}---\ncorpo\n")
+    }
+
+    #[tokio::test]
+    async fn indexa_concluida_em_com_fallback_pra_concluidas_antigas_e_null_pra_pendentes() {
+        let raiz = std::env::temp_dir().join(format!("ecos-reindex-concluida-{}", ecos_core::new_id()));
+        std::fs::create_dir_all(raiz.join("Tarefas")).unwrap();
+        std::fs::create_dir_all(raiz.join("Notas")).unwrap();
+        let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Tarefas").join(nome), conteudo).unwrap();
+        escreve("a.md", tarefa("a", "concluida", "atualizado_em: 2026-09-19T12:00:00Z\nconcluida_em: 2026-09-19T10:00:00Z\n"));
+        escreve("b.md", tarefa("b", "concluida", "atualizado_em: 2026-09-10T08:00:00Z\n"));
+        escreve("c.md", tarefa("c", "pendente", "atualizado_em: 2026-09-11T08:00:00Z\nconcluida_em: 2026-09-11T09:00:00Z\n"));
+
+        let db = IndexDb::open(&raiz.join("indice.db")).unwrap();
+        reindexar_tudo(&db, &raiz).await.unwrap();
+
+        let linhas: Vec<(String, Option<String>)> = db
+            .with(|c| {
+                let mut stmt = c.prepare("SELECT id, concluida_em FROM tarefa ORDER BY id")?;
+                let l = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+                Ok(l)
+            })
+            .await
+            .unwrap();
+        let de = |s: &str| Some(chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc).to_rfc3339());
+        assert_eq!(linhas.len(), 3);
+        assert_eq!(linhas[0], ("a".into(), de("2026-09-19T10:00:00Z"))); // valor exato do arquivo
+        assert_eq!(linhas[1], ("b".into(), de("2026-09-10T08:00:00Z"))); // concluída antiga: cai pro atualizado_em
+        assert_eq!(linhas[2], ("c".into(), None)); // pendente nunca indexa data de conclusão, mesmo com resíduo no arquivo
+
+        let usa_indice: String = db
+            .with(|c| c.query_row("EXPLAIN QUERY PLAN SELECT id FROM tarefa WHERE concluida_em >= '2026-09-01'", [], |r| r.get(3)))
+            .await
+            .unwrap();
+        assert!(usa_indice.contains("idx_tarefa_concluida_em"), "plano: {usa_indice}");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 }

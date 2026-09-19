@@ -205,9 +205,29 @@ pub struct TarefaFrontMatter {
     /// Última edição (criação, PATCH ou mudança de status). Ausente em arquivos antigos — o índice usa o mtime do arquivo até a próxima edição.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atualizado_em: Option<DateTime<Utc>>,
+    /// Quando a Tarefa foi concluída. Só existe com `status: concluida`; reabrir apaga. Ausente em concluídas antigas — o índice cai pro `atualizado_em`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concluida_em: Option<DateTime<Utc>>,
     /// See `NotaFrontMatter::criado_por` — same rationale, same migration.
     #[serde(default)]
     pub criado_por: Option<String>,
+}
+
+impl TarefaFrontMatter {
+    /// Muda o status mantendo `concluida_em` coerente: concluir grava o instante (sem sobrescrever se já estava concluída),
+    /// reabrir apaga. Todo caminho que altera `status` deve passar por aqui.
+    pub fn definir_status(&mut self, novo: TarefaStatus, agora: DateTime<Utc>) {
+        match novo {
+            TarefaStatus::Concluida => {
+                if self.status != TarefaStatus::Concluida || self.concluida_em.is_none() {
+                    self.concluida_em = Some(agora);
+                }
+            }
+            TarefaStatus::Pendente => self.concluida_em = None,
+        }
+        self.status = novo;
+        self.atualizado_em = Some(agora);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,6 +244,7 @@ pub struct TarefaIndexada {
     pub espaco: Espaco,
     pub evento_externo: EventoExternoRef,
     pub criado_em: DateTime<Utc>,
+    pub concluida_em: Option<DateTime<Utc>>,
 }
 
 /// Pasta não é entidade persistida — é derivada da árvore de diretórios a
@@ -763,5 +784,41 @@ mod tests {
         let serializado = crate::frontmatter::serialize(&fm, "corpo\n").unwrap();
         let de_novo = crate::frontmatter::parse::<TarefaFrontMatter>(&serializado).unwrap();
         assert_eq!(de_novo.front_matter.atualizado_em, Some(fm.criado_em));
+    }
+
+    fn tarefa_pendente() -> TarefaFrontMatter {
+        let src = "---\nid: t1\ntitulo: X\nstatus: pendente\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\n---\n";
+        crate::frontmatter::parse::<TarefaFrontMatter>(src).unwrap().front_matter
+    }
+
+    #[test]
+    fn concluir_grava_a_data_reabrir_apaga_e_concluir_de_novo_nao_a_sobrescreve() {
+        let t1: DateTime<Utc> = "2026-09-19T10:00:00Z".parse().unwrap();
+        let t2: DateTime<Utc> = "2026-09-20T11:00:00Z".parse().unwrap();
+        let mut fm = tarefa_pendente();
+        assert!(fm.concluida_em.is_none());
+
+        fm.definir_status(TarefaStatus::Concluida, t1);
+        assert_eq!(fm.concluida_em, Some(t1));
+        assert_eq!(fm.atualizado_em, Some(t1));
+
+        fm.definir_status(TarefaStatus::Concluida, t2); // já concluída: mantém a data original
+        assert_eq!(fm.concluida_em, Some(t1));
+
+        fm.definir_status(TarefaStatus::Pendente, t2);
+        assert!(fm.concluida_em.is_none());
+        fm.definir_status(TarefaStatus::Concluida, t2);
+        assert_eq!(fm.concluida_em, Some(t2));
+    }
+
+    #[test]
+    fn concluida_em_vai_e_volta_pelo_front_matter_e_pendente_nao_grava_o_campo() {
+        let mut fm = tarefa_pendente();
+        assert!(!crate::frontmatter::serialize(&fm, "").unwrap().contains("concluida_em"));
+        let t: DateTime<Utc> = "2026-09-19T10:00:00Z".parse().unwrap();
+        fm.definir_status(TarefaStatus::Concluida, t);
+        let texto = crate::frontmatter::serialize(&fm, "").unwrap();
+        assert!(texto.contains("concluida_em"));
+        assert_eq!(crate::frontmatter::parse::<TarefaFrontMatter>(&texto).unwrap().front_matter.concluida_em, Some(t));
     }
 }

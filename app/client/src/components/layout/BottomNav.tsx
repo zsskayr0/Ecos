@@ -1,18 +1,16 @@
 import { NavLink } from "react-router-dom";
-import { Rss, FileText, Search, CalendarClock, ShieldHalf } from "lucide-react";
+import { Rss, FileText, Search, CalendarClock, ListChecks } from "lucide-react";
 
 /**
- * Bottom nav — 5 thin outline icons, same visual weight, no background
- * pills (section 2.1). Floating bar with blur/glass, large corners, side
- * breathing room. Never flush against the edge, never Material Design
- * (rule 1).
+ * Bottom nav — caminhos de trabalho rápido no mobile. Cofre é uma seção
+ * secundária e fica no menu lateral, liberando espaço para Tarefas.
  */
 const ITENS = [
   { to: "/feed", label: "Feed", Icon: Rss },
   { to: "/notas", label: "Notas", Icon: FileText },
   { to: "/busca", label: "Busca", Icon: Search },
+  { to: "/tarefas", label: "Tarefas", Icon: ListChecks },
   { to: "/agenda", label: "Agenda", Icon: CalendarClock },
-  { to: "/cofre", label: "Cofre", Icon: ShieldHalf },
 ] as const;
 
 export function BottomNav() {
@@ -27,13 +25,7 @@ export function BottomNav() {
                 <Icon
                   size={22}
                   strokeWidth={1.75}
-                  className={
-                    isActive
-                      ? to === "/cofre"
-                        ? "text-violet"
-                        : "text-text-primary"
-                      : "text-text-muted"
-                  }
+                  className={isActive ? "text-text-primary" : "text-text-muted"}
                 />
               </>
             )}

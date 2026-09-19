@@ -6,6 +6,7 @@ import { notas, tarefas, vault, ApiError, type FormaPagamento, type PrioridadeTa
 import { hojeISO } from "@/lib/format";
 import { taskTags } from "@/lib/task-fields";
 import { pastaDoCaminho, type PastaContexto } from "@/lib/pasta-contexto";
+import { inserirReferencia } from "@/components/editor/AttachmentsField";
 import { ChoicePopup } from "./ChoicePopup";
 import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
@@ -126,7 +127,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   /** No desktop as rotas das abas não são a do app: o shell diz em que pasta a pessoa está (`null` = em nenhuma). No mobile vem da rota. */
   pastaContexto?: PastaContexto | null;
 }) {
-  const { capturaAberta, fecharCaptura, trocarTipoCaptura, espacoAtivo } = useAppUI();
+  const { capturaAberta, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -153,6 +154,14 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     const pasta = contexto.pasta;
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
   }, [capturaAberta, contexto?.tipo, contexto?.pasta]);
+
+  // Anexos que chegam de fora (imagens compartilhadas com o app) entram no corpo da nota/tarefa aberta.
+  useEffect(() => {
+    if (!anexosDeCaptura.length || (capturaAberta !== "nota" && capturaAberta !== "tarefa")) return;
+    const linhas = anexosDeCaptura;
+    limparAnexosDeCaptura();
+    setDraft((d) => ({ ...d, corpo: linhas.reduce((corpo, linha) => inserirReferencia(corpo, linha), d.corpo) }));
+  }, [anexosDeCaptura, capturaAberta, limparAnexosDeCaptura]);
 
   function fecharTudo() {
     padraoAplicado.current = { nota: false, tarefa: false };

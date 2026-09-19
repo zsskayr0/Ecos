@@ -4,7 +4,28 @@ import { definirServidorBaseUrl } from "@/lib/server-config";
 import { ehAndroid } from "@/lib/platform";
 import { auth, ApiError } from "@/lib/api";
 
-type Passo = "boas-vindas" | "local" | "endereco" | "ajuda" | "sucesso";
+export type Passo = "boas-vindas" | "local" | "endereco" | "ajuda" | "sucesso";
+
+const PROFUNDIDADE: Record<Passo, number> = { "boas-vindas": 0, local: 1, endereco: 2, ajuda: 2, sucesso: 3 };
+
+/**
+ * Estado do fluxo, mantido por quem monta o palco da introdução (`App.tsx`): assim o palco sabe em que etapa a
+ * pessoa está e em que direção ela andou, e a arte de fundo não reinicia entre etapas.
+ */
+export function useFluxoConectar() {
+  const [passo, setPassoBruto] = useState<Passo>("boas-vindas");
+  const [direcao, setDirecao] = useState<"avancar" | "voltar">("avancar");
+  /** "Neste computador" reusa a tela de endereço, já preenchida e testando `127.0.0.1:7023` sozinha —
+   * mesmo teste nos dois casos, uma coisa a menos pra digitar errado. */
+  const [valorInicial, setValorInicial] = useState<string | null>(null);
+  function ir(proximo: Passo) {
+    setDirecao(PROFUNDIDADE[proximo] < PROFUNDIDADE[passo] ? "voltar" : "avancar");
+    setPassoBruto(proximo);
+  }
+  return { passo, direcao, valorInicial, setValorInicial, ir };
+}
+
+export type FluxoConectar = ReturnType<typeof useFluxoConectar>;
 
 /**
  * First-run "onde está o seu Ecos" flow — inspired by a reference the user
@@ -17,39 +38,33 @@ type Passo = "boas-vindas" | "local" | "endereco" | "ajuda" | "sucesso";
  * crashing far from the cause, see `api.ts`) made clear that a single free
  * text field was the wrong shape for this decision.
  */
-export function ConectarServidorScreen() {
-  const [passo, setPasso] = useState<Passo>("boas-vindas");
-  /** "Neste computador" reuses the same address screen, just pre-filled
-   * and auto-testing `127.0.0.1:7023` instead of asking the user to type
-   * it — same test flow either way, one fewer thing to type wrong. */
-  const [valorInicial, setValorInicial] = useState<string | null>(null);
-
+export function ConectarServidorScreen({ fluxo }: { fluxo: FluxoConectar }) {
+  const { passo, valorInicial, setValorInicial, ir } = fluxo;
   return (
-    <div className="flex min-h-screen flex-col justify-center gap-8 px-6 py-10">
-      {passo === "boas-vindas" && <BoasVindas onContinuar={() => setPasso("local")} />}
+    <>
+      {passo === "boas-vindas" && <BoasVindas onContinuar={() => ir("local")} />}
       {passo === "local" && (
         <Local
           onEscolherLocal={() => {
             setValorInicial("127.0.0.1:7023");
-            setPasso("endereco");
+            ir("endereco");
           }}
           onEscolherRede={() => {
             setValorInicial(null);
-            setPasso("endereco");
+            ir("endereco");
           }}
-          onEscolherAjuda={() => setPasso("ajuda")}
+          onEscolherAjuda={() => ir("ajuda")}
         />
       )}
-      {passo === "endereco" && <Endereco valorInicial={valorInicial} onVoltar={() => setPasso("local")} />}
-      {passo === "ajuda" && <Ajuda onVoltar={() => setPasso("local")} />}
-    </div>
+      {passo === "endereco" && <Endereco valorInicial={valorInicial} onVoltar={() => ir("local")} />}
+      {passo === "ajuda" && <Ajuda onVoltar={() => ir("local")} />}
+    </>
   );
 }
 
 function BoasVindas({ onContinuar }: { onContinuar: () => void }) {
   return (
-    <>
-      <div className="flex-1" />
+    <div className="intro-cascata flex flex-col gap-8">
       <div className="text-center">
         <p className="font-display text-4xl text-text-primary">Ecos</p>
         <p className="mt-3 text-[15px] leading-snug text-text-secondary">
@@ -57,18 +72,17 @@ function BoasVindas({ onContinuar }: { onContinuar: () => void }) {
         </p>
         <p className="mt-2 text-sm text-text-muted">Só precisamos saber onde ele está.</p>
       </div>
-      <div className="flex-1" />
-      <button onClick={onContinuar} className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white">
+      <button onClick={onContinuar} className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white transition-transform hover:bg-steel-600 active:scale-[0.98]">
         Começar
       </button>
-    </>
+    </div>
   );
 }
 
 function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolherLocal: () => void; onEscolherRede: () => void; onEscolherAjuda: () => void }) {
   const android = ehAndroid();
   return (
-    <>
+    <div className="intro-cascata flex flex-col gap-6">
       <div className="text-center">
         <p className="font-display text-2xl text-text-primary">Onde o seu Ecos está rodando?</p>
         <p className="mt-2 text-sm text-text-secondary">Dá pra trocar isso depois, em Configurações → Servidor.</p>
@@ -95,13 +109,13 @@ function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolhe
           onClick={onEscolherAjuda}
         />
       </div>
-    </>
+    </div>
   );
 }
 
 function OpcaoLocal({ Icon, titulo, desc, onClick }: { Icon: typeof Monitor; titulo: string; desc: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4 text-left">
+    <button onClick={onClick} className="flex items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-steel-400/50 hover:bg-surface-2 active:translate-y-0">
       <Icon size={22} strokeWidth={1.75} className="shrink-0 text-steel-300" />
       <div>
         <p className="text-[15px] font-medium text-text-primary">{titulo}</p>
@@ -113,7 +127,7 @@ function OpcaoLocal({ Icon, titulo, desc, onClick }: { Icon: typeof Monitor; tit
 
 function Ajuda({ onVoltar }: { onVoltar: () => void }) {
   return (
-    <>
+    <div className="intro-cascata flex flex-col gap-6">
       <button onClick={onVoltar} className="flex w-fit items-center gap-1 text-sm text-text-muted">
         <ChevronLeft size={18} />
         Voltar
@@ -137,7 +151,7 @@ function Ajuda({ onVoltar }: { onVoltar: () => void }) {
       <button onClick={onVoltar} className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white">
         Voltar
       </button>
-    </>
+    </div>
   );
 }
 
@@ -176,7 +190,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
   }
 
   return (
-    <>
+    <div className="intro-cascata flex flex-col gap-6">
       <button onClick={onVoltar} className="flex w-fit items-center gap-1 text-sm text-text-muted">
         <ChevronLeft size={18} />
         Voltar
@@ -223,6 +237,6 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       >
         {testando ? "Testando..." : "Conectar"}
       </button>
-    </>
+    </div>
   );
 }

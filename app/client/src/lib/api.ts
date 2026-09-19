@@ -363,6 +363,8 @@ export interface TarefaResumo {
   criado_em: string;
   /** Última edição; servidores anteriores ao campo não enviam. */
   atualizado_em?: string;
+  /** Quando foi concluída (ISO); `null` se pendente. Servidores anteriores ao campo não enviam. */
+  concluida_em?: string | null;
   /** Só a listagem traz; servidores anteriores não enviam. */
   pasta?: string | null;
   tags?: string[];
@@ -384,6 +386,7 @@ export interface TarefaDetalhe {
   espaco: string;
   criado_em: string;
   atualizado_em?: string;
+  concluida_em?: string | null;
   caminho_arquivo: string;
   pasta: string | null;
   corpo: string;
@@ -491,7 +494,8 @@ export const equipes = {
   criar: (nome: string) => post<{ id: string }>("/equipes", { nome }),
   obter: (id: string) => get<{ id: string; nome: string; estatisticas: { notas: number; tarefas: number } }>(`/equipes/${id}`),
   atualizar: (id: string, nome: string) => patch<{ ok: true }>(`/equipes/${id}`, { nome }),
-  excluir: (id: string, confirm: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm }),
+  // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
+  excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
   listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; entrou_em: string }[]>(`/equipes/${id}/membros`),
   trocarCargo: (id: string, usuarioId: string, cargo: "dono" | "admin" | "membro") =>
     patch<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`, { cargo }),

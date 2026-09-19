@@ -368,12 +368,12 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
               tabIndex={0}
               onClick={(e) => { if (!onSelecionar?.(e, item, linhas)) abrir(caminhoDoItem(item), e); }}
               onKeyDown={(e) => aoTeclarNaLinha(e, item)}
-              className={`grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
+              className={`group grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
               style={{ gridTemplateColumns: modelo }}
             >
               {colunas.map((coluna) => (
                 <div key={coluna.id} role="cell" className="flex min-w-0 items-center px-3 py-1.5">
-                  {coluna.id === "titulo" && onSelecionar && <input data-ecos-selection-control type="checkbox" checked={selecionados.has(`${item.tipo}:${item.id}`)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className="mr-2 h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-text-muted bg-surface-1 checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[2px] checked:after:text-[11px] checked:after:leading-[11px] checked:after:text-white checked:after:content-['✓'] focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />}
+                  {coluna.id === "titulo" && onSelecionar && <input data-ecos-selection-control type="checkbox" checked={selecionados.has(`${item.tipo}:${item.id}`)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className="mr-2 h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-text-muted bg-surface-1 transition-all checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[2px] checked:after:text-[11px] checked:after:leading-[11px] checked:after:text-white checked:after:content-['✓'] focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100" />}
                   {coluna.celula(item)}
                 </div>
               ))}

@@ -18,5 +18,18 @@ export function anexosDaNota(corpo: string, notaId: string) {
 export function previewDaNota(corpo: string, notaId: string) {
   let texto = corpo;
   for (const item of anexosDaNota(corpo, notaId)) texto = texto.replace(item.referencia, "");
-  return texto.trim().slice(0, 240);
+  return textoParaPreview(texto).slice(0, 240);
+}
+
+/** Texto curto de card deve ser legível, não o Markdown cru da nota. */
+function textoParaPreview(markdown: string) {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*(?:[-*+] |\d+[.)] )/gm, "")
+    .replace(/(?:\*\*|__|~~|\*|_|`)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

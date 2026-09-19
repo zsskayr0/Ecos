@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, User, Users, RefreshCw, ShieldCheck, Bell, Palette, Info, Server } from "lucide-react";
+import { ChevronLeft, ChevronRight, User, Users, RefreshCw, ShieldCheck, Bell, Palette, Info, Server, CalendarDays } from "lucide-react";
 import { obterServidorBaseUrl } from "@/lib/server-config";
 import { useAppUI } from "@/lib/ui-context";
 
@@ -23,8 +23,8 @@ export function SettingsScreen() {
       </div>
 
       <Secao titulo="Conta">
-        <Item Icon={User} label="Editar perfil" onClick={() => navigate("/perfil/editar")} />
-        <Item Icon={Users} label="Equipes" onClick={() => navigate("/perfil")} />
+        <Item Icon={User} label="Visualizar perfil" onClick={() => navigate("/perfil")} />
+        <Item Icon={Users} label="Equipes" onClick={() => navigate("/equipes")} />
       </Secao>
 
       <Secao titulo="Sistema">
@@ -34,6 +34,7 @@ export function SettingsScreen() {
         <Item Icon={ShieldCheck} label="Privacidade & Cofre" onClick={() => navigate("/configuracoes/privacidade")} />
         <Item Icon={Bell} label="Notificações" onClick={() => navigate("/notificacoes")} />
         <Item Icon={Palette} label="Aparência" onClick={() => navigate("/configuracoes/aparencia")} />
+        <Item Icon={CalendarDays} label="Calendário e localização" onClick={() => navigate("/configuracoes/calendario")} />
       </Secao>
 
       <Secao titulo="Sobre">

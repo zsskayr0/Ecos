@@ -63,6 +63,9 @@ pub struct ListarQuery {
     pub pasta: Option<String>,
     pub data_de: Option<NaiveDate>,
     pub data_ate: Option<NaiveDate>,
+    /// Intervalo (dias, no fuso `tz`) em que a Tarefa foi concluída — só devolve concluídas.
+    pub concluida_de: Option<NaiveDate>,
+    pub concluida_ate: Option<NaiveDate>,
     /// Fuso do cliente em minutos a leste de UTC (`scheduled_at` é UTC; sem isso o "dia" seria o dia UTC).
     pub tz: Option<i32>,
     pub status: Option<String>,
@@ -104,7 +107,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
             let mut sql = String::from(
                 "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
                  t.criado_em, t.prioridade, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, \
-                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id) \
+                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em \
                  FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
             let mut condicoes = Vec::new();
@@ -129,6 +132,14 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
             if let Some(data_ate) = q.data_ate {
                 condicoes.push(format!("COALESCE(date(datetime(t.scheduled_at, '{tz_mod}')), date(t.due_date)) <= date(?)"));
                 params.push(Box::new(data_ate.to_string()));
+            }
+            if let Some(de) = q.concluida_de {
+                condicoes.push(format!("date(datetime(t.concluida_em, '{tz_mod}')) >= date(?)"));
+                params.push(Box::new(de.to_string()));
+            }
+            if let Some(ate) = q.concluida_ate {
+                condicoes.push(format!("date(datetime(t.concluida_em, '{tz_mod}')) <= date(?)"));
+                params.push(Box::new(ate.to_string()));
             }
             if let Some(c) = &cursor {
                 condicoes.push("(t.criado_em, t.id) < (?, ?)".to_string());
@@ -162,6 +173,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                         "atualizado_em": r.get::<_, String>(12)?,
                         "pasta": r.get::<_, Option<String>>(13)?,
                         "tags": serde_json::from_str::<Vec<String>>(&r.get::<_, String>(14)?).unwrap_or_default(),
+                        "concluida_em": r.get::<_, Option<String>>(15)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -242,6 +254,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         evento_externo: EventoExternoRef::default(),
         criado_em: agora,
         atualizado_em: Some(agora),
+        concluida_em: None,
         criado_por: Some(usuario.0.clone()),
     };
     let conteudo = frontmatter::serialize(&fm, payload.corpo.as_deref().unwrap_or(""))?;
@@ -287,6 +300,7 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
         "espaco": fm.espaco.to_string(),
         "criado_em": fm.criado_em,
         "atualizado_em": fm.atualizado_em.unwrap_or(fm.criado_em),
+        "concluida_em": fm.concluida_em,
         "caminho_arquivo": caminho_relativo,
         "pasta": pasta,
         "corpo": doc.body,
@@ -457,13 +471,12 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
     let bruto = std::fs::read_to_string(&caminho_absoluto)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let mut fm = doc.front_matter;
-    fm.status = novo_status;
-    fm.atualizado_em = Some(Utc::now());
+    fm.definir_status(novo_status, Utc::now());
     let conteudo = frontmatter::serialize(&fm, &doc.body)?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
-    Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status })))
+    Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status, "concluida_em": fm.concluida_em })))
 }
 
 pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {

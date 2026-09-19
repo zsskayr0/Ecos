@@ -1,4 +1,3 @@
-import { LogoAnimada } from "@/components/brand/LogoAnimada";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -104,12 +103,9 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-base lg:grid lg:h-screen lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)] lg:overflow-hidden">
-      <AuthArt />
-
-      {/* Só esta coluna rola (cadastro é mais alto que o login) — a arte fica fixa na altura da janela. */}
-      <div className="flex min-h-screen flex-col overflow-y-auto px-6 py-10 lg:min-h-0 lg:px-14">
-        <div className="mx-auto my-auto flex w-full max-w-sm flex-col gap-7">
+    <>
+      {/* A arte, a coluna e as transições vêm do palco da introdução (`PalcoIntro`), montado em `App.tsx`. */}
+      <div className="intro-cascata flex w-full flex-col gap-7">
           <div className="flex flex-col items-center gap-3 text-center">
             <img src={logoIcone} alt="" className="h-16 w-16" />
             <p className="font-display text-3xl font-bold text-text-primary">Ecos</p>
@@ -219,78 +215,8 @@ export function AuthScreen() {
               {carregando ? "Um momento..." : modo === "login" ? "Entrar" : "Criar conta"}
             </button>
           </form>
-        </div>
       </div>
-    </div>
-  );
-}
-
-const CURVAS = [
-  { d: "M -60 990 C 170 830, 300 650, 470 520 S 700 300, 880 240", cor: "var(--ecos-cyan)", duracao: "9s", atraso: "0s" },
-  { d: "M 40 1010 C 250 870, 380 700, 545 600 S 770 420, 900 390", cor: "var(--ecos-violet)", duracao: "11s", atraso: "-4s" },
-  { d: "M -140 900 C 50 760, 240 730, 380 560 S 620 210, 840 110", cor: "var(--ecos-steel-400)", duracao: "13s", atraso: "-8s" },
-];
-
-/** Cada camada é um trecho da curva com o mesmo ponto de frente — juntas formam um cometa que esmaece na cauda. */
-const CAMADAS = [
-  { comprimento: 0.4, opacidade: 0.12, largura: 2 },
-  { comprimento: 0.24, opacidade: 0.24, largura: 2 },
-  { comprimento: 0.12, opacidade: 0.45, largura: 2.2 },
-  { comprimento: 0.04, opacidade: 0.95, largura: 2.6 },
-];
-const COMPRIMENTO_MAX = 0.4;
-
-/** Painel decorativo — só em telas largas; sempre escuro (é arte, não acompanha o tema), com curvas de luz na paleta da marca. */
-function AuthArt() {
-  return (
-    <div aria-hidden className="auth-arte relative hidden overflow-hidden lg:block">
-      <div className="auth-arte-brilho auth-arte-brilho-a" />
-      <div className="auth-arte-brilho auth-arte-brilho-b" />
-
-      <svg viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full">
-        <defs>
-          <filter id="brilho" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1200" height="1400">
-            <feGaussianBlur stdDeviation="5" result="desfoque" />
-            <feMerge>
-              <feMergeNode in="desfoque" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        {CURVAS.map((curva) => (
-          <g key={curva.d} style={{ color: curva.cor }}>
-            <path d={curva.d} pathLength={1} className="auth-linha-base" />
-            <g filter="url(#brilho)">
-              {CAMADAS.map((camada) => (
-                <path
-                  key={camada.comprimento}
-                  d={curva.d}
-                  pathLength={1}
-                  className="auth-linha-luz"
-                  style={
-                    {
-                      strokeDasharray: `${camada.comprimento} 3`,
-                      strokeOpacity: camada.opacidade,
-                      strokeWidth: camada.largura,
-                      "--de": camada.comprimento,
-                      "--ate": camada.comprimento - (1 + COMPRIMENTO_MAX),
-                      animationDuration: curva.duracao,
-                      animationDelay: curva.atraso,
-                    } as React.CSSProperties
-                  }
-                />
-              ))}
-            </g>
-          </g>
-        ))}
-      </svg>
-      <LogoAnimada tamanho={77} className="absolute left-12 top-12" />
-
-      <div className="auth-arte-vinheta" />
-      <p className="absolute bottom-10 left-10 max-w-xs font-display text-2xl font-bold leading-snug text-white/90">
-        Seu cofre vivo de notas, tempo e dinheiro.
-      </p>
-    </div>
+    </>
   );
 }
 
@@ -309,7 +235,7 @@ function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col justify-center gap-6 px-6 py-10">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-warning/15">
           <KeyRound size={26} strokeWidth={1.5} className="text-warning" />

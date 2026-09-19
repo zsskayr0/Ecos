@@ -1,4 +1,4 @@
-import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks, Library, Trash2, CalendarCheck2, FolderTree } from "lucide-react";
+import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, ShieldHalf, LogOut, ListChecks, Library, Trash2, CalendarCheck2, FolderTree } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
@@ -66,6 +66,13 @@ export function Drawer() {
         >
           <ListChecks size={18} strokeWidth={1.75} className="text-cyan" />
           Tarefas
+        </button>
+        <button
+          onClick={() => ir("/cofre")}
+          className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"
+        >
+          <ShieldHalf size={18} strokeWidth={1.75} className="text-violet" />
+          Cofre
         </button>
         <button
           onClick={() => ir("/media")}

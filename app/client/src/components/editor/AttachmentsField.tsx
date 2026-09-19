@@ -34,7 +34,7 @@ function nomearColado(arquivo: File, indice: number, total: number): File {
 }
 
 /** Coloca a referência do anexo no texto: no cursor (colagem) ou no fim (botão), sempre em bloco próprio. */
-function inserirReferencia(corpo: string, linha: string, posicao?: number): string {
+export function inserirReferencia(corpo: string, linha: string, posicao?: number): string {
   if (posicao === undefined) return corpo.trim() ? `${corpo.trimEnd()}\n\n${linha}` : linha;
   const p = Math.min(Math.max(posicao, 0), corpo.length);
   const antes = corpo.slice(0, p);

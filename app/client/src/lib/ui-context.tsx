@@ -12,6 +12,10 @@ interface AppUIState {
   abrirCaptura: (inicial: TipoCaptura | "escolha") => void;
   trocarTipoCaptura: (tipo: TipoCaptura) => void;
   fecharCaptura: () => void;
+  /** Linhas Markdown de anexos (ex.: imagens compartilhadas) à espera de entrar no corpo da captura aberta. */
+  anexosDeCaptura: string[];
+  empilharAnexosDeCaptura: (linhas: string[]) => void;
+  limparAnexosDeCaptura: () => void;
 
   /** Topbar's Team filter (section 2.3) — null = "All". */
   filtroEquipeId: string | null;
@@ -27,6 +31,7 @@ const AppUIContext = createContext<AppUIState | null>(null);
 export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
+  const [anexosDeCaptura, setAnexosDeCaptura] = useState<string[]>([]);
   const [filtroEquipeId, setFiltroEquipeId] = useState<string | null>(null);
   const [espacoAtivo, setEspacoAtivoState] = useState(() => { try { return localStorage.getItem("ecos:espaco-ativo") ?? "pessoal"; } catch { return "pessoal"; } });
   const [intercalarEquipes, setIntercalarEquipesState] = useState(() => { try { return localStorage.getItem("ecos:intercalar-equipes") === "true"; } catch { return false; } });
@@ -43,6 +48,9 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       abrirCaptura: (inicial) => setCapturaAberta(inicial),
       trocarTipoCaptura: (tipo) => setCapturaAberta(tipo),
       fecharCaptura: () => setCapturaAberta(null),
+      anexosDeCaptura,
+      empilharAnexosDeCaptura: (linhas) => setAnexosDeCaptura((atual) => [...atual, ...linhas]),
+      limparAnexosDeCaptura: () => setAnexosDeCaptura([]),
 
       filtroEquipeId,
       setFiltroEquipeId,
@@ -51,7 +59,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       intercalarEquipes,
       setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, filtroEquipeId, espacoAtivo, intercalarEquipes],
+    [drawerAberto, capturaAberta, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;
