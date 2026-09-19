@@ -10,6 +10,7 @@ import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
 import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { useAppUI } from "@/lib/ui-context";
 
 /**
  * Notas — root-level folder grid (section 3.2), reading the real
@@ -31,26 +32,27 @@ export function NotesRootScreen() {
   const { equipes } = useMinhasEquipes();
   const { perfil } = useAuth();
   const { versao } = useRefreshBus();
+  const { espacoAtivo, intercalarEquipes, filtroEquipeId } = useAppUI();
   const [modo, setModo] = useModoVisualizacao("notas");
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [soltas, setSoltas] = useState<NotaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [ordem, setOrdem] = useState<"edicao" | "criacao" | "titulo">("edicao");
 
   useEffect(() => {
-    Promise.all([pastas.listar({ tipo: "nota" }), notasApi.listar({ limit: 100 })])
+    const espaco = intercalarEquipes ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined) : espacoAtivo;
+    Promise.all([pastas.listar({ tipo: "nota", espaco }), notasApi.listar({ espaco, limit: 100 })])
       .then(([p, n]) => {
         setSubpastas(p.subpastas);
         setSoltas(n.items);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
-  }, [versao]);
+  }, [versao, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (
     <SoltarMarkdown className="min-h-full px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Notas</h1>
-        <div className="flex items-center gap-2"><label className="sr-only" htmlFor="ordem-notas">Ordenar notas</label><select id="ordem-notas" value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="h-9 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-secondary"><option value="edicao">Última edição</option><option value="criacao">Criação recente</option><option value="titulo">Título A–Z</option></select><ViewModeToggle modo={modo} onMudar={setModo} /></div>
+        <div className="flex items-center gap-2"><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {erro && (
@@ -77,7 +79,7 @@ export function NotesRootScreen() {
             Nenhuma nota solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={soltas.slice().sort((a, b) => ordem === "titulo" ? a.titulo.localeCompare(b.titulo, "pt-BR") : ordem === "criacao" ? b.criado_em.localeCompare(a.criado_em) : b.atualizado_em.localeCompare(a.atualizado_em)).map((n) => notaResumoParaView(n, equipes, perfil))} />
+          <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={soltas.map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
     </SoltarMarkdown>

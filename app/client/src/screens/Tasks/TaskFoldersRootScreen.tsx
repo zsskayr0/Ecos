@@ -9,6 +9,7 @@ import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewMod
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { useAppUI } from "@/lib/ui-context";
 
 /**
  * Tarefas — root-level folder grid, same shape as `NotesRootScreen` (section
@@ -23,29 +24,30 @@ export function TaskFoldersRootScreen() {
   const { equipes } = useMinhasEquipes();
   const { perfil } = useAuth();
   const { versao } = useRefreshBus();
+  const { espacoAtivo, intercalarEquipes, filtroEquipeId } = useAppUI();
   const [modo, setModo] = useModoVisualizacao("tarefas");
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [soltas, setSoltas] = useState<TarefaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [ordem, setOrdem] = useState<"criacao" | "titulo" | "prioridade" | "prazo">("criacao");
 
   useEffect(() => {
     // `pasta: ""` is the loose-items filter for Tarefa (`COALESCE(pasta_id,
     // '') = ''` in `tarefas::listar` — unlike Nota, omitting `pasta`
     // entirely returns every Tarefa regardless of folder).
-    Promise.all([pastas.listar({ tipo: "tarefa" }), tarefasApi.listar({ pasta: "", limit: 100 })])
+    const espaco = intercalarEquipes ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined) : espacoAtivo;
+    Promise.all([pastas.listar({ tipo: "tarefa", espaco }), tarefasApi.listar({ pasta: "", espaco, limit: 100 })])
       .then(([p, t]) => {
         setSubpastas(p.subpastas);
         setSoltas(t.items);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
-  }, [versao]);
+  }, [versao, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (
     <div className="px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Pastas de Tarefas</h1>
-        <div className="flex items-center gap-2"><label className="sr-only" htmlFor="ordem-tarefas">Ordenar tarefas</label><select id="ordem-tarefas" value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="h-9 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-secondary"><option value="criacao">Criação recente</option><option value="titulo">Título A–Z</option><option value="prioridade">Prioridade</option><option value="prazo">Prazo</option></select><ViewModeToggle modo={modo} onMudar={setModo} /></div>
+        <div className="flex items-center gap-2"><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {erro && (
@@ -72,12 +74,7 @@ export function TaskFoldersRootScreen() {
             Nenhuma tarefa solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          <ListaDeItens chave="tarefas" mostrarCriada modo={modo} itens={soltas.slice().sort((a, b) => {
-            if (ordem === "titulo") return a.titulo.localeCompare(b.titulo, "pt-BR");
-            if (ordem === "prioridade") return ({ alta: 0, media: 1, baixa: 2 }[a.prioridade] - { alta: 0, media: 1, baixa: 2 }[b.prioridade]) || b.criado_em.localeCompare(a.criado_em);
-            if (ordem === "prazo") return (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31");
-            return b.criado_em.localeCompare(a.criado_em);
-          }).map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" mostrarCriada modo={modo} itens={soltas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>
