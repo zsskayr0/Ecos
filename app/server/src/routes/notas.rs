@@ -248,6 +248,50 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ImportarNotaPayload {
+    /// Nome do arquivo `.md` (com ou sem extensão) — vira o título se o texto não tiver `# Título`.
+    pub nome: String,
+    pub conteudo: String,
+    #[serde(default)]
+    pub pasta: Option<String>,
+}
+
+/// Importa um `.md` de fora (arrastado para a aba Notas): mesma "adoção" do arquivo solto na pasta —
+/// completa o front-matter que faltar e nunca mexe no corpo.
+pub async fn importar(State(state): State<AppState>, Json(payload): Json<ImportarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+    let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
+    if let Some(p) = pasta_relativa {
+        if p.contains("..") || p.starts_with('/') || p.starts_with('\\') ||p.contains(':') {
+            return Err(AppError::validation(vec![CampoInvalido { campo: "pasta".into(), motivo: "caminho inválido".into() }]));
+        }
+    }
+    let nome = payload.nome.trim().trim_end_matches(".md").trim_end_matches(".MD");
+    if nome.is_empty() {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
+    }
+    let agora = Utc::now();
+    let conteudo = ecos_core::adotar::adotar(&payload.conteudo, nome, agora, agora)
+        .map_err(|e| AppError::validation(vec![CampoInvalido { campo: "conteudo".into(), motivo: e.to_string() }]))?
+        .unwrap_or(payload.conteudo);
+    let doc = frontmatter::parse::<NotaFrontMatter>(&conteudo)?;
+
+    let dir = match pasta_relativa {
+        Some(p) => notas_dir(&state).join(p),
+        None => notas_dir(&state),
+    };
+    std::fs::create_dir_all(&dir)?;
+    let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(nome), "md");
+    std::fs::write(&caminho_absoluto, conteudo)?;
+    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+
+    Ok(Json(serde_json::json!({
+        "id": doc.front_matter.id,
+        "titulo": doc.front_matter.titulo,
+        "pasta": pasta_relativa,
+    })))
+}
+
 async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
     let caminho: Option<String> = state

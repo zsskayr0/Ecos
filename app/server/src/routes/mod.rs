@@ -53,6 +53,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/captura", post(captura::capturar))
         .route("/captura/campos-compativeis", get(captura::campos_compativeis))
         .route("/notas", get(notas::listar).post(notas::criar))
+        .route("/notas/importar", post(notas::importar))
         .route("/notas/:id", get(notas::obter).patch(notas::atualizar).delete(notas::excluir))
         .route("/notas/:id/links", get(notas::links))
         .route("/notas/:id/pagina", get(notas::obter_pagina).patch(notas::atualizar_pagina))

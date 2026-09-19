@@ -8,6 +8,7 @@ import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
+import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 /**
@@ -46,7 +47,7 @@ export function NotesRootScreen() {
   }, [versao]);
 
   return (
-    <div className="px-4 pt-1">
+    <SoltarMarkdown className="min-h-full px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Notas</h1>
         <div className="flex items-center gap-2"><label className="sr-only" htmlFor="ordem-notas">Ordenar notas</label><select id="ordem-notas" value={ordem} onChange={(e) => setOrdem(e.target.value as typeof ordem)} className="h-9 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-secondary"><option value="edicao">Última edição</option><option value="criacao">Criação recente</option><option value="titulo">Título A–Z</option></select><ViewModeToggle modo={modo} onMudar={setModo} /></div>
@@ -79,6 +80,6 @@ export function NotesRootScreen() {
           <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={soltas.slice().sort((a, b) => ordem === "titulo" ? a.titulo.localeCompare(b.titulo, "pt-BR") : ordem === "criacao" ? b.criado_em.localeCompare(a.criado_em) : b.atualizado_em.localeCompare(a.atualizado_em)).map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
-    </div>
+    </SoltarMarkdown>
   );
 }

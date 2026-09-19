@@ -49,6 +49,8 @@ pub struct ResultadoReindex {
     pub tarefas: usize,
     pub documentos: usize,
     pub erros: Vec<String>,
+    /// `.md` soltos ainda sendo escritos/copiados: a adoção espera o arquivo estabilizar.
+    pub adiados: usize,
 }
 
 struct NotaColetada {
@@ -131,7 +133,50 @@ fn enumerar_pastas(raiz_arvore: &Path) -> Vec<String> {
     out
 }
 
-fn coletar_notas(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<String>) -> Vec<NotaColetada> {
+/// Tempo sem mexer no arquivo antes de adotá-lo (cópia/gravação em andamento).
+const ESTABILIZAR: std::time::Duration = std::time::Duration::from_secs(2);
+
+enum Adocao {
+    Adotado(String),
+    Adiado,
+    Falhou(String),
+}
+
+/// `.md` solto em `Notas/` sem front-matter válido: completa o bloco (o corpo
+/// nunca muda) e grava de forma atômica. Se a gravação falhar (somente leitura,
+/// aberto em outro programa) a nota fica de fora e o erro é registrado — sem o
+/// `id` gravado no arquivo ela mudaria de identidade a cada reindex.
+fn adotar_arquivo(path: &Path, raw: &str) -> Adocao {
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(err) => return Adocao::Falhou(format!("falha ao ler metadados ({err})")),
+    };
+    let modificado = meta.modified().unwrap_or_else(|_| std::time::SystemTime::now());
+    if modificado.elapsed().map(|d| d < ESTABILIZAR).unwrap_or(false) {
+        return Adocao::Adiado;
+    }
+    let atualizado: chrono::DateTime<chrono::Utc> = modificado.into();
+    let criado: chrono::DateTime<chrono::Utc> = meta.created().map(Into::into).unwrap_or(atualizado);
+    let criado = criado.min(atualizado);
+    let nome = path.file_stem().and_then(|n| n.to_str()).unwrap_or("Sem título");
+
+    let novo = match ecos_core::adotar::adotar(raw, nome, criado, atualizado) {
+        Ok(Some(novo)) => novo,
+        Ok(None) => return Adocao::Falhou("front-matter inválido".to_string()),
+        Err(err) => return Adocao::Falhou(format!("front-matter inválido ({err})")),
+    };
+    let tmp = path.with_extension("md.ecos-tmp");
+    let gravou = std::fs::write(&tmp, &novo).and_then(|_| std::fs::rename(&tmp, path));
+    if let Err(err) = gravou {
+        let _ = std::fs::remove_file(&tmp);
+        tracing::warn!(arquivo = %path.display(), error = %err, "não foi possível gravar o front-matter da nota adotada");
+        return Adocao::Falhou(format!("não foi possível gravar o front-matter ({err})"));
+    }
+    tracing::info!(arquivo = %path.display(), "nota adotada: front-matter criado");
+    Adocao::Adotado(novo)
+}
+
+fn coletar_notas(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<String>, adiados: &mut usize) -> Vec<NotaColetada> {
     let mut out = Vec::new();
     if !notas_dir.exists() {
         return out;
@@ -148,6 +193,20 @@ fn coletar_notas(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<String>) -
                 continue;
             }
         };
+        let mut raw = raw;
+        if frontmatter::parse::<NotaFrontMatter>(&raw).is_err() {
+            match adotar_arquivo(path, &raw) {
+                Adocao::Adotado(novo) => raw = novo,
+                Adocao::Adiado => {
+                    *adiados += 1;
+                    continue;
+                }
+                Adocao::Falhou(msg) => {
+                    erros.push(format!("{}: {msg}", path.display()));
+                    continue;
+                }
+            }
+        }
         match frontmatter::parse::<NotaFrontMatter>(&raw) {
             Ok(doc) => {
                 let hash_conteudo = hex(&Sha256::digest(raw.as_bytes()));
@@ -230,7 +289,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     let tarefas_dir = notes_root.join("Tarefas");
 
     let mut erros = Vec::new();
-    let notas = coletar_notas(&notes_root, &notas_dir, &mut erros);
+    let mut adiados = 0;
+    let notas = coletar_notas(&notes_root, &notas_dir, &mut erros, &mut adiados);
     let tarefas = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
     let documentos = coletar_documentos(&notes_root, &notas_dir, &mut erros);
     let pastas_notas = enumerar_pastas(&notas_dir);
@@ -382,5 +442,6 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tarefas: total_tarefas,
         documentos: total_documentos,
         erros,
+        adiados,
     })
 }

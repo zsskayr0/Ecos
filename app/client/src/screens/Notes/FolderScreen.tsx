@@ -9,6 +9,7 @@ import { notas as notasApi, pastas as pastasApi, ApiError, type NotaResumo } fro
 import { notaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
+import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 /** Inside a folder — compact subfolders at the top, notes below with the same card as the Feed (section 3.2). */
@@ -47,7 +48,7 @@ export function FolderScreen() {
   }, [caminho, versao]);
 
   return (
-    <div className="px-4 pt-1">
+    <SoltarMarkdown pasta={caminho} className="min-h-full px-4 pt-1">
       <button onClick={() => navigate(-1)} className="mb-3 flex items-center gap-1 text-sm text-text-muted">
         <ChevronLeft size={18} />
         Notas
@@ -89,6 +90,6 @@ export function FolderScreen() {
           <ListaDeItens chave="notas" mostrarCriada exibirFiltros={false} modo={modo} itens={notas.filter((n) => tagsFiltro === "todos" || (tagsFiltro === "com-tags" ? n.tags.length > 0 : n.tags.length === 0)).map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
-    </div>
+    </SoltarMarkdown>
   );
 }

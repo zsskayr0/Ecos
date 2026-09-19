@@ -6,6 +6,7 @@
 //! recorrência financeira, fórmulas de ranking do Feed, catálogo de erros).
 //! Ver `ecos-arquitetura-tecnica.md`, seção 10.1.
 
+pub mod adotar;
 pub mod errors;
 pub mod frontmatter;
 pub mod ids;

@@ -229,6 +229,9 @@ export const notas = {
     ),
   criar: (payload: { titulo: string; corpo?: string; pasta?: string; tags?: string[]; espaco?: string; modo?: "texto" | "pagina" }) =>
     post<{ id: string }>("/notas", payload),
+  /** `.md` de fora: o servidor completa o front-matter que faltar e não mexe no corpo. */
+  importar: (payload: { nome: string; conteudo: string; pasta?: string }) =>
+    post<{ id: string; titulo: string; pasta: string | null }>("/notas/importar", payload),
   atualizar: (id: string, payload: { titulo?: string; pasta?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean }) =>
     patch<{ id: string }>(`/notas/${id}`, payload),
   excluir: (id: string) => del<{ ok: true }>(`/notas/${id}`),
