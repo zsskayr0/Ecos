@@ -343,6 +343,7 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
         "nome_usuario": nome_usuario,
         "nome": nome,
         "cofre_ativado": state.config.vault_enabled,
+        "avatar_atualizado_em": crate::routes::avatar::versao(&state, &usuario_id),
         "equipes": equipes,
     })))
 }

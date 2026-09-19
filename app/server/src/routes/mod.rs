@@ -3,6 +3,7 @@
 //! `/auth/*`.
 
 pub mod anexos_comuns;
+pub mod avatar;
 pub mod busca;
 pub mod calendario;
 pub mod captura;
@@ -50,6 +51,8 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::auth::excluir_conta))
         .route("/me/export", get(crate::auth::exportar))
+        .route("/me/avatar", get(avatar::obter_meu).put(avatar::enviar).delete(avatar::remover).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
+        .route("/usuarios/:id/avatar", get(avatar::obter_de_usuario))
         .route("/captura", post(captura::capturar))
         .route("/captura/campos-compativeis", get(captura::campos_compativeis))
         .route("/notas", get(notas::listar).post(notas::criar))
