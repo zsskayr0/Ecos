@@ -17,7 +17,7 @@ function lerRascunho(id: string): TaskFields | null { try { const draft = JSON.p
 function guardarRascunho(id: string, value: TaskFields) { try { localStorage.setItem(chaveRascunho(id), JSON.stringify(value)); } catch { /* cache indisponível */ } }
 function removerRascunho(id: string) { try { localStorage.removeItem(chaveRascunho(id)); } catch { /* cache indisponível */ } }
 function iguais(a: TaskFields, b: TaskFields) { return JSON.stringify(a) === JSON.stringify(b); }
-function payload(value: TaskFields) { return { titulo: value.titulo.trim(), prioridade: value.prioridade, scheduled_at: taskScheduledAt(value.data, value.horario), due_date: value.data || null, duration_min: value.duracao, corpo: value.corpo, tags: taskTags(value.tags, value.corpo), pasta: value.pasta ?? "", subtarefas: value.subtarefas }; }
+function payload(value: TaskFields) { return { titulo: value.titulo.trim(), prioridade: value.prioridade, scheduled_at: taskScheduledAt(value.data, value.horario), due_date: value.data || null, duration_min: value.duracao, corpo: value.corpo, tags: taskTags(value.tags, value.corpo), pasta: value.pasta ?? "", espaco: value.espaco, subtarefas: value.subtarefas }; }
 
 export function TaskDetailScreen() {
   const { id } = useParams();

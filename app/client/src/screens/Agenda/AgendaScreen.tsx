@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
-import { tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
+import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { tarefas as tarefasApi, rotina as rotinaApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CalendarClock } from "lucide-react";
@@ -70,11 +71,13 @@ export function AgendaScreen() {
   const [diaAtual, setDiaAtual] = useState(estadoInicial.dia);
   const hoje = new Date();
   const dataStr = paraISO(diaAtual);
-  const estaEmHoje = paraISO(diaAtual) === paraISO(hoje);
 
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [capacidade, setCapacidade] = useState<Capacidade | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [semRotina, setSemRotina] = useState(false);
+  useEffect(() => { rotinaApi.listar().then((b) => setSemRotina(b.length === 0)).catch(() => setSemRotina(false)); }, [versao]);
 
   // A escolha de Mês/Semana/Dia é uma preferência de trabalho, não uma
   // configuração temporária da tela. Mantemos também o dia de referência
@@ -125,28 +128,16 @@ export function AgendaScreen() {
 
   return (
     <div className="px-4 pt-1">
-      <div className="mb-4 flex items-center justify-center gap-2">
-        <div className="flex w-fit rounded-pill bg-surface-2 p-1">
-          {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setModo(m)}
-              className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
-            >
-              {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => setDiaAtual(new Date())}
-          disabled={estaEmHoje}
-          title="Ir para hoje"
-          className="flex min-h-10 items-center gap-1.5 rounded-pill border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-colors hover:border-steel-400 hover:text-text-primary disabled:cursor-default disabled:opacity-45"
-        >
-          <CalendarDays size={15} className="text-steel-300" />
-          Hoje
-        </button>
+      <div className="mb-4 flex justify-center rounded-pill bg-surface-2 p-1 self-center w-fit mx-auto">
+        {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => setModo(m)}
+            className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
+          >
+            {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
+          </button>
+        ))}
       </div>
 
       {modo === "mes" && (
@@ -157,6 +148,13 @@ export function AgendaScreen() {
       )}
       {modo === "dia" && (
         <VisaoDia diaAtual={diaAtual} onMudarDia={(delta) => setDiaAtual((d) => somarDias(d, delta))} />
+      )}
+
+      {semRotina && (
+        <button onClick={() => navigate("/perfil/rotina")} className="mb-4 flex w-full items-start gap-3 rounded-2xl border border-steel-400/40 bg-steel-700/15 p-4 text-left">
+          <CalendarClock size={20} className="mt-0.5 shrink-0 text-steel-300" strokeWidth={1.75} />
+          <span className="text-sm leading-snug text-text-primary">Você ainda não contou sobre a sua rotina. Sem ela a Agenda não sabe quantas horas o seu dia tem. <span className="font-semibold text-steel-300">Ajustar rotina</span></span>
+        </button>
       )}
 
       {erro && (

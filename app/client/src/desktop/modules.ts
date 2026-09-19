@@ -1,5 +1,7 @@
 import {
   Bell,
+  CalendarCheck2,
+  FolderTree,
   CalendarDays,
   HelpCircle,
   Library,
@@ -18,6 +20,8 @@ import { nomeDoArquivo } from "@/lib/format";
 
 export type ModuloId =
   | "feed"
+  | "hoje"
+  | "pastas"
   | "agenda"
   | "tarefas"
   | "notas"
@@ -40,6 +44,8 @@ interface Modulo {
 
 const MODULOS: Record<ModuloId, Modulo> = {
   feed: { id: "feed", titulo: "Feed", icone: Newspaper, raiz: "/feed" },
+  hoje: { id: "hoje", titulo: "Hoje", icone: CalendarCheck2, raiz: "/hoje" },
+  pastas: { id: "pastas", titulo: "Pastas", icone: FolderTree, raiz: "/pastas" },
   agenda: { id: "agenda", titulo: "Agenda", icone: CalendarDays, raiz: "/agenda" },
   tarefas: { id: "tarefas", titulo: "Tarefas", icone: ListChecks, raiz: "/tarefas" },
   notas: { id: "notas", titulo: "Notas", icone: StickyNote, raiz: "/notas" },
@@ -55,7 +61,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
 };
 
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
-export const RAIL_PRINCIPAL: ModuloId[] = ["agenda", "tarefas", "notas", "feed", "cofre", "media"];
+export const RAIL_PRINCIPAL: ModuloId[] = ["hoje", "agenda", "pastas", "tarefas", "notas", "feed", "cofre", "media"];
 export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira", "notificacoes", "configuracoes"];
 
 export function moduloDaRota(path: string): Modulo {
@@ -102,6 +108,7 @@ export function tituloDaRota(path: string): string {
   if (primeiro === "cofre" && segundo === "transacao") return "Transação";
   if (primeiro === "equipe") return segundo === "nova" ? "Nova equipe" : "Equipe";
   if (primeiro === "perfil" && segundo === "editar") return "Editar perfil";
+  if (primeiro === "perfil" && segundo === "rotina") return "Ajustar rotina";
   if (primeiro === "configuracoes" && segundo) {
     const nomes: Record<string, string> = {
       servidor: "Servidor",

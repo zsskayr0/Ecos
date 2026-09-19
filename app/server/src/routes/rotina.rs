@@ -56,6 +56,16 @@ fn validar_bloco(payload: &BlocoPayload) -> AppResult<()> {
             motivo: format!("deve ser uma de: {}", CLASSIFICACOES_VALIDAS.join(", ")),
         });
     }
+    for (campo, valor) in [("hora_inicio", &payload.hora_inicio), ("hora_fim", &payload.hora_fim)] {
+        if chrono::NaiveTime::parse_from_str(valor, "%H:%M").is_err() {
+            campos.push(CampoInvalido { campo: campo.into(), motivo: "deve estar no formato HH:MM".into() });
+        }
+    }
+    let dias_ok = payload.dias_semana == "diario"
+        || (!payload.dias_semana.is_empty() && payload.dias_semana.split(',').all(|d| matches!(d.trim().parse::<u32>(), Ok(1..=7))));
+    if !dias_ok {
+        campos.push(CampoInvalido { campo: "dias_semana".into(), motivo: "deve ser \"diario\" ou dias de 1 (segunda) a 7 separados por vírgula".into() });
+    }
     if campos.is_empty() {
         Ok(())
     } else {

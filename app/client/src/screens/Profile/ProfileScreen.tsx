@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
@@ -38,6 +38,16 @@ export function ProfileScreen() {
           <p className="text-sm text-text-muted">@{perfil.nome_usuario} · Identidade local desta instância</p>
         </div>
       </div>
+
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Rotina</p>
+      <button onClick={() => navigate("/perfil/rotina")} className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4 text-left">
+        <CalendarClock size={22} strokeWidth={1.75} className="shrink-0 text-steel-300" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-medium text-text-primary">Ajustar rotina</p>
+          <p className="text-xs text-text-muted">Sono, trabalho, refeições e horário de produção — a Agenda usa isso para calcular o seu dia.</p>
+        </div>
+        <ChevronRight size={18} className="shrink-0 text-text-muted" />
+      </button>
 
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Equipes</p>
       {perfil.equipes.length === 0 ? (

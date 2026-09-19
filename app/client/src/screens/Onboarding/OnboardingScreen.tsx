@@ -54,7 +54,7 @@ export function OnboardingScreen() {
           </Slide>
         )}
         {passo === "camera" && <CameraPermissao onContinuar={avancar} />}
-        {passo === "setup" && <Setup onConcluir={() => navigate("/feed")} />}
+        {passo === "setup" && <Setup onConcluir={() => navigate("/perfil/rotina?onboarding=1")} />}
       </div>
 
       {passo !== "camera" && passo !== "setup" && (

@@ -444,6 +444,17 @@ export const busca = {
 
 // --- Teams (section 11.10) ----------------------------------------------
 
+export interface BlocoRotina { id: string; tipo: string; hora_inicio: string; hora_fim: string; dias_semana: string; classificacao: string }
+export type BlocoRotinaPayload = Omit<BlocoRotina, "id">;
+
+/** Perfil de Rotina: os blocos (sono, trabalho, refeição…) que a Agenda usa para calcular a capacidade do dia. */
+export const rotina = {
+  listar: () => get<BlocoRotina[]>("/rotina/blocos"),
+  criar: (payload: BlocoRotinaPayload) => post<{ id: string }>("/rotina/blocos", payload),
+  atualizar: (id: string, payload: BlocoRotinaPayload) => patch<{ id: string }>(`/rotina/blocos/${id}`, payload),
+  excluir: (id: string) => del<{ ok: true }>(`/rotina/blocos/${id}`),
+};
+
 export const equipes = {
   listarMinhas: () => get<{ id: string; nome: string; cargo: string }[]>("/equipes"),
   criar: (nome: string) => post<{ id: string }>("/equipes", { nome }),
