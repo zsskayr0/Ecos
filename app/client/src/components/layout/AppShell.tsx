@@ -7,6 +7,7 @@ import { BottomNav } from "./BottomNav";
 import { Fab } from "./Fab";
 import { Drawer } from "./Drawer";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
+import { useAppUI } from "@/lib/ui-context";
 
 const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/cofre", "/tarefas", "/media", "/busca", "/lixeira"];
 /** Folder-browsing sub-routes keep the topbar too (avatar/notifications
@@ -27,6 +28,9 @@ function temTopbar(pathname: string): boolean {
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { capturaAberta, fecharCaptura } = useAppUI();
+  const capturaRef = useRef({ aberta: capturaAberta, fechar: fecharCaptura });
+  capturaRef.current = { aberta: capturaAberta, fechar: fecharCaptura };
   const [avisoDeSaida, setAvisoDeSaida] = useState(false);
   const rotaAtual = useRef(location.pathname);
   const podeSairAte = useRef(0);
@@ -50,6 +54,11 @@ export function AppShell() {
     // O evento só existe no Android. No navegador e no desktop, a API pode
     // rejeitar o registro e o comportamento normal de voltar é preservado.
     void onBackButtonPress(() => {
+      // Captura aberta (tela cheia por cima do app): voltar fecha ela, não navega nem sai.
+      if (capturaRef.current.aberta) {
+        capturaRef.current.fechar();
+        return;
+      }
       if (rotaAtual.current !== "/feed") {
         navigate("/feed", { replace: true });
         mostrarAviso();

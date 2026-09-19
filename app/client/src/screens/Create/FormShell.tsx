@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import type { TipoCaptura } from "@/lib/ui-context";
 
 const TIPOS: { tipo: TipoCaptura; label: string }[] = [
@@ -32,7 +32,14 @@ export function FormShell({
     <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`}>
       <div className={`flex h-full min-w-0 w-full flex-col ${embedded ? "max-w-6xl px-6" : tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
         <div className="ecos-capture-header flex items-center justify-between">
-          <div className="w-12 shrink-0" />
+          {/* Embutida numa janela do desktop, quem fecha é o X da própria janela; em tela cheia (mobile) este é o único jeito de sair. */}
+          {embedded ? (
+            <div className="w-12 shrink-0" />
+          ) : (
+            <button onClick={onFechar} aria-label="Fechar" className="flex min-h-12 min-w-12 items-center justify-center rounded-xl">
+              <X size={22} className="text-text-muted" />
+            </button>
+          )}
           <div className="flex rounded-pill bg-surface-2 p-1">
             {TIPOS.map(({ tipo, label }) => (
               <button
