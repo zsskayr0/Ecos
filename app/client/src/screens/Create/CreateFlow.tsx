@@ -136,6 +136,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
   const ultimoEnvio = useRef<string | null>(null);
   const envioEmCurso = useRef(false);
+  // Sobe a cada captura encerrada: um envio ainda em voo não pode "reviver" o item da captura anterior na próxima.
+  const sessaoCaptura = useRef(0);
 
   useEffect(() => { onTitleChange?.(draft.texto.trim()); }, [draft.texto, onTitleChange]);
   useEffect(() => { try { localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(draft)); } catch { /* cache indisponível */ } }, [draft]);
@@ -154,6 +156,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
 
   function fecharTudo() {
     padraoAplicado.current = { nota: false, tarefa: false };
+    sessaoCaptura.current += 1;
     fecharCaptura();
     setDraft(DRAFT_VAZIO);
     setItemCriado(null);
@@ -161,6 +164,20 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
     setErro(null);
   }
+
+  // A captura pode ser encerrada por fora (botão voltar, Esc, fechar a janela) sem passar por `fecharTudo`.
+  // Se já existe um item criado, a próxima captura não pode herdar o rascunho nem o id dele: senão o novo texto
+  // sobrescreve a tarefa/nota anterior. Sem item criado, o rascunho digitado continua guardado (contingência).
+  useEffect(() => {
+    if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null)) return;
+    padraoAplicado.current = { nota: false, tarefa: false };
+    sessaoCaptura.current += 1;
+    setDraft(DRAFT_VAZIO);
+    setItemCriado(null);
+    ultimoEnvio.current = null;
+    setErro(null);
+    try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
+  }, [capturaAberta, itemCriado]);
 
   const salvar = useCallback(async () => {
     const tipo = capturaAberta as TipoCaptura;
@@ -176,6 +193,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     if (envioEmCurso.current) return;
     envioEmCurso.current = true;
     setSalvando(true);
+    const sessao = sessaoCaptura.current;
     try {
       if (tipo === "transacao") {
         let beneficiarioId: string | undefined;
@@ -200,17 +218,18 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
         if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
         else {
           const criado = await notas.criar(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] });
-          setItemCriado({ tipo: "nota", id: criado.id });
+          if (sessao === sessaoCaptura.current) setItemCriado({ tipo: "nota", id: criado.id });
         }
       } else {
         const dados = payloadReal("tarefa", draft, espacoAtivo);
         if (itemCriado?.tipo === "tarefa") await tarefas.atualizar(itemCriado.id, dados);
         else {
           const criado = await tarefas.criar(dados as unknown as Parameters<typeof tarefas.criar>[0]);
-          setItemCriado({ tipo: "tarefa", id: criado.id });
+          if (sessao === sessaoCaptura.current) setItemCriado({ tipo: "tarefa", id: criado.id });
         }
       }
       notificar();
+      if (sessao !== sessaoCaptura.current) return;
       ultimoEnvio.current = JSON.stringify({ tipo, draft });
       if (tipo === "nota" || tipo === "tarefa") {
         try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
