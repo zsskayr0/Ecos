@@ -8,5 +8,7 @@ dist-ssr
 # aren't meant to be committed, Vite reads the .ts directly.
 /vite.config.js
 /vite.config.d.ts
+/vitest.config.js
+/vitest.config.d.ts
 src-tauri/target
 src-tauri/gen

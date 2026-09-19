@@ -9,6 +9,7 @@ import { useAppUI } from "@/lib/ui-context";
 import { corDaEquipe } from "@/lib/team-color";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import type { Cargo } from "@/lib/types";
+import { useAvatarEquipe } from "@/lib/team-avatar";
 
 interface Membro {
   usuario_id: string;
@@ -36,6 +37,7 @@ export function TeamProfileScreen() {
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [novoNome, setNovoNome] = useState("");
+  const fotoEquipe = useAvatarEquipe(equipeId);
 
   useEffect(() => {
     if (!equipeId) return;
@@ -97,7 +99,7 @@ export function TeamProfileScreen() {
       </button>
 
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
-        <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} />
+        <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} url={fotoEquipe} />
         {editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
       </div>
 

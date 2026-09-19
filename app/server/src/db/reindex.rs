@@ -415,6 +415,14 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 tx.execute("INSERT OR IGNORE INTO tarefa_tag (tarefa_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
             }
 
+            // Tempo alocado/trabalhado: a fonte é o front-matter; a tabela só o espelha (o `DELETE FROM tarefa` acima a esvazia em cascata).
+            for t in &fm.tempo {
+                tx.execute(
+                    "INSERT OR REPLACE INTO tarefa_time_entry (id, tarefa_id, tipo, inicio_em, fim_em, duracao_min, foco, criado_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![t.id, fm.id, t.tipo.como_str(), t.inicio_em.to_rfc3339(), (t.inicio_em + chrono::Duration::minutes(t.duracao_min)).to_rfc3339(), t.duracao_min, t.foco, t.criado_em.to_rfc3339()],
+                )?;
+            }
+
             tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
 
             if let Some(pasta) = &item.pasta_id {

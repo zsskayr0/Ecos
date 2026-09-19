@@ -13,6 +13,7 @@ import { ConectarServidorScreen, useFluxoConectar } from "@/screens/Onboarding/C
 import { CarregandoScreen } from "@/screens/Onboarding/CarregandoScreen";
 import { PalcoIntro } from "@/components/layout/PalcoIntro";
 import { ReceptorCompartilhamento } from "@/components/layout/ReceptorCompartilhamento";
+import { ArrasteTarefaProvider } from "@/lib/arraste-tarefa";
 import { precisaConfigurarServidor } from "@/lib/server-config";
 
 /** Tempo mínimo da abertura (ms): sem isso, num servidor rápido a marca piscaria e sumiria antes de dar pra ver. */
@@ -97,10 +98,12 @@ export default function App() {
     <AuthProvider>
       <RefreshProvider>
         <AppUIProvider>
-          <AuthGate>
-            <Shell />
-            <ReceptorCompartilhamento />
-          </AuthGate>
+          <ArrasteTarefaProvider>
+            <AuthGate>
+              <Shell />
+              <ReceptorCompartilhamento />
+            </AuthGate>
+          </ArrasteTarefaProvider>
         </AppUIProvider>
       </RefreshProvider>
     </AuthProvider>

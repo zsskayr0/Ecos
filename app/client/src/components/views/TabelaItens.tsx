@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { ArrowUp, CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -227,7 +227,7 @@ function montarColunas({ temNota, temTarefa, itens, mostrarCriada, mostrarMotivo
 
   colunas.push({
     id: "dono",
-    titulo: "Dono",
+    titulo: "Proprietário",
     largura: 150,
     ordenar: (a, b) => cmpTexto(a.dono.nome, b.dono.nome),
     celula: (item) => (
@@ -258,12 +258,13 @@ function lerLarguras(chave: string): Record<string, number> {
  * cabeçalho ordena, arrastar a borda do cabeçalho redimensiona (a largura fica
  * guardada por tela) e clicar numa linha abre o item.
  */
-export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo = false, selecionados = new Set(), onSelecionar, saindo = new Set(), entrando = new Set() }: { itens: FeedItem[]; chave: string; mostrarCriada?: boolean; mostrarMotivo?: boolean; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean; saindo?: Set<string>; entrando?: Set<string> }) {
+export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo = false, ordem, onOrdemChange, selecionados = new Set(), onSelecionar, saindo = new Set(), entrando = new Set() }: { itens: FeedItem[]; chave: string; mostrarCriada?: boolean; mostrarMotivo?: boolean; ordem: { id: string; dir: 1 | -1 } | null; onOrdemChange: (ordem: { id: string; dir: 1 | -1 } | null) => void; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean; saindo?: Set<string>; entrando?: Set<string> }) {
   const abrir = useAbrirDocumento();
-  const [ordem, setOrdem] = useState<{ id: string; dir: 1 | -1 } | null>(null);
   const [larguras, setLarguras] = useState<Record<string, number>>(() => lerLarguras(chave));
   const arraste = useRef<{ id: string; x: number; largura: number } | null>(null);
   const largurasAtuais = useRef(larguras);
+  const elementosLinhas = useRef(new Map<string, HTMLDivElement>());
+  const posicoesLinhas = useRef(new Map<string, number>());
 
   const temNota = itens.some(ehNota);
   const temTarefa = itens.some(ehTarefa);
@@ -275,13 +276,58 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
     if (!ordem || !coluna?.ordenar) return itens;
     return [...itens].sort((a, b) => ordem.dir * coluna.ordenar!(a, b));
   }, [itens, ordem, colunas]);
+  const assinaturaLinhas = linhas.map((item) => `${item.tipo}:${item.id}`).join("|");
+
+  useLayoutEffect(() => {
+    const reduzirMovimento = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const proximasPosicoes = new Map<string, number>();
+    const animadas: HTMLDivElement[] = [];
+
+    elementosLinhas.current.forEach((elemento, id) => {
+      const topo = elemento.getBoundingClientRect().top;
+      proximasPosicoes.set(id, topo);
+      const topoAnterior = posicoesLinhas.current.get(id);
+      const deslocamento = topoAnterior === undefined ? 0 : topoAnterior - topo;
+      if (!reduzirMovimento && Math.abs(deslocamento) > 0.5) {
+        elemento.style.transition = "none";
+        elemento.style.transform = `translateY(${deslocamento}px)`;
+        elemento.style.zIndex = "1";
+        animadas.push(elemento);
+      }
+    });
+    posicoesLinhas.current = proximasPosicoes;
+
+    if (!animadas.length) return;
+    const quadro = window.requestAnimationFrame(() => {
+      animadas.forEach((elemento) => {
+        elemento.style.transition = "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)";
+        elemento.style.transform = "translateY(0)";
+      });
+    });
+    const limpar = window.setTimeout(() => {
+      animadas.forEach((elemento) => {
+        elemento.style.removeProperty("transition");
+        elemento.style.removeProperty("transform");
+        elemento.style.removeProperty("z-index");
+      });
+    }, 300);
+    return () => {
+      window.cancelAnimationFrame(quadro);
+      window.clearTimeout(limpar);
+      animadas.forEach((elemento) => {
+        elemento.style.removeProperty("transition");
+        elemento.style.removeProperty("transform");
+        elemento.style.removeProperty("z-index");
+      });
+    };
+  }, [assinaturaLinhas]);
 
   const modelo = colunas.map((c, i) => (i === colunas.length - 1 ? `minmax(${larguraDe(c)}px, 1fr)` : `${larguraDe(c)}px`)).join(" ");
   const larguraTotal = colunas.reduce((soma, c) => soma + larguraDe(c), 0);
 
   function alternarOrdem(coluna: Coluna) {
     if (!coluna.ordenar) return;
-    setOrdem((atual) => (atual?.id !== coluna.id ? { id: coluna.id, dir: 1 } : atual.dir === 1 ? { id: coluna.id, dir: -1 } : null));
+    onOrdemChange(ordem?.id !== coluna.id ? { id: coluna.id, dir: 1 } : ordem.dir === 1 ? { id: coluna.id, dir: -1 } : null);
   }
 
   function iniciarRedimensionar(e: PointerEvent<HTMLElement>, coluna: Coluna) {
@@ -331,7 +377,7 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
                     className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-3 text-left text-xs font-medium text-text-muted hover:text-text-primary"
                   >
                     <span className="truncate">{coluna.titulo}</span>
-                    {ativa && (ordem!.dir === 1 ? <ArrowUp size={12} className="shrink-0 text-cyan" /> : <ArrowDown size={12} className="shrink-0 text-cyan" />)}
+                    <ArrowUp size={12} aria-hidden className={`shrink-0 text-cyan transition-[opacity,transform] duration-200 ease-out ${ativa ? `scale-100 opacity-100 ${ordem!.dir === -1 ? "rotate-180" : "rotate-0"}` : "scale-75 opacity-0 rotate-0"}`} />
                   </button>
                   <span
                     role="separator"
@@ -364,6 +410,11 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
           {linhas.map((item) => (
             <div
               key={`${item.tipo}-${item.id}`}
+              ref={(elemento) => {
+                const id = `${item.tipo}:${item.id}`;
+                if (elemento) elementosLinhas.current.set(id, elemento);
+                else elementosLinhas.current.delete(id);
+              }}
               role="row"
               tabIndex={0}
               onClick={(e) => { if (!onSelecionar?.(e, item, linhas)) abrir(caminhoDoItem(item), e); }}

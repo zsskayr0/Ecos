@@ -1,0 +1,112 @@
+import { useEffect, useState, type MouseEvent } from "react";
+import { ChevronDown, Folder, FolderPlus, ListChecks, StickyNote, User, Users, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ApiError, pastas } from "@/lib/api";
+import { PastasGrade, type ItemExplorador, type PastaResumo } from "@/components/views/PastasGrade";
+import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
+import { useRefreshBus } from "@/lib/refresh-bus";
+import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
+import { corDaEquipe } from "@/lib/team-color";
+import { useAbrirDocumento } from "@/lib/documento-popup";
+
+type Tipo = "nota" | "tarefa";
+
+/** Administração global de diretórios. A navegação de conteúdo permanece em
+ * Notas e Tarefas; aqui se escolhe explicitamente a árvore e o espaço. */
+export function OrganizationScreen() {
+  const navigate = useNavigate();
+  const abrirDocumento = useAbrirDocumento();
+  const { equipes } = useMinhasEquipes();
+  const { versao, notificar } = useRefreshBus();
+  const [tipo, setTipo] = useState<Tipo>("nota");
+  const [espaco, setEspaco] = useState("pessoal");
+  const [lista, setLista] = useState<PastaResumo[] | null>(null);
+  const [itens, setItens] = useState<ItemExplorador[]>([]);
+  const [pastaAtual, setPastaAtual] = useState("");
+  const [atualizando, setAtualizando] = useState(false);
+  const [versaoLista, setVersaoLista] = useState(0);
+  const [erro, setErro] = useState<string | null>(null);
+  const [novaAberta, setNovaAberta] = useState(false);
+  const [nome, setNome] = useState("");
+  const [criando, setCriando] = useState(false);
+
+  useEffect(() => {
+    let ativa = true;
+    setAtualizando(true); setErro(null);
+    pastas.listar({ tipo, espaco, pasta_pai: pastaAtual })
+      .then((r) => { if (ativa) { setLista(r.subpastas); setItens(r.itens as unknown as ItemExplorador[]); setVersaoLista((v) => v + 1); } })
+      .catch((e) => ativa && setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."))
+      .finally(() => { if (ativa) setAtualizando(false); });
+    return () => { ativa = false; };
+  }, [tipo, espaco, pastaAtual, versao]);
+
+  async function criar() {
+    if (!nome.trim() || criando) return;
+    setCriando(true); setErro(null);
+    try {
+      await pastas.criar({ tipo, espaco, pasta_pai: pastaAtual, nome: nome.trim() });
+      setNome(""); setNovaAberta(false); notificar();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
+    } finally { setCriando(false); }
+  }
+
+  const rotuloEspaco = espaco === "pessoal" ? "Pessoal" : equipes.find((e) => `equipe:${e.id}` === espaco)?.nome ?? "Equipe";
+  const titulo = tipo === "nota" ? "Pastas de notas" : "Pastas de tarefas";
+  const opcoesEspaco = [
+    { valor: "pessoal", rotulo: "Pessoal", icone: User, cor: TOM.aco },
+    ...equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, icone: Users, cor: corDaEquipe(e.id) })),
+  ];
+  function trocarTipo(proximo: Tipo) { setTipo(proximo); setPastaAtual(""); }
+  function trocarEspaco(proximo: string) { setEspaco(proximo); setPastaAtual(""); }
+  function abrirItem(item: ItemExplorador, evento: MouseEvent<HTMLButtonElement>) {
+    const destino = item.tipo === "nota" && item.id ? `/notas/nota/${item.id}` : item.tipo === "tarefa" && item.id ? `/tarefa/${item.id}` : item.caminho ? `/media/ver?c=${encodeURIComponent(item.caminho)}` : null;
+    if (!destino) return;
+    abrirDocumento(destino, evento);
+  }
+
+  return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
+    <header className="mb-5">
+      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie as pastas sem sair do espaço certo.</p>
+    </header>
+
+    <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas">
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Tipo</p>
+          <div className="grid grid-cols-2 gap-2">
+            <EscopoBotao ativo={tipo === "nota"} onClick={() => trocarTipo("nota")} Icone={StickyNote} texto="Notas" />
+            <EscopoBotao ativo={tipo === "tarefa"} onClick={() => trocarTipo("tarefa")} Icone={ListChecks} texto="Tarefas" />
+          </div>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Espaço</p>
+          <MenuSuspenso valor={espaco} opcoes={opcoesEspaco} onChange={trocarEspaco} ariaLabel="Escolher espaço das pastas" larguraMenu="w-full"
+            classeGatilho="flex min-h-11 w-full items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 text-left text-sm text-text-primary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
+            corAtiva={opcoesEspaco.find((o) => o.valor === espaco)?.cor}
+            gatilho={({ aberto, atual }) => <><span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ color: atual?.cor, backgroundColor: `color-mix(in srgb, ${atual?.cor ?? TOM.aco} 18%, transparent)` }}>{atual?.icone && <atual.icone size={15} />}</span><span className="min-w-0 flex-1 truncate font-medium">{atual?.rotulo}</span><ChevronDown size={16} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
+        </div>
+      </div>
+    </section>
+
+    {erro && <p role="alert" className="mb-4 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error">{erro}</p>}
+    {lista === null ? <p className="py-8 text-center text-sm text-text-muted">Carregando pastas…</p> : <>
+      <nav aria-label="Caminho da pasta" className="mb-3 flex min-h-9 items-center gap-1 overflow-x-auto rounded-xl bg-surface-1 px-2 text-sm"><button type="button" onClick={() => setPastaAtual("")} className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 ${pastaAtual ? "text-text-secondary hover:bg-surface-2" : "text-text-primary"}`}><Folder size={15} className="text-steel-300" />Raiz</button>{pastaAtual.split("/").filter(Boolean).map((parte, indice, partes) => { const caminho = partes.slice(0, indice + 1).join("/"); return <span key={caminho} className="flex shrink-0 items-center gap-1"><span className="text-text-muted">/</span><button type="button" onClick={() => setPastaAtual(caminho)} className="rounded-lg px-1.5 py-1.5 text-text-secondary hover:bg-surface-2">{parte}</button></span>; })}</nav>
+      <div className={`relative transition-[opacity,filter,transform] duration-200 ease-out ${atualizando ? "pointer-events-none opacity-55 blur-[1px]" : ""}`} aria-busy={atualizando}>
+        <div key={versaoLista} className="ecos-item-entra">
+          <PastasGrade chave={tipo === "nota" ? "notas" : "tarefas"} titulo={titulo} corIcone={tipo === "nota" ? "text-steel-300" : "text-cyan"} espaco={espaco} pastas={lista} itens={itens} visualizacao="explorador"
+            aoAbrir={(p) => setPastaAtual(p.caminho)}
+            aoAbrirItem={abrirItem}
+            aoCriar={() => setNovaAberta(true)} />
+        </div>
+        {atualizando && <div aria-hidden className="absolute inset-x-0 top-7 h-px overflow-hidden bg-border"><span className="block h-full w-1/3 animate-pulse bg-cyan" /></div>}
+      </div>
+    </>}
+
+    {novaAberta && <div role="dialog" aria-modal="true" aria-labelledby="nova-pasta-titulo" className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"><div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav"><div className="mb-4 flex items-center justify-between"><h2 id="nova-pasta-titulo" className="font-semibold text-text-primary">Nova pasta de {tipo === "nota" ? "notas" : "tarefas"}</h2><button type="button" onClick={() => setNovaAberta(false)} aria-label="Fechar" className="text-text-muted"><X size={18} /></button></div><p className="mb-3 text-sm text-text-secondary">Ela será criada em {rotuloEspaco}.</p><input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void criar()} placeholder="Nome da pasta" className="ecos-input w-full !rounded-lg" /><button type="button" disabled={!nome.trim() || criando} onClick={() => void criar()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-white disabled:opacity-40"><FolderPlus size={16} />Criar pasta</button></div></div>}
+  </div>;
+}
+
+function EscopoBotao({ ativo, onClick, Icone, texto }: { ativo: boolean; onClick: () => void; Icone: typeof StickyNote; texto: string }) {
+  return <button type="button" onClick={onClick} aria-pressed={ativo} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium ${ativo ? "bg-cyan/15 text-cyan" : "bg-surface-2 text-text-secondary hover:text-text-primary"}`}><Icone size={16} />{texto}</button>;
+}

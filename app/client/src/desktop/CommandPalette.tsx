@@ -93,6 +93,7 @@ export function CommandPalette({
       { id: "nova-nota", grupo: "Criar", rotulo: "Nova nota", icone: FilePlus2, executar: () => abrirCaptura("nota") },
       { id: "nova-tarefa", grupo: "Criar", rotulo: "Nova tarefa", icone: ListPlus, executar: () => abrirCaptura("tarefa") },
       { id: "nova-transacao", grupo: "Criar", rotulo: "Nova transação", icone: Wallet, executar: () => abrirCaptura("transacao") },
+      { id: "organizar-pastas", grupo: "Configurações", rotulo: "Organizar pastas", dica: "Notas e tarefas", icone: ListChecks, executar: () => abrir("/configuracoes/organizacao") },
     ];
 
     for (const id of [...RAIL_PRINCIPAL, ...RAIL_UTILITARIOS, "busca", "perfil", "ajuda"] as const) {

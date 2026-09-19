@@ -2,7 +2,6 @@ import { Navigate, Route } from "react-router-dom";
 
 import { FeedScreen } from "@/screens/Feed/FeedScreen";
 import { TodayScreen } from "@/screens/Today/TodayScreen";
-import { FoldersScreen } from "@/screens/Folders/FoldersScreen";
 import { NotesRootScreen } from "@/screens/Notes/NotesRootScreen";
 import { FolderScreen } from "@/screens/Notes/FolderScreen";
 import { NoteDetailScreen } from "@/screens/Notes/NoteDetailScreen";
@@ -19,7 +18,6 @@ import { TeamProfileScreen } from "@/screens/Team/TeamProfileScreen";
 import { TeamCreateJoinScreen } from "@/screens/Team/TeamCreateJoinScreen";
 import { TeamsScreen } from "@/screens/Team/TeamsScreen";
 import { ProfileScreen } from "@/screens/Profile/ProfileScreen";
-import { ProfileEditScreen } from "@/screens/Profile/ProfileEditScreen";
 import { RotinaScreen } from "@/screens/Profile/RotinaScreen";
 import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
@@ -29,6 +27,7 @@ import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
+import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 import { MediaScreen } from "@/screens/Media/MediaScreen";
 import { FileViewerScreen } from "@/screens/Media/FileViewerScreen";
@@ -46,7 +45,8 @@ export const screenRoutes = (
 
     <Route path="/feed" element={<FeedScreen />} />
     <Route path="/hoje" element={<TodayScreen />} />
-    <Route path="/pastas" element={<FoldersScreen />} />
+    {/* Link legado: a administração agora pertence a Configurações. */}
+    <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
 
     <Route path="/notas" element={<NotesRootScreen />} />
     <Route path="/notas/pasta/nova" element={<FolderCreateScreen />} />
@@ -77,7 +77,7 @@ export const screenRoutes = (
     <Route path="/equipe/:equipeId" element={<TeamProfileScreen />} />
 
     <Route path="/perfil" element={<ProfileScreen />} />
-    <Route path="/perfil/editar" element={<ProfileEditScreen />} />
+    <Route path="/perfil/editar" element={<Navigate to="/perfil" replace />} />
     <Route path="/perfil/rotina" element={<RotinaScreen />} />
 
     <Route path="/notificacoes" element={<NotificationsScreen />} />
@@ -88,6 +88,7 @@ export const screenRoutes = (
     <Route path="/configuracoes/privacidade" element={<PrivacyVaultScreen />} />
     <Route path="/configuracoes/aparencia" element={<AparenciaScreen />} />
     <Route path="/configuracoes/calendario" element={<CalendarPreferencesScreen />} />
+    <Route path="/configuracoes/organizacao" element={<OrganizationScreen />} />
     <Route path="/configuracoes/sobre" element={<AboutScreen />} />
 
     <Route path="/ajuda" element={<HelpScreen />} />

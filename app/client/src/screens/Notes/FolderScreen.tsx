@@ -86,7 +86,7 @@ export function FolderScreen() {
         ) : notas.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira nota aqui." />
         ) : (
-          <ListaDeItens chave="notas" mostrarCriada chaveFiltros={`notas:${caminho}`} modo={modo} itens={notas.map((n) => notaResumoParaView(n, equipes, perfil))} />
+          <ListaDeItens chave="notas" tipoPastas="nota" mostrarCriada chaveFiltros={`notas:${caminho}`} modo={modo} itens={notas.map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
     </SoltarMarkdown>

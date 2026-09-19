@@ -3,17 +3,20 @@ import { CheckCircle2, Circle } from "lucide-react";
 import type { Tarefa } from "@/lib/types";
 import { formatDuracao } from "@/lib/format";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
+import { useArrasteTarefa } from "@/lib/arraste-tarefa";
 
 const PONTO_POR_PRIORIDADE = { baixa: "bg-cyan", media: "bg-warning", alta: "bg-error" } as const;
 
 /** Compact single-line alternative to `TaskCard` (user feedback: "quero visualização de várias formas, cards, lista, etc etc. para tarefas também"). */
 export function TaskListRow({ tarefa }: { tarefa: Tarefa }) {
   const abrirDocumento = useAbrirDocumento();
+  // Arrastar a linha para a Agenda aloca tempo para a Tarefa no calendário; a Tarefa em si não muda.
+  const { aoPressionarTarefa } = useArrasteTarefa();
   const concluida = tarefa.status === "concluida";
   const hora = tarefa.scheduledAt ? new Date(tarefa.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
 
   return (
-    <button draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("application/x-ecos-task", JSON.stringify({ id: tarefa.id, duracao: tarefa.durationMin || 30 })); e.dataTransfer.setData("text/plain", tarefa.titulo); }} onClick={(e) => abrirDocumento(`/tarefa/${tarefa.id}`, e)} className="flex w-full cursor-grab items-center gap-3 rounded-2xl bg-surface-1 px-3.5 py-3 text-left active:cursor-grabbing">
+    <button data-tarefa-id={tarefa.id} onPointerDown={(e) => aoPressionarTarefa(e, { id: tarefa.id, titulo: tarefa.titulo, duracaoMin: tarefa.durationMin ?? null, prioridade: tarefa.prioridade })} onClick={(e) => abrirDocumento(`/tarefa/${tarefa.id}`, e)} className="flex w-full cursor-grab items-center gap-3 rounded-2xl bg-surface-1 px-3.5 py-3 text-left active:cursor-grabbing">
       {concluida ? (
         <CheckCircle2 size={16} strokeWidth={1.75} className="shrink-0 text-success" />
       ) : (

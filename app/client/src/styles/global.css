@@ -285,3 +285,29 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo { animation: none; }
 }
+
+/* Editor de evento da Agenda: entrada/saída do modal, seções em cascata e blocos que abrem/fecham suavemente. */
+@keyframes ecos-modal-in { from { opacity: 0; transform: translateY(14px) scale(0.965); } to { opacity: 1; transform: none; } }
+@keyframes ecos-modal-out { to { opacity: 0; transform: translateY(8px) scale(0.975); } }
+@keyframes ecos-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ecos-backdrop-out { to { opacity: 0; } }
+@keyframes ecos-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes ecos-tremer { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.ecos-modal-in { animation: ecos-modal-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+.ecos-modal-out { animation: ecos-modal-out 160ms ease-in both; }
+.ecos-backdrop-in { animation: ecos-backdrop-in 200ms ease-out both; }
+.ecos-backdrop-out { animation: ecos-backdrop-out 160ms ease-in both; }
+.ecos-pop { animation: ecos-pop 260ms ease-out; }
+.ecos-tremer { animation: ecos-tremer 260ms ease-in-out; }
+.ecos-cascata { animation: ecos-fade-in 300ms ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.ecos-colapsa { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms ease, opacity 200ms ease; }
+.ecos-colapsa > div { min-height: 0; overflow: hidden; }
+.ecos-colapsa[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
+.ecos-colapsa[data-aberto="true"] > div { overflow: visible; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-modal-in, .ecos-modal-out, .ecos-backdrop-in, .ecos-backdrop-out, .ecos-pop, .ecos-tremer, .ecos-cascata { animation: none; }
+  .ecos-colapsa { transition: none; }
+}
+
+/* Editor de evento: a cor escolhida vira o acento (--ecos-cyan-rgb é sobrescrita no formulário); texto sobre o acento acompanha o contraste. */
+.ecos-acento-evento .text-black { color: var(--ev-contraste, #000); }

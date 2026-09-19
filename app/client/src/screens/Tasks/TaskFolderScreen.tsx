@@ -86,7 +86,7 @@ export function TaskFolderScreen() {
         ) : itens.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira tarefa aqui." />
         ) : (
-          <ListaDeItens chave="tarefas" mostrarCriada chaveFiltros={`tarefas:${caminho}`} modo={modo} itens={itens.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada chaveFiltros={`tarefas:${caminho}`} modo={modo} itens={itens.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

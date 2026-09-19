@@ -205,12 +205,45 @@ pub struct TarefaFrontMatter {
     /// Última edição (criação, PATCH ou mudança de status). Ausente em arquivos antigos — o índice usa o mtime do arquivo até a próxima edição.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atualizado_em: Option<DateTime<Utc>>,
+    /// Tempo alocado no calendário (`planejado`) e tempo trabalhado (`real`). Mora no `.md` porque o índice SQLite é
+    /// descartável — reconstruído a cada alteração — e um bloco guardado só nele sumiria na edição seguinte.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tempo: Vec<TempoRegistrado>,
     /// Quando a Tarefa foi concluída. Só existe com `status: concluida`; reabrir apaga. Ausente em concluídas antigas — o índice cai pro `atualizado_em`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub concluida_em: Option<DateTime<Utc>>,
     /// See `NotaFrontMatter::criado_por` — same rationale, same migration.
     #[serde(default)]
     pub criado_por: Option<String>,
+}
+
+/// Que tipo de tempo um registro guarda: `Planejado` é tempo ALOCADO num dia/horário do calendário (um bloco, que não
+/// altera a data da Tarefa); `Real` é tempo efetivamente trabalhado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TipoTempo {
+    Planejado,
+    Real,
+}
+
+impl TipoTempo {
+    pub fn como_str(self) -> &'static str {
+        match self {
+            TipoTempo::Planejado => "planejado",
+            TipoTempo::Real => "real",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TempoRegistrado {
+    pub id: String,
+    pub tipo: TipoTempo,
+    pub inicio_em: DateTime<Utc>,
+    pub duracao_min: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub foco: String,
+    pub criado_em: DateTime<Utc>,
 }
 
 impl TarefaFrontMatter {
@@ -789,6 +822,22 @@ mod tests {
     fn tarefa_pendente() -> TarefaFrontMatter {
         let src = "---\nid: t1\ntitulo: X\nstatus: pendente\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\n---\n";
         crate::frontmatter::parse::<TarefaFrontMatter>(src).unwrap().front_matter
+    }
+
+    #[test]
+    fn tempo_alocado_vai_e_volta_pelo_front_matter_e_tarefa_sem_tempo_nao_grava_o_campo() {
+        let mut fm = tarefa_pendente();
+        assert!(fm.tempo.is_empty());
+        assert!(!crate::frontmatter::serialize(&fm, "").unwrap().contains("tempo"));
+        let inicio: DateTime<Utc> = "2026-09-22T13:00:00Z".parse().unwrap();
+        fm.tempo.push(TempoRegistrado { id: "b1".into(), tipo: TipoTempo::Planejado, inicio_em: inicio, duracao_min: 45, foco: String::new(), criado_em: inicio });
+        let texto = crate::frontmatter::serialize(&fm, "").unwrap();
+        assert!(texto.contains("planejado"));
+        let de_volta = crate::frontmatter::parse::<TarefaFrontMatter>(&texto).unwrap().front_matter;
+        assert_eq!(de_volta.tempo, fm.tempo);
+        // A data da Tarefa não é tocada por ter tempo alocado.
+        assert_eq!(de_volta.scheduled_at, fm.scheduled_at);
+        assert_eq!(de_volta.due_date, fm.due_date);
     }
 
     #[test]

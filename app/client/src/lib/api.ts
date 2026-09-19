@@ -162,6 +162,30 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
   return body as T;
 }
 
+/** Variante autenticada para conteúdo binário, usada pela foto de perfil. */
+async function reqBlob(path: string, tentouRenovar = false): Promise<Blob | null> {
+  const accessToken = obterAccessToken();
+  let resp: Response;
+  try {
+    resp = await fetch(`${BASE()}${path}`, {
+      credentials: "include",
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    });
+  } catch {
+    throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
+  }
+  if (resp.status === 401 && !tentouRenovar) {
+    const renovou = estaNoTauri() ? await renovarSessaoNativa() : await renovarSessaoWeb();
+    if (renovou) return reqBlob(path, true);
+  }
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    throw new ApiError(body?.error ?? "UNKNOWN", body?.message ?? mensagemHttp(resp.status), resp.status, body?.campos, body?.retry_after_segundos);
+  }
+  return resp.blob();
+}
+
 const get = <T>(path: string) => req<T>(path);
 const post = <T>(path: string, data?: unknown) => req<T>(path, { method: "POST", body: data !== undefined ? JSON.stringify(data) : undefined });
 const patch = <T>(path: string, data?: unknown) => req<T>(path, { method: "PATCH", body: data !== undefined ? JSON.stringify(data) : undefined });
@@ -211,8 +235,18 @@ export const auth = {
     await post<void>("/auth/logout");
   },
   perfil: () =>
-    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; equipes: { id: string; nome: string; cargo: string }[] }>("/me"),
+    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[] }>("/me"),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
+};
+
+export const avatarPerfil = {
+  obter: () => reqBlob("/me/avatar"),
+  enviar: (arquivo: File) => {
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    return req<{ ok: true; avatar_atualizado_em: number | null }>("/me/avatar", { method: "PUT", body: dados });
+  },
+  remover: () => del<{ ok: true }>("/me/avatar"),
 };
 
 // --- Universal capture (section 11.3) -------------------------------------
@@ -289,9 +323,9 @@ export const notas = {
 export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string } = {}) =>
     get<{ subpastas: { caminho: string; nome: string; contagem_itens: number }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
-  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
-  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string }) => patch<{ ok: true }>("/pastas", payload),
-  excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string }) => del<{ ok: true }>("/pastas", payload),
+  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
+  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string }) => patch<{ ok: true }>("/pastas", payload),
+  excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string; espaco?: string }) => del<{ ok: true }>("/pastas", payload),
 };
 
 // --- Media ---------------------------------------------------------------
@@ -433,6 +467,9 @@ export const tarefas = {
   timeEntries: {
     listar: (id: string) => get<{ id: string; tipo: "planejado" | "real"; inicio_em: string; fim_em: string | null; duracao_min: number; foco: string; criado_em: string }[]>(`/tarefas/${id}/time-entries`),
     criar: (id: string, payload: { tipo: "planejado" | "real"; inicio_em: string; duracao_min: number; foco?: string }) => post<{ id: string }>(`/tarefas/${id}/time-entries`, payload),
+    /** Move/redimensiona um bloco de tempo. Só mexe no bloco: a data da Tarefa nunca muda. */
+    atualizar: (id: string, entradaId: string, payload: { inicio_em?: string; duracao_min?: number; foco?: string }) => patch<{ id: string }>(`/tarefas/${id}/time-entries/${entradaId}`, payload),
+    excluir: (id: string, entradaId: string) => del<{ ok: true }>(`/tarefas/${id}/time-entries/${entradaId}`),
   },
   excluir: (id: string) => del<{ ok: true }>(`/tarefas/${id}`),
   capacidade: (data: string, tz?: number) =>
@@ -482,6 +519,26 @@ export interface BlocoRotina { id: string; tipo: string; hora_inicio: string; ho
 export type BlocoRotinaPayload = Omit<BlocoRotina, "id">;
 
 /** Perfil de Rotina: os blocos (sono, trabalho, refeição…) que a Agenda usa para calcular a capacidade do dia. */
+/** Tempo alocado a uma Tarefa num dia/horário do calendário (um "bloco"), com o resumo da Tarefa dona. */
+export interface BlocoPlanejado {
+  id: string;
+  tarefa_id: string;
+  tipo: "planejado" | "real";
+  /** Instante de início (ISO/UTC). */
+  inicio_em: string;
+  duracao_min: number;
+  foco: string;
+  titulo: string;
+  status: "pendente" | "concluida";
+  prioridade: PrioridadeTarefa;
+  tarefa_duration_min: number | null;
+}
+
+export const agenda = {
+  /** Blocos cujo início cai entre os dois dias (`YYYY-MM-DD`), contados no fuso `tz` (minutos a leste de UTC). */
+  blocos: (params: { data_de: string; data_ate: string; tz?: number; tipo?: "planejado" | "real" }) => get<BlocoPlanejado[]>(`/agenda/blocos${qs(params)}`),
+};
+
 export const rotina = {
   listar: () => get<BlocoRotina[]>("/rotina/blocos"),
   criar: (payload: BlocoRotinaPayload) => post<{ id: string }>("/rotina/blocos", payload),

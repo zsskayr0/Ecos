@@ -79,7 +79,7 @@ export function NotesRootScreen() {
             Nenhuma nota solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          <ListaDeItens chave="notas" mostrarCriada modo={modo} itens={soltas.map((n) => notaResumoParaView(n, equipes, perfil))} />
+          <ListaDeItens chave="notas" tipoPastas="nota" mostrarCriada modo={modo} itens={soltas.map((n) => notaResumoParaView(n, equipes, perfil))} />
         )}
       </div>
     </SoltarMarkdown>

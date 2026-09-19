@@ -82,6 +82,8 @@ interface Props {
    * qual usar pra resolver a URL de download. Default "nota" preserva o
    * comportamento de quem já chamava sem essa prop. */
   tipo?: "nota" | "tarefa";
+  /** Com isto, os checkboxes de lista de tarefas ficam clicáveis; recebe a posição (0, 1, 2…) do item no corpo. */
+  aoAlternarChecklist?: (indice: number) => void;
 }
 
 /** Resolve `_anexos/<id>/<arquivo>` (referência relativa gravada pelo
@@ -98,9 +100,10 @@ function resolverSrcImagem(src: string | undefined, itemId: string | undefined, 
   return src;
 }
 
-export function MarkdownPreview({ corpo, itemId, tipo = "nota" }: Props) {
+export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarChecklist }: Props) {
+  let proximoCheckbox = 0;
   return (
-    <div className="ecos-markdown flex flex-col gap-2 text-text-primary">
+    <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkWikilink]}
         components={{
@@ -113,7 +116,12 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota" }: Props) {
               {children}
             </a>
           ),
-          code: ({ children }) => <code className="rounded bg-surface-3 px-1 py-0.5 font-mono-value text-[13px]">{children}</code>,
+          input: ({ checked, type }) => {
+            if (type !== "checkbox") return null;
+            const indice = proximoCheckbox++;
+            return <input type="checkbox" checked={!!checked} disabled={!aoAlternarChecklist} onChange={() => aoAlternarChecklist?.(indice)} onClick={(e) => e.stopPropagation()} className={aoAlternarChecklist ? "cursor-pointer" : ""} />;
+          },
+          code: ({ children }) => <code className="whitespace-pre-wrap rounded bg-surface-3 px-1 py-0.5 font-mono-value text-[13px] [overflow-wrap:anywhere]">{children}</code>,
           h1: ({ children }) => <h1 className="font-display text-xl text-text-primary">{children}</h1>,
           h2: ({ children }) => <h2 className="font-display text-lg text-text-primary">{children}</h2>,
           h3: ({ children }) => <h3 className="font-display text-base font-semibold text-text-primary">{children}</h3>,

@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Routes } from "react-router-dom";
-import { Bell, ChevronDown, LogOut, Search, User, Users, Settings, X, Plus, Pencil, Trash2 } from "lucide-react";
+import { Bell, ChevronDown, FolderTree, LogOut, Search, User, Users, Settings, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
 import { nomeExibicao, useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
-import { ApiError, equipes as equipesApi } from "@/lib/api";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
-import { useRefreshBus } from "@/lib/refresh-bus";
 import { DocumentoPopupContext } from "@/lib/documento-popup";
 import { pastaDoCaminho } from "@/lib/pasta-contexto";
-import { fotoPerfil } from "@/lib/profile-avatar";
+import { useFotoPerfil } from "@/lib/profile-avatar";
 import { CommandPalette } from "./CommandPalette";
 import { DocumentoJanela } from "./DocumentoJanela";
 import { MenuCriar } from "./MenuCriar";
@@ -58,15 +56,14 @@ function useAtalhosGlobais(alternarPaleta: () => void) {
   }, [state.panes, state.focusedPaneId, dispatch, alternarPaleta]);
 }
 
-function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
+function Barra({ abrirPaleta, abrirOrganizacao }: { abrirPaleta: () => void; abrirOrganizacao: () => void }) {
   const { perfil, logout } = useAuth();
   const { espacoAtivo, setEspacoAtivo } = useAppUI();
   const { equipes } = useMinhasEquipes();
-  const { notificar } = useRefreshBus();
   const nome = perfil ? nomeExibicao(perfil) : "?";
+  const { url: urlFotoPerfil } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false);
   const [seletorEquipesAberto, setSeletorEquipesAberto] = useState(false);
-  const [gerenciadorEquipesAberto, setGerenciadorEquipesAberto] = useState(false);
   const [painelConta, setPainelConta] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const equipeAtual = equipes.find((equipe) => `equipe:${equipe.id}` === espacoAtivo);
@@ -81,6 +78,7 @@ function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
     setPainelConta(path);
     setMenuPerfilAberto(false);
   };
+  const abrirOrganizacaoNoMenu = () => { abrirOrganizacao(); setMenuPerfilAberto(false); setSeletorEquipesAberto(false); };
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-surface-1 px-4">
@@ -107,14 +105,15 @@ function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
         <button type="button" onClick={() => abrir("/notificacoes")} aria-label="Notificações" title="Notificações" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><Bell size={17} /></button>
         <div ref={menuRef} className="relative">
           <button type="button" aria-label="Abrir menu da conta" aria-expanded={menuPerfilAberto} onClick={() => setMenuPerfilAberto((aberto) => !aberto)} className="flex h-9 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-surface-2">
-            <Avatar nome={nome} tamanho={30} url={fotoPerfil(perfil?.id)} />
+            <Avatar nome={nome} tamanho={30} url={urlFotoPerfil} />
             <ChevronDown size={13} className={`text-text-muted transition-transform duration-200 ${menuPerfilAberto ? "rotate-180" : ""}`} />
           </button>
           {menuPerfilAberto && <div className="ecos-fade-in absolute right-0 top-11 z-50 w-64 overflow-visible rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav">
-          <button type="button" onClick={() => abrir("/perfil")} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-2"><Avatar nome={nome} tamanho={32} url={fotoPerfil(perfil?.id)} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-text-primary">{nome}</span><span className="block text-xs text-text-muted">Ver e editar perfil</span></span></button>
+          <button type="button" onClick={() => abrir("/perfil")} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-2"><Avatar nome={nome} tamanho={32} url={urlFotoPerfil} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-text-primary">{nome}</span><span className="block text-xs text-text-muted">Ver perfil</span></span></button>
           <div className="my-1 border-t border-border" />
           <button type="button" onClick={() => setSeletorEquipesAberto((aberto) => !aberto)} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><Users size={16} strokeWidth={1.8} /><span className="min-w-0 flex-1"><span className="block text-xs text-text-muted">Equipe atual</span><span className="block truncate text-sm text-text-primary">{equipeAtual?.nome ?? "Pessoal"}</span></span><ChevronDown size={14} className={seletorEquipesAberto ? "rotate-180 transition-transform" : "transition-transform"} /></button>
-          {seletorEquipesAberto && <div className="ecos-fade-in absolute right-[calc(100%+8px)] top-20 z-[60] w-60 rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav"><p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Trocar equipe</p><button type="button" onClick={() => { setEspacoAtivo("pessoal"); setSeletorEquipesAberto(false); setMenuPerfilAberto(false); }} className={`flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm ${espacoAtivo === "pessoal" ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>Pessoal</button>{equipes.map((equipe) => <button key={equipe.id} type="button" onClick={() => { setEspacoAtivo(`equipe:${equipe.id}`); setSeletorEquipesAberto(false); setMenuPerfilAberto(false); }} className={`flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm ${espacoAtivo === `equipe:${equipe.id}` ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}><span className="truncate">{equipe.nome}</span><span className="text-xs text-text-muted">{equipe.cargo}</span></button>)}<div className="my-1 border-t border-border" /><button type="button" onClick={() => { setGerenciadorEquipesAberto(true); setSeletorEquipesAberto(false); setMenuPerfilAberto(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-steel-300 hover:bg-surface-2"><Settings size={15} />Gerenciar equipes</button></div>}
+          {seletorEquipesAberto && <div className="ecos-fade-in absolute right-[calc(100%+8px)] top-20 z-[60] w-60 rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav"><p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Trocar equipe</p><button type="button" onClick={() => { setEspacoAtivo("pessoal"); setSeletorEquipesAberto(false); setMenuPerfilAberto(false); }} className={`flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm ${espacoAtivo === "pessoal" ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>Pessoal</button>{equipes.map((equipe) => <button key={equipe.id} type="button" onClick={() => { setEspacoAtivo(`equipe:${equipe.id}`); setSeletorEquipesAberto(false); setMenuPerfilAberto(false); }} className={`flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm ${espacoAtivo === `equipe:${equipe.id}` ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}><span className="truncate">{equipe.nome}</span><span className="text-xs text-text-muted">{equipe.cargo}</span></button>)}<div className="my-1 border-t border-border" /><button type="button" onClick={() => { abrir("/equipes"); setSeletorEquipesAberto(false); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-steel-300 hover:bg-surface-2"><Settings size={15} />Gerenciar equipes</button></div>}
+          <MenuContaItem Icon={FolderTree} label="Organização" onClick={abrirOrganizacaoNoMenu} />
           <MenuContaItem Icon={Settings} label="Configurações" onClick={() => abrir("/configuracoes")} />
           <div className="my-1 border-t border-border" />
           <button type="button" onClick={() => { setMenuPerfilAberto(false); void logout(); }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-error transition-colors hover:bg-error/10"><LogOut size={16} strokeWidth={1.8} />Sair</button>
@@ -122,18 +121,8 @@ function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
         </div>
       </div>
       {painelConta && <PainelConta path={painelConta} aoFechar={() => setPainelConta(null)} />}
-      {gerenciadorEquipesAberto && <GerenciadorEquipes equipes={equipes} onFechar={() => setGerenciadorEquipesAberto(false)} onAtualizar={notificar} />}
     </header>
   );
-}
-
-function GerenciadorEquipes({ equipes, onFechar, onAtualizar }: { equipes: { id: string; nome: string; cargo: string }[]; onFechar: () => void; onAtualizar: () => void }) {
-  const [novaEquipe, setNovaEquipe] = useState("");
-  const [ocupado, setOcupado] = useState(false);
-  async function criar() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); onAtualizar(); } finally { setOcupado(false); } }
-  async function editar(equipe: { id: string; nome: string }) { const nome = window.prompt("Novo nome da equipe", equipe.nome)?.trim(); if (!nome || nome === equipe.nome) return; setOcupado(true); try { await equipesApi.atualizar(equipe.id, nome); onAtualizar(); } finally { setOcupado(false); } }
-  async function excluir(equipe: { id: string; nome: string }) { if (window.prompt(`Digite “${equipe.nome}” para excluir esta equipe.`) !== equipe.nome) return; setOcupado(true); try { await equipesApi.excluir(equipe.id); onAtualizar(); } catch (e) { window.alert(e instanceof ApiError ? e.message : "Não foi possível excluir a equipe. O ecos-app está rodando?"); } finally { setOcupado(false); } }
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6" role="presentation" onPointerDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}><section role="dialog" aria-modal="true" aria-label="Gerenciar equipes" className="ecos-fade-in w-full max-w-lg rounded-2xl border border-border bg-base shadow-nav"><header className="flex items-center justify-between border-b border-border bg-surface-1 px-5 py-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Equipes</p><h2 className="font-display text-xl text-text-primary">Gerenciar equipes</h2></div><button type="button" onClick={onFechar} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><X size={17} /></button></header><div className="space-y-2 p-5">{equipes.map((equipe) => <div key={equipe.id} className="flex items-center gap-3 rounded-xl border border-border bg-surface-1 px-3 py-2.5"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-text-primary">{equipe.nome}</span><span className="text-xs text-text-muted">{equipe.cargo}</span></span><button disabled={ocupado} onClick={() => void editar(equipe)} className="rounded-md p-2 text-text-muted hover:bg-surface-2"><Pencil size={15} /></button><button disabled={ocupado} onClick={() => void excluir(equipe)} className="rounded-md p-2 text-error hover:bg-error/10"><Trash2 size={15} /></button></div>)}<form onSubmit={(e) => { e.preventDefault(); void criar(); }} className="mt-4 flex gap-2"><input value={novaEquipe} onChange={(e) => setNovaEquipe(e.target.value)} placeholder="Nome da nova equipe" className="ecos-input min-w-0 flex-1" /><button disabled={ocupado} className="flex items-center gap-1.5 rounded-lg bg-steel-600 px-3 text-sm font-medium text-white hover:bg-steel-500"><Plus size={16} />Criar</button></form></div></section></div>;
 }
 
 function MenuContaItem({ Icon, label, onClick }: { Icon: typeof User; label: string; onClick: () => void }) {
@@ -146,7 +135,7 @@ function PainelConta({ path, aoFechar }: { path: string; aoFechar: () => void })
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6 backdrop-blur-md ecos-fade-in" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) aoFechar(); }}>
     <section role="dialog" aria-modal="true" aria-label="Painel da conta" className="flex h-[min(780px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface-1 px-4"><span className="text-sm font-semibold text-text-primary">Conta</span><button type="button" onClick={aoFechar} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></header>
-      <div className="min-h-0 flex-1 overflow-y-auto"><MemoryRouter initialEntries={[path]}><Routes>{screenRoutes}</Routes></MemoryRouter></div>
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"><MemoryRouter initialEntries={[path]}><Routes>{screenRoutes}</Routes></MemoryRouter></div>
     </section>
   </div>;
 }
@@ -203,7 +192,7 @@ function Conteudo() {
   return (
     <DocumentoPopupContext.Provider value={abrirDocumento}>
     <div className="flex h-screen flex-col bg-base">
-      <Barra abrirPaleta={() => setPaletaAberta(true)} />
+      <Barra abrirPaleta={() => setPaletaAberta(true)} abrirOrganizacao={() => abrirDocumento("/configuracoes/organizacao", false)} />
       <div className="flex min-h-0 flex-1">
         <Rail />
         <Workspace />

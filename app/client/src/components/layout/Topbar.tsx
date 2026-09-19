@@ -9,6 +9,7 @@ import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { notificacoes } from "@/lib/api";
 import { corDaEquipe } from "@/lib/team-color";
+import { useFotoPerfil } from "@/lib/profile-avatar";
 
 /**
  * Topbar — avatar (drawer) on the left, filter pill in the center,
@@ -18,6 +19,7 @@ import { corDaEquipe } from "@/lib/team-color";
 export function Topbar() {
   const { abrirDrawer, filtroEquipeId, setFiltroEquipeId, espacoAtivo, setEspacoAtivo, intercalarEquipes } = useAppUI();
   const { perfil } = useAuth();
+  const { url: urlFotoPerfil } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   const { equipes } = useMinhasEquipes();
   const { versao } = useRefreshBus();
   const [filtroAberto, setFiltroAberto] = useState(false);
@@ -39,7 +41,7 @@ export function Topbar() {
     <header className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-base/90 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] backdrop-blur">
       <div className="relative flex items-center gap-1">
         <button onClick={abrirDrawer} aria-label="Abrir menu">
-          <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={34} />
+          <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={34} url={urlFotoPerfil} />
         </button>
         <button type="button" onClick={() => setWorkspaceAberto((v) => !v)} className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-text-secondary hover:bg-surface-2"><Users size={14} className="text-steel-300" />{labelFiltro}<ChevronDown size={13} /></button>
         {workspaceAberto && <div className="absolute left-0 top-10 z-40 w-56 rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav ecos-fade-in"><button type="button" onClick={() => { setEspacoAtivo("pessoal"); setWorkspaceAberto(false); }} className={`flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm ${espacoAtivo === "pessoal" ? "bg-steel-700/30 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>Pessoal</button>{equipes.map((eq) => <button key={eq.id} type="button" onClick={() => { setEspacoAtivo(`equipe:${eq.id}`); setWorkspaceAberto(false); }} className={`flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm ${espacoAtivo === `equipe:${eq.id}` ? "bg-steel-700/30 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{eq.nome}</button>)}</div>}

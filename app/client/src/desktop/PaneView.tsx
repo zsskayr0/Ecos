@@ -1,53 +1,20 @@
-import { useState, type DragEvent } from "react";
 import { TabBar } from "./TabBar";
 import { TabContent } from "./TabContent";
 import { useTabDrag } from "./tab-drag";
 import { useWorkspace, type Pane } from "./workspace-store";
 
-type Zona = "left" | "center" | "right";
-
-/** Só existe durante um arraste de aba: bordas laterais dividem o painel, o centro move a aba para dentro dele. */
+/** Só existe durante um arraste de aba, e só desenha: bordas laterais dividem o painel, o centro move a aba para dentro dele. Quem decide o alvo é `tab-drag.tsx`. */
 function DropZones({ pane }: { pane: Pane }) {
-  const { dispatch } = useWorkspace();
-  const { arrastando, encerrar } = useTabDrag();
-  const [zona, setZona] = useState<Zona | null>(null);
+  const { arrastando, alvo } = useTabDrag();
   if (!arrastando) return null;
 
   const propria = arrastando.paneId === pane.id;
   const unicaAbaDaPane = propria && pane.tabs.length === 1;
-
-  function zonaDe(e: DragEvent<HTMLDivElement>): Zona {
-    const caixa = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - caixa.left) / caixa.width;
-    if (x < 0.25) return "left";
-    if (x > 0.75) return "right";
-    return "center";
-  }
-
-  function aoSoltar(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const alvo = zonaDe(e);
-    setZona(null);
-    encerrar();
-    if (!arrastando) return;
-    if (alvo === "center") {
-      if (!propria) dispatch({ type: "move-tab", tabId: arrastando.tabId, toPaneId: pane.id });
-    } else if (!unicaAbaDaPane) {
-      dispatch({ type: "move-tab-to-new-pane", tabId: arrastando.tabId, nextToPaneId: pane.id, side: alvo });
-    }
-  }
+  const zona = alvo?.tipo === "zona" && alvo.paneId === pane.id ? alvo.zona : null;
 
   const destaque = "absolute inset-y-2 rounded-lg border border-cyan/60 bg-cyan/10 transition-all";
   return (
-    <div
-      className="absolute inset-0 top-9 z-30"
-      onDragOver={(e) => {
-        e.preventDefault();
-        setZona(zonaDe(e));
-      }}
-      onDragLeave={() => setZona(null)}
-      onDrop={aoSoltar}
-    >
+    <div className="pointer-events-none absolute inset-0 top-9 z-30">
       {zona === "left" && !unicaAbaDaPane && <div className={`${destaque} left-2 w-1/2`} />}
       {zona === "right" && !unicaAbaDaPane && <div className={`${destaque} right-2 w-1/2`} />}
       {zona === "center" && !propria && <div className={`${destaque} inset-x-2`} />}
@@ -72,7 +39,7 @@ export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
     >
       <TabBar pane={pane} />
       {focada && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-[35px] z-10 h-px bg-cyan/60" />}
-      <div className="relative min-h-0 flex-1">
+      <div data-pane-conteudo={pane.id} className="relative min-h-0 flex-1">
         {pane.tabs.map((tab) => (
           <TabContent key={tab.id} tabId={tab.id} path={tab.path} visible={tab.id === pane.activeTabId} fechando={fechando.includes(tab.id)} />
         ))}

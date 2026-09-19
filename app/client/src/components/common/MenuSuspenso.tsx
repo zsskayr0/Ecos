@@ -94,7 +94,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       {montado && (
         <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto}
           className={`ecos-menu absolute z-40 mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
-          <span aria-hidden className="pointer-events-none absolute left-1 right-1 top-1 rounded-lg border transition-[transform,background-color,border-color] duration-200 motion-reduce:transition-none"
+          <span aria-hidden className="pointer-events-none absolute left-1 right-1 top-1 rounded-lg border transition-[transform,background-color,border-color] duration-100 motion-reduce:transition-none"
             style={{ height: ALTURA_ITEM, transform: `translateY(${destaque * ALTURA_ITEM}px)`, borderColor: misturar(opcoes[destaque]?.cor ?? TOM.aco, 65), backgroundColor: misturar(opcoes[destaque]?.cor ?? TOM.aco, 16) }} />
           {opcoes.map((o, i) => {
             const ativo = o.valor === valor;
@@ -103,7 +103,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
                 onClick={() => { onChange(o.valor); fechar(); }}
                 onPointerEnter={() => setDestaque(i)} onFocus={() => setDestaque(i)} onPointerLeave={() => setDestaque(indiceAtual)}
                 className={`ecos-menu-item relative flex w-full items-center gap-2 rounded-lg border border-transparent px-2.5 text-left text-sm focus-visible:outline-none ${ativo || destaque === i ? "text-text-primary" : "text-text-secondary"}`}>
-                {o.icone ? <o.icone size={15} className="shrink-0" style={{ color: o.cor ?? "currentColor" }} />
+                {o.icone ? <o.icone size={15} className="ecos-menu-icone shrink-0" style={{ color: o.cor ?? "currentColor" }} />
                   : o.cor && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: o.cor }} />}
                 <span className="min-w-0 flex-1 truncate">{o.rotulo}</span>
                 {ativo && <Check size={14} className="shrink-0" style={{ color: o.cor ?? TOM.aco }} />}

@@ -288,3 +288,9 @@ export function useWorkspace() {
   if (!ctx) throw new Error("useWorkspace must be used inside <WorkspaceProvider>");
   return ctx;
 }
+
+/** Telas compartilhadas entre mobile e desktop usam isto para recursos de abas
+ * sem exigir que o shell móvel tenha um WorkspaceProvider. */
+export function useWorkspaceOpcional() {
+  return useContext(WorkspaceContext);
+}

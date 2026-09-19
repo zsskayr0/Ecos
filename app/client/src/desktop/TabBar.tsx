@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { RAIL_PRINCIPAL, RAIL_UTILITARIOS, moduloDaRota, moduloPorId, tituloDaRota } from "./modules";
 import { useTabDrag } from "./tab-drag";
@@ -6,70 +6,35 @@ import { useWorkspace, type Pane } from "./workspace-store";
 
 export function TabBar({ pane }: { pane: Pane }) {
   const { dispatch, fechando } = useWorkspace();
-  const { arrastando, iniciar, encerrar } = useTabDrag();
-  const [indiceAlvo, setIndiceAlvo] = useState<number | null>(null);
+  const { arrastando, alvo, aoPressionarAba } = useTabDrag();
   const [menuAberto, setMenuAberto] = useState(false);
 
-  function indiceSemArrastada(tabId: string): number {
-    return pane.tabs.filter((t) => t.id !== arrastando?.tabId).findIndex((t) => t.id === tabId);
-  }
-
-  function aoSoltar(e: DragEvent, indice: number) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (arrastando) dispatch({ type: "move-tab", tabId: arrastando.tabId, toPaneId: pane.id, index: indice });
-    setIndiceAlvo(null);
-    encerrar();
-  }
+  // Posição (entre as abas que sobram, sem a arrastada) onde a aba cairia nesta barra; `null` se o alvo é outro lugar.
+  const indiceAlvo = arrastando && alvo?.tipo === "aba" && alvo.paneId === pane.id ? alvo.indice : null;
+  const semArrastada = pane.tabs.filter((t) => t.id !== arrastando?.tabId);
 
   return (
     <div
       data-pane-tabbar={pane.id}
       className="relative flex h-9 shrink-0 items-stretch border-b border-border bg-surface-1 transition-colors data-[drop-alvo=true]:bg-cyan/20"
-      onDragOver={(e) => {
-        if (!arrastando) return;
-        e.preventDefault();
-        setIndiceAlvo((atual) => atual ?? pane.tabs.length);
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIndiceAlvo(null);
-      }}
-      onDrop={(e) => aoSoltar(e, pane.tabs.filter((t) => t.id !== arrastando?.tabId).length)}
     >
       <div role="tablist" className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none]">
         {pane.tabs.map((tab) => {
           const ativa = tab.id === pane.activeTabId;
           const Icone = moduloDaRota(tab.path).icone;
-          const marcadorAntes = indiceAlvo !== null && arrastando?.tabId !== tab.id && indiceSemArrastada(tab.id) === indiceAlvo;
+          const marcadorAntes = indiceAlvo !== null && arrastando?.tabId !== tab.id && semArrastada.findIndex((t) => t.id === tab.id) === indiceAlvo;
+          const titulo = tab.title || tituloDaRota(tab.path);
           return (
             <div
               key={tab.id}
               role="tab"
+              data-tab-id={tab.id}
               aria-selected={ativa}
               ref={(el) => {
                 // Congela a largura atual: a animação parte dela em vez de esperar o teto de 200px.
                 if (el && fechando.includes(tab.id) && !el.style.getPropertyValue("--ecos-aba-w")) el.style.setProperty("--ecos-aba-w", `${el.offsetWidth}px`);
               }}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", tab.id);
-                iniciar({ tabId: tab.id, paneId: pane.id });
-              }}
-              onDragEnd={() => {
-                setIndiceAlvo(null);
-                encerrar();
-              }}
-              onDragOver={(e) => {
-                if (!arrastando || arrastando.tabId === tab.id) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const caixa = e.currentTarget.getBoundingClientRect();
-                const depois = e.clientX > caixa.left + caixa.width / 2;
-                const base = indiceSemArrastada(tab.id);
-                setIndiceAlvo(depois ? base + 1 : base);
-              }}
-              onDrop={(e) => aoSoltar(e, indiceAlvo ?? pane.tabs.length)}
+              onPointerDown={(e) => aoPressionarAba(e, { tabId: tab.id, paneId: pane.id, titulo })}
               onMouseDown={(e) => {
                 if (e.button === 1) {
                   e.preventDefault();
@@ -77,13 +42,13 @@ export function TabBar({ pane }: { pane: Pane }) {
                 }
               }}
               onClick={() => dispatch({ type: "activate-tab", paneId: pane.id, tabId: tab.id })}
-              className={`group relative flex max-w-[200px] cursor-pointer select-none items-center gap-2 border-r border-border px-3 text-xs transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
+              className={`group relative flex max-w-[200px] cursor-pointer touch-none select-none items-center gap-2 border-r border-border px-3 text-xs transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
                 ativa ? "bg-base text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-secondary"
               } ${arrastando?.tabId === tab.id ? "opacity-40" : ""}`}
             >
               {marcadorAntes && <span className="absolute inset-y-0 left-0 w-0.5 bg-cyan" />}
               <Icone size={13} strokeWidth={1.75} className="shrink-0" />
-              <span className="truncate">{tab.title || tituloDaRota(tab.path)}</span>
+              <span className="truncate">{titulo}</span>
               <button
                 type="button"
                 aria-label="Fechar aba"
@@ -100,9 +65,7 @@ export function TabBar({ pane }: { pane: Pane }) {
             </div>
           );
         })}
-        {indiceAlvo === pane.tabs.filter((t) => t.id !== arrastando?.tabId).length && arrastando && (
-          <span className="my-1 w-0.5 shrink-0 bg-cyan" />
-        )}
+        {indiceAlvo !== null && indiceAlvo === semArrastada.length && <span className="my-1 w-0.5 shrink-0 bg-cyan" />}
       </div>
 
       <div className="relative shrink-0">

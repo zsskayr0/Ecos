@@ -11,7 +11,7 @@ import { ApiError, equipes, pastas, tarefas, notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
-import { ESTADO_VAZIO, estadoInicial, filtrar, ordenar, pastaDoItem, type EstadoFiltros } from "./filtros/modelo";
+import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
 
 interface Props {
@@ -27,6 +27,10 @@ interface Props {
   exibirFiltros?: boolean;
   /** Onde guardar filtros e ordenação (padrão: `chave`). Pastas usam o caminho para cada uma lembrar os seus. */
   chaveFiltros?: string;
+  /** Origem das pastas exibidas no filtro. O Feed aceita ambas; telas específicas não as intercalam. */
+  tipoPastas?: "nota" | "tarefa" | "ambos";
+  /** Checkbox de seleção e ações em lote. O Feed desliga. */
+  selecionavel?: boolean;
 }
 
 function lerFiltros(chave: string): EstadoFiltros | null {
@@ -37,7 +41,7 @@ function lerFiltros(chave: string): EstadoFiltros | null {
 }
 
 /** Uma lista de notas e/ou tarefas em qualquer das visualizações: feed (cards), lista compacta, tabela ou grade. */
-export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros }: Props) {
+export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true }: Props) {
   const chaveDosFiltros = chaveFiltros ?? chave;
   const desktop = useIsDesktop();
   const efetivo = modoEfetivo(modo, desktop);
@@ -49,13 +53,13 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
   const [equipesDisponiveis, setEquipesDisponiveis] = useState<{ id: string; nome: string }[]>([]);
   // Concluídas não poluem a visão operacional; ficam a um clique de distância no filtro de status.
   const temTarefas = itens.some((item) => item.tipo === "tarefa");
-  const [estadoFiltros, setEstadoFiltros] = useState<EstadoFiltros>(() => lerFiltros(chaveDosFiltros) ?? (exibirFiltros ? estadoInicial(temTarefas) : ESTADO_VAZIO));
+  const [estadoFiltros, setEstadoFiltros] = useState<EstadoFiltros>(() => (exibirFiltros ? lerFiltros(chaveDosFiltros) : null) ?? (exibirFiltros ? estadoInicial(temTarefas) : ESTADO_VAZIO));
   const [processando, setProcessando] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
   const ancora = useRef<string | null>(null);
   const { notificar } = useRefreshBus();
   const chaveDo = (item: FeedItem) => `${item.tipo}:${item.id}`;
-  const itensVisiveis = exibirFiltros ? ordenar(filtrar(itens, estadoFiltros), estadoFiltros.ordem) : itens;
+  const itensVisiveis = exibirFiltros ? ordenarComDirecao(filtrar(itens, estadoFiltros), estadoFiltros.ordem, estadoFiltros.ordemDirecao) : itens;
   const [itensAnimados, setItensAnimados] = useState<FeedItem[]>(itensVisiveis);
   const [saindo, setSaindo] = useState<Set<string>>(new Set());
   const [entrando, setEntrando] = useState<Set<string>>(new Set());
@@ -68,7 +72,10 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     const anteriores = new Set(itensAnimados.map(chaveDo));
     const removidos = itensAnimados.filter((item) => !proximos.has(chaveDo(item)));
     const novos = itensVisiveis.filter((item) => !anteriores.has(chaveDo(item))).map(chaveDo);
-    if (!removidos.length && !novos.length) return;
+    if (!removidos.length && !novos.length) {
+      if (itensAnimados.map(chaveDo).join("|") !== assinaturaVisivel) setItensAnimados(itensVisiveis);
+      return;
+    }
     setEntrando(new Set(novos));
     setSaindo(new Set(removidos.map(chaveDo)));
     setItensAnimados([...itensVisiveis, ...removidos]);
@@ -79,12 +86,16 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
   useEffect(() => { try { localStorage.setItem(`ecos:filtros3:${chaveDosFiltros}`, JSON.stringify(estadoFiltros)); } catch { /* cache indisponível */ } }, [chaveDosFiltros, estadoFiltros]);
 
   useEffect(() => {
-    Promise.all([pastas.listar({ tipo: "nota" }), pastas.listar({ tipo: "tarefa" })]).then(([notasPastas, tarefasPastas]) => {
+    let ativo = true;
+    const tipos = tipoPastas === "ambos" ? (["nota", "tarefa"] as const) : [tipoPastas];
+    Promise.all(tipos.map((tipo) => pastas.listar({ tipo }))).then((respostas) => {
+      if (!ativo) return;
       const porCaminho = new Map<string, { caminho: string; nome: string }>();
-      [...notasPastas.subpastas, ...tarefasPastas.subpastas].forEach((pasta) => porCaminho.set(pasta.caminho, pasta));
+      respostas.flatMap((resposta) => resposta.subpastas).forEach((pasta) => porCaminho.set(pasta.caminho, pasta));
       setPastasDisponiveis([...porCaminho.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")));
-    }).catch(() => {});
-  }, []);
+    }).catch(() => { if (ativo) setPastasDisponiveis([]); });
+    return () => { ativo = false; };
+  }, [tipoPastas]);
   useEffect(() => { equipes.listarMinhas().then(setEquipesDisponiveis).catch(() => setEquipesDisponiveis([])); }, []);
 
   async function moverSelecionados(pasta: string | null) {
@@ -153,7 +164,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     return true;
   }
   const selecionado = (item: FeedItem) => selecionados.has(chaveDo(item));
-  const envolver = (item: FeedItem, filho: React.ReactNode, estaSaindo = false, estaEntrando = false) => <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { selecionar(e, item); }} className={`group relative [&>button]:pl-10 ${estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""} ${selecionado(item) ? "rounded-card ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}><input data-ecos-selection-control type="checkbox" checked={selecionado(item)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className="absolute left-3 top-3 z-10 h-5 w-5 cursor-pointer appearance-none rounded-md border-2 border-text-muted bg-surface-1 shadow-sm transition-all checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[3px] checked:after:text-[13px] checked:after:leading-[15px] checked:after:text-white checked:after:content-['✓'] hover:border-steel-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100" />{filho}</div>;
+  const envolver = (item: FeedItem, filho: React.ReactNode, estaSaindo = false, estaEntrando = false) => !selecionavel ? <div key={`${item.tipo}-${item.id}`} className={estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""}>{filho}</div> : <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { selecionar(e, item); }} className={`group relative [&>button]:pl-10 [&>article]:pl-10 ${estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""} ${selecionado(item) ? "rounded-card ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}><input data-ecos-selection-control type="checkbox" checked={selecionado(item)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className="absolute left-3 top-3 z-10 h-5 w-5 cursor-pointer appearance-none rounded-md border-2 border-text-muted bg-surface-1 shadow-sm transition-all checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[3px] checked:after:text-[13px] checked:after:leading-[15px] checked:after:text-white checked:after:content-['✓'] hover:border-steel-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100" />{filho}</div>;
   const acoes = itensSelecionados.length > 0 && <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-400/50 bg-surface-1 p-2 shadow-nav" role="toolbar" aria-label="Ações para itens selecionados">
     <span className="px-2 text-sm font-medium text-text-primary">{itensSelecionados.length} selecionado{itensSelecionados.length === 1 ? "" : "s"}</span>
     <div className="relative"><button type="button" onClick={() => { setMenuMoverAberto((aberto) => !aberto); setMenuPrioridadeAberto(false); setMenuEquipeAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><FolderInput size={16} className="text-steel-300" />Mover<ChevronDown size={15} /></button>{menuMoverAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => void moverSelecionados(null)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Sem pasta</button>{pastasDisponiveis.map((pasta) => <button key={pasta.caminho} type="button" role="menuitem" onClick={() => void moverSelecionados(pasta.caminho)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">{pasta.nome}</button>)}</div>}</div>
@@ -171,26 +182,100 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     }
     return [...porCaminho.values()].sort((a, b) => a.caminho.localeCompare(b.caminho, "pt-BR"));
   }, [pastasDisponiveis, itens]);
+  const tagsDoFiltro = useMemo(() => {
+    const porNome = new Map<string, string>();
+    for (const item of itens) {
+      for (const tag of item.tags ?? []) {
+        const rotulo = tag.trim();
+        const chave = rotulo.toLocaleLowerCase("pt-BR");
+        if (rotulo && !porNome.has(chave)) porNome.set(chave, rotulo);
+      }
+    }
+    return [...porNome.values()].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+  }, [itens]);
+  const donosDoFiltro = useMemo(() => {
+    const porChave = new Map<string, { valor: string; nome: string }>();
+    for (const item of itens) {
+      const valor = chaveDoDono(item);
+      if (!porChave.has(valor)) porChave.set(valor, { valor, nome: item.dono.nome });
+    }
+    return [...porChave.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
+  }, [itens]);
   const cabecalhoFiltros = <>
-    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
+    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
     {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">Nenhum item corresponde aos filtros.</p>}
   </>;
 
-  if (efetivo === "tabela") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<TabelaItens itens={itensAnimados} chave={chave} mostrarCriada={mostrarCriada} mostrarMotivo={mostrarMotivo} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
+  const colunaDaOrdem: Record<Ordem, string | null> = { relevancia: null, edicao: "editada", criacao: "criada", titulo: "titulo", prioridade: "prioridade", agenda: "prazo", status: "status", duracao: "duracao", pasta: "pasta", equipe: "equipe", tags: "tags", dono: "dono" };
+  const ordemDaColuna: Record<string, Ordem> = { editada: "edicao", criada: "criacao", titulo: "titulo", prioridade: "prioridade", prazo: "agenda", status: "status", duracao: "duracao", pasta: "pasta", equipe: "equipe", tags: "tags", dono: "dono" };
+  const ordemTabela = colunaDaOrdem[estadoFiltros.ordem] ? { id: colunaDaOrdem[estadoFiltros.ordem]!, dir: estadoFiltros.ordemDirecao } : null;
+  const mudarOrdemTabela = (proxima: { id: string; dir: 1 | -1 } | null) => {
+    if (!proxima) setEstadoFiltros((atual) => ({ ...atual, ordem: "relevancia", ordemDirecao: 1 }));
+    else {
+      const ordem = ordemDaColuna[proxima.id];
+      if (ordem) setEstadoFiltros((atual) => ({ ...atual, ordem, ordemDirecao: proxima.dir }));
+    }
+  };
+
+  if (efetivo === "tabela") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<TabelaItens itens={itensAnimados} chave={chave} mostrarCriada={mostrarCriada} mostrarMotivo={mostrarMotivo} ordem={ordemTabela} onOrdemChange={mudarOrdemTabela} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
   if (efetivo === "grade") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<GradeItens itens={itensAnimados} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
 
   const lista = efetivo === "lista";
+  const renderItem = (item: FeedItem) => {
+    const chaveItem = chaveDo(item);
+    const conteudo = item.tipo === "nota"
+      ? (lista ? <NoteListRow nota={item} /> : <NoteCard nota={item} pastas={pastasDisponiveis} />)
+      : lista ? <TaskListRow tarefa={item} /> : <TaskCard tarefa={item} pastas={pastasDisponiveis} />;
+    return envolver(item, conteudo, saindo.has(chaveItem), entrando.has(chaveItem));
+  };
+  // Feed em cards: coluna estreita (leitura confortável em monitor largo) e agrupada por data.
+  const grupos = lista ? null : agruparPorData(itensAnimados, estadoFiltros.ordem);
   return (
-    <div>{exibirFiltros && cabecalhoFiltros}{acoes}<div className={lista ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
-      {itensAnimados.map((item) =>
-        item.tipo === "nota" ? (
-          envolver(item, lista ? <NoteListRow nota={item} /> : <NoteCard nota={item} />, saindo.has(chaveDo(item)), entrando.has(chaveDo(item)))
-        ) : lista ? (
-          envolver(item, <TaskListRow tarefa={item} />, saindo.has(chaveDo(item)), entrando.has(chaveDo(item)))
-        ) : (
-          envolver(item, <TaskCard tarefa={item} />, saindo.has(chaveDo(item)), entrando.has(chaveDo(item)))
-        ),
-      )}
+    <div className={lista ? undefined : "mx-auto w-full max-w-[780px]"}>{exibirFiltros && cabecalhoFiltros}{acoes}<div className={lista ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
+      {grupos
+        ? grupos.map((grupo) => (
+          <section key={grupo.rotulo} className="flex flex-col gap-3">
+            {grupo.rotulo && <h3 className="sticky top-0 z-10 -mx-1 bg-base/90 px-1 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-text-muted backdrop-blur">{grupo.rotulo}</h3>}
+            {grupo.itens.map(renderItem)}
+          </section>
+        ))
+        : itensAnimados.map(renderItem)}
     </div></div>
   );
+}
+
+const ORDENS_POR_DATA: Ordem[] = ["relevancia", "edicao", "criacao"];
+const ROTULO_SEM_DATA = "Sem data";
+
+function rotuloDoDia(iso: string | undefined, agora = new Date()): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return ROTULO_SEM_DATA;
+  const inicio = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dias = Math.round((inicio(agora) - inicio(d)) / 86_400_000);
+  if (dias <= 0) return "Hoje";
+  if (dias === 1) return "Ontem";
+  if (dias < 7) return d.toLocaleDateString("pt-BR", { weekday: "long" }).replace(/^./, (c) => c.toUpperCase());
+  return d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", ...(d.getFullYear() === agora.getFullYear() ? {} : { year: "numeric" }) });
+}
+
+/**
+ * Agrupa por dia de edição (ou de criação, se for a ordenação escolhida). Em "relevância" os dias vêm do mais
+ * recente para o mais antigo e o ranking do servidor é preservado dentro de cada dia; nas ordenações por data a
+ * ordem escolhida (inclusive crescente) é mantida. Outras ordenações não são agrupadas.
+ */
+function agruparPorData(itens: FeedItem[], ordem: Ordem): { rotulo: string; itens: FeedItem[] }[] | null {
+  if (!ORDENS_POR_DATA.includes(ordem)) return null;
+  const dataDe = (item: FeedItem) => ordem === "criacao" ? item.criadoEm ?? item.atualizadoEm : item.atualizadoEm ?? item.criadoEm;
+  const comDia = itens.map((item, posicao) => ({ item, posicao, iso: dataDe(item), rotulo: rotuloDoDia(dataDe(item)) }));
+  if (ordem === "relevancia") {
+    const dia = (x: { iso?: string }) => { const t = x.iso ? new Date(x.iso) : null; return t && !Number.isNaN(t.getTime()) ? new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime() : -Infinity; };
+    comDia.sort((a, b) => dia(b) - dia(a) || a.posicao - b.posicao);
+  }
+  const grupos: { rotulo: string; itens: FeedItem[] }[] = [];
+  for (const { item, rotulo } of comDia) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo?.rotulo === rotulo) ultimo.itens.push(item);
+    else grupos.push({ rotulo, itens: [item] });
+  }
+  return grupos;
 }

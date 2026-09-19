@@ -74,7 +74,7 @@ export function TaskFoldersRootScreen() {
             Nenhuma tarefa solta — tudo o que você tem está catalogado numa pasta.
           </p>
         ) : (
-          <ListaDeItens chave="tarefas" mostrarCriada modo={modo} itens={soltas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada modo={modo} itens={soltas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

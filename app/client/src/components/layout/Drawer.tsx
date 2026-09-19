@@ -1,15 +1,17 @@
-import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, ShieldHalf, LogOut, ListChecks, Library, Trash2, CalendarCheck2, FolderTree } from "lucide-react";
+import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, ShieldHalf, LogOut, ListChecks, Library, Trash2, CalendarCheck2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { corDaEquipe } from "@/lib/team-color";
+import { useFotoPerfil } from "@/lib/profile-avatar";
 
 /** Side drawer via the avatar (section 3.9). */
 export function Drawer() {
   const { drawerAberto, fecharDrawer } = useAppUI();
   const { perfil, logout } = useAuth();
+  const { url: urlFotoPerfil } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   const { equipes } = useMinhasEquipes();
   const navigate = useNavigate();
 
@@ -29,7 +31,7 @@ export function Drawer() {
       <div className="flex h-full w-[82%] max-w-xs flex-col gap-6 overflow-y-auto bg-surface-1 p-5 ecos-fade-in">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={44} />
+            <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={44} url={urlFotoPerfil} />
             <div>
               <p className="font-body text-[15px] font-semibold text-text-primary">{perfil ? nomeExibicao(perfil) : ""}</p>
               <p className="text-sm text-text-muted">Instância local</p>
@@ -59,7 +61,6 @@ export function Drawer() {
           <CalendarCheck2 size={18} strokeWidth={1.75} className="text-steel-300" />
           Hoje
         </button>
-        <button onClick={() => ir("/pastas")} className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"><FolderTree size={18} strokeWidth={1.75} className="text-steel-300" />Pastas</button>
         <button
           onClick={() => ir("/tarefas")}
           className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"

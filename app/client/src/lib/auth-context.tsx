@@ -6,6 +6,7 @@ export interface Perfil {
   nome_usuario: string;
   nome: string | null;
   cofre_ativado: boolean;
+  avatar_atualizado_em: number | null;
   equipes: { id: string; nome: string; cargo: string }[];
 }
 

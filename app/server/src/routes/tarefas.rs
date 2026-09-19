@@ -4,7 +4,7 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::{Extension, Json};
 use chrono::{Datelike, NaiveDate, NaiveTime, Timelike, Utc};
-use ecos_core::types::{Espaco, EventoExternoRef, Subtarefa, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
+use ecos_core::types::{Espaco, EventoExternoRef, Subtarefa, TarefaFrontMatter, TarefaPrioridade, TarefaStatus, TempoRegistrado, TipoTempo};
 use ecos_core::{frontmatter, naming, new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
@@ -89,11 +89,123 @@ pub async fn listar_time_entries(State(state): State<AppState>, Path(id): Path<S
     Ok(Json(itens))
 }
 
+fn duracao_de_tempo_valida(duracao_min: i64) -> AppResult<()> {
+    if (1..=24 * 60).contains(&duracao_min) {
+        Ok(())
+    } else {
+        Err(AppError::validation(vec![CampoInvalido { campo: "duracao_min".into(), motivo: "deve estar entre 1 e 1440 minutos".into() }]))
+    }
+}
+
+/// Lê o `.md` da Tarefa, deixa `f` mexer no tempo registrado, grava e reindexa. O tempo mora no arquivo (fonte da
+/// verdade): se ficasse só no índice, o `reindexar_tudo` da próxima edição de qualquer item o apagaria.
+async fn editar_tempo<T>(state: &AppState, tarefa_id: &str, f: impl FnOnce(&mut Vec<TempoRegistrado>) -> AppResult<T>) -> AppResult<T> {
+    let caminho_relativo = caminho_por_id(state, tarefa_id).await?;
+    let caminho = absoluto(state, &caminho_relativo);
+    let bruto = std::fs::read_to_string(&caminho)?;
+    let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
+    let mut fm = doc.front_matter;
+    let resultado = f(&mut fm.tempo)?;
+    std::fs::write(&caminho, frontmatter::serialize(&fm, &doc.body)?)?;
+    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    Ok(resultado)
+}
+
 pub async fn criar_time_entry(State(state): State<AppState>, Path(tarefa_id): Path<String>, Json(payload): Json<CriarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
-    if !matches!(payload.tipo.as_str(), "planejado" | "real") || payload.duracao_min <= 0 { return Err(AppError::validation(vec![CampoInvalido { campo: "time_entry".into(), motivo: "tipo ou duração inválidos".into() }])); }
-    let id = new_id(); let agora = Utc::now().to_rfc3339(); let inicio = payload.inicio_em.to_rfc3339(); let fim = (payload.inicio_em + chrono::Duration::minutes(payload.duracao_min)).to_rfc3339(); let tipo = payload.tipo; let foco = payload.foco; let retorno = id.clone();
-    state.db.with(move |conn| { conn.execute("INSERT INTO tarefa_time_entry(id,tarefa_id,tipo,inicio_em,fim_em,duracao_min,foco,criado_em) VALUES(?,?,?,?,?,?,?,?)", rusqlite::params![id,tarefa_id,tipo,inicio,fim,payload.duracao_min,foco,agora])?; Ok(()) }).await?;
-    Ok(Json(serde_json::json!({"id": retorno})))
+    let tipo = match payload.tipo.as_str() {
+        "planejado" => TipoTempo::Planejado,
+        "real" => TipoTempo::Real,
+        _ => return Err(AppError::validation(vec![CampoInvalido { campo: "tipo".into(), motivo: "deve ser 'planejado' ou 'real'".into() }])),
+    };
+    duracao_de_tempo_valida(payload.duracao_min)?;
+    let id = new_id();
+    let novo = TempoRegistrado { id: id.clone(), tipo, inicio_em: payload.inicio_em, duracao_min: payload.duracao_min, foco: payload.foco, criado_em: Utc::now() };
+    editar_tempo(&state, &tarefa_id, |tempo| { tempo.push(novo); Ok(()) }).await?;
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AtualizarTimeEntryPayload {
+    #[serde(default)]
+    pub inicio_em: Option<chrono::DateTime<Utc>>,
+    #[serde(default)]
+    pub duracao_min: Option<i64>,
+    #[serde(default)]
+    pub foco: Option<String>,
+}
+
+/// Move/redimensiona um bloco de tempo. Só mexe no bloco: a data da Tarefa (`scheduled_at`/`due_date`) nunca muda.
+pub async fn atualizar_time_entry(State(state): State<AppState>, Path((tarefa_id, entrada_id)): Path<(String, String)>, Json(payload): Json<AtualizarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
+    if let Some(d) = payload.duracao_min {
+        duracao_de_tempo_valida(d)?;
+    }
+    editar_tempo(&state, &tarefa_id, |tempo| {
+        let entrada = tempo.iter_mut().find(|t| t.id == entrada_id).ok_or(AppError::new(ErrorCode::NotFound))?;
+        if let Some(inicio) = payload.inicio_em {
+            entrada.inicio_em = inicio;
+        }
+        if let Some(d) = payload.duracao_min {
+            entrada.duracao_min = d;
+        }
+        if let Some(foco) = payload.foco {
+            entrada.foco = foco;
+        }
+        Ok(())
+    })
+    .await?;
+    Ok(Json(serde_json::json!({ "id": entrada_id })))
+}
+
+pub async fn excluir_time_entry(State(state): State<AppState>, Path((tarefa_id, entrada_id)): Path<(String, String)>) -> AppResult<Json<serde_json::Value>> {
+    editar_tempo(&state, &tarefa_id, |tempo| {
+        let antes = tempo.len();
+        tempo.retain(|t| t.id != entrada_id);
+        if tempo.len() == antes { Err(AppError::new(ErrorCode::NotFound)) } else { Ok(()) }
+    })
+    .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlocosQuery {
+    pub data_de: NaiveDate,
+    pub data_ate: NaiveDate,
+    /// Fuso do cliente (minutos a leste de UTC), como em `ListarQuery::tz`.
+    pub tz: Option<i32>,
+    /// `planejado` (padrão) ou `real`.
+    pub tipo: Option<String>,
+}
+
+/// Blocos de tempo (com o resumo da Tarefa dona) cujo início cai entre os dois dias, contados no fuso do cliente. É o
+/// que o calendário desenha; não depende da data da Tarefa.
+pub async fn listar_blocos(State(state): State<AppState>, Query(q): Query<BlocosQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    let tz_mod = modificador_tz(q.tz);
+    let tipo = if q.tipo.as_deref() == Some("real") { "real" } else { "planejado" };
+    let (de, ate) = (q.data_de.to_string(), q.data_ate.to_string());
+    let blocos = state
+        .db
+        .with(move |conn| {
+            let sql = format!(
+                "SELECT e.id, e.tarefa_id, e.tipo, e.inicio_em, e.duracao_min, e.foco, t.titulo, t.status, t.prioridade, t.duration_min \
+                 FROM tarefa_time_entry e JOIN tarefa t ON t.id = e.tarefa_id \
+                 WHERE e.tipo = ?1 AND date(datetime(e.inicio_em, '{tz_mod}')) >= date(?2) AND date(datetime(e.inicio_em, '{tz_mod}')) <= date(?3) \
+                 ORDER BY e.inicio_em, e.id"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let linhas = stmt
+                .query_map(rusqlite::params![tipo, de, ate], |r| {
+                    Ok(serde_json::json!({
+                        "id": r.get::<_, String>(0)?, "tarefa_id": r.get::<_, String>(1)?, "tipo": r.get::<_, String>(2)?,
+                        "inicio_em": r.get::<_, String>(3)?, "duracao_min": r.get::<_, i64>(4)?, "foco": r.get::<_, String>(5)?,
+                        "titulo": r.get::<_, String>(6)?, "status": r.get::<_, String>(7)?, "prioridade": r.get::<_, String>(8)?,
+                        "tarefa_duration_min": r.get::<_, Option<i64>>(9)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(linhas)
+        })
+        .await?;
+    Ok(Json(blocos))
 }
 
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
@@ -254,6 +366,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         evento_externo: EventoExternoRef::default(),
         criado_em: agora,
         atualizado_em: Some(agora),
+        tempo: Vec::new(),
         concluida_em: None,
         criado_por: Some(usuario.0.clone()),
     };
@@ -387,8 +500,12 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     if let Some(scheduled_at) = payload.scheduled_at {
         fm.scheduled_at = scheduled_at;
     }
-    if payload.duration_min.is_some() {
-        fm.duration_min = payload.duration_min;
+    if let Some(duracao) = payload.duration_min {
+        // A Agenda redimensiona tarefas no arrasto: uma duração de 0 ou negativa nunca é uma edição válida.
+        if !(1..=24 * 60).contains(&duracao) {
+            return Err(AppError::validation(vec![CampoInvalido { campo: "duration_min".into(), motivo: "deve estar entre 1 e 1440 minutos".into() }]));
+        }
+        fm.duration_min = Some(duracao);
     }
     if let Some(due_date) = payload.due_date {
         fm.due_date = due_date;
@@ -650,4 +767,205 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
         "tempo_livre_min": tempo_livre_min,
         "estourado": estourado,
     })))
+}
+
+#[cfg(test)]
+mod testes_agenda_mover_e_redimensionar {
+    use crate::{auth::session, config::{Ambiente, Config}, db::IndexDb, state::AppState};
+    use axum::{body::{to_bytes, Body}, http::{Request, StatusCode}, Router};
+    use ecos_core::new_id;
+    use std::sync::{Arc, Mutex};
+    use tower::Service;
+
+    async fn chamar(app: &Router, metodo: &str, uri: &str, token: &str, corpo: Option<serde_json::Value>) -> (StatusCode, serde_json::Value) {
+        let mut pedido = Request::builder().method(metodo).uri(uri).header("authorization", format!("Bearer {token}"));
+        let corpo = match corpo {
+            Some(c) => { pedido = pedido.header("content-type", "application/json"); Body::from(c.to_string()) }
+            None => Body::empty(),
+        };
+        let resposta = app.clone().call(pedido.body(corpo).unwrap()).await.unwrap();
+        let status = resposta.status();
+        let bytes = to_bytes(resposta.into_body(), 1024 * 1024).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    async fn app_de_teste() -> (Router, String, std::path::PathBuf) {
+        let temp = std::env::temp_dir().join(format!("ecos-agenda-test-{}", new_id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let segredo = b"segredo-efemero-exclusivo-do-teste-de-agenda".to_vec();
+        let state = AppState {
+            db: IndexDb::open(&temp.join("index.db")).unwrap(),
+            config: Arc::new(Config {
+                ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(), index_db_path: temp.join("index.db"),
+                vault_enabled: false, vault_internal_url: String::new(), session_secret: segredo.clone(), ranking_interval_secs: 300,
+                static_dir: None, cookie_secure: false,
+            }),
+            http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
+        };
+        state.db.with(|conn| {
+            conn.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash) VALUES ('usuario-teste', 'teste', 'efemero', 'efemero')", [])?;
+            Ok(())
+        }).await.unwrap();
+        let token = session::emitir_access_token("usuario-teste", &segredo).unwrap();
+        (crate::routes::montar(state), token, temp)
+    }
+
+    async fn obter(app: &Router, token: &str, id: &str) -> serde_json::Value {
+        let (status, corpo) = chamar(app, "GET", &format!("/api/v1/tarefas/{id}"), token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        corpo
+    }
+
+    async fn ids_do_dia(app: &Router, token: &str, dia: &str, tz: i32) -> Vec<String> {
+        let (status, corpo) = chamar(app, "GET", &format!("/api/v1/tarefas?data_de={dia}&data_ate={dia}&tz={tz}&limit=100"), token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        corpo["items"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn mover_entre_dias_dia_inteiro_e_redimensionar_persistem_sem_mexer_no_que_nao_foi_pedido() {
+        let (app, token, raiz) = app_de_teste().await;
+        let (status, criada) = chamar(&app, "POST", "/api/v1/tarefas", &token, Some(serde_json::json!({
+            "titulo": "Reunião", "scheduled_at": "2026-09-21T13:00:00Z", "duration_min": 45, "due_date": "2026-09-30"
+        }))).await;
+        assert_eq!(status, StatusCode::OK);
+        let id = criada["id"].as_str().unwrap().to_string();
+        let patch = |corpo: serde_json::Value| { let (app, token, id) = (app.clone(), token.clone(), id.clone()); async move { chamar(&app, "PATCH", &format!("/api/v1/tarefas/{id}"), &token, Some(corpo)).await } };
+
+        // 1) Mover para outro dia (só scheduled_at): a duração e o prazo NÃO mudam.
+        let (status, _) = patch(serde_json::json!({ "scheduled_at": "2026-09-23T13:00:00Z" })).await;
+        assert_eq!(status, StatusCode::OK);
+        let t = obter(&app, &token, &id).await;
+        assert_eq!(t["scheduled_at"], "2026-09-23T13:00:00Z");
+        assert_eq!(t["duration_min"], 45, "mover entre dias não pode alterar a duração");
+        assert_eq!(t["due_date"], "2026-09-30", "mover o bloco não move o prazo");
+        assert!(ids_do_dia(&app, &token, "2026-09-23", -180).await.contains(&id));
+        assert!(!ids_do_dia(&app, &token, "2026-09-21", -180).await.contains(&id));
+
+        // 2) Para o "dia todo": some o horário, a data (única) vira o dia novo, duração intacta.
+        let (status, _) = patch(serde_json::json!({ "scheduled_at": null, "due_date": "2026-09-24" })).await;
+        assert_eq!(status, StatusCode::OK);
+        let t = obter(&app, &token, &id).await;
+        assert!(t["scheduled_at"].is_null());
+        assert_eq!(t["due_date"], "2026-09-24");
+        assert_eq!(t["duration_min"], 45);
+        assert!(ids_do_dia(&app, &token, "2026-09-24", -180).await.contains(&id));
+
+        // 3) Do dia todo para um horário — 23:30 em Brasília (UTC-3) já é o dia 25 em UTC.
+        let (status, _) = patch(serde_json::json!({ "scheduled_at": "2026-09-25T02:30:00Z", "due_date": "2026-09-24" })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(ids_do_dia(&app, &token, "2026-09-24", -180).await.contains(&id), "no fuso do cliente (UTC-3) é dia 24");
+        assert!(!ids_do_dia(&app, &token, "2026-09-25", -180).await.contains(&id));
+        assert!(ids_do_dia(&app, &token, "2026-09-25", 0).await.contains(&id), "em UTC o mesmo instante é dia 25");
+
+        // 4) Redimensionar: só duration_min muda; o horário fica.
+        let (status, _) = patch(serde_json::json!({ "duration_min": 90 })).await;
+        assert_eq!(status, StatusCode::OK);
+        let t = obter(&app, &token, &id).await;
+        assert_eq!(t["duration_min"], 90);
+        assert_eq!(t["scheduled_at"], "2026-09-25T02:30:00Z");
+
+        // 5) Duração inválida é recusada e nada muda.
+        for invalida in [0, -15, 1441] {
+            let (status, _) = patch(serde_json::json!({ "duration_min": invalida })).await;
+            assert!(status.is_client_error(), "duração {invalida} deveria ser recusada, veio {status}");
+        }
+        assert_eq!(obter(&app, &token, &id).await["duration_min"], 90);
+
+        // 6) Persistiu de verdade no arquivo `.md` (fonte da verdade), não só na memória/índice.
+        let arquivo = walkdir::WalkDir::new(raiz.join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
+        let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
+        assert!(conteudo.contains("duration_min: 90"), "front matter: {conteudo}");
+        assert!(conteudo.contains("2026-09-25T02:30:00"), "front matter: {conteudo}");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    async fn blocos(app: &Router, token: &str, dia: &str, tz: i32) -> Vec<serde_json::Value> {
+        let (status, corpo) = chamar(app, "GET", &format!("/api/v1/agenda/blocos?data_de={dia}&data_ate={dia}&tz={tz}"), token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        corpo.as_array().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn blocos_de_tempo_persistem_sobrevivem_ao_reindex_e_nunca_mudam_a_data_da_tarefa() {
+        let (app, token, raiz) = app_de_teste().await;
+        let (_, criada) = chamar(&app, "POST", "/api/v1/tarefas", &token, Some(serde_json::json!({
+            "titulo": "Escrever relatório", "scheduled_at": "2026-09-30T12:00:00Z", "due_date": "2026-10-05", "duration_min": 45
+        }))).await;
+        let id = criada["id"].as_str().unwrap().to_string();
+        let url = format!("/api/v1/tarefas/{id}/time-entries");
+
+        // 1) Alocar tempo: 22/09 às 10:00 (Brasília), 45 min.
+        let (status, bloco) = chamar(&app, "POST", &url, &token, Some(serde_json::json!({ "tipo": "planejado", "inicio_em": "2026-09-22T13:00:00Z", "duracao_min": 45 }))).await;
+        assert_eq!(status, StatusCode::OK);
+        let bloco_id = bloco["id"].as_str().unwrap().to_string();
+
+        // 2) O defeito antigo: qualquer outra edição reindexava tudo e apagava o bloco. Agora ele sobrevive.
+        chamar(&app, "POST", "/api/v1/tarefas", &token, Some(serde_json::json!({ "titulo": "Outra tarefa qualquer" }))).await;
+        chamar(&app, "POST", "/api/v1/notas", &token, Some(serde_json::json!({ "titulo": "Uma nota" }))).await;
+        let (_, lista) = chamar(&app, "GET", &url, &token, None).await;
+        assert_eq!(lista.as_array().unwrap().len(), 1, "o bloco sumiu depois de outra edição");
+
+        // 3) O calendário lê os blocos por dia no fuso do cliente.
+        let do_dia = blocos(&app, &token, "2026-09-22", -180).await;
+        assert_eq!(do_dia.len(), 1);
+        assert_eq!(do_dia[0]["titulo"], "Escrever relatório");
+        assert_eq!(do_dia[0]["duracao_min"], 45);
+        assert!(blocos(&app, &token, "2026-09-23", -180).await.is_empty());
+
+        // 4) Mover o bloco: só o início muda; a duração fica e a data da Tarefa NÃO é tocada.
+        let (status, _) = chamar(&app, "PATCH", &format!("{url}/{bloco_id}"), &token, Some(serde_json::json!({ "inicio_em": "2026-09-24T18:00:00Z" }))).await;
+        assert_eq!(status, StatusCode::OK);
+        let movido = blocos(&app, &token, "2026-09-24", -180).await;
+        assert_eq!(movido.len(), 1);
+        assert_eq!(movido[0]["duracao_min"], 45, "mover não pode alterar a duração");
+        assert!(blocos(&app, &token, "2026-09-22", -180).await.is_empty());
+
+        // 5) Redimensionar: só a duração muda.
+        chamar(&app, "PATCH", &format!("{url}/{bloco_id}"), &token, Some(serde_json::json!({ "duracao_min": 90 }))).await;
+        let redim = blocos(&app, &token, "2026-09-24", -180).await;
+        assert_eq!(redim[0]["duracao_min"], 90);
+        assert_eq!(redim[0]["inicio_em"].as_str().unwrap().replace("+00:00", "Z"), "2026-09-24T18:00:00Z");
+
+        // 6) Fuso: 22:30 em Brasília do dia 22 já é dia 23 em UTC.
+        let (_, noite) = chamar(&app, "POST", &url, &token, Some(serde_json::json!({ "tipo": "planejado", "inicio_em": "2026-09-23T01:30:00Z", "duracao_min": 30 }))).await;
+        assert_eq!(blocos(&app, &token, "2026-09-22", -180).await.len(), 1, "no fuso do cliente (UTC-3) é dia 22");
+        assert_eq!(blocos(&app, &token, "2026-09-23", 0).await.len(), 1, "em UTC o mesmo instante é dia 23");
+        let noite_id = noite["id"].as_str().unwrap().to_string();
+
+        // 7) Valores inválidos são recusados (criar e atualizar) e bloco inexistente dá 404.
+        for invalida in [0, -5, 1441] {
+            let (s1, _) = chamar(&app, "POST", &url, &token, Some(serde_json::json!({ "tipo": "planejado", "inicio_em": "2026-09-22T13:00:00Z", "duracao_min": invalida }))).await;
+            let (s2, _) = chamar(&app, "PATCH", &format!("{url}/{bloco_id}"), &token, Some(serde_json::json!({ "duracao_min": invalida }))).await;
+            assert!(s1.is_client_error() && s2.is_client_error(), "duração {invalida} deveria ser recusada");
+        }
+        let (status, _) = chamar(&app, "PATCH", &format!("{url}/nao-existe"), &token, Some(serde_json::json!({ "duracao_min": 30 }))).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(blocos(&app, &token, "2026-09-24", -180).await[0]["duracao_min"], 90);
+
+        // 8) Nada disso mexeu na data nem na duração da própria Tarefa.
+        let t = obter(&app, &token, &id).await;
+        assert_eq!(t["scheduled_at"], "2026-09-30T12:00:00Z");
+        assert_eq!(t["due_date"], "2026-10-05");
+        assert_eq!(t["duration_min"], 45);
+
+        // 9) Persistiu no `.md` (a fonte da verdade), não só no índice.
+        let arquivo = walkdir::WalkDir::new(raiz.join("Tarefas")).into_iter().filter_map(Result::ok)
+            .find(|e| std::fs::read_to_string(e.path()).map_or(false, |c| c.contains("Escrever relatório"))).unwrap();
+        let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
+        assert!(conteudo.contains("planejado") && conteudo.contains("duracao_min: 90"), "front matter: {conteudo}");
+
+        // 10) Remover o bloco não apaga a Tarefa; remover de novo dá 404.
+        let (status, _) = chamar(&app, "DELETE", &format!("{url}/{noite_id}"), &token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = chamar(&app, "DELETE", &format!("{url}/{noite_id}"), &token, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(obter(&app, &token, &id).await["titulo"], "Escrever relatório");
+
+        // 11) Apagar a Tarefa leva os blocos dela junto (o calendário não fica com bloco órfão).
+        let (status, _) = chamar(&app, "DELETE", &format!("/api/v1/tarefas/{id}"), &token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(blocos(&app, &token, "2026-09-24", -180).await.is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 }
