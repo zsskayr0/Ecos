@@ -1,12 +1,11 @@
 import { useState, type MouseEvent } from "react";
-import { CalendarClock, CheckCircle2, Circle, Clock, Folder, StickyNote } from "lucide-react";
+import { CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { formatDuracao } from "@/lib/format";
 import { anexosDaNota, previewDaNota } from "@/lib/note-media";
 import type { FeedItem, Nota, Tarefa } from "@/lib/types";
-import { CLASSE_PRIORIDADE, ROTULO_PRIORIDADE, caminhoDoItem, nomeDaPasta, pastaDoItem, prazoDaTarefa, tagsDoItem } from "./util";
+import { CLASSE_PRIORIDADE, ROTULO_PRIORIDADE, caminhoDoItem, nomeDaPasta, pastaDoItem, tagsDoItem } from "./util";
 
 const BLOCO =
   "group flex h-56 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-border bg-surface-1 p-4 text-left transition-colors hover:border-steel-500/60 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
@@ -16,10 +15,10 @@ function Tags({ item }: { item: FeedItem }) {
   if (!tags.length) return null;
   return (
     <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-      {tags.slice(0, 3).map((t) => (
+      {tags.slice(0, 2).map((t) => (
         <span key={t} className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-secondary">#{t}</span>
       ))}
-      {tags.length > 3 && <span className="shrink-0 text-[11px] text-text-muted">+{tags.length - 3}</span>}
+      {tags.length > 2 && <span className="shrink-0 text-[11px] text-text-muted">+{tags.length - 2}</span>}
     </span>
   );
 }
@@ -65,8 +64,6 @@ function BlocoNota({ nota }: { nota: Nota }) {
 function BlocoTarefa({ tarefa }: { tarefa: Tarefa }) {
   const abrir = useAbrirDocumento();
   const concluida = tarefa.status === "concluida";
-  const prazo = prazoDaTarefa(tarefa);
-
   return (
     <button type="button" onClick={(e) => abrir(caminhoDoItem(tarefa), e)} className={BLOCO}>
       <span className="flex items-center justify-between gap-2">
@@ -77,10 +74,6 @@ function BlocoTarefa({ tarefa }: { tarefa: Tarefa }) {
         {concluida ? <CheckCircle2 size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
         <span className={`line-clamp-3 font-body text-[15px] font-semibold leading-snug ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo || "Sem título"}</span>
       </span>
-      <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-        {prazo && <span className="flex items-center gap-1"><CalendarClock size={12} strokeWidth={1.75} className="text-cyan" />{prazo.texto}</span>}
-        {tarefa.durationMin > 0 && <span className="flex items-center gap-1"><Clock size={12} strokeWidth={1.75} className="text-text-muted" />{formatDuracao(tarefa.durationMin)}</span>}
-      </span>
       <Tags item={tarefa} />
       <Rodape item={tarefa} />
     </button>
@@ -88,10 +81,10 @@ function BlocoTarefa({ tarefa }: { tarefa: Tarefa }) {
 }
 
 /** Visualização em grade: blocos de tamanho igual, tantos por linha quantos couberem — como uma galeria do Notion. */
-export function GradeItens({ itens, selecionados = new Set(), onSelecionar }: { itens: FeedItem[]; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean }) {
+export function GradeItens({ itens, selecionados = new Set(), onSelecionar, saindo = new Set(), entrando = new Set() }: { itens: FeedItem[]; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean; saindo?: Set<string>; entrando?: Set<string> }) {
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-      {itens.map((item) => <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { onSelecionar?.(e, item, itens); }} className={selecionados.has(`${item.tipo}:${item.id}`) ? "rounded-xl ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}>{item.tipo === "nota" ? <BlocoNota nota={item} /> : <BlocoTarefa tarefa={item} />}</div>)}
+      {itens.map((item) => <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { onSelecionar?.(e, item, itens); }} className={`${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "rounded-xl ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>{item.tipo === "nota" ? <BlocoNota nota={item} /> : <BlocoTarefa tarefa={item} />}</div>)}
     </div>
   );
 }

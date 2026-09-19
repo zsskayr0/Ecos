@@ -21,8 +21,8 @@ export interface OpcaoMenu<T extends string> {
   icone?: LucideIcon;
 }
 
-const misturar = (cor: string, pct: number) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
-const ALTURA_ITEM = 36;
+export const misturar = (cor: string, pct: number) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
+export const ALTURA_ITEM = 36;
 
 interface Props<T extends string> {
   valor: T;

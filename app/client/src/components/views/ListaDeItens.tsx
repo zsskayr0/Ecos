@@ -11,7 +11,7 @@ import { ApiError, equipes, pastas, tarefas, notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
-import { ESTADO_VAZIO, estadoInicial, filtrar, ordenar, type EstadoFiltros } from "./filtros/modelo";
+import { ESTADO_VAZIO, estadoInicial, filtrar, ordenar, pastaDoItem, type EstadoFiltros } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
 
 interface Props {
@@ -162,8 +162,17 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     <button type="button" onClick={() => { setSelecionados(new Set()); ancora.current = null; }} disabled={processando} className="ml-auto flex min-h-10 min-w-10 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Limpar seleção"><>{processando ? <Loader2 size={17} className="animate-spin" /> : <X size={17} />}</></button>
     {erroAcao && <p role="alert" className="basis-full px-2 pb-1 text-sm text-error">{erroAcao}</p>}
   </div>;
+  // Pastas conhecidas (raiz, vindas do servidor) mais as que aparecem nos próprios itens, inclusive subpastas.
+  const pastasDoFiltro = useMemo(() => {
+    const porCaminho = new Map(pastasDisponiveis.map((p) => [p.caminho, p]));
+    for (const item of itens) {
+      const caminho = pastaDoItem(item);
+      if (caminho && !porCaminho.has(caminho)) porCaminho.set(caminho, { caminho, nome: caminho.split("/").pop() ?? caminho });
+    }
+    return [...porCaminho.values()].sort((a, b) => a.caminho.localeCompare(b.caminho, "pt-BR"));
+  }, [pastasDisponiveis, itens]);
   const cabecalhoFiltros = <>
-    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
+    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
     {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">Nenhum item corresponde aos filtros.</p>}
   </>;
 

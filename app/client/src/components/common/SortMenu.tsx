@@ -1,0 +1,8 @@
+import { useState } from "react";
+import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+
+export function SortMenu<T extends string>({ value, onChange, options, label = "Ordenar" }: { value: T; onChange: (value: T) => void; options: readonly { value: T; label: string }[]; label?: string }) {
+  const [aberto, setAberto] = useState(false);
+  const atual = options.find((opcao) => opcao.value === value)?.label ?? label;
+  return <div className="relative"><button type="button" aria-haspopup="menu" aria-expanded={aberto} onClick={() => setAberto((v) => !v)} className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-xs font-medium text-text-secondary transition-colors hover:border-steel-400 hover:text-text-primary"><SlidersHorizontal size={14} /><span>{atual}</span><ChevronDown size={14} className={`transition-transform ${aberto ? "rotate-180" : ""}`} /></button>{aberto && <div role="menu" className="ecos-fade-in absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav">{options.map((opcao) => <button key={opcao.value} type="button" role="menuitem" onClick={() => { onChange(opcao.value); setAberto(false); }} className={`flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors ${opcao.value === value ? "bg-steel-700/25 text-text-primary" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}><span className="flex-1">{opcao.label}</span>{opcao.value === value && <Check size={15} className="text-steel-300" />}</button>)}</div>}</div>;
+}

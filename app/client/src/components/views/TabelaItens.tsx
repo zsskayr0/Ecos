@@ -258,7 +258,7 @@ function lerLarguras(chave: string): Record<string, number> {
  * cabeçalho ordena, arrastar a borda do cabeçalho redimensiona (a largura fica
  * guardada por tela) e clicar numa linha abre o item.
  */
-export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo = false, selecionados = new Set(), onSelecionar }: { itens: FeedItem[]; chave: string; mostrarCriada?: boolean; mostrarMotivo?: boolean; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean }) {
+export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo = false, selecionados = new Set(), onSelecionar, saindo = new Set(), entrando = new Set() }: { itens: FeedItem[]; chave: string; mostrarCriada?: boolean; mostrarMotivo?: boolean; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean; saindo?: Set<string>; entrando?: Set<string> }) {
   const abrir = useAbrirDocumento();
   const [ordem, setOrdem] = useState<{ id: string; dir: 1 | -1 } | null>(null);
   const [larguras, setLarguras] = useState<Record<string, number>>(() => lerLarguras(chave));
@@ -368,7 +368,7 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
               tabIndex={0}
               onClick={(e) => { if (!onSelecionar?.(e, item, linhas)) abrir(caminhoDoItem(item), e); }}
               onKeyDown={(e) => aoTeclarNaLinha(e, item)}
-              className={`grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
+              className={`grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
               style={{ gridTemplateColumns: modelo }}
             >
               {colunas.map((coluna) => (

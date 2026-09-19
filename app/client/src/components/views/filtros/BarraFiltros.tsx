@@ -1,5 +1,6 @@
-import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, ListChecks, ListFilter, PencilLine, Sparkles, User, Users, X } from "lucide-react";
+import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, ListChecks, ListFilter, PencilLine, Sparkles, User, Users, X } from "lucide-react";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
+import { MenuMultiplo, type OpcaoMultipla } from "@/components/common/MenuMultiplo";
 import { corDaEquipe } from "@/lib/team-color";
 import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
@@ -19,7 +20,7 @@ const ORDENS: OpcaoMenu<Ordem>[] = [
 interface Props {
   estado: EstadoFiltros;
   onChange: (e: EstadoFiltros) => void;
-  contexto: { equipes: { id: string; nome: string }[] };
+  contexto: { equipes: { id: string; nome: string }[]; pastas: { caminho: string; nome: string }[] };
   visiveis: number;
   total: number;
   temTarefas: boolean;
@@ -38,6 +39,11 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
     { valor: "todas", rotulo: "Todas as equipes", icone: Users }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta, icone: User },
     ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, cor: corDaEquipe(e.id), icone: Users })),
   ];
+  const opcoesPasta: OpcaoMultipla[] = [
+    { valor: "", rotulo: "Sem pasta", icone: Folder, cor: TOM.alerta },
+    ...contexto.pastas.map((p) => ({ valor: p.caminho, rotulo: p.caminho.replace(/\//g, " / "), icone: FolderOpen, cor: TOM.aco })),
+  ];
+  const rotuloPastas = estado.pastas.length === 1 ? opcoesPasta.find((o) => o.valor === estado.pastas[0])?.rotulo ?? "Pasta" : `${estado.pastas.length} pastas`;
   const alterado = filtrosAtivos(estado, temTarefas) > 0 || estado.ordem !== ESTADO_VAZIO.ordem;
   const set = (patch: Partial<EstadoFiltros>) => onChange({ ...estado, ...patch });
 
@@ -59,6 +65,10 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
           classeGatilho={chip(estado.equipe !== "todas")} corAtiva={corDo(equipes, estado.equipe, estado.equipe !== "todas")}
           gatilho={({ aberto, atual }) => <><Users size={14} /><span className="max-w-[9rem] truncate">{estado.equipe === "todas" ? "Equipe" : atual?.rotulo ?? "Equipe"}</span><Seta aberto={aberto} /></>} />
       )}
+      <MenuMultiplo ariaLabel="Filtrar por pasta" valores={estado.pastas} opcoes={opcoesPasta} onChange={(pastas) => set({ pastas })}
+        todas={{ rotulo: "Todas as pastas", icone: ListChecks }}
+        classeGatilho={chip(estado.pastas.length > 0)} corAtiva={estado.pastas.length ? TOM.aco : null}
+        gatilho={({ aberto }) => <><FolderOpen size={14} /><span className="max-w-[10rem] truncate">{estado.pastas.length ? rotuloPastas : "Pasta"}</span><Seta aberto={aberto} /></>} />
       <MenuSuspenso ariaLabel="Ordenar" alinhar="dir" valor={estado.ordem} opcoes={ORDENS} onChange={(ordem) => set({ ordem })}
         classeGatilho={chip(estado.ordem !== "relevancia")} corAtiva={estado.ordem !== "relevancia" ? TOM.violeta : null}
         gatilho={({ aberto, atual }) => <><ArrowUpDown size={14} /><span>{estado.ordem === "relevancia" ? "Ordenar" : atual?.rotulo}</span><Seta aberto={aberto} /></>} />

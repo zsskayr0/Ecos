@@ -11,16 +11,18 @@ export interface EstadoFiltros {
   prioridade: FiltroPrioridade;
   /** `todas`, `pessoal` ou `equipe:<id>` (o mesmo texto do `espaco` do item). */
   equipe: string;
+  /** Pastas escolhidas (caminho relativo); `""` = itens sem pasta. Vazio = todas. */
+  pastas: string[];
   ordem: Ordem;
 }
 
-export const ESTADO_VAZIO: EstadoFiltros = { status: "todos", prioridade: "todas", equipe: "todas", ordem: "relevancia" };
+export const ESTADO_VAZIO: EstadoFiltros = { status: "todos", prioridade: "todas", equipe: "todas", pastas: [], ordem: "relevancia" };
 
 /** Onde há tarefas, as concluídas ficam a um clique de distância em vez de poluir a lista. */
 export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas ? { ...ESTADO_VAZIO, status: "pendente" } : ESTADO_VAZIO);
 
 export const filtrosAtivos = (e: EstadoFiltros, temTarefas: boolean) =>
-  (e.status !== estadoInicial(temTarefas).status ? 1 : 0) + (e.prioridade !== "todas" ? 1 : 0) + (e.equipe !== "todas" ? 1 : 0);
+  (e.status !== estadoInicial(temTarefas).status ? 1 : 0) + (e.prioridade !== "todas" ? 1 : 0) + (e.equipe !== "todas" ? 1 : 0) + (e.pastas.length ? 1 : 0);
 
 /** Pendente e já vencida: horário agendado no passado ou prazo (`dueDate`) antes de hoje. */
 export function tarefaAtrasada(item: FeedItem, agora = new Date()): boolean {
@@ -33,10 +35,13 @@ export function tarefaAtrasada(item: FeedItem, agora = new Date()): boolean {
   return false;
 }
 
+export const pastaDoItem = (item: FeedItem): string => (item.tipo === "nota" ? item.pastaId : item.pasta) ?? "";
+
 export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
   const agora = new Date();
   return itens.filter((item) => {
     if (e.equipe !== "todas" && item.espaco !== e.equipe) return false;
+    if (e.pastas.length && !e.pastas.includes(pastaDoItem(item))) return false;
     // Notas não têm prioridade nem conclusão: escolher uma delas mostra só tarefas. "Pendentes" mantém as notas.
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;
     if (e.status === "atrasada" && !tarefaAtrasada(item, agora)) return false;
