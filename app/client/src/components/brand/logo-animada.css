@@ -1,0 +1,17 @@
+/* Marca animada (login): traça cada curva, preenche e depois respira em ondas. */
+.logo-animada { overflow: visible; filter: drop-shadow(0 0 18px rgb(156 233 254 / 0.28)); }
+.logo-animada-curva { transform-box: fill-box; transform-origin: center; animation: logo-respira 6s ease-in-out 3.2s infinite; animation-delay: calc(3.2s + var(--i) * 0.5s); }
+.logo-animada-traco { stroke-dasharray: 1; stroke-dashoffset: 1; animation: logo-traca 1.6s cubic-bezier(0.5, 0, 0.2, 1) forwards, logo-some 0.8s ease 1.9s forwards; animation-delay: calc(var(--i) * 0.45s), calc(1.9s + var(--i) * 0.45s); }
+.logo-animada-preenchimento { fill-opacity: 0; animation: logo-enche 0.9s ease forwards; animation-delay: calc(1.5s + var(--i) * 0.45s); }
+@keyframes logo-traca { to { stroke-dashoffset: 0; } }
+@keyframes logo-some { to { stroke-opacity: 0; } }
+@keyframes logo-enche { to { fill-opacity: 1; } }
+@keyframes logo-respira {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
+  50% { transform: translate(0, -6px) scale(1.035); opacity: 0.82; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-animada-curva { animation: none; }
+  .logo-animada-traco { animation: none; stroke-opacity: 0; }
+  .logo-animada-preenchimento { animation: none; fill-opacity: 1; }
+}
