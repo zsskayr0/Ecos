@@ -1,18 +1,19 @@
-import { ArrowUpDown, ChevronDown, CircleDot, Flag, ListFilter, Users, X } from "lucide-react";
+import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, ListChecks, ListFilter, PencilLine, Sparkles, User, Users, X } from "lucide-react";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { corDaEquipe } from "@/lib/team-color";
 import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
-  { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco }, { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso }, { valor: "todos", rotulo: "Todos os status" },
+  { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle }, { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock },
+  { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck }, { valor: "todos", rotulo: "Todos os status", icone: ListChecks },
 ];
 const PRIORIDADES: OpcaoMenu<FiltroPrioridade>[] = [
-  { valor: "todas", rotulo: "Todas as prioridades" },
-  { valor: "alta", rotulo: "Alta", cor: TOM.erro }, { valor: "media", rotulo: "Média", cor: TOM.alerta }, { valor: "baixa", rotulo: "Baixa", cor: TOM.ciano },
+  { valor: "todas", rotulo: "Todas as prioridades", icone: ListChecks },
+  { valor: "alta", rotulo: "Alta", cor: TOM.erro, icone: Flag }, { valor: "media", rotulo: "Média", cor: TOM.alerta, icone: Flag }, { valor: "baixa", rotulo: "Baixa", cor: TOM.ciano, icone: Flag },
 ];
 const ORDENS: OpcaoMenu<Ordem>[] = [
-  { valor: "relevancia", rotulo: "Relevância" }, { valor: "edicao", rotulo: "Editadas recentemente" }, { valor: "criacao", rotulo: "Criadas recentemente" },
-  { valor: "titulo", rotulo: "Título (A–Z)" }, { valor: "prioridade", rotulo: "Prioridade" }, { valor: "agenda", rotulo: "Data agendada" },
+  { valor: "relevancia", rotulo: "Relevância", icone: Sparkles }, { valor: "edicao", rotulo: "Editadas recentemente", icone: PencilLine }, { valor: "criacao", rotulo: "Criadas recentemente", icone: CalendarPlus },
+  { valor: "titulo", rotulo: "Título (A–Z)", icone: ArrowDownAZ }, { valor: "prioridade", rotulo: "Prioridade", icone: Flag }, { valor: "agenda", rotulo: "Data agendada", icone: CalendarClock },
 ];
 
 interface Props {
@@ -34,8 +35,8 @@ const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} classNa
 export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas }: Props) {
   const padrao = estadoInicial(temTarefas);
   const equipes: OpcaoMenu<string>[] = [
-    { valor: "todas", rotulo: "Todas as equipes" }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta },
-    ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, cor: corDaEquipe(e.id) })),
+    { valor: "todas", rotulo: "Todas as equipes", icone: Users }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta, icone: User },
+    ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, cor: corDaEquipe(e.id), icone: Users })),
   ];
   const alterado = filtrosAtivos(estado, temTarefas) > 0 || estado.ordem !== ESTADO_VAZIO.ordem;
   const set = (patch: Partial<EstadoFiltros>) => onChange({ ...estado, ...patch });

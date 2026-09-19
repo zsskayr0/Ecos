@@ -1,6 +1,6 @@
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough } from "lucide-react";
+import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
 
@@ -218,7 +218,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
       <div className="ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b border-border bg-surface-1 px-2 py-1.5" data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
         {!preview && <>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
-            opcoes={[{ valor: "p", rotulo: "Normal" }, { valor: "h1", rotulo: "Título 1" }, { valor: "h2", rotulo: "Título 2" }, { valor: "h3", rotulo: "Título 3" }]}
+            opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
             classeGatilho={`${ehMobile ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
             gatilho={({ aberto, atual }) => <><span>{atual?.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
           {separador}

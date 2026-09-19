@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 import "./menu-suspenso.css";
 
 /** Cores do app (seguem o tema claro/escuro). Qualquer valor CSS de cor também serve. */
@@ -17,6 +17,8 @@ export interface OpcaoMenu<T extends string> {
   rotulo: string;
   /** Cor da opção: bolinha, destaque deslizante e, quando é o filtro atual, o gatilho. */
   cor?: string;
+  /** Ícone à esquerda; herda a cor da opção. Sem ícone, a opção com cor mostra uma bolinha. */
+  icone?: LucideIcon;
 }
 
 const misturar = (cor: string, pct: number) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
@@ -101,7 +103,8 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
                 onClick={() => { onChange(o.valor); fechar(); }}
                 onPointerEnter={() => setDestaque(i)} onFocus={() => setDestaque(i)} onPointerLeave={() => setDestaque(indiceAtual)}
                 className={`ecos-menu-item relative flex w-full items-center gap-2 rounded-lg border border-transparent px-2.5 text-left text-sm focus-visible:outline-none ${ativo || destaque === i ? "text-text-primary" : "text-text-secondary"}`}>
-                {o.cor && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: o.cor }} />}
+                {o.icone ? <o.icone size={15} className="shrink-0" style={{ color: o.cor ?? "currentColor" }} />
+                  : o.cor && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: o.cor }} />}
                 <span className="min-w-0 flex-1 truncate">{o.rotulo}</span>
                 {ativo && <Check size={14} className="shrink-0" style={{ color: o.cor ?? TOM.aco }} />}
               </button>
