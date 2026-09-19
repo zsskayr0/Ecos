@@ -1,8 +1,8 @@
 import type { FeedItem } from "@/lib/types";
 
-/** Filtros simples da lista: Status, Prioridade e Equipe, mais a ordem. Prioridade e "Concluídas" só existem em tarefas. */
+/** Filtros simples da lista: Status, Prioridade e Equipe, mais a ordem. Prioridade, "Atrasadas" e "Concluídas" só existem em tarefas. */
 
-export type FiltroStatus = "pendente" | "concluida" | "todos";
+export type FiltroStatus = "pendente" | "atrasada" | "concluida" | "todos";
 export type FiltroPrioridade = "todas" | "alta" | "media" | "baixa";
 export type Ordem = "relevancia" | "edicao" | "criacao" | "titulo" | "prioridade" | "agenda";
 
@@ -22,11 +22,24 @@ export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas
 export const filtrosAtivos = (e: EstadoFiltros, temTarefas: boolean) =>
   (e.status !== estadoInicial(temTarefas).status ? 1 : 0) + (e.prioridade !== "todas" ? 1 : 0) + (e.equipe !== "todas" ? 1 : 0);
 
+/** Pendente e já vencida: horário agendado no passado ou prazo (`dueDate`) antes de hoje. */
+export function tarefaAtrasada(item: FeedItem, agora = new Date()): boolean {
+  if (item.tipo !== "tarefa" || item.status !== "pendente") return false;
+  if (item.scheduledAt) return new Date(item.scheduledAt).getTime() < agora.getTime();
+  if (item.dueDate) {
+    const hoje = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
+    return item.dueDate.slice(0, 10) < hoje;
+  }
+  return false;
+}
+
 export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
+  const agora = new Date();
   return itens.filter((item) => {
     if (e.equipe !== "todas" && item.espaco !== e.equipe) return false;
     // Notas não têm prioridade nem conclusão: escolher uma delas mostra só tarefas. "Pendentes" mantém as notas.
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;
+    if (e.status === "atrasada" && !tarefaAtrasada(item, agora)) return false;
     if (e.status === "concluida" && !(item.tipo === "tarefa" && item.status === "concluida")) return false;
     if (e.status === "pendente" && item.tipo === "tarefa" && item.status !== "pendente") return false;
     return true;
