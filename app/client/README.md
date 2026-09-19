@@ -34,7 +34,7 @@ served same-origin) — the compiled Tauri shell doesn't, since its WebView
 has no meaningful "same origin" as wherever `ecos-app` runs. First launch
 shows a **Servidor** screen (also reachable later from Configurações →
 Servidor) where you type the real address — usually your PC's LAN IP on
-port 7023 (e.g. `http://192.168.1.50:7023`), or a Tailscale/tunnel address
+port 7023 (e.g. `http://192.168.1.50:7023`), or a Tailscale address
 if you have one. Saved locally (`server-config.ts`), no rebuild needed to
 change it.
 

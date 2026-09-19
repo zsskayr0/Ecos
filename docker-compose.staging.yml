@@ -19,10 +19,6 @@ services:
       - ecos-vault-staging:/data/vault
       - ecos-vault-backups-staging:/data/backups
 
-  cloudflared:
-    environment:
-      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN_STAGING}
-
 volumes:
   ecos-index-staging:
   ecos-backups-staging:

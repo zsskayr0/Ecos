@@ -1,7 +1,7 @@
 //! Proxy reverso pra `ecos-vault-db` (seção 2/11.14) — único ponto de
 //! acoplamento entre os dois serviços; `ecos-app` nunca fala SQL com o
 //! vault, só HTTP interno, através da rede Docker `internal` (nunca
-//! alcançável pelo `cloudflared`). `404` (nunca `403`) em qualquer
+//! alcançável de fora). `404` (nunca `403`) em qualquer
 //! `/vault/*` quando `ECOS_VAULT_ENABLED=false` — não revela nem a
 //! existência do recurso (seção 5.3).
 

@@ -22,7 +22,7 @@ pub struct Config {
     pub index_db_path: PathBuf,
     pub vault_enabled: bool,
     /// URL interna (rede Docker `internal`) do `ecos-vault-db` — nunca
-    /// exposta pelo `cloudflared` (seção 2).
+    /// exposta fora do `ecos-app` (seção 2).
     pub vault_internal_url: String,
     pub session_secret: Vec<u8>,
     pub ranking_interval_secs: u64,
@@ -32,14 +32,12 @@ pub struct Config {
     /// dev server continua servindo a UI com HMR.
     pub static_dir: Option<PathBuf>,
     /// Cookie de sessão `Secure` (seção 5.1) exige HTTPS — mas o modelo
-    /// "self-hosted na LAN" (seção 2, sem `cloudflared`) serve tudo em
-    /// `http://` puro pro IP do PC; um cookie `Secure` nesse caso é
-    /// silenciosamente descartado pelo navegador (login "funciona" — 200
-    /// — mas a sessão nunca gruda). Default `false` por isso; ligar
-    /// `ECOS_COOKIE_SECURE=true` quando há HTTPS de verdade na frente
-    /// (túnel Cloudflare termina TLS na borda, mas encaminha HTTP puro
-    /// pro `ecos-app` — mesmo em produção via túnel isto deve ficar
-    /// `false`, a não ser que exista um proxy TLS local próprio).
+    /// "self-hosted na LAN/VPN" (seção 2) serve tudo em
+    /// `http://` puro pro IP do PC (ou IP Tailscale); um cookie `Secure`
+    /// nesse caso é silenciosamente descartado pelo navegador (login
+    /// "funciona" — 200 — mas a sessão nunca gruda). Default `false` por
+    /// isso; ligar `ECOS_COOKIE_SECURE=true` só quando há HTTPS de verdade
+    /// na frente (proxy TLS local próprio).
     pub cookie_secure: bool,
 }
 

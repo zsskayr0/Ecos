@@ -3,7 +3,7 @@
 **Local-first** personal productivity system: Notas and Tarefas live as
 `.md` files in a folder of your own; the Cofre (finance) is optional,
 isolated in an encrypted database; everything self-hosted via Docker +
-Cloudflare Tunnel. See
+a private VPN such as Tailscale. See
 [`ecos-arquitetura-tecnica.md`](./ecos-arquitetura-tecnica.md) for the
 full architecture (data model, security, sync, API).
 
@@ -53,7 +53,7 @@ To turn on the Cofre proxy in `ecos-app`, set
 ## Run via Docker
 
 ```bash
-cp .env.example .env   # set ECOS_NOTES_PATH and CF_TUNNEL_TOKEN
+cp .env.example .env   # set ECOS_NOTES_PATH
 docker compose up -d                              # Notas/Tarefas only
 docker compose --profile vault --profile default up -d   # + Cofre
 ```

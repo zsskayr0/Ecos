@@ -26,7 +26,7 @@ services:
       - ecos-index:/data/index
       - ecos-backups:/data/backups
     profiles: ["default"]
-    # Precisa estar nas duas redes: `default` (cloudflared fala com ele) e
+    # Precisa estar nas duas redes: `default` (rede do host/VPN) e
     # `internal` (pra alcançar o ecos-vault-db pelo nome do serviço) — o
     # vault-db em si fica só em `internal`, nunca em `default`.
     networks: [default, internal]
@@ -47,15 +47,6 @@ services:
       - ecos-vault:/data/vault
       - ecos-vault-backups:/data/backups
     profiles: ["vault"]
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    depends_on: [ecos-app]
-    profiles: ["default"]
 
 networks:
   internal:

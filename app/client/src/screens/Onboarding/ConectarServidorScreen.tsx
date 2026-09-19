@@ -85,7 +85,7 @@ function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolhe
         <OpcaoLocal
           Icon={Wifi}
           titulo="Em outro endereço"
-          desc="Outro computador na rede, um servidor em casa, ou um túnel (Tailscale, Cloudflare)."
+          desc="Outro computador na rede, um servidor em casa, ou uma VPN privada (Tailscale)."
           onClick={onEscolherRede}
         />
         <OpcaoLocal
@@ -185,7 +185,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       <div>
         <p className="mb-2 font-display text-2xl text-text-primary">Qual o endereço?</p>
         <p className="text-[15px] leading-snug text-text-secondary">
-          O IP do computador na rede local, ou um endereço de túnel. Ex: <span className="font-mono-value text-text-primary">192.168.0.5:7023</span>.
+          O IP do computador na rede local, ou o IP Tailscale dele. Ex: <span className="font-mono-value text-text-primary">192.168.0.5:7023</span>.
         </p>
       </div>
 

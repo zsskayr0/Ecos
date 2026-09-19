@@ -1,8 +1,7 @@
 # Override de desenvolvimento local — aplicado automaticamente pelo Docker
 # Compose junto do docker-compose.yml (não versionar nada sensível aqui).
-# Só existe pra publicar a porta do ecos-app no host: em produção real
-# (seção 2, cloudflared) o acesso é via túnel/rede interna, nunca porta
-# publicada direto — isto é só pra testar localmente sem o túnel.
+# Publica a porta do ecos-app no host. O acesso remoto é via VPN privada
+# (Tailscale) apontando pra esta porta — nunca exposta à internet pública.
 #
 # 4090 (não 7023): a porta 7023 já é usada nesta máquina pelo container
 # `nexus-server` (outro projeto) — o ecos-app continua ouvindo em 7023

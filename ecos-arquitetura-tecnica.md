@@ -9,7 +9,7 @@
 
 ## 0. Sumário executivo
 
-O Ecos é um sistema pessoal de produtividade **local-first**: Notas e Tarefas vivem como arquivos `.md` numa pasta do próprio usuário; o Cofre (financeiro) vive isolado num banco criptografado; tudo é servido por um único app self-hosted em Docker, exposto por Cloudflare Tunnel, sem loja de apps e sem conta em nuvem de terceiros. O Feed é uma *view* calculada que unifica os três domínios. Sincronização entre dispositivos é opt-in e nunca depende de um banco central. Este documento assume essas decisões como dadas e resolve tudo que faltava: schemas, topologia Docker, algoritmo de ranking, modelo de segurança, protocolo de sync/conflito, integrações de calendário, tratamento de erro e as políticas legais mínimas de uma instância self-hosted.
+O Ecos é um sistema pessoal de produtividade **local-first**: Notas e Tarefas vivem como arquivos `.md` numa pasta do próprio usuário; o Cofre (financeiro) vive isolado num banco criptografado; tudo é servido por um único app self-hosted em Docker, acessado remotamente por VPN privada (Tailscale), sem loja de apps e sem conta em nuvem de terceiros. O Feed é uma *view* calculada que unifica os três domínios. Sincronização entre dispositivos é opt-in e nunca depende de um banco central. Este documento assume essas decisões como dadas e resolve tudo que faltava: schemas, topologia Docker, algoritmo de ranking, modelo de segurança, protocolo de sync/conflito, integrações de calendário, tratamento de erro e as políticas legais mínimas de uma instância self-hosted.
 
 ### 0.1 Cliente-first: onde a Captura realmente acontece
 
@@ -17,7 +17,7 @@ Ponto que precisa estar explícito pra não guiar a implementação errado: **a 
 
 Isso implica que **o cliente (Windows/Android) tem sua própria cópia funcional do índice local** (mesmo schema da seção 1.1, rodando embutido no próprio app) — não é só uma tela que fala HTTP com o `ecos-app`. O papel do `ecos-app` self-hosted, pra Notas/Tarefas, é:
 - **hub de sincronização** entre os dispositivos do usuário, quando o modo "sincronizado" está ativo (seção 6);
-- **ponto de acesso remoto** via túnel, quando o usuário quer ver/editar de fora da rede local;
+- **ponto de acesso remoto** via VPN privada (Tailscale), quando o usuário quer ver/editar de fora da rede local;
 - **agregador do Feed compartilhado** quando há conteúdo de Equipe vindo de mais de um membro.
 
 Pro **Cofre**, é diferente por natureza — é centralizado no `ecos-vault-db`, sempre (não faz sentido um Vault "local ao celular" desincronizado do Vault do PC, dado como o saldo é dado que precisa estar sempre consistente); toda operação de Transação passa pelo servidor.
@@ -26,7 +26,7 @@ Pro **Cofre**, é diferente por natureza — é centralizado no `ecos-vault-db`,
 
 Um sistema pessoal de produtividade **local-first**, que unifica três domínios — Notas (PKM/conhecimento), Agenda (tarefas + tempo) e Cofre (finanças) — sob um único Feed dinâmico, com suporte a espaços compartilhados ("Equipes").
 
-**Não é** um SaaS multi-tenant genérico. É um app de uso pessoal/familiar, self-hosted, para Windows + Android, rodando via túnel próprio (Cloudflare Tunnel) sem dependência de nuvem de terceiros ou loja de apps no lançamento inicial.
+**Não é** um SaaS multi-tenant genérico. É um app de uso pessoal/familiar, self-hosted, para Windows + Android, acessado por VPN privada própria (Tailscale) sem dependência de nuvem de terceiros ou loja de apps no lançamento inicial.
 
 ### 0.3 Princípios não-negociáveis
 
@@ -450,12 +450,11 @@ Como o layout do próprio Ecos já é "pasta de `.md` com front-matter" (seção
 
 ```mermaid
 flowchart TB
-    subgraph Internet
+    subgraph "Rede privada (LAN / Tailscale)"
         U[Usuário / apps móvel e web]
     end
-    U -->|HTTPS| CF[cloudflared<br/>Cloudflare Tunnel]
     subgraph "Host Docker (instância do usuário)"
-        CF --> APP[ecos-app<br/>API + front estático<br/>sempre ativo]
+        U -->|HTTP na LAN/VPN| APP[ecos-app<br/>API + front estático<br/>sempre ativo]
         APP <-->|leitura/escrita .md| VOLNOTES[(Volume: pasta de Notas/Tarefas<br/>bind mount do usuário)]
         APP <-->|SQLite embutido| VOLIDX[(Volume: ecos-index.db<br/>cache derivado, não-criptografado)]
         APP -.->|só se Cofre ativado<br/>rede interna isolada| VAULT[ecos-vault-db<br/>SQLite+SQLCipher<br/>opcional]
@@ -468,9 +467,9 @@ flowchart TB
     APP -->|opt-in| GDRIVE[Google Drive API<br/>pasta Ecos/ do usuário]
 ```
 
-- **`ecos-app`**: único binário/imagem, sempre ativo — hub de sincronização entre dispositivos, ponto de acesso remoto (via túnel), agregador do Feed de Equipe, cliente OAuth de calendário, e serve a interface web como fallback (acessar de um navegador sem instalar o cliente). **Não é intermediário obrigatório de toda Captura** — isso acontece local no cliente (ver seção 0.1). Modelo Jellyfin: uma imagem, configuração mínima via `.env`.
-- **`ecos-vault-db`**: container separado **apenas quando o Cofre é ativado** (`docker compose --profile vault up`). Fica em rede Docker interna sem porta publicada — só `ecos-app` acessa, nunca exposto via `cloudflared`. Subir/derrubar esse container é o que o README de ativação do Cofre (referenciado na tela teaser) instrui o usuário a fazer.
-- **`cloudflared`**: único ponto de entrada externo; `ecos-vault-db` nunca é alcançável por ele, mesmo indiretamente — reforça "nenhum dado do Cofre trafega fora do contexto autenticado" (princípio 3.5 do handoff).
+- **`ecos-app`**: único binário/imagem, sempre ativo — hub de sincronização entre dispositivos, ponto de acesso remoto (via VPN privada), agregador do Feed de Equipe, cliente OAuth de calendário, e serve a interface web como fallback (acessar de um navegador sem instalar o cliente). **Não é intermediário obrigatório de toda Captura** — isso acontece local no cliente (ver seção 0.1). Modelo Jellyfin: uma imagem, configuração mínima via `.env`.
+- **`ecos-vault-db`**: container separado **apenas quando o Cofre é ativado** (`docker compose --profile vault up`). Fica em rede Docker interna sem porta publicada — só `ecos-app` acessa, nunca exposto fora do host. Subir/derrubar esse container é o que o README de ativação do Cofre (referenciado na tela teaser) instrui o usuário a fazer.
+- **Acesso remoto**: só por VPN privada (Tailscale) instalada no host e nos dispositivos, sem nada exposto à internet pública; `ecos-vault-db` nunca é alcançável de fora do `ecos-app`, mesmo indiretamente — reforça "nenhum dado do Cofre trafega fora do contexto autenticado" (princípio 3.5 do handoff).
 - **Volumes**: pasta de Notas/Tarefas é *bind mount* (o usuário aponta para a pasta real que quer sincronizar/versionar por conta própria, ex. com Syncthing pessoal se quiser); índice e vault são volumes Docker nomeados.
 
 ### 2.1 `docker-compose.yml` (esqueleto de referência)
@@ -498,14 +497,6 @@ services:
       - ecos-vault:/data/vault
     profiles: ["vault"]
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    depends_on: [ecos-app]
-
 networks:
   internal:
     internal: true   # sem rota para fora — isola o vault-db
@@ -518,7 +509,7 @@ volumes:
 Ativar o Cofre = `docker compose --profile vault --profile default up -d`. Desativado, `ecos-vault-db` simplesmente não sobe e `ECOS_VAULT_ENABLED=false` faz o `ecos-app` responder "Cofre não ativado" em qualquer rota `/vault/*` sem tentar conectar em nada.
 
 ### 2.2 Staging
-`docker-compose.staging.yml` (override) muda: tag de imagem (`:staging`), nome do túnel Cloudflare (subdomínio `staging.ecos.<domínio>`), volumes com sufixo `-staging` (nunca compartilha volume com produção), `ECOS_ENV=staging` (habilita logs mais verbosos e desabilita jobs de backup automático de verdade — grava em pasta de staging separada).
+`docker-compose.staging.yml` (override) muda: tag de imagem (`:staging`), volumes com sufixo `-staging` (nunca compartilha volume com produção), `ECOS_ENV=staging` (habilita logs mais verbosos e desabilita jobs de backup automático de verdade — grava em pasta de staging separada).
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 ```
@@ -528,7 +519,7 @@ docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 ## 3. Infraestrutura e DevOps
 
 ### 3.1 Topologia
-Um único host (mini-PC, NAS ou VPS pessoal) roda os containers acima. `cloudflared` é o único processo com saída/entrada de rede pública — não há porta exposta diretamente no host. Staging roda no **mesmo host**, em paralelo, com seu próprio subdomínio de túnel e volumes isolados (não é ambiente separado de infra, é isolamento lógico via Compose profile/override — coerente com "leve, um binário").
+Um único host (mini-PC, NAS ou VPS pessoal) roda os containers acima. O acesso remoto é só via Tailscale (VPN privada) — nenhuma porta é exposta à internet pública. Staging roda no **mesmo host**, em paralelo, com volumes isolados (não é ambiente separado de infra, é isolamento lógico via Compose profile/override — coerente com "leve, um binário").
 
 ### 3.2 Logs estruturados
 - Formato JSON, um objeto por linha, campos fixos: `timestamp, nivel, request_id, bounded_context (feed|notas|agenda|cofre|sync|calendario), mensagem, dados`.
@@ -537,7 +528,7 @@ Um único host (mini-PC, NAS ou VPS pessoal) roda os containers acima. `cloudfla
 
 ### 3.3 Monitoramento e analytics locais
 - Endpoint `GET /health` (liveness) e `GET /health/ready` (readiness, checa se `ecos-vault-db` responde quando `ECOS_VAULT_ENABLED=true`).
-- Métricas Prometheus opcionais expostas em `/metrics` (porta interna, não passa pelo túnel por padrão) — contadores de requests, duração do job de ranking, tamanho do índice.
+- Métricas Prometheus opcionais expostas em `/metrics` (porta interna, não exposta fora do host por padrão) — contadores de requests, duração do job de ranking, tamanho do índice.
 - Analytics de produto (ex. "quantas Notas criadas essa semana") são **contadores agregados calculados sob demanda** a partir do próprio índice SQLite, nunca telemetria enviada a terceiros — consistente com "dono da própria infraestrutura".
 
 ### 3.4 Rollback
@@ -640,7 +631,7 @@ As seções 5.1–5.3 cobrem identidade e o Cofre especificamente. Esta subseç�
 ### 6.1 Sync direto (LAN)
 - **Descoberta:** mDNS (`_ecos._tcp.local`) na rede local; cada instância anuncia nome + porta.
 - **Pareamento:** ao adicionar um dispositivo em Sincronização & Backup, a instância primária gera um código de 6 dígitos exibido em ambas as telas (dispositivo novo + primário) — confirma posse física de ambos antes de trocar chaves.
-- **Protocolo:** por arquivo, hash (SHA-256) + `atualizado_em`. Handshake periódico troca listas `{caminho, hash, atualizado_em}`; divergência dispara transferência do arquivo via HTTP interno sobre a mesma rede (não passa pelo túnel Cloudflare — sync LAN é direto IP a IP quando os dispositivos estão na mesma rede; usa o túnel como fallback só se necessário).
+- **Protocolo:** por arquivo, hash (SHA-256) + `atualizado_em`. Handshake periódico troca listas `{caminho, hash, atualizado_em}`; divergência dispara transferência do arquivo via HTTP interno sobre a mesma rede (sync é direto IP a IP, na LAN ou pelo IP Tailscale quando os dispositivos estão em redes diferentes).
 - **Mover/renomear não é excluir+criar:** como pasta é só caminho (seção 1.5) e o usuário pode renomear pastas/arquivos livremente pelo SO, o handshake casa entradas por **hash** antes de decidir uma ação — um hash já conhecido aparecendo num caminho novo (e sumindo do caminho antigo) é tratado como *mover*, não como duas operações independentes (excluir + criar dispararia a lógica de preservação de dado da seção 6.3 sem necessidade).
 - Inspirado em Syncthing, mas simplificado (sem CRDT genérico) porque o conteúdo é arquivo de texto inteiro, não documento colaborativo em tempo real.
 
