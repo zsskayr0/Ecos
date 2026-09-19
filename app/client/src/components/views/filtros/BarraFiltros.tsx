@@ -5,8 +5,8 @@ import { corDaEquipe } from "@/lib/team-color";
 import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
-  { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle }, { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock },
-  { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck }, { valor: "todos", rotulo: "Todos os status", icone: ListChecks },
+  { valor: "todos", rotulo: "Todos os status", icone: ListChecks }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck },
+  { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock }, { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle },
 ];
 const PRIORIDADES: OpcaoMenu<FiltroPrioridade>[] = [
   { valor: "todas", rotulo: "Todas as prioridades", icone: ListChecks },
