@@ -170,19 +170,35 @@ async fn recalcular_notas(db: &IndexDb) -> anyhow::Result<()> {
 /// Máximo de Tarefas sem urgência (sem data ou agendadas para os próximos dias) misturadas no Feed.
 const MAX_TAREFAS_SEM_URGENCIA_NO_FEED: usize = 12;
 
-/// Fator de urgência sobre o boost de prioridade: o que vence hoje (ou já venceu) compete por inteiro,
-/// o que está por vir e o que não tem data entram mais abaixo — sempre atrás de uma Nota com o mesmo sinal
-/// (`PESO_NOTA_NO_FEED`), então o Feed mistura as duas coisas sem virar lista de pendências.
-fn fator_urgencia(scheduled_at: Option<&str>, due_date: Option<&str>, hoje: chrono::NaiveDate) -> f64 {
+/// Dias de atraso até os quais uma Tarefa vencida ainda compete por inteiro.
+const ATRASO_PLENO_DIAS: i64 = 3;
+/// Passado isso a Tarefa some do Feed por um tempo (como uma Nota antiga): não fica cobrando o que já passou há muito.
+const ATRASO_MAXIMO_DIAS: i64 = 14;
+
+/// Fator de urgência sobre o boost de prioridade: o que vence hoje (ou venceu há pouco) compete por inteiro,
+/// o vencido há mais tempo vai perdendo força até sair do Feed, e o que está por vir ou não tem data entra mais
+/// abaixo — sempre atrás de uma Nota com o mesmo sinal (`PESO_NOTA_NO_FEED`). `None` = fora do Feed.
+fn fator_urgencia(scheduled_at: Option<&str>, due_date: Option<&str>, hoje: chrono::NaiveDate) -> Option<f64> {
     let dia = scheduled_at
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|d| d.with_timezone(&Utc).date_naive())
         .or_else(|| due_date.and_then(|d| d.get(..10)).and_then(|d| d.parse().ok()));
     match dia {
-        Some(d) if d <= hoje => 1.0,
-        Some(d) if (d - hoje).num_days() <= 7 => 0.7,
-        Some(_) => 0.5,
-        None => 0.5,
+        Some(d) if d <= hoje => {
+            let atraso = (hoje - d).num_days();
+            if atraso <= ATRASO_PLENO_DIAS {
+                Some(1.0)
+            } else if atraso <= ATRASO_MAXIMO_DIAS {
+                // 1.0 -> 0.3 entre o fim do prazo pleno e o limite
+                let t = (atraso - ATRASO_PLENO_DIAS) as f64 / (ATRASO_MAXIMO_DIAS - ATRASO_PLENO_DIAS) as f64;
+                Some(1.0 - 0.7 * t)
+            } else {
+                None
+            }
+        }
+        Some(d) if (d - hoje).num_days() <= 7 => Some(0.7),
+        Some(_) => Some(0.5),
+        None => Some(0.5),
     }
 }
 
@@ -205,10 +221,10 @@ async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
     // (score, id, espaco, atualizado_em, urgente)
     let mut candidatas: Vec<(f64, String, String, String, bool)> = linhas
         .into_iter()
-        .map(|(id, espaco, scheduled_at, due_date, prioridade, ref_em)| {
-            let fator = fator_urgencia(scheduled_at.as_deref(), due_date.as_deref(), hoje);
+        .filter_map(|(id, espaco, scheduled_at, due_date, prioridade, ref_em)| {
+            let fator = fator_urgencia(scheduled_at.as_deref(), due_date.as_deref(), hoje)?;
             let score = ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(&prioridade)) * fator;
-            (score, id, espaco, ref_em, fator >= 1.0)
+            Some((score, id, espaco, ref_em, fator >= 1.0))
         })
         .collect();
     candidatas.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -272,4 +288,25 @@ async fn recalcular_transacoes(state: &AppState) -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod testes_urgencia {
+    use super::*;
+
+    fn dia(s: &str) -> chrono::NaiveDate {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn vencida_ha_muito_tempo_sai_do_feed_e_a_recente_compete_por_inteiro() {
+        let hoje = dia("2026-09-20");
+        assert_eq!(fator_urgencia(None, Some("2026-09-20"), hoje), Some(1.0));
+        assert_eq!(fator_urgencia(None, Some("2026-09-17"), hoje), Some(1.0));
+        let meio = fator_urgencia(None, Some("2026-09-12"), hoje).unwrap();
+        assert!(meio < 1.0 && meio > 0.3);
+        assert_eq!(fator_urgencia(None, Some("2026-09-01"), hoje), None);
+        assert_eq!(fator_urgencia(None, None, hoje), Some(0.5));
+        assert_eq!(fator_urgencia(Some("2026-09-22T12:00:00Z"), None, hoje), Some(0.7));
+    }
 }
