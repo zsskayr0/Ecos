@@ -1,13 +1,14 @@
 import { ArrowUpDown, ChevronDown, CircleDot, Flag, ListFilter, Users, X } from "lucide-react";
-import { MenuSuspenso, type OpcaoMenu } from "@/components/common/MenuSuspenso";
+import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
+import { corDaEquipe } from "@/lib/team-color";
 import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
-  { valor: "pendente", rotulo: "Pendentes" }, { valor: "concluida", rotulo: "Concluídas" }, { valor: "todos", rotulo: "Todos os status" },
+  { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso }, { valor: "todos", rotulo: "Todos os status" },
 ];
 const PRIORIDADES: OpcaoMenu<FiltroPrioridade>[] = [
   { valor: "todas", rotulo: "Todas as prioridades" },
-  { valor: "alta", rotulo: "Alta", cor: "rgb(239 68 68)" }, { valor: "media", rotulo: "Média", cor: "rgb(245 158 11)" }, { valor: "baixa", rotulo: "Baixa", cor: "rgb(96 165 250)" },
+  { valor: "alta", rotulo: "Alta", cor: TOM.erro }, { valor: "media", rotulo: "Média", cor: TOM.alerta }, { valor: "baixa", rotulo: "Baixa", cor: TOM.ciano },
 ];
 const ORDENS: OpcaoMenu<Ordem>[] = [
   { valor: "relevancia", rotulo: "Relevância" }, { valor: "edicao", rotulo: "Editadas recentemente" }, { valor: "criacao", rotulo: "Criadas recentemente" },
@@ -24,7 +25,8 @@ interface Props {
 }
 
 const chip = (ativo: boolean) =>
-  `flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-all duration-150 active:scale-95 ${ativo ? "border-steel-400/70 bg-steel-700/25 text-text-primary" : "border-border bg-surface-2 text-text-secondary hover:border-steel-400/60 hover:text-text-primary"}`;
+  `flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-all duration-200 active:scale-95 ${ativo ? "text-text-primary" : "border-border bg-surface-2 text-text-secondary hover:border-steel-400/60 hover:text-text-primary"}`;
+const corDo = <T extends string>(opcoes: OpcaoMenu<T>[], valor: T, ativo: boolean) => (ativo ? opcoes.find((o) => o.valor === valor)?.cor ?? TOM.aco : null);
 
 const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} className={`transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} />;
 
@@ -32,8 +34,8 @@ const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} classNa
 export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas }: Props) {
   const padrao = estadoInicial(temTarefas);
   const equipes: OpcaoMenu<string>[] = [
-    { valor: "todas", rotulo: "Todas as equipes" }, { valor: "pessoal", rotulo: "Pessoal" },
-    ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome })),
+    { valor: "todas", rotulo: "Todas as equipes" }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta },
+    ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, cor: corDaEquipe(e.id) })),
   ];
   const alterado = filtrosAtivos(estado, temTarefas) > 0 || estado.ordem !== ESTADO_VAZIO.ordem;
   const set = (patch: Partial<EstadoFiltros>) => onChange({ ...estado, ...patch });
@@ -43,21 +45,21 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
       <ListFilter size={15} className="text-text-muted" aria-hidden />
       {temTarefas && (
         <MenuSuspenso ariaLabel="Filtrar por status" valor={estado.status} opcoes={STATUS} onChange={(status) => set({ status })}
-          classeGatilho={chip(estado.status !== padrao.status)}
+          classeGatilho={chip(estado.status !== padrao.status)} corAtiva={corDo(STATUS, estado.status, estado.status !== padrao.status)}
           gatilho={({ aberto, atual }) => <><CircleDot size={14} /><span>{atual?.rotulo}</span><Seta aberto={aberto} /></>} />
       )}
       {temTarefas && (
         <MenuSuspenso ariaLabel="Filtrar por prioridade" valor={estado.prioridade} opcoes={PRIORIDADES} onChange={(prioridade) => set({ prioridade })}
-          classeGatilho={chip(estado.prioridade !== "todas")}
+          classeGatilho={chip(estado.prioridade !== "todas")} corAtiva={corDo(PRIORIDADES, estado.prioridade, estado.prioridade !== "todas")}
           gatilho={({ aberto, atual }) => <><Flag size={14} /><span>{estado.prioridade === "todas" ? "Prioridade" : atual?.rotulo}</span><Seta aberto={aberto} /></>} />
       )}
       {contexto.equipes.length > 0 && (
         <MenuSuspenso ariaLabel="Filtrar por equipe" valor={estado.equipe} opcoes={equipes} onChange={(equipe) => set({ equipe })}
-          classeGatilho={chip(estado.equipe !== "todas")}
+          classeGatilho={chip(estado.equipe !== "todas")} corAtiva={corDo(equipes, estado.equipe, estado.equipe !== "todas")}
           gatilho={({ aberto, atual }) => <><Users size={14} /><span className="max-w-[9rem] truncate">{estado.equipe === "todas" ? "Equipe" : atual?.rotulo ?? "Equipe"}</span><Seta aberto={aberto} /></>} />
       )}
       <MenuSuspenso ariaLabel="Ordenar" alinhar="dir" valor={estado.ordem} opcoes={ORDENS} onChange={(ordem) => set({ ordem })}
-        classeGatilho={chip(estado.ordem !== "relevancia")}
+        classeGatilho={chip(estado.ordem !== "relevancia")} corAtiva={estado.ordem !== "relevancia" ? TOM.violeta : null}
         gatilho={({ aberto, atual }) => <><ArrowUpDown size={14} /><span>{estado.ordem === "relevancia" ? "Ordenar" : atual?.rotulo}</span><Seta aberto={aberto} /></>} />
       {alterado && (
         <button type="button" onClick={() => onChange({ ...padrao })}
