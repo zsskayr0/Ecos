@@ -131,7 +131,7 @@ export function tarefaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe
     espaco: espaco as Espaco,
     origemEquipe: origemEquipe(espaco, equipes),
     dono: resolverDono(espaco, item.criado_por, item.criado_por_nome, perfil),
-    encaixadaNaAgenda: true,
+    encaixadaNaAgenda: Boolean(item.scheduled_at),
     prioridade: prioridadeValida(item.prioridade),
     atualizadoEm: typeof item.atualizado_em === "string" ? item.atualizado_em : undefined,
     criadoEm: typeof item.criado_em === "string" ? item.criado_em : undefined,

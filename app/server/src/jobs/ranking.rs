@@ -14,6 +14,11 @@ use serde::Deserialize;
 use serde_json::json;
 use std::time::Duration;
 
+/// O Feed é uma superfície de descoberta de conhecimento. Tarefas seguem
+/// aparecendo junto das notas, mas uma nota com o mesmo sinal de relevância
+/// recebe vantagem para que compromissos operacionais não substituam o acervo.
+const PESO_NOTA_NO_FEED: f64 = 1.15;
+
 fn prioridade_de_str(s: &str) -> TarefaPrioridade {
     match s {
         "baixa" => TarefaPrioridade::Baixa,
@@ -139,7 +144,8 @@ async fn recalcular_notas(db: &IndexDb) -> anyhow::Result<()> {
                 linha.acessos_7d,
                 agora,
             );
-            let (motivo, score) = scores.motivo_dominante();
+            let (motivo, score_base) = scores.motivo_dominante();
+            let score = score_base * PESO_NOTA_NO_FEED;
             let bruto = dado_bruto(motivo, linha.atualizado_em, linha.ultima_revisao_em, linha.acessos_7d, agora);
             tx.execute(
                 "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em) \
@@ -161,42 +167,67 @@ async fn recalcular_notas(db: &IndexDb) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Máximo de Tarefas sem urgência (sem data ou agendadas para os próximos dias) misturadas no Feed.
+const MAX_TAREFAS_SEM_URGENCIA_NO_FEED: usize = 12;
+
+/// Fator de urgência sobre o boost de prioridade: o que vence hoje (ou já venceu) compete por inteiro,
+/// o que está por vir e o que não tem data entram mais abaixo — sempre atrás de uma Nota com o mesmo sinal
+/// (`PESO_NOTA_NO_FEED`), então o Feed mistura as duas coisas sem virar lista de pendências.
+fn fator_urgencia(scheduled_at: Option<&str>, due_date: Option<&str>, hoje: chrono::NaiveDate) -> f64 {
+    let dia = scheduled_at
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.with_timezone(&Utc).date_naive())
+        .or_else(|| due_date.and_then(|d| d.get(..10)).and_then(|d| d.parse().ok()));
+    match dia {
+        Some(d) if d <= hoje => 1.0,
+        Some(d) if (d - hoje).num_days() <= 7 => 0.7,
+        Some(_) => 0.5,
+        None => 0.5,
+    }
+}
+
 async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
     let hoje = Utc::now().date_naive();
-    let inicio = hoje.and_hms_opt(0, 0, 0).unwrap().and_utc().to_rfc3339();
-    let fim = hoje.succ_opt().unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().to_rfc3339();
 
-    let linhas: Vec<(String, String, String, String)> = db
-        .with({
-            let inicio = inicio.clone();
-            let fim = fim.clone();
-            move |conn| {
-                let mut stmt = conn.prepare(
-                    "SELECT id, espaco, scheduled_at, prioridade FROM tarefa \
-                     WHERE status = 'pendente' AND scheduled_at >= ?1 AND scheduled_at < ?2",
-                )?;
-                let linhas = stmt
-                    .query_map(params![inicio, fim], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, String>(2)?, r.get(3)?)))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(linhas)
-            }
+    type Linha = (String, String, Option<String>, Option<String>, String, String);
+    let linhas: Vec<Linha> = db
+        .with(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, espaco, scheduled_at, due_date, prioridade, COALESCE(scheduled_at, atualizado_em, criado_em)                  FROM tarefa WHERE status = 'pendente'",
+            )?;
+            let linhas = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(linhas)
         })
         .await?;
+
+    // (score, id, espaco, atualizado_em, urgente)
+    let mut candidatas: Vec<(f64, String, String, String, bool)> = linhas
+        .into_iter()
+        .map(|(id, espaco, scheduled_at, due_date, prioridade, ref_em)| {
+            let fator = fator_urgencia(scheduled_at.as_deref(), due_date.as_deref(), hoje);
+            let score = ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(&prioridade)) * fator;
+            (score, id, espaco, ref_em, fator >= 1.0)
+        })
+        .collect();
+    candidatas.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut sem_urgencia = 0;
+    candidatas.retain(|c| {
+        if c.4 {
+            return true;
+        }
+        sem_urgencia += 1;
+        sem_urgencia <= MAX_TAREFAS_SEM_URGENCIA_NO_FEED
+    });
 
     db.with(move |conn| {
         let tx = conn.unchecked_transaction()?;
         tx.execute("DELETE FROM feed_item WHERE tipo = 'tarefa_encaixada'", [])?;
-        for (id, espaco, scheduled_at, prioridade) in &linhas {
-            // Boost pela prioridade (seção 3.1 do handoff: "o feed mostra
-            // casualmente tarefas, como se fossem ads") em vez de um score
-            // fixo — antes toda Tarefa ficava no fim do Feed, agora uma
-            // Tarefa de prioridade Alta compete de igual pra igual com uma
-            // Nota fresca.
-            let score = ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(prioridade));
+        for (score, id, espaco, atualizado_em, _) in &candidatas {
             tx.execute(
-                "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em) \
-                 VALUES (?1, 'tarefa_encaixada', NULL, ?2, NULL, ?3, ?4)",
-                params![id, score, espaco, scheduled_at],
+                "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em)                  VALUES (?1, 'tarefa_encaixada', NULL, ?2, NULL, ?3, ?4)",
+                params![id, score, espaco, atualizado_em],
             )?;
         }
         tx.commit()
