@@ -83,6 +83,36 @@ async function executarRenovacaoNativa(): Promise<boolean> {
   }
 }
 
+let renovacaoWeb: Promise<boolean> | null = null;
+
+/** No navegador o access token vive num cookie de 15 min; o refresh (30 dias, uso único) também é cookie, então basta chamar `/auth/refresh`.
+ * Sem isso a sessão "caía do nada" a cada 15 minutos. */
+async function renovarSessaoWeb(): Promise<boolean> {
+  if (renovacaoWeb) return renovacaoWeb;
+  renovacaoWeb = executarRenovacaoWeb().finally(() => { renovacaoWeb = null; });
+  return renovacaoWeb;
+}
+
+async function executarRenovacaoWeb(): Promise<boolean> {
+  const renovar = async (): Promise<boolean> => {
+    try {
+      // Outra aba pode ter renovado agora há pouco (cookies são compartilhados e o refresh só vale uma vez):
+      // se a sessão já vale, não gasta o refresh.
+      const atual = await fetch(`${BASE()}/me`, { credentials: "include" });
+      if (atual.ok) return true;
+      const resp = await fetch(`${BASE()}/auth/refresh`, { method: "POST", credentials: "include" });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  };
+  // Uma renovação por vez entre abas/janelas do mesmo navegador.
+  return navigator.locks ? navigator.locks.request("ecos-renovar-sessao", renovar) : renovar();
+}
+
+/** Rotas que criam ou encerram a sessão: um 401 delas é resposta, não sessão vencida. */
+const ROTAS_SEM_RENOVACAO = ["/auth/login", "/auth/registrar", "/auth/refresh", "/auth/logout", "/auth/recuperar-senha", "/auth/status"];
+
 async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): Promise<T> {
   const accessToken = obterAccessToken();
   let resp: Response;
@@ -109,8 +139,9 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
   const ehJson = contentType.includes("application/json");
   const body = ehJson ? await resp.json().catch(() => null) : null;
 
-  if (resp.status === 401 && !tentouRenovar && !path.startsWith("/auth/")) {
-    if (await renovarSessaoNativa()) return req<T>(path, init, true);
+  if (resp.status === 401 && !tentouRenovar && !ROTAS_SEM_RENOVACAO.some((r) => path.startsWith(r))) {
+    const renovou = estaNoTauri() ? await renovarSessaoNativa() : await renovarSessaoWeb();
+    if (renovou) return req<T>(path, init, true);
   }
 
   if (!resp.ok) {
