@@ -11,7 +11,7 @@ import { ApiError, equipes, pastas, tarefas, notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
-import { ESTADO_VAZIO, filtrar, ordenar, novoFiltro, type EstadoFiltros } from "./filtros/modelo";
+import { ESTADO_VAZIO, estadoInicial, filtrar, ordenar, type EstadoFiltros } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
 
 interface Props {
@@ -31,8 +31,8 @@ interface Props {
 
 function lerFiltros(chave: string): EstadoFiltros | null {
   try {
-    const bruto = JSON.parse(localStorage.getItem(`ecos:filtros2:${chave}`) ?? "null");
-    return bruto && Array.isArray(bruto.filtros) && Array.isArray(bruto.ordens) ? { ...ESTADO_VAZIO, ...bruto } : null;
+    const bruto = JSON.parse(localStorage.getItem(`ecos:filtros3:${chave}`) ?? "null");
+    return bruto && typeof bruto.status === "string" && typeof bruto.equipe === "string" ? { ...ESTADO_VAZIO, ...bruto } : null;
   } catch { return null; }
 }
 
@@ -47,14 +47,15 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
   const [menuPrioridadeAberto, setMenuPrioridadeAberto] = useState(false);
   const [menuEquipeAberto, setMenuEquipeAberto] = useState(false);
   const [equipesDisponiveis, setEquipesDisponiveis] = useState<{ id: string; nome: string }[]>([]);
-  // Concluídas não poluem a visão operacional; continuam a um filtro de distância (a condição aparece como chip e pode ser removida).
-  const [estadoFiltros, setEstadoFiltros] = useState<EstadoFiltros>(() => lerFiltros(chaveDosFiltros) ?? (exibirFiltros && itens.some((item) => item.tipo === "tarefa") ? { ...ESTADO_VAZIO, filtros: [{ ...novoFiltro("status"), op: "e", valor: "pendente" }] } : ESTADO_VAZIO));
+  // Concluídas não poluem a visão operacional; ficam a um clique de distância no filtro de status.
+  const temTarefas = itens.some((item) => item.tipo === "tarefa");
+  const [estadoFiltros, setEstadoFiltros] = useState<EstadoFiltros>(() => lerFiltros(chaveDosFiltros) ?? (exibirFiltros ? estadoInicial(temTarefas) : ESTADO_VAZIO));
   const [processando, setProcessando] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
   const ancora = useRef<string | null>(null);
   const { notificar } = useRefreshBus();
   const chaveDo = (item: FeedItem) => `${item.tipo}:${item.id}`;
-  const itensVisiveis = exibirFiltros ? ordenar(filtrar(itens, estadoFiltros), estadoFiltros.ordens) : itens;
+  const itensVisiveis = exibirFiltros ? ordenar(filtrar(itens, estadoFiltros), estadoFiltros.ordem) : itens;
   const [itensAnimados, setItensAnimados] = useState<FeedItem[]>(itensVisiveis);
   const [saindo, setSaindo] = useState<Set<string>>(new Set());
   const [entrando, setEntrando] = useState<Set<string>>(new Set());
@@ -75,7 +76,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     return () => window.clearTimeout(timer);
   }, [assinaturaVisivel]);
 
-  useEffect(() => { try { localStorage.setItem(`ecos:filtros2:${chaveDosFiltros}`, JSON.stringify(estadoFiltros)); } catch { /* cache indisponível */ } }, [chaveDosFiltros, estadoFiltros]);
+  useEffect(() => { try { localStorage.setItem(`ecos:filtros3:${chaveDosFiltros}`, JSON.stringify(estadoFiltros)); } catch { /* cache indisponível */ } }, [chaveDosFiltros, estadoFiltros]);
 
   useEffect(() => {
     Promise.all([pastas.listar({ tipo: "nota" }), pastas.listar({ tipo: "tarefa" })]).then(([notasPastas, tarefasPastas]) => {
@@ -161,13 +162,8 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     <button type="button" onClick={() => { setSelecionados(new Set()); ancora.current = null; }} disabled={processando} className="ml-auto flex min-h-10 min-w-10 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Limpar seleção"><>{processando ? <Loader2 size={17} className="animate-spin" /> : <X size={17} />}</></button>
     {erroAcao && <p role="alert" className="basis-full px-2 pb-1 text-sm text-error">{erroAcao}</p>}
   </div>;
-  const contextoFiltros = useMemo(() => ({
-    pastas: pastasDisponiveis,
-    equipes: equipesDisponiveis,
-    tags: [...new Set(itens.flatMap((item) => item.tags ?? []))].sort((x, y) => x.localeCompare(y, "pt-BR")),
-  }), [pastasDisponiveis, equipesDisponiveis, itens]);
   const cabecalhoFiltros = <>
-    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={contextoFiltros} visiveis={itensVisiveis.length} total={itens.length} />
+    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
     {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">Nenhum item corresponde aos filtros.</p>}
   </>;
 

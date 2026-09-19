@@ -1,3 +1,4 @@
+import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough } from "lucide-react";
 import { MarkdownPreview } from "@/lib/markdown-mini";
@@ -216,16 +217,10 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
     return <div className="min-w-0 rounded-xl border border-border bg-surface-1 transition-colors focus-within:border-violet/70" data-corpo-editor>
       <div className="ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b border-border bg-surface-1 px-2 py-1.5" data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
         {!preview && <>
-          <div className="relative">
-            <select aria-label="Estilo do texto" value={estiloAtual} onChange={(e) => aplicarEstilo(e.target.value)}
-              className={`${ehMobile ? "h-11" : "h-8"} appearance-none rounded-lg bg-transparent pl-2 pr-7 text-sm text-text-secondary hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
-              <option value="p" className="bg-surface-2">Normal</option>
-              <option value="h1" className="bg-surface-2">Título 1</option>
-              <option value="h2" className="bg-surface-2">Título 2</option>
-              <option value="h3" className="bg-surface-2">Título 3</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
-          </div>
+          <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
+            opcoes={[{ valor: "p", rotulo: "Normal" }, { valor: "h1", rotulo: "Título 1" }, { valor: "h2", rotulo: "Título 2" }, { valor: "h3", rotulo: "Título 3" }]}
+            classeGatilho={`${ehMobile ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
+            gatilho={({ aberto, atual }) => <><span>{atual?.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
           {separador}
           <ToolbarBtn Icon={Bold} label="Negrito (Ctrl+B)" tamanho={tam} onClick={() => alternarInline("**")} />
           <ToolbarBtn Icon={Italic} label="Itálico (Ctrl+I)" tamanho={tam} onClick={() => alternarInline("_")} />
