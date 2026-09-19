@@ -35,22 +35,27 @@ fn tipo_padrao() -> String {
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let tipo = q.tipo.clone();
     let pasta_pai = q.pasta_pai.clone().unwrap_or_default();
+    let espaco = q.espaco.clone();
 
     let pastas: Vec<(String, String, i64)> = state
         .db
         .with({
             let tipo = tipo.clone();
             let pasta_pai = pasta_pai.clone();
+            let espaco = espaco.clone();
             move |conn| {
-                let mut stmt = conn.prepare("SELECT caminho, nome, contagem_itens FROM pasta_cache WHERE tipo = ?1")?;
-                let linhas = stmt
-                    .query_map([&tipo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))?
-                    .filter_map(|r| r.ok())
-                    .filter(|(caminho, _, _)| {
-                        let pai_de_caminho = caminho.rsplit_once('/').map(|(pai, _)| pai).unwrap_or("");
-                        pai_de_caminho == pasta_pai
-                    })
-                    .collect();
+                let sql = if espaco.is_some() { "SELECT caminho, nome, contagem_itens FROM pasta_cache WHERE tipo = ?1 AND espaco = ?2" } else { "SELECT caminho, nome, contagem_itens FROM pasta_cache WHERE tipo = ?1" };
+                let mut stmt = conn.prepare(sql)?;
+                let converter = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?));
+                let bruto: Vec<(String, String, i64)> = if let Some(espaco) = espaco {
+                    stmt.query_map(rusqlite::params![tipo, espaco], converter)?.filter_map(|r| r.ok()).collect()
+                } else {
+                    stmt.query_map([&tipo], converter)?.filter_map(|r| r.ok()).collect()
+                };
+                let linhas = bruto.into_iter().filter(|(caminho, _, _)| {
+                    let pai_de_caminho = caminho.rsplit_once('/').map(|(pai, _)| pai).unwrap_or("");
+                    pai_de_caminho == pasta_pai
+                }).collect();
                 Ok(linhas)
             }
         })
@@ -111,7 +116,6 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
         itens
     };
 
-    let _ = q.espaco; // filtro fino de espaço fica pro cliente até Equipes ganharem pasta própria mapeada (seção 1.5)
     Ok(Json(serde_json::json!({ "subpastas": subpastas, "itens": itens })))
 }
 

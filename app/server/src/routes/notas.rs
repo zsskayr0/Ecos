@@ -326,6 +326,8 @@ pub struct AtualizarNotaPayload {
     #[serde(default)]
     pub pasta: Option<String>,
     #[serde(default)]
+    pub espaco: Option<String>,
+    #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub corpo: Option<String>,
@@ -344,6 +346,9 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
+    }
+    if let Some(espaco) = payload.espaco {
+        fm.espaco = espaco.parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     }
     if let Some(tags) = payload.tags {
         fm.tags = tags;

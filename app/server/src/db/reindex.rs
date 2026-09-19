@@ -317,13 +317,13 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tx.execute("DELETE FROM nota_fts", [])?;
         tx.execute("DELETE FROM tarefa_fts", [])?;
 
-        // (tipo, caminho) -> contagem de itens diretos.
-        let mut contagem_pastas: HashMap<(&'static str, String), i64> = HashMap::new();
+        // (tipo, espaço, caminho) -> contagem de itens diretos.
+        let mut contagem_pastas: HashMap<(&'static str, String, String), i64> = HashMap::new();
         for pasta in &pastas_notas {
-            contagem_pastas.entry(("nota", pasta.clone())).or_insert(0);
+            contagem_pastas.entry(("nota", "pessoal".into(), pasta.clone())).or_insert(0);
         }
         for pasta in &pastas_tarefas {
-            contagem_pastas.entry(("tarefa", pasta.clone())).or_insert(0);
+            contagem_pastas.entry(("tarefa", "pessoal".into(), pasta.clone())).or_insert(0);
         }
 
         for item in &notas {
@@ -368,7 +368,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             )?;
 
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("nota", pasta.clone())).or_insert(0) += 1;
+                *contagem_pastas.entry(("nota", fm.espaco.to_string(), pasta.clone())).or_insert(0) += 1;
             }
         }
 
@@ -379,7 +379,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 params![item.caminho_relativo, item.nome, item.tamanho_bytes, item.hash_conteudo, item.pasta_id],
             )?;
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("nota", pasta.clone())).or_insert(0) += 1;
+                *contagem_pastas.entry(("nota", "pessoal".into(), pasta.clone())).or_insert(0) += 1;
             }
         }
 
@@ -416,20 +416,17 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
 
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("tarefa", pasta.clone())).or_insert(0) += 1;
+                *contagem_pastas.entry(("tarefa", fm.espaco.to_string(), pasta.clone())).or_insert(0) += 1;
             }
         }
 
-        for ((tipo, caminho), contagem) in contagem_pastas {
+        for ((tipo, espaco, caminho), contagem) in contagem_pastas {
             let nome = caminho.rsplit('/').next().unwrap_or(&caminho).to_string();
-            // `espaco` de uma pasta é aproximado como 'pessoal' — o dono real
-            // de cada arquivo continua vindo da linha de nota/tarefa/documento;
-            // isto só afeta o filtro de navegação (seção 11.5).
             tx.execute(
                 "INSERT INTO pasta_cache (caminho, tipo, nome, espaco, contagem_itens) \
-                 VALUES (?1, ?2, ?3, 'pessoal', ?4) \
-                 ON CONFLICT (tipo, caminho) DO UPDATE SET contagem_itens = excluded.contagem_itens",
-                params![caminho, tipo, nome, contagem],
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT (tipo, caminho, espaco) DO UPDATE SET contagem_itens = excluded.contagem_itens",
+                params![caminho, tipo, nome, espaco, contagem],
             )?;
         }
 
