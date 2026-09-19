@@ -65,6 +65,12 @@ fn validar_registro(payload: &RegistrarPayload) -> AppResult<()> {
             motivo: "deve ter ao menos 8 caracteres".into(),
         });
     }
+    if payload.senha.chars().any(char::is_whitespace) {
+        campos.push(CampoInvalido {
+            campo: "senha".into(),
+            motivo: "não pode conter espaços".into(),
+        });
+    }
     if campos.is_empty() {
         Ok(())
     } else {
@@ -262,6 +268,12 @@ pub async fn recuperar_senha(State(state): State<AppState>, Json(payload): Json<
         return Err(AppError::validation(vec![CampoInvalido {
             campo: "nova_senha".into(),
             motivo: "deve ter ao menos 8 caracteres".into(),
+        }]));
+    }
+    if payload.nova_senha.chars().any(char::is_whitespace) {
+        return Err(AppError::validation(vec![CampoInvalido {
+            campo: "nova_senha".into(),
+            motivo: "não pode conter espaços".into(),
         }]));
     }
     let frase_normalizada = recovery::normalizar(&payload.recovery_key);

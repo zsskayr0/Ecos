@@ -41,7 +41,6 @@ fn vigiar_por_varredura(state: AppState, handle: tokio::runtime::Handle) {
             if atual == ultima {
                 continue;
             }
-            ultima = atual;
             let state = state.clone();
             handle.block_on(async move {
                 for _ in 0..8 {

@@ -165,9 +165,10 @@ export function AuthScreen() {
                 <input
                   type={mostrarSenha ? "text" : "password"}
                   value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
+                  onChange={(e) => setSenha(e.target.value.replace(/\s/g, ""))}
+                  onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
                   className="ecos-input pr-12"
-                  placeholder="Sua senha"
+                  placeholder="Sua senha (sem espaços)"
                   autoComplete={modo === "login" ? "current-password" : "new-password"}
                 />
                 <button
