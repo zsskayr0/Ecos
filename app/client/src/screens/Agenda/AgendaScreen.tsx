@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -8,6 +8,8 @@ import { CalendarClock } from "lucide-react";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 type ModoAgenda = "mes" | "semana" | "dia";
+
+const CHAVE_CACHE_AGENDA = "ecos:agenda:visualizacao";
 
 function paraISO(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -33,9 +35,23 @@ function inicioDaSemana(d: Date) {
   return somarDias(d, -d.getDay());
 }
 
+function lerEstadoInicialAgenda(): { modo: ModoAgenda; dia: Date } {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_CACHE_AGENDA) ?? "{}") as { modo?: unknown; dia?: unknown };
+    const modo: ModoAgenda = salvo.modo === "semana" || salvo.modo === "dia" ? salvo.modo : "mes";
+    // Meio-dia evita que a conversão UTC desloque o dia no fuso local.
+    const dia = typeof salvo.dia === "string" ? new Date(`${salvo.dia}T12:00:00`) : new Date();
+    return { modo, dia: Number.isNaN(dia.getTime()) ? new Date() : dia };
+  } catch {
+    return { modo: "mes", dia: new Date() };
+  }
+}
+
 interface Capacidade {
   disponivel_producao_min: number;
   consumido_tarefas_min: number;
+  consumido_eventos_externos_min: number;
+  disponivel_producao_total_min?: number;
   estourado: boolean;
 }
 
@@ -49,14 +65,25 @@ interface Capacidade {
 export function AgendaScreen() {
   const abrirDocumento = useAbrirDocumento();
   const { versao, notificar } = useRefreshBus();
-  const [modo, setModo] = useState<ModoAgenda>("mes");
-  const [diaAtual, setDiaAtual] = useState(() => new Date());
+  const [estadoInicial] = useState(lerEstadoInicialAgenda);
+  const [modo, setModo] = useState<ModoAgenda>(estadoInicial.modo);
+  const [diaAtual, setDiaAtual] = useState(estadoInicial.dia);
   const hoje = new Date();
   const dataStr = paraISO(diaAtual);
+  const estaEmHoje = paraISO(diaAtual) === paraISO(hoje);
 
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [capacidade, setCapacidade] = useState<Capacidade | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // A escolha de Mês/Semana/Dia é uma preferência de trabalho, não uma
+  // configuração temporária da tela. Mantemos também o dia de referência
+  // para que, ao voltar à Agenda, a pessoa retome exatamente o contexto.
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAVE_CACHE_AGENDA, JSON.stringify({ modo, dia: paraISO(diaAtual) }));
+    } catch { /* cache indisponível */ }
+  }, [modo, diaAtual]);
 
   async function planejarTarefa(dado: string, data: Date) {
     try {
@@ -71,9 +98,12 @@ export function AgendaScreen() {
   useEffect(() => {
     let vivo = true;
     setErro(null);
+    // O servidor guarda horários em UTC: ele precisa do fuso para saber onde o dia começa e termina.
+    const [a, m, d] = dataStr.split("-").map(Number);
+    const tz = -new Date(a, m - 1, d, 12).getTimezoneOffset();
     Promise.all([
-      tarefasApi.listar({ data_de: dataStr, data_ate: dataStr, limit: 100 }),
-      tarefasApi.capacidade(dataStr),
+      tarefasApi.listar({ data_de: dataStr, data_ate: dataStr, tz, limit: 100 }),
+      tarefasApi.capacidade(dataStr, tz),
     ])
       .then(([t, c]) => {
         if (!vivo) return;
@@ -91,19 +121,32 @@ export function AgendaScreen() {
   }, [dataStr, versao]);
 
   const ehHojeFn = (d: Date) => paraISO(d) === paraISO(hoje);
+  const pendentes = blocos?.filter((b) => b.status === "pendente").length ?? 0;
 
   return (
     <div className="px-4 pt-1">
-      <div className="mb-4 flex justify-center rounded-pill bg-surface-2 p-1 self-center w-fit mx-auto">
-        {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => setModo(m)}
-            className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
-          >
-            {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
-          </button>
-        ))}
+      <div className="mb-4 flex items-center justify-center gap-2">
+        <div className="flex w-fit rounded-pill bg-surface-2 p-1">
+          {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setModo(m)}
+              className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
+            >
+              {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setDiaAtual(new Date())}
+          disabled={estaEmHoje}
+          title="Ir para hoje"
+          className="flex min-h-10 items-center gap-1.5 rounded-pill border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-colors hover:border-steel-400 hover:text-text-primary disabled:cursor-default disabled:opacity-45"
+        >
+          <CalendarDays size={15} className="text-steel-300" />
+          Hoje
+        </button>
       </div>
 
       {modo === "mes" && (
@@ -127,8 +170,8 @@ export function AgendaScreen() {
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning/10 p-4">
           <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning" strokeWidth={1.75} />
           <p className="text-sm leading-snug text-text-primary">
-            {blocos?.length ?? 0} tarefas somam {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem{" "}
-            {formatDuracao(Math.max(capacidade.disponivel_producao_min, 0) + capacidade.consumido_tarefas_min)} de produção
+            {pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem{" "}
+            {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção
             disponível. A conta não fecha — alguma vai sobrar pra amanhã. Qual?
           </p>
         </div>

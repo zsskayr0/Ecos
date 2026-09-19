@@ -63,6 +63,8 @@ pub struct ListarQuery {
     pub pasta: Option<String>,
     pub data_de: Option<NaiveDate>,
     pub data_ate: Option<NaiveDate>,
+    /// Fuso do cliente em minutos a leste de UTC (`scheduled_at` é UTC; sem isso o "dia" seria o dia UTC).
+    pub tz: Option<i32>,
     pub status: Option<String>,
     pub espaco: Option<String>,
     pub cursor: Option<String>,
@@ -94,6 +96,7 @@ pub async fn criar_time_entry(State(state): State<AppState>, Path(tarefa_id): Pa
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
+    let tz_mod = modificador_tz(q.tz);
 
     let linhas: Vec<serde_json::Value> = state
         .db
@@ -120,11 +123,11 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                 params.push(Box::new(espaco.clone()));
             }
             if let Some(data_de) = q.data_de {
-                condicoes.push("date(COALESCE(t.scheduled_at, t.due_date)) >= date(?)".to_string());
+                condicoes.push(format!("COALESCE(date(datetime(t.scheduled_at, '{tz_mod}')), date(t.due_date)) >= date(?)"));
                 params.push(Box::new(data_de.to_string()));
             }
             if let Some(data_ate) = q.data_ate {
-                condicoes.push("date(COALESCE(t.scheduled_at, t.due_date)) <= date(?)".to_string());
+                condicoes.push(format!("COALESCE(date(datetime(t.scheduled_at, '{tz_mod}')), date(t.due_date)) <= date(?)"));
                 params.push(Box::new(data_ate.to_string()));
             }
             if let Some(c) = &cursor {
@@ -335,6 +338,8 @@ pub struct AtualizarTarefaPayload {
     pub titulo: Option<String>,
     #[serde(default)]
     pub pasta: Option<String>,
+    #[serde(default)]
+    pub espaco: Option<String>,
     #[serde(default, deserialize_with = "nullable_patch")]
     pub scheduled_at: Option<Option<chrono::DateTime<Utc>>>,
     #[serde(default)]
@@ -361,6 +366,9 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
+    }
+    if let Some(espaco) = payload.espaco {
+        fm.espaco = espaco.parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     }
     if let Some(scheduled_at) = payload.scheduled_at {
         fm.scheduled_at = scheduled_at;
@@ -530,6 +538,11 @@ fn minutos_do_bloco(hora_inicio: &str, hora_fim: &str) -> i64 {
     fim_min - inicio_min
 }
 
+/// Modificador do SQLite (`+N minutes`) — só entra número inteiro, então é seguro interpolar.
+fn modificador_tz(tz: Option<i32>) -> String {
+    format!("{:+} minutes", tz.unwrap_or(0).clamp(-14 * 60, 14 * 60))
+}
+
 fn bloco_cobre_dia(dias_semana: &str, dia_iso: u32) -> bool {
     dias_semana == "diario" || dias_semana.split(',').any(|d| d.trim().parse::<u32>() == Ok(dia_iso))
 }
@@ -537,6 +550,8 @@ fn bloco_cobre_dia(dias_semana: &str, dia_iso: u32) -> bool {
 #[derive(Debug, Deserialize)]
 pub struct CapacidadeQuery {
     pub data: NaiveDate,
+    /// Ver `ListarQuery::tz`.
+    pub tz: Option<i32>,
 }
 
 /// Cálculo simplificado (seção 4.3 do handoff): soma minutos por
@@ -547,6 +562,7 @@ pub struct CapacidadeQuery {
 pub async fn capacidade(State(state): State<AppState>, Query(q): Query<CapacidadeQuery>) -> AppResult<Json<serde_json::Value>> {
     let dia_iso = q.data.weekday().number_from_monday();
     let data_str = q.data.to_string();
+    let tz_mod = modificador_tz(q.tz);
 
     let blocos: Vec<(String, String, String, String)> = state
         .db
@@ -577,10 +593,11 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
         .db
         .with({
             let data_str = data_str.clone();
+            let tz_mod = tz_mod.clone();
             move |conn| {
                 conn.query_row(
-                    "SELECT COALESCE(SUM((strftime('%s', fim) - strftime('%s', inicio)) / 60), 0) \
-                     FROM evento_externo_cache WHERE date(inicio) = date(?1)",
+                    &format!("SELECT COALESCE(SUM((strftime('%s', fim) - strftime('%s', inicio)) / 60), 0) \
+                     FROM evento_externo_cache WHERE date(datetime(inicio, '{tz_mod}')) = date(?1)"),
                     [&data_str],
                     |r| r.get(0),
                 )
@@ -592,10 +609,11 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
         .db
         .with({
             let data_str = data_str.clone();
+            let tz_mod = tz_mod.clone();
             move |conn| {
                 conn.query_row(
-                    "SELECT COALESCE(SUM(duration_min), 0) FROM tarefa \
-                     WHERE status = 'pendente' AND date(scheduled_at) = date(?1)",
+                    &format!("SELECT COALESCE(SUM(duration_min), 0) FROM tarefa \
+                     WHERE status = 'pendente' AND date(datetime(scheduled_at, '{tz_mod}')) = date(?1)"),
                     [&data_str],
                     |r| r.get(0),
                 )
@@ -615,6 +633,7 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
         "consumido_eventos_externos_min": consumido_eventos_externos_min,
         "consumido_tarefas_min": consumido_tarefas_min,
         "disponivel_producao_min": disponivel_producao_restante.max(0),
+        "disponivel_producao_total_min": disponivel_producao_min,
         "tempo_livre_min": tempo_livre_min,
         "estourado": estourado,
     })))

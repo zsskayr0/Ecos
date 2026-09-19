@@ -232,7 +232,7 @@ export const notas = {
   /** `.md` de fora: o servidor completa o front-matter que faltar e não mexe no corpo. */
   importar: (payload: { nome: string; conteudo: string; pasta?: string }) =>
     post<{ id: string; titulo: string; pasta: string | null }>("/notas/importar", payload),
-  atualizar: (id: string, payload: { titulo?: string; pasta?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean }) =>
+  atualizar: (id: string, payload: { titulo?: string; pasta?: string; espaco?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean }) =>
     patch<{ id: string }>(`/notas/${id}`, payload),
   excluir: (id: string) => del<{ ok: true }>(`/notas/${id}`),
   links: (id: string) => get<{ entrada: { id: string; titulo: string }[]; saida: { id: string; titulo: string }[] }>(`/notas/${id}/links`),
@@ -374,6 +374,7 @@ export interface CriarTarefaPayload {
 export interface AtualizarTarefaPayload {
   titulo?: string;
   pasta?: string;
+  espaco?: string;
   scheduled_at?: string | null;
   duration_min?: number;
   due_date?: string | null;
@@ -384,7 +385,7 @@ export interface AtualizarTarefaPayload {
 }
 
 export const tarefas = {
-  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
+  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; tz?: number; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
     // `pasta=` vazio é o filtro "só as sem pasta" (`COALESCE(pasta_id, '') = ''` no servidor); `qs` descarta vazios, então ele vai à parte.
     const { pasta, ...resto } = params;
     const base = qs(resto);
@@ -400,7 +401,7 @@ export const tarefas = {
     criar: (id: string, payload: { tipo: "planejado" | "real"; inicio_em: string; duracao_min: number; foco?: string }) => post<{ id: string }>(`/tarefas/${id}/time-entries`, payload),
   },
   excluir: (id: string) => del<{ ok: true }>(`/tarefas/${id}`),
-  capacidade: (data: string) =>
+  capacidade: (data: string, tz?: number) =>
     get<{
       data: string;
       total_dia_min: number;
@@ -408,9 +409,11 @@ export const tarefas = {
       consumido_eventos_externos_min: number;
       consumido_tarefas_min: number;
       disponivel_producao_min: number;
+      /** Só servidores novos enviam; antes só havia o restante (zerado quando estourado). */
+      disponivel_producao_total_min?: number;
       tempo_livre_min: number;
       estourado: boolean;
-    }>(`/agenda/capacidade${qs({ data })}`),
+    }>(`/agenda/capacidade${qs({ data, tz })}`),
   /** Real multipart upload — `fetch` sets its own `Content-Type` with the
    * boundary when given a `FormData` body, so this bypasses the shared
    * `req()`'s JSON header instead of fighting it. */
