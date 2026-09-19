@@ -284,7 +284,7 @@ function AuthArt() {
           </g>
         ))}
       </svg>
-      <LogoAnimada tamanho={96} className="absolute left-12 top-12" />
+      <LogoAnimada tamanho={77} className="absolute left-12 top-12" />
 
       <div className="auth-arte-vinheta" />
       <p className="absolute bottom-10 left-10 max-w-xs font-display text-2xl font-bold leading-snug text-white/90">

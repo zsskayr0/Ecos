@@ -9,22 +9,22 @@ const CURVAS = [
 ];
 
 /**
- * Marca do Ecos animada: as curvas são traçadas uma após a outra, preenchem e depois ficam respirando
- * em ondas, como ecos. Com "reduzir movimento" fica só a marca parada.
+ * Marca do Ecos animada: as curvas são traçadas uma após a outra, preenchem, respiram em ondas
+ * como ecos, apagam e recomeçam, em loop. Com "reduzir movimento" fica só a marca parada.
  */
 export function LogoAnimada({ tamanho = 96, className = "" }: { tamanho?: number; className?: string }) {
   return (
     <svg viewBox="0 0 680 640" width={tamanho} height={tamanho * (640 / 680)} aria-hidden className={`logo-animada ${className}`}>
       <defs>
         <linearGradient id="logo-animada-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="1" stopColor="#b9d7ff" />
+          <stop offset="0" stopColor="#7fd3ff" />
+          <stop offset="1" stopColor="#2f7dff" />
         </linearGradient>
       </defs>
       {CURVAS.map((d, i) => (
         <g key={i} className="logo-animada-curva" style={{ "--i": i } as CSSProperties}>
           <path d={d} pathLength={1} fillRule="evenodd" className="logo-animada-preenchimento" fill="url(#logo-animada-grad)" />
-          <path d={d} pathLength={1} fillRule="evenodd" className="logo-animada-traco" fill="none" stroke="#9ce9fe" strokeWidth={5} strokeLinejoin="round" />
+          <path d={d} pathLength={1} fillRule="evenodd" className="logo-animada-traco" fill="none" stroke="#5ad1ff" strokeWidth={5} strokeLinejoin="round" />
         </g>
       ))}
     </svg>
