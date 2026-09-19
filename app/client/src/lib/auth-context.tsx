@@ -9,7 +9,13 @@ export interface Perfil {
   equipes: { id: string; nome: string; cargo: string }[];
 }
 
-type Status = "carregando" | "autenticado" | "deslogado";
+type Status = "carregando" | "autenticado" | "deslogado" | "indisponivel";
+
+/** Lembra que esta pessoa já teve sessão neste aparelho: se o servidor estiver fora do ar ao abrir (reinício, deploy),
+ * o app espera por ele em vez de mostrar o login como se a sessão tivesse caído. */
+const CHAVE_SESSAO_ATIVA = "ecos.sessao.ativa";
+const lerSessaoAtiva = () => { try { return localStorage.getItem(CHAVE_SESSAO_ATIVA) === "1"; } catch { return false; } };
+const gravarSessaoAtiva = (ativa: boolean) => { try { ativa ? localStorage.setItem(CHAVE_SESSAO_ATIVA, "1") : localStorage.removeItem(CHAVE_SESSAO_ATIVA); } catch { /* cache indisponível */ } };
 
 interface AuthState {
   status: Status;
@@ -45,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const p = await auth.perfil();
       setPerfil(p);
       setStatus("autenticado");
+      gravarSessaoAtiva(true);
     } catch (e) {
       // Uma perda temporária de rede não deve apagar uma sessão válida nem
       // mandar a pessoa de volta ao login. Apenas 401 significa credencial
@@ -52,6 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (e instanceof ApiError && e.status === 401) {
         setPerfil(null);
         setStatus("deslogado");
+        gravarSessaoAtiva(false);
+      } else if (lerSessaoAtiva()) {
+        // Servidor fora do ar (conexão recusada, 502/503/504) para quem já estava logado: a sessão pode estar ótima.
+        setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
+        setStatus((previous) => previous === "carregando" ? "indisponivel" : previous);
       } else {
         setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
         // No authenticated session exists during first load. A connection
@@ -72,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const p = await auth.perfil();
       setPerfil(p);
       setStatus("autenticado");
+      gravarSessaoAtiva(true);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível entrar.");
       throw e;
@@ -103,8 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setPerfil(null);
       setStatus("deslogado");
+      gravarSessaoAtiva(false);
     }
   }, []);
+
+  // Enquanto o servidor não volta, tenta de novo sozinho.
+  useEffect(() => {
+    if (status !== "indisponivel") return;
+    const timer = window.setInterval(() => { void recarregarPerfil(); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [status, recarregarPerfil]);
 
   return (
     <AuthContext.Provider value={{ status, perfil, erro, login, registrar, logout, recarregarPerfil }}>

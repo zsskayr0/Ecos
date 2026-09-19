@@ -30,6 +30,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+  if (status === "indisponivel") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 px-6 text-center">
+        <p className="font-display text-2xl text-text-muted">Ecos</p>
+        <p role="status" className="text-sm text-text-secondary">O servidor não respondeu. Sua sessão continua salva — tentando reconectar…</p>
+      </div>
+    );
+  }
   if (status === "deslogado") {
     return <AuthScreen />;
   }
