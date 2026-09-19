@@ -9,12 +9,13 @@ export interface TaskFields {
   corpo: string;
   tags: string[];
   pasta: string | null;
+  espaco: string;
   subtarefas: SubtarefaInput[];
 }
 
 export const EMPTY_TASK: TaskFields = {
   titulo: "", prioridade: "baixa", data: "", horario: "", duracao: 5,
-  corpo: "", tags: [], pasta: null, subtarefas: [],
+  corpo: "", tags: [], pasta: null, espaco: "pessoal", subtarefas: [],
 };
 
 export function taskDateLocal(value: string): string {
@@ -47,6 +48,6 @@ export function taskFromDetail(tarefa: TarefaDetalhe): TaskFields {
     horario: tarefa.scheduled_at ? new Date(tarefa.scheduled_at).toTimeString().slice(0, 5) : "",
     duracao: tarefa.duration_min ?? 5, corpo: tarefa.corpo,
     tags: tarefa.tags.filter((tag) => !inlineTags.includes(tag)),
-    pasta: tarefa.pasta, subtarefas: tarefa.subtarefas,
+    pasta: tarefa.pasta, espaco: tarefa.espaco, subtarefas: tarefa.subtarefas,
   };
 }

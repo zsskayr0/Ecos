@@ -217,6 +217,15 @@ async fn logout_desktop(servidor: String) -> Result<(), ErroNativo> {
     apagar_credencial().map_err(ErroNativo::from)
 }
 
+/// Encerra a atividade nativa quando o usuário confirma a saída pelo botão
+/// voltar no Android. A decisão de pedir a confirmação permanece no front-end,
+/// que conhece a rota atual; o encerramento em si precisa ser nativo para que
+/// o sistema retorne à tela inicial do celular.
+#[tauri::command]
+fn encerrar_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,7 +297,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![login_desktop, renovar_sessao_desktop, logout_desktop])
+        .invoke_handler(tauri::generate_handler![login_desktop, renovar_sessao_desktop, logout_desktop, encerrar_app])
         .run(tauri::generate_context!())
         .expect("error starting Ecos");
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Folder, Plus, X } from "lucide-react";
 import { ApiError, notas, pastas } from "@/lib/api";
+import { useIsMobile } from "@/lib/use-viewport";
 
 interface Props {
   pasta: string | null;
@@ -21,6 +22,7 @@ const normalizarTag = (bruta: string) => bruta.trim().replace(/^#+/, "").replace
  * sugestões das tags que você mais usa nas outras notas.
  */
 export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disabled }: Props) {
+  const mobile = useIsMobile();
   const [pastasLista, setPastasLista] = useState<{ caminho: string; nome: string }[]>([]);
   const [menuAberto, setMenuAberto] = useState(false);
   const [novaPasta, setNovaPasta] = useState("");
@@ -118,7 +120,10 @@ export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disab
           <ChevronDown size={14} className={`shrink-0 text-text-muted transition-transform ${menuAberto ? "rotate-180" : ""}`} />
         </button>
         {menuAberto && (
-          <div className="ecos-fade-in absolute left-0 top-full z-30 mt-1 w-64 rounded-xl border border-border bg-surface-2 p-1 shadow-nav">
+          <>
+          {mobile && <button type="button" aria-label="Fechar seleção de pasta" onClick={() => setMenuAberto(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
+          <div className={`ecos-fade-in border border-border bg-surface-2 shadow-nav ${mobile ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70vh,34rem)] overflow-y-auto rounded-2xl p-2" : "absolute left-0 top-full z-30 mt-1 w-64 rounded-xl p-1"}`}>
+            {mobile && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta nota será organizada.</p></div><button type="button" onClick={() => setMenuAberto(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3" aria-label="Fechar"><X size={17} /></button></div>}
             <div role="listbox" aria-label="Pasta da nota" className="max-h-56 overflow-y-auto">
               {opcao("", "Sem pasta")}
               {pastasLista.map((p) => opcao(p.caminho, p.nome))}
@@ -140,6 +145,7 @@ export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disab
             </form>
             {erroPasta && <p role="alert" className="px-2 pt-1 text-xs text-error">{erroPasta}</p>}
           </div>
+          </>
         )}
       </div>
 

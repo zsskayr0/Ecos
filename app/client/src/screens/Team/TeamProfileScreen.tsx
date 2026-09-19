@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Copy, Rss, UserPlus, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { equipes as equipesApi, ApiError } from "@/lib/api";
@@ -27,13 +27,15 @@ export function TeamProfileScreen() {
   const { equipeId } = useParams();
   const navigate = useNavigate();
   const { perfil } = useAuth();
-  const { setFiltroEquipeId } = useAppUI();
+  const { setFiltroEquipeId, setEspacoAtivo } = useAppUI();
   const { versao } = useRefreshBus();
   const [convidarAberto, setConvidarAberto] = useState(false);
   const [codigoConvite, setCodigoConvite] = useState<string | null>(null);
   const [equipe, setEquipe] = useState<{ id: string; nome: string; estatisticas: { notas: number; tarefas: number } } | null>(null);
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [editando, setEditando] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
 
   useEffect(() => {
     if (!equipeId) return;
@@ -55,6 +57,12 @@ export function TeamProfileScreen() {
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível gerar o convite.");
     }
+  }
+
+  async function salvarNome() {
+    if (!equipeId || !novoNome.trim()) return;
+    try { await equipesApi.atualizar(equipeId, novoNome.trim()); setEquipe((atual) => atual ? { ...atual, nome: novoNome.trim() } : atual); setEditando(false); }
+    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível editar a equipe."); }
   }
 
   if (erro && !equipe) {
@@ -90,7 +98,7 @@ export function TeamProfileScreen() {
 
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
         <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} />
-        <h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1>
+        {editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
       </div>
 
       <div className="mb-5 grid grid-cols-2 divide-x divide-border rounded-2xl bg-surface-1 py-3">
@@ -102,6 +110,7 @@ export function TeamProfileScreen() {
         <button
           onClick={() => {
             setFiltroEquipeId(equipe.id);
+            setEspacoAtivo(`equipe:${equipe.id}`);
             navigate("/feed");
           }}
           className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-surface-2 py-3 text-sm font-semibold text-text-primary"

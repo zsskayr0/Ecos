@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MemoryRouter } from "react-router-dom";
-import { Search } from "lucide-react";
+import { MemoryRouter, Routes } from "react-router-dom";
+import { Bell, ChevronDown, LogOut, Search, User, Users, Settings, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
@@ -8,6 +8,7 @@ import { nomeExibicao, useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { DocumentoPopupContext } from "@/lib/documento-popup";
 import { pastaDoCaminho } from "@/lib/pasta-contexto";
+import { fotoPerfil } from "@/lib/profile-avatar";
 import { CommandPalette } from "./CommandPalette";
 import { DocumentoJanela } from "./DocumentoJanela";
 import { MenuCriar } from "./MenuCriar";
@@ -15,6 +16,7 @@ import { Rail } from "./Rail";
 import { TabDragProvider } from "./tab-drag";
 import { Workspace } from "./Workspace";
 import { WorkspaceProvider, useWorkspace } from "./workspace-store";
+import { screenRoutes } from "@/routes/screen-routes";
 
 const ehMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
@@ -54,9 +56,14 @@ function useAtalhosGlobais(alternarPaleta: () => void) {
 }
 
 function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
-  const { perfil } = useAuth();
-  const { dispatch } = useWorkspace();
+  const { perfil, logout } = useAuth();
   const nome = perfil ? nomeExibicao(perfil) : "?";
+  const [menuPerfilAberto, setMenuPerfilAberto] = useState(false);
+  const [painelConta, setPainelConta] = useState<string | null>(null);
+  const abrir = (path: string) => {
+    setPainelConta(path);
+    setMenuPerfilAberto(false);
+  };
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-surface-1 px-4">
@@ -79,15 +86,42 @@ function Barra({ abrirPaleta }: { abrirPaleta: () => void }) {
 
       <MenuCriar />
 
-      <button
-        type="button"
-        aria-label="Abrir perfil"
-        onClick={() => dispatch({ type: "open", path: "/perfil", where: "focused", reuse: "modulo" })}
-      >
-        <Avatar nome={nome} tamanho={30} />
-      </button>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => abrir("/notificacoes")} aria-label="Notificações" title="Notificações" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><Bell size={17} /></button>
+        <div className="relative">
+          <button type="button" aria-label="Abrir menu da conta" aria-expanded={menuPerfilAberto} onClick={() => setMenuPerfilAberto((aberto) => !aberto)} className="flex h-9 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-surface-2">
+            <Avatar nome={nome} tamanho={30} url={fotoPerfil(perfil?.id)} />
+            <ChevronDown size={13} className={`text-text-muted transition-transform duration-200 ${menuPerfilAberto ? "rotate-180" : ""}`} />
+          </button>
+          {menuPerfilAberto && <div className="ecos-fade-in absolute right-0 top-11 z-50 w-64 overflow-hidden rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav">
+          <button type="button" onClick={() => abrir("/perfil")} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-2"><Avatar nome={nome} tamanho={32} url={fotoPerfil(perfil?.id)} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-text-primary">{nome}</span><span className="block text-xs text-text-muted">Ver e editar perfil</span></span></button>
+          <div className="my-1 border-t border-border" />
+          <MenuContaItem Icon={User} label="Perfil" onClick={() => abrir("/perfil")} />
+          <MenuContaItem Icon={Users} label="Equipes" onClick={() => abrir("/perfil")} />
+          <MenuContaItem Icon={Settings} label="Configurações" onClick={() => abrir("/configuracoes")} />
+          <div className="my-1 border-t border-border" />
+          <button type="button" onClick={() => { setMenuPerfilAberto(false); void logout(); }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-error transition-colors hover:bg-error/10"><LogOut size={16} strokeWidth={1.8} />Sair</button>
+          </div>}
+        </div>
+      </div>
+      {painelConta && <PainelConta path={painelConta} aoFechar={() => setPainelConta(null)} />}
     </header>
   );
+}
+
+function MenuContaItem({ Icon, label, onClick }: { Icon: typeof User; label: string; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><Icon size={16} strokeWidth={1.8} />{label}</button>;
+}
+
+/** Painéis de conta não fazem parte do espaço de trabalho: são diálogos
+ * modais, centralizados e previsíveis, sem alças de arraste/redimensionamento. */
+function PainelConta({ path, aoFechar }: { path: string; aoFechar: () => void }) {
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6 backdrop-blur-md ecos-fade-in" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) aoFechar(); }}>
+    <section role="dialog" aria-modal="true" aria-label="Painel da conta" className="flex aspect-video w-[min(960px,calc(100vw-48px))] max-h-[calc(100vh-48px)] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
+      <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface-1 px-4"><span className="text-sm font-semibold text-text-primary">Conta</span><button type="button" onClick={aoFechar} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></header>
+      <div className="min-h-0 flex-1 overflow-y-auto"><MemoryRouter initialEntries={[path]}><Routes>{screenRoutes}</Routes></MemoryRouter></div>
+    </section>
+  </div>;
 }
 
 interface JanelaAberta {
@@ -158,9 +192,9 @@ function Conteudo() {
           aoFixar={(paneId) => fixarComoAba(j, paneId)}
         />
       ))}
-      {(capturaAberta === "nota" || capturaAberta === "tarefa") && <DocumentoJanela
-        path={capturaAberta === "nota" ? "/notas" : "/tarefas"}
-        titulo={tituloCaptura || (capturaAberta === "nota" ? "Nova nota" : "Nova tarefa")}
+      {(capturaAberta === "nota" || capturaAberta === "tarefa" || capturaAberta === "transacao") && <DocumentoJanela
+        path={capturaAberta === "nota" ? "/notas" : capturaAberta === "tarefa" ? "/tarefas" : "/cofre"}
+        titulo={tituloCaptura || (capturaAberta === "nota" ? "Nova nota" : capturaAberta === "tarefa" ? "Nova tarefa" : "Nova transação")}
         ordem={janelas.length}
         z={contador.current + 1}
         aoFechar={fecharCaptura}
@@ -170,7 +204,7 @@ function Conteudo() {
       />}
       <CommandPalette aberta={paletaAberta} aoFechar={() => setPaletaAberta(false)} aoAbrirDocumento={abrirDocumento} />
       {/* O fluxo de captura navega depois de salvar (`navigate("/feed")`) — num Router próprio isso não mexe nas abas. */}
-      {capturaAberta !== "nota" && capturaAberta !== "tarefa" && <MemoryRouter><CreateFlow pastaContexto={pastaContexto} /></MemoryRouter>}
+      {capturaAberta !== "nota" && capturaAberta !== "tarefa" && capturaAberta !== "transacao" && <MemoryRouter><CreateFlow pastaContexto={pastaContexto} /></MemoryRouter>}
     </div>
     </DocumentoPopupContext.Provider>
   );

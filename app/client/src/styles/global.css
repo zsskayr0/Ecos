@@ -103,6 +103,12 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* Menus and floating surfaces need a softer, blue-tinted elevation in the
+   light theme; the dark shadow would otherwise read as a grey smudge. */
+[data-theme="light"] .shadow-nav {
+  box-shadow: 0 10px 28px rgb(28 55 90 / 0.16);
+}
+
 /* Space Grotesk is only for the wordmark/H1/splash — never in a
    paragraph or a dense UI label (fixed rule, section 1.2). */
 .font-display {
@@ -165,6 +171,19 @@ body {
 .ecos-fade-in {
   animation: ecos-fade-in 180ms ease-out;
 }
+
+@keyframes ecos-item-entra {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ecos-item-sai {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-5px) scale(0.985); }
+}
+
+.ecos-item-entra { animation: ecos-item-entra 190ms ease-out; }
+.ecos-item-sai { animation: ecos-item-sai 190ms ease-in forwards; }
 
 /* ---- Login: curvas de luz animadas (painel decorativo) ---- */
 .auth-arte {
@@ -250,3 +269,4 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo { animation: none; }
 }
+

@@ -13,6 +13,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { NoteEditorDesktop } from "./NoteEditorDesktop";
+import { TitleField } from "@/components/common/TitleField";
 
 interface NotaCompleta {
   id: string;
@@ -168,7 +169,7 @@ function NoteDetailMobile() {
 
       {editando ? (
         <div className="flex min-w-0 flex-col gap-6">
-          <input aria-label="Título da nota" value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
+          <TitleField ariaLabel="Título da nota" value={tituloEdit} onChange={setTituloEdit} placeholder="Título da nota" className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
           <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" />
           <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
         </div>

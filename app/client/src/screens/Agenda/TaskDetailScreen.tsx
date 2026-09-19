@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Loader2 } from "lucide-react";
+import { Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Copy, Loader2 } from "lucide-react";
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { tarefas, ApiError, type TarefaDetalhe } from "@/lib/api";
 import { TaskComposer } from "@/components/editor/TaskComposer";
@@ -123,6 +123,15 @@ export function TaskDetailScreen() {
     try { await tarefas.excluir(id); removerRascunho(id); notificar(); navigate(-1); }
     catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível apagar."); setSalvando(false); }
   }
+  async function duplicar() {
+    if (!tarefa) return;
+    await sincronizar();
+    try {
+      const criada = await tarefas.criar({ ...payload(value), titulo: `${value.titulo} (cópia)` });
+      notificar();
+      navigate(`/tarefas/${criada.id}`);
+    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a tarefa."); }
+  }
 
   const conteudo = <div className="ecos-detail-content">
     {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
@@ -131,6 +140,7 @@ export function TaskDetailScreen() {
       {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}
       <TaskComposer key={id} itemId={id} editing editedAt={tarefa.atualizado_em ?? tarefa.criado_em} dirty={sujo} value={value} onChange={(patch) => setValue((previous) => ({ ...previous, ...patch }))} onSave={sincronizar} saving={salvando && !confirmandoDelete} floatingSave={false} showPriority={!desktop} onUploadingChange={setEnviandoArquivo} timePanel={<><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-text-primary">Tempo</h2><p className="text-sm text-text-secondary">Planejado {timeEntries.filter((e) => e.tipo === "planejado").reduce((n, e) => n + e.duracao_min, 0)} min · Realizado {timeEntries.filter((e) => e.tipo === "real").reduce((n, e) => n + e.duracao_min, 0)} min</p></div><div className="flex gap-2"><button type="button" onClick={() => adicionarTempo("planejado")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-steel-400 px-3 text-sm text-steel-300 disabled:opacity-40">Planejar {value.duracao} min</button><button type="button" onClick={() => adicionarTempo("real")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-success px-3 text-sm text-success disabled:opacity-40">Registrar tempo</button></div></div>{timeEntries.length > 0 && <div className="overflow-hidden rounded-lg border border-border">{timeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-sm last:border-0"><span className="text-text-secondary">{new Date(entry.inicio_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span><span className={entry.tipo === "planejado" ? "text-steel-300" : "text-success"}>{entry.tipo === "planejado" ? "Planejado" : "Real"} · {entry.duracao_min} min</span></div>)}</div>}</>} titleActions={desktop && <div className="flex shrink-0 items-center gap-2">
         <TaskPriority compact value={value.prioridade} onChange={(prioridade) => setValue((anterior) => ({ ...anterior, prioridade }))} disabled={salvando} />
+        <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar tarefa" title="Duplicar tarefa" className="flex min-h-[52px] min-w-[52px] items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>
         <button type="button" onClick={alternarStatus} disabled={atualizandoStatus || enviandoArquivo || salvando} aria-pressed={tarefa.status === "concluida"} className="flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-success px-4 text-sm font-semibold text-success transition-colors hover:bg-success hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-success disabled:opacity-40">{atualizandoStatus ? <Loader2 size={16} className="animate-spin motion-reduce:animate-none" /> : <Check size={16} />}{tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"}</button>
         <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar tarefa" className="flex min-h-[52px] min-w-[52px] items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>
       </div>} />

@@ -9,7 +9,7 @@ function fieldsFromDraft(draft: CapturaDraft): TaskFields {
     titulo: draft.texto, prioridade: draft.prioridadeTarefa, data: draft.dataTarefa,
     horario: draft.scheduledAt ? new Date(draft.scheduledAt).toTimeString().slice(0, 5) : "",
     duracao: draft.duracaoMin, corpo: draft.corpo, tags: draft.tagsTarefa,
-    pasta: draft.pastaTarefa, subtarefas: draft.subtarefasTarefa,
+    pasta: draft.pastaTarefa, espaco: "pessoal", subtarefas: draft.subtarefasTarefa,
   };
 }
 

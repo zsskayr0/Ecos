@@ -16,6 +16,10 @@ interface AppUIState {
   /** Topbar's Team filter (section 2.3) — null = "All". */
   filtroEquipeId: string | null;
   setFiltroEquipeId: (id: string | null) => void;
+  espacoAtivo: string;
+  setEspacoAtivo: (espaco: string) => void;
+  intercalarEquipes: boolean;
+  setIntercalarEquipes: (ativo: boolean) => void;
 }
 
 const AppUIContext = createContext<AppUIState | null>(null);
@@ -24,6 +28,10 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
   const [filtroEquipeId, setFiltroEquipeId] = useState<string | null>(null);
+  const [espacoAtivo, setEspacoAtivoState] = useState(() => { try { return localStorage.getItem("ecos:espaco-ativo") ?? "pessoal"; } catch { return "pessoal"; } });
+  const [intercalarEquipes, setIntercalarEquipesState] = useState(() => { try { return localStorage.getItem("ecos:intercalar-equipes") === "true"; } catch { return false; } });
+  const setEspacoAtivo = (espaco: string) => { setEspacoAtivoState(espaco); try { localStorage.setItem("ecos:espaco-ativo", espaco); } catch {} };
+  const setIntercalarEquipes = (ativo: boolean) => { setIntercalarEquipesState(ativo); try { localStorage.setItem("ecos:intercalar-equipes", String(ativo)); } catch {} };
 
   const value = useMemo<AppUIState>(
     () => ({
@@ -38,8 +46,12 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
 
       filtroEquipeId,
       setFiltroEquipeId,
+      espacoAtivo,
+      setEspacoAtivo,
+      intercalarEquipes,
+      setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, filtroEquipeId],
+    [drawerAberto, capturaAberta, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;

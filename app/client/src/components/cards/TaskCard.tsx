@@ -1,7 +1,6 @@
-import { CalendarClock, Flame } from "lucide-react";
+import { Flame, Folder, Tag } from "lucide-react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Tarefa } from "@/lib/types";
-import { formatDuracao } from "@/lib/format";
 import { Avatar } from "@/components/common/Avatar";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 
@@ -14,13 +13,14 @@ const FUNDO_POR_PRIORIDADE = { baixa: "bg-cyan/[0.04]", media: "bg-cyan/[0.06]",
 
 /**
  * Tarefa card in the Feed (section 3.1) — visually distinct: a light cyan
- * tint, a subtle border, an "Encaixada na sua agenda" label.
+ * tint, a subtle border, and the organizational context needed to scan it
+ * outside the Agenda: its folder and a compact sample of tags. Time belongs
+ * to the Agenda, where it can be read in chronological context.
  */
 export function TaskCard({ tarefa }: { tarefa: Tarefa }) {
   const abrirDocumento = useAbrirDocumento();
-  const hora = tarefa.scheduledAt
-    ? new Date(tarefa.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : null;
+  const tags = tarefa.tags ?? [];
+  const pasta = tarefa.pasta?.split("/").filter(Boolean).pop();
 
   return (
     <button
@@ -28,9 +28,9 @@ export function TaskCard({ tarefa }: { tarefa: Tarefa }) {
       className={`flex w-full flex-col gap-2 rounded-card border p-4 text-left ${BORDA_POR_PRIORIDADE[tarefa.prioridade]} ${FUNDO_POR_PRIORIDADE[tarefa.prioridade]}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 rounded-pill bg-cyan/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan">
-          <CalendarClock size={12} strokeWidth={2} />
-          {tarefa.encaixadaNaAgenda ? "Encaixada na sua agenda" : "Sem horário definido"}
+        <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+          <Folder size={13} strokeWidth={1.8} className="shrink-0 text-steel-300" />
+          <span className="truncate">{pasta ?? "Sem pasta"}</span>
         </span>
         <span className="flex items-center gap-2">
           {tarefa.prioridade === "alta" && (
@@ -39,12 +39,17 @@ export function TaskCard({ tarefa }: { tarefa: Tarefa }) {
               Alta
             </span>
           )}
-          {hora && <span className="font-mono-value text-xs text-text-secondary">{hora}</span>}
         </span>
       </div>
 
       <p className="font-body text-[15px] font-semibold leading-snug text-text-primary">{tarefa.titulo}</p>
-      {tarefa.durationMin > 0 && <p className="text-sm text-text-muted">{formatDuracao(tarefa.durationMin)} reservados na Agenda</p>}
+      {tags.length > 0 && (
+        <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+          <Tag size={12} strokeWidth={1.75} className="shrink-0 text-text-muted" />
+          {tags.slice(0, 2).map((tag) => <span key={tag} className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-secondary">#{tag}</span>)}
+          {tags.length > 2 && <span className="shrink-0 text-[11px] text-text-muted">+{tags.length - 2}</span>}
+        </div>
+      )}
 
       <div className="mt-1 flex items-center gap-2">
         <Avatar nome={tarefa.dono.nome} corFundo={tarefa.origemEquipe?.cor} tamanho={18} />

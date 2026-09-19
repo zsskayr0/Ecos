@@ -47,10 +47,10 @@ export function Rail() {
           })
         }
         className={`relative flex h-10 items-center rounded-xl transition-colors ${expandida ? "w-full gap-3 px-3" : "w-10 justify-center"} ${
-          ativo ? "bg-surface-2 text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-primary"
+          id === "lixeira" ? (ativo ? "bg-error/15 text-error" : "text-error/75 hover:bg-error/10 hover:text-error") : ativo ? "bg-surface-2 text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-primary"
         }`}
       >
-        {ativo && <span className="absolute -left-2 top-2 bottom-2 w-0.5 rounded-full bg-cyan" />}
+        {ativo && <span className={`absolute -left-2 top-2 bottom-2 w-0.5 rounded-full ${id === "lixeira" ? "bg-error" : "bg-cyan"}`} />}
         <modulo.icone size={19} strokeWidth={1.75} className="shrink-0" />
         {expandida && <span className="truncate text-sm font-medium">{modulo.titulo}</span>}
       </button>

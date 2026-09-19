@@ -62,7 +62,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
 
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
 export const RAIL_PRINCIPAL: ModuloId[] = ["hoje", "agenda", "pastas", "tarefas", "notas", "feed", "cofre", "media"];
-export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira", "notificacoes", "configuracoes"];
+export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira"];
 
 export function moduloDaRota(path: string): Modulo {
   const [primeiro] = path.split("/").filter(Boolean);

@@ -96,13 +96,14 @@ function scheduledAtReal(draft: CapturaDraft): string | undefined {
 }
 
 /** Builds the real `POST /api/v1/captura` payload (section 11.3) — note/task only (see GAP-13 in `lib/api.ts`). */
-function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<string, unknown> {
+function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft, espaco: string): Record<string, unknown> {
   if (tipo === "nota") {
     return {
       titulo: draft.texto.trim(),
       corpo: draft.corpo,
       tags: taskTags(draft.tagsNota, draft.corpo),
       pasta: draft.pastaNota ?? undefined,
+      espaco,
     };
   }
   return {
@@ -115,6 +116,7 @@ function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft): Record<strin
     prioridade: draft.prioridadeTarefa,
     pasta: draft.pastaTarefa ?? undefined,
     subtarefas: draft.subtarefasTarefa,
+    espaco,
   };
 }
 
@@ -124,7 +126,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   /** No desktop as rotas das abas não são a do app: o shell diz em que pasta a pessoa está (`null` = em nenhuma). No mobile vem da rota. */
   pastaContexto?: PastaContexto | null;
 }) {
-  const { capturaAberta, fecharCaptura, trocarTipoCaptura } = useAppUI();
+  const { capturaAberta, fecharCaptura, trocarTipoCaptura, espacoAtivo } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -194,14 +196,14 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
           data: draft.dataTransacao,
         });
       } else if (tipo === "nota") {
-        const dados = payloadReal("nota", draft);
+        const dados = payloadReal("nota", draft, espacoAtivo);
         if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
         else {
           const criado = await notas.criar(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] });
           setItemCriado({ tipo: "nota", id: criado.id });
         }
       } else {
-        const dados = payloadReal("tarefa", draft);
+        const dados = payloadReal("tarefa", draft, espacoAtivo);
         if (itemCriado?.tipo === "tarefa") await tarefas.atualizar(itemCriado.id, dados);
         else {
           const criado = await tarefas.criar(dados as unknown as Parameters<typeof tarefas.criar>[0]);
@@ -222,7 +224,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
       envioEmCurso.current = false;
       setSalvando(false);
     }
-  }, [capturaAberta, draft, fecharTudo, itemCriado, location.pathname, navigate, notificar]);
+  }, [capturaAberta, draft, espacoAtivo, fecharTudo, itemCriado, location.pathname, navigate, notificar]);
 
   // A primeira pausa após digitar cria o item; as pausas seguintes o atualizam.
   // O rascunho local é escrito imediatamente, portanto fechar a janela não perde texto.

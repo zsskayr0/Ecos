@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, User, Users, RefreshCw, ShieldCheck, Bell, Palette, Info, Server } from "lucide-react";
 import { obterServidorBaseUrl } from "@/lib/server-config";
+import { useAppUI } from "@/lib/ui-context";
 
 /**
  * Settings index (section 3.12) — Account / System / About.
@@ -10,6 +11,7 @@ import { obterServidorBaseUrl } from "@/lib/server-config";
  */
 export function SettingsScreen() {
   const navigate = useNavigate();
+  const { intercalarEquipes, setIntercalarEquipes } = useAppUI();
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -26,6 +28,7 @@ export function SettingsScreen() {
       </Secao>
 
       <Secao titulo="Sistema">
+        <ToggleItem Icon={Users} label="Intercalação de equipes" descricao="Exibe itens de todas as equipes e permite filtrá-los." ativo={intercalarEquipes} onChange={setIntercalarEquipes} />
         <Item Icon={Server} label="Servidor" onClick={() => navigate("/configuracoes/servidor")} valor={obterServidorBaseUrl() ?? "Padrão"} />
         <Item Icon={RefreshCw} label="Sincronização & Backup" onClick={() => navigate("/configuracoes/sync")} />
         <Item Icon={ShieldCheck} label="Privacidade & Cofre" onClick={() => navigate("/configuracoes/privacidade")} />
@@ -38,6 +41,10 @@ export function SettingsScreen() {
       </Secao>
     </div>
   );
+}
+
+function ToggleItem({ Icon, label, descricao, ativo, onChange }: { Icon: typeof User; label: string; descricao: string; ativo: boolean; onChange: (ativo: boolean) => void }) {
+  return <button type="button" onClick={() => onChange(!ativo)} className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5 text-left"><Icon size={18} strokeWidth={1.75} className="text-text-secondary" /><span className="flex-1"><span className="block text-[15px] text-text-primary">{label}</span><span className="mt-0.5 block text-xs text-text-muted">{descricao}</span></span><span aria-hidden className={`relative h-6 w-11 rounded-full transition-colors ${ativo ? "bg-cyan" : "bg-surface-3"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${ativo ? "translate-x-6" : "translate-x-1"}`} /></span></button>;
 }
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {

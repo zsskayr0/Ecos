@@ -1,4 +1,4 @@
-import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks, Library, Trash2 } from "lucide-react";
+import { X, User, Plus, LifeBuoy, RefreshCw, ShieldCheck, LogOut, ListChecks, Library, Trash2, CalendarCheck2, FolderTree } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
@@ -52,6 +52,14 @@ export function Drawer() {
             Tarefas ganhou pastas (user feedback) e esse é o modo de
             navegar por elas — não ocupa slot da nav (seção 2.1: 5 ícones
             fixos), mora no Drawer como qualquer outra seção de sistema. */}
+        <button
+          onClick={() => ir("/hoje")}
+          className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"
+        >
+          <CalendarCheck2 size={18} strokeWidth={1.75} className="text-steel-300" />
+          Hoje
+        </button>
+        <button onClick={() => ir("/pastas")} className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"><FolderTree size={18} strokeWidth={1.75} className="text-steel-300" />Pastas</button>
         <button
           onClick={() => ir("/tarefas")}
           className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left text-sm font-medium text-text-primary"

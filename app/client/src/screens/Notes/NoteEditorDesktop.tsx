@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, FileX, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, FileX, Trash2 } from "lucide-react";
 import { ApiError, notas } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { descriptionTags } from "@/lib/task-fields";
@@ -8,6 +8,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
+import { EquipeSelector } from "@/components/editor/EquipeSelector";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 
@@ -19,6 +20,7 @@ interface CamposNota {
   /** Só as tags escolhidas na interface — as de `#hashtag` no texto são derivadas do corpo. */
   tags: string[];
   pasta: string | null;
+  espaco: string;
 }
 
 const chaveRascunho = (id: string) => `ecos.note-draft.v2:${id}`;
@@ -36,7 +38,7 @@ function pastaDoCaminho(caminho: string): string | null {
 
 function camposDaNota(n: NotaApi): CamposNota {
   const noTexto = descriptionTags(n.corpo);
-  return { titulo: n.titulo, corpo: n.corpo, tags: n.tags.filter((t) => !noTexto.includes(t)), pasta: pastaDoCaminho(n.caminho_arquivo) };
+  return { titulo: n.titulo, corpo: n.corpo, tags: n.tags.filter((t) => !noTexto.includes(t)), pasta: pastaDoCaminho(n.caminho_arquivo), espaco: n.espaco };
 }
 
 function lerRascunho(id: string): CamposNota | null {
@@ -111,6 +113,7 @@ export function NoteEditorDesktop() {
           corpo: atual.corpo,
           ...(JSON.stringify(tagsFinais(atual)) !== JSON.stringify(tagsFinais(base)) ? { tags: tagsFinais(atual) } : {}),
           ...(atual.pasta !== base.pasta ? { pasta: atual.pasta ?? "" } : {}),
+          ...(atual.espaco !== base.espaco ? { espaco: atual.espaco } : {}),
         });
         setSalvo(atual);
         setNota((n) => (n ? { ...n, atualizado_em: new Date().toISOString() } : n));
@@ -160,6 +163,15 @@ export function NoteEditorDesktop() {
     }
   }
 
+  async function duplicar() {
+    if (!valor) return;
+    try {
+      const criada = await notas.criar({ titulo: `${valor.titulo} (cópia)`, corpo: valor.corpo, tags: tagsFinais(valor), pasta: valor.pasta ?? undefined, espaco: valor.espaco });
+      notificar();
+      navigate(`/notas/${criada.id}`);
+    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a nota."); }
+  }
+
   const mudar = (patch: Partial<CamposNota>) => setValor((v) => (v ? { ...v, ...patch } : v));
 
   if (naoEncontrada) return <div className="ecos-detail-content"><EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." /></div>;
@@ -177,11 +189,13 @@ export function NoteEditorDesktop() {
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={CAMPO_TITULO} />
+            <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>
             <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota"
               className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>
           </div>
 
           <NoteOrganizer pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
+          <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco })} disabled={salvando} />
 
           <AttachmentsField tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
 

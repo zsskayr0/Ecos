@@ -3,6 +3,7 @@ import { Cloud } from "lucide-react";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
+import { TitleField } from "@/components/common/TitleField";
 import { descriptionTags } from "@/lib/task-fields";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
@@ -18,11 +19,11 @@ export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   return (
     <div className="flex min-w-0 flex-col gap-4 py-5 md:pt-4">
-      <input
+      <TitleField
         value={draft.texto}
-        onChange={(e) => setDraft((d) => ({ ...d, texto: e.target.value }))}
+        onChange={(texto) => setDraft((d) => ({ ...d, texto }))}
         placeholder="Título da nota"
-        aria-label="Título da nota"
+        ariaLabel="Título da nota"
         className="ecos-input min-w-0 !rounded-lg border border-border !py-3 !text-xl text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400"
         autoFocus
       />

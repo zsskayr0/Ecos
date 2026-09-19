@@ -9,6 +9,8 @@ import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { AttachmentsField } from "./AttachmentsField";
 import { CorpoEditor } from "./CorpoEditor";
 import { TaskDateTimePicker } from "./TaskDateTimePicker";
+import { EquipeSelector } from "./EquipeSelector";
+import { TitleField } from "@/components/common/TitleField";
 
 const LABELS = { baixa: "Baixa", media: "Média", alta: "Alta" };
 const FIELD = "ecos-input min-w-0 !rounded-lg border border-border !text-[16px] text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400";
@@ -126,8 +128,8 @@ export function TaskComposer({ editedAt, value, onChange, onSave, saving = false
 
   return <div className="flex min-w-0 flex-col gap-6" data-task-composer>
     <div className="flex min-w-0 items-center gap-3">
-      <input id={`${id}-title`} value={value.titulo} onChange={(e) => onChange({ titulo: e.target.value })}
-        placeholder="O que precisa ser feito?" aria-label="Título da tarefa" autoFocus={!editing}
+      <TitleField id={`${id}-title`} value={value.titulo} onChange={(titulo) => onChange({ titulo })}
+        placeholder="O que precisa ser feito?" ariaLabel="Título da tarefa" autoFocus={!editing}
         className={`${FIELD} flex-1 !py-3 !text-xl`} />
       {titleActions}
     </div>
@@ -168,14 +170,17 @@ export function TaskComposer({ editedAt, value, onChange, onSave, saving = false
             <button type="button" aria-haspopup="listbox" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}>
               <Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} />
             </button>
-            {folderMenuOpen && <div role="listbox" aria-labelledby={`${id}-folder-label`} className="absolute z-30 top-full mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav">
+            {folderMenuOpen && !largo && <button type="button" aria-label="Fechar seleção de pasta" onClick={() => setFolderMenuOpen(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
+            {folderMenuOpen && <div role="listbox" aria-labelledby={`${id}-folder-label`} className={`${largo ? "absolute top-full z-30 mt-1 max-h-64 w-full rounded-xl p-1" : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70vh,34rem)] rounded-2xl p-2"} overflow-y-auto border border-border bg-surface-1 shadow-nav`}>
+              {!largo && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta tarefa será organizada.</p></div><button type="button" onClick={() => setFolderMenuOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Fechar"><X size={17} /></button></div>}
               <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p>
               {[{ caminho: "", nome: "Nenhuma pasta" }, ...(value.pasta && !folders.some((p) => p.caminho === value.pasta) ? [{ caminho: value.pasta, nome: value.pasta }] : []), ...folders].map((folder) => {
                 const selecionada = (value.pasta ?? "") === folder.caminho;
-                return <button key={folder.caminho || "sem-pasta"} type="button" role="option" aria-selected={selecionada} onClick={() => { onChange({ pasta: folder.caminho || null }); setFolderMenuOpen(false); }} className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${selecionada ? "bg-steel-700/30 text-text-primary" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}><Folder size={16} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{folder.nome}</span>{selecionada && <Check size={16} className="shrink-0 text-steel-300" />}</button>;
+                return <button key={folder.caminho || "sem-pasta"} type="button" role="option" aria-selected={selecionada} onClick={() => { onChange({ pasta: folder.caminho || null }); setFolderMenuOpen(false); }} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors ${selecionada ? "bg-steel-700/30 text-text-primary" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}><Folder size={16} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{folder.nome}</span>{selecionada && <Check size={17} className="shrink-0 text-steel-300" />}</button>;
               })}
             </div>}
           </div>
+          <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco })} disabled={saving} />
           <div><label htmlFor={`${id}-tag`} className="mb-2 block text-sm text-text-secondary">Tags</label><div className="flex gap-2"><input id={`${id}-tag`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} className={FIELD} placeholder="Tag e Enter" /><button type="button" onClick={addTag} className={`${ACTION} shrink-0`} aria-label="Adicionar tag"><Plus size={18} /></button></div></div>
           <div className="flex flex-wrap gap-2" aria-live="polite">{allTags.map((tag) => <span key={tag} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg bg-surface-2 pl-3 text-sm text-text-secondary"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</span>)}</div>
           <div className="flex flex-wrap gap-2">{["cliente", "projeto"].filter((t) => !allTags.includes(t)).map((tag) => <button key={tag} type="button" onClick={() => onChange({ tags: [...value.tags, tag] })} className="min-h-11 rounded-lg border border-border px-3 text-sm text-text-secondary">#{tag}</button>)}</div>

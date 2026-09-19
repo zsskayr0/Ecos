@@ -35,7 +35,7 @@ import type { FeedItem } from "@/lib/types";
 const INTERVALO_POLL_MS = 10_000;
 export function FeedScreen() {
   const navigate = useNavigate();
-  const { filtroEquipeId } = useAppUI();
+  const { filtroEquipeId, espacoAtivo, intercalarEquipes } = useAppUI();
   const { equipes } = useMinhasEquipes();
   const { perfil } = useAuth();
   const { versao } = useRefreshBus();
@@ -46,7 +46,10 @@ export function FeedScreen() {
   const carregar = useCallback(async () => {
     setErro(null);
     try {
-      const pagina = await feed.obter({ espaco: filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined, limit: 40 });
+      const espaco = intercalarEquipes
+        ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined)
+        : espacoAtivo;
+      const pagina = await feed.obter({ espaco, limit: 40 });
       const mapeados = pagina.items
         .map((item): FeedItem | null => {
           if (item.tipo === "nota") return notaDoFeed(item, equipes, perfil);
@@ -59,7 +62,7 @@ export function FeedScreen() {
       setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o Feed. O ecos-app está rodando?");
       setItens([]);
     }
-  }, [filtroEquipeId, equipes, perfil]);
+  }, [filtroEquipeId, espacoAtivo, intercalarEquipes, equipes, perfil]);
 
   useEffect(() => {
     carregar();
@@ -71,7 +74,7 @@ export function FeedScreen() {
     <PullToRefresh onRefresh={carregar}>
       <div className="flex flex-col gap-3 px-4 pt-1">
         <div className="flex items-center justify-end"><ViewModeToggle modo={visualizacao} onMudar={setVisualizacao} /></div>
-        {filtroEquipeId && (
+        {intercalarEquipes && filtroEquipeId && (
           <button
             onClick={() => navigate("/feed")}
             className="flex w-fit items-center gap-1.5 rounded-pill bg-surface-2 px-3 py-1 text-xs font-medium text-text-secondary"

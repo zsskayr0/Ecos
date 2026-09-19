@@ -4,6 +4,7 @@ import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { corDaEquipe } from "@/lib/team-color";
+import { fotoPerfil } from "@/lib/profile-avatar";
 import type { Cargo } from "@/lib/types";
 
 /**
@@ -32,7 +33,7 @@ export function ProfileScreen() {
       </div>
 
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
-        <Avatar nome={nomeExibicao(perfil)} tamanho={72} />
+        <Avatar nome={nomeExibicao(perfil)} tamanho={72} url={fotoPerfil(perfil.id)} />
         <div>
           <h1 className="font-display text-2xl text-text-primary">{nomeExibicao(perfil)}</h1>
           <p className="text-sm text-text-muted">@{perfil.nome_usuario} · Identidade local desta instância</p>

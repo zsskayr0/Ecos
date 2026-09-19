@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, AlertTriangle } from "lucide-react";
+import { ChevronLeft, AlertTriangle, Camera } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { useAuth } from "@/lib/auth-context";
 import { auth, ApiError } from "@/lib/api";
+import { fotoPerfil, salvarFotoPerfil } from "@/lib/profile-avatar";
 
 /** Profile edit — only `nome_usuario` is real (`PATCH /me`); bio/handle don't exist in the backend. */
 export function ProfileEditScreen() {
@@ -12,6 +13,13 @@ export function ProfileEditScreen() {
   const [nome, setNome] = useState(perfil?.nome_usuario ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [foto, setFoto] = useState(() => fotoPerfil(perfil?.id));
+
+  async function escolherFoto(arquivo?: File) {
+    if (!arquivo || !perfil) return;
+    if (!arquivo.type.startsWith("image/")) { setErro("Escolha uma imagem."); return; }
+    try { setFoto(await salvarFotoPerfil(perfil.id, arquivo)); } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível guardar a imagem."); }
+  }
 
   async function salvar() {
     setSalvando(true);
@@ -35,7 +43,8 @@ export function ProfileEditScreen() {
       </button>
 
       <div className="mb-6 flex flex-col items-center gap-2">
-        <Avatar nome={nome || "?"} tamanho={72} />
+        <label className="group relative cursor-pointer"><Avatar nome={nome || "?"} tamanho={72} url={foto} /><span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100"><Camera size={20} /></span><input type="file" accept="image/*" className="sr-only" onChange={(e) => void escolherFoto(e.target.files?.[0])} /></label>
+        <p className="text-xs text-text-muted">Toque na foto para alterar</p>
       </div>
 
       <label className="flex flex-col gap-1.5">

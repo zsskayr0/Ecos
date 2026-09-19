@@ -38,7 +38,7 @@
   color-scheme: dark;
 }
 
-[data-theme="light"] {
+html[data-theme="light"] {
   --ecos-base: #eef3fa;
   --ecos-base-rgb: 238 243 250;
   --ecos-surface-1: #f6f9fd;
@@ -62,10 +62,34 @@
   --ecos-text-muted: #6d7994;
   --ecos-text-muted-rgb: 109 121 148;
 
+  /* No claro, os acentos também carregam texto e ícones. As versões do
+     tema escuro eram luminosas demais sobre superfícies claras. */
+  --ecos-steel-700: #d7e5f6;
+  --ecos-steel-700-rgb: 215 229 246;
+  --ecos-steel-500: #2366aa;
+  --ecos-steel-500-rgb: 35 102 170;
+  --ecos-steel-400: #3377b8;
+  --ecos-steel-400-rgb: 51 119 184;
+  --ecos-steel-300: #245e99;
+  --ecos-steel-300-rgb: 36 94 153;
+  --ecos-steel-200: #174978;
+  --ecos-steel-200-rgb: 23 73 120;
+
+  --ecos-cyan: #087eaf;
+  --ecos-cyan-rgb: 8 126 175;
+  --ecos-violet: #6d4cc6;
+  --ecos-violet-rgb: 109 76 198;
+  --ecos-success: #15803d;
+  --ecos-success-rgb: 21 128 61;
+  --ecos-warning: #b45309;
+  --ecos-warning-rgb: 180 83 9;
+  --ecos-error: #b91c1c;
+  --ecos-error-rgb: 185 28 28;
+
   color-scheme: light;
 }
 
-/* Brand accent and ranking semantics — same values in both modes
+/* Brand accent and ranking semantics — default (dark) values
    (section 1.3), which is why they live outside the theme blocks above. */
 :root {
   --ecos-steel-700: #1e3a5f;
