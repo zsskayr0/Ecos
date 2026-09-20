@@ -8,6 +8,9 @@ pub mod busca;
 pub mod calendario;
 pub mod captura;
 pub mod equipes;
+pub mod eventos;
+#[cfg(test)]
+mod eventos_testes;
 pub mod feed;
 pub mod health;
 pub mod media;
@@ -47,6 +50,15 @@ fn rotas_pareamento_sensiveis() -> Router<AppState> {
         .layer(RateLimitLayer::new(10, Duration::from_secs(60)))
 }
 
+/// Retorno do OAuth do Google: chega sem cookie (é um redirect do navegador vindo do Google), então fica fora do
+/// guard de sessão; quem identifica o usuário é o `state` de uso único. Limite rígido contra tentativa de adivinhar.
+fn rotas_oauth_publicas() -> Router<AppState> {
+    Router::new()
+        .route("/calendario/callback/:provider", get(calendario::callback))
+        .route("/calendario/retorno.css", get(calendario::retorno_css))
+        .layer(RateLimitLayer::new(20, Duration::from_secs(60)))
+}
+
 fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
@@ -79,6 +91,15 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/tarefas/:id/time-entries/:entrada", patch(tarefas::atualizar_time_entry).delete(tarefas::excluir_time_entry))
         .route("/tarefas/:id/anexos", post(tarefas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/tarefas/:id/anexos/:nome_arquivo", get(tarefas::obter_anexo))
+        .route("/eventos", get(eventos::listar).post(eventos::criar))
+        .route("/eventos/tempo", get(eventos::tempo))
+        .route("/eventos/categorias", get(eventos::listar_categorias).post(eventos::criar_categoria))
+        .route("/eventos/categorias/:id", patch(eventos::atualizar_categoria).delete(eventos::excluir_categoria))
+        .route("/eventos/:id", get(eventos::obter).patch(eventos::atualizar).delete(eventos::excluir))
+        .route("/eventos/:id/vinculos", axum::routing::put(eventos::definir_vinculos))
+        .route("/eventos/:id/ocorrencias", patch(eventos::atualizar_ocorrencia).delete(eventos::cancelar_ocorrencia))
+        .route("/tarefas/:id/eventos", get(eventos::da_tarefa))
+        .route("/notas/:id/eventos", get(eventos::da_nota))
         .route("/agenda/capacidade", get(tarefas::capacidade))
         .route("/agenda/blocos", get(tarefas::listar_blocos))
         .route("/feed", get(feed::obter))
@@ -89,6 +110,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/equipes/:id", get(equipes::obter).patch(equipes::atualizar).delete(equipes::excluir))
         .route("/equipes/:id/membros", get(equipes::listar_membros))
         .route("/equipes/:id/membros/:usuario_id", patch(equipes::trocar_cargo).delete(equipes::remover_membro))
+        .route("/equipes/:id/sair", post(equipes::sair))
         .route("/equipes/:id/convites", post(equipes::criar_convite))
         .route("/convites/:codigo/aceitar", post(equipes::aceitar_convite))
         .route("/notificacoes", get(notificacoes::listar))
@@ -100,11 +122,10 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .merge(rotas_pareamento_sensiveis())
         .route("/sync/dispositivos/:id", patch(sync::atualizar_dispositivo).delete(sync::excluir_dispositivo))
         .route("/sync/config", patch(sync::atualizar_config))
-        .route("/equipes/:id/sair", post(equipes::sair))
         .route("/sync/dispositivos/:id/push", patch(sync::atualizar_push))
         .route("/calendario/config", get(calendario::config))
         .route("/calendario/conectar/:provider", get(calendario::conectar))
-        .route("/calendario/callback/:provider", get(calendario::callback))
+        .route("/calendario/sincronizar", post(calendario::sincronizar))
         .route("/calendario/:provider", delete(calendario::desconectar))
         .route("/vault/*resto", axum::routing::any(vault_proxy::encaminhar))
         .route_layer(from_fn_with_state(state, exigir_sessao))
@@ -116,6 +137,7 @@ pub fn montar(state: AppState) -> Router {
         .route("/auth/registrar", post(crate::auth::registrar))
         .route("/auth/logout", post(crate::auth::logout))
         .merge(rotas_auth_sensiveis())
+        .merge(rotas_oauth_publicas())
         .merge(rotas_protegidas(state.clone()))
         .fallback(|| async {
             (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 9;
+const SCHEMA_VERSION_CONHECIDA: i64 = 14;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
@@ -25,7 +25,12 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0006_time_entries_up.sql")).down(include_str!("../../migrations/0006_time_entries_down.sql")),
         M::up(include_str!("../../migrations/0007_pasta_por_espaco_up.sql")).down(include_str!("../../migrations/0007_pasta_por_espaco_down.sql")),
         M::up(include_str!("../../migrations/0008_tarefa_concluida_em_up.sql")).down(include_str!("../../migrations/0008_tarefa_concluida_em_down.sql")),
+        M::up(include_str!("../../migrations/0009_eventos_up.sql")).down(include_str!("../../migrations/0009_eventos_down.sql")),
+        M::up(include_str!("../../migrations/0010_calendario_google_up.sql")).down(include_str!("../../migrations/0010_calendario_google_down.sql")),
         M::up(include_str!("../../migrations/0010_consentimento_up.sql")).down(include_str!("../../migrations/0010_consentimento_down.sql")),
+        M::up(include_str!("../../migrations/0011_evento_exclusao_google_up.sql")).down(include_str!("../../migrations/0011_evento_exclusao_google_down.sql")),
+        M::up(include_str!("../../migrations/0012_evento_excecoes_up.sql")).down(include_str!("../../migrations/0012_evento_excecoes_down.sql")),
+        M::up(include_str!("../../migrations/0013_evento_cor_up.sql")).down(include_str!("../../migrations/0013_evento_cor_down.sql")),
     ])
 }
 
@@ -74,6 +79,16 @@ impl IndexDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Registrar uma migration sem subir `SCHEMA_VERSION_CONHECIDA` faz o app se recusar a reiniciar sobre o
+    /// próprio banco (o primeiro boot migra, o segundo vê versão > constante). Este teste pega a esquecida.
+    #[test]
+    fn a_constante_do_gate_acompanha_o_numero_de_migrations_registradas() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrations().to_latest(&mut conn).unwrap();
+        let aplicada: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(aplicada, SCHEMA_VERSION_CONHECIDA, "atualize SCHEMA_VERSION_CONHECIDA ao registrar uma migration");
+    }
 
     #[tokio::test]
     async fn abre_aplica_migrations_e_aceita_leitura() {

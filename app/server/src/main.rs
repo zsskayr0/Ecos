@@ -4,17 +4,19 @@
 //! Tauri (fora de escopo deste binário).
 
 mod auth;
+mod calendario;
 mod config;
 mod conta;
 mod db;
 mod error;
+mod eventos_fs;
 mod espacos;
 mod jobs;
 mod middleware;
 mod routes;
 mod state;
-
 mod zip;
+
 use config::Config;
 use db::IndexDb;
 use middleware::{rate_limit::RateLimitLayer, security_headers};
@@ -51,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
     jobs::ranking::iniciar(state.clone());
     jobs::watch::iniciar(state.clone());
+    jobs::calendario::iniciar(state.clone());
     jobs::mdns::anunciar(&config);
 
     let mut app = routes::montar(state)

@@ -8,6 +8,7 @@ import { NoteDetailScreen } from "@/screens/Notes/NoteDetailScreen";
 import { FolderCreateScreen } from "@/screens/Notes/FolderCreateScreen";
 import { SearchScreen } from "@/screens/Search/SearchScreen";
 import { AgendaScreen } from "@/screens/Agenda/AgendaScreen";
+import { EventosScreen } from "@/screens/Eventos/EventosScreen";
 import { TaskDetailScreen } from "@/screens/Agenda/TaskDetailScreen";
 import { TaskFoldersRootScreen } from "@/screens/Tasks/TaskFoldersRootScreen";
 import { TaskFolderScreen } from "@/screens/Tasks/TaskFolderScreen";
@@ -25,12 +26,12 @@ import { ConfiguracoesLayout } from "@/screens/Settings/ConfiguracoesLayout";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
 import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
-import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { ContaDadosScreen } from "@/screens/Settings/ContaDadosScreen";
+import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
+import { LicensesScreen } from "@/screens/Settings/LicensesScreen";
 import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
 import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
-import { LicensesScreen } from "@/screens/Settings/LicensesScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 import { MediaScreen } from "@/screens/Media/MediaScreen";
 import { FileViewerScreen } from "@/screens/Media/FileViewerScreen";
@@ -59,6 +60,7 @@ export const screenRoutes = (
     <Route path="/busca" element={<SearchScreen />} />
 
     <Route path="/agenda" element={<AgendaScreen />} />
+    <Route path="/eventos" element={<EventosScreen />} />
     <Route path="/tarefa/:id" element={<TaskDetailScreen />} />
 
     {/* Folder-browsing mode for Tarefas, reachable from the Drawer
@@ -90,16 +92,16 @@ export const screenRoutes = (
       <Route path="servidor" element={<ServerConfigScreen />} />
       <Route path="sync" element={<Navigate to="/configuracoes/servidor" replace />} />
       <Route path="privacidade" element={<PrivacyVaultScreen />} />
+      <Route path="conta" element={<ContaDadosScreen />} />
       <Route path="aparencia" element={<AparenciaScreen />} />
       <Route path="calendario" element={<CalendarPreferencesScreen />} />
-      <Route path="conta" element={<ContaDadosScreen />} />
       <Route path="organizacao" element={<OrganizationScreen />} />
       <Route path="sobre" element={<AboutScreen />} />
+      <Route path="sobre/licencas" element={<LicensesScreen />} />
       <Route path="perfil" element={<ProfileScreen />} />
       <Route path="editar-perfil" element={<EditarPerfilScreen />} />
       <Route path="rotina" element={<RotinaScreen />} />
       <Route path="equipes" element={<TeamsScreen />} />
-      <Route path="sobre/licencas" element={<LicensesScreen />} />
       <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
       <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
       <Route path="notificacoes" element={<NotificationsScreen />} />

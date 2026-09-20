@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BlocoPlanejado, TarefaResumo } from "@/lib/api";
+import type { BlocoPlanejado, Evento, TarefaResumo } from "@/lib/api";
 
 vi.mock("@/lib/use-espaco-filtro", () => ({ useEspacoFiltro: () => undefined }));
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -14,10 +14,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
     agenda: { blocos: vi.fn() },
     rotina: { ...original.rotina, listar: vi.fn() },
+    eventos: { ...original.eventos, listar: vi.fn(), obter: vi.fn(), atualizar: vi.fn(), atualizarOcorrencia: vi.fn(), cancelarOcorrencia: vi.fn(), categorias: { ...original.eventos.categorias, listar: vi.fn() } },
   };
 });
 
-import { agenda, ApiError, rotina, tarefas } from "@/lib/api";
+import { agenda, ApiError, eventos as eventosApi, rotina, tarefas } from "@/lib/api";
 import { EVENTO_ARRASTE_TAREFA } from "@/lib/arraste-tarefa";
 import { CHAVE_PREFERENCIAS_CALENDARIO, salvarPreferenciasCalendario } from "@/lib/preferencias-calendario";
 import { RefreshProvider } from "@/lib/refresh-bus";
@@ -39,6 +40,14 @@ const criarBloco = vi.mocked(tarefas.timeEntries.criar);
 const atualizarBloco = vi.mocked(tarefas.timeEntries.atualizar);
 const excluirBloco = vi.mocked(tarefas.timeEntries.excluir);
 const buscarBlocos = vi.mocked(agenda.blocos);
+const atualizarEvento = vi.mocked(eventosApi.atualizar);
+const atualizarOcorrencia = vi.mocked(eventosApi.atualizarOcorrencia);
+
+let eventosDoServidor: Evento[] = [];
+const ev = (id: string, titulo: string, inicio: string, fim: string, extra: Partial<Evento> = {}): Evento => ({
+  id, titulo, inicio, fim, dia_inteiro: false, fuso: null, local: null, categoria_id: null, categoria: null, visibilidade: "privado", rrule: null, espaco: "pessoal",
+  origem_google: false, sync_pendente: false, criado_em: "2026-09-01T00:00:00Z", atualizado_em: "2026-09-01T00:00:00Z", tarefas: [], notas: [], ...extra,
+});
 
 let blocosDoServidor: BlocoPlanejado[] = [];
 
@@ -77,9 +86,19 @@ function registrarScrollTop() {
 }
 const rolagem = () => (screen.getByTestId("grade-rolagem") as HTMLElement & { __st?: number }).__st;
 
-async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: string; dia?: string; blocos?: BlocoPlanejado[] } = {}) {
+async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: string; dia?: string; blocos?: BlocoPlanejado[]; eventos?: Evento[] } = {}) {
   const { tarefasDoServidor = [TAREFA_AGENDADA], modo = "semana", dia = "2026-09-22" } = opcoes;
   blocosDoServidor = opcoes.blocos ?? [BLOCO];
+  eventosDoServidor = opcoes.eventos ?? [];
+  vi.mocked(eventosApi.listar).mockImplementation(async () => eventosDoServidor);
+  vi.mocked(eventosApi.categorias.listar).mockResolvedValue([]);
+  // Como o servidor: a mudança de uma ocorrência vira uma exceção na série.
+  atualizarOcorrencia.mockImplementation((async (id: string, p: { original: string; inicio?: string; fim?: string }) => {
+    eventosDoServidor = eventosDoServidor.map((e) => (e.id === id ? { ...e, excecoes: [...(e.excecoes ?? []), { original: p.original, cancelada: false, titulo: null, inicio: p.inicio ?? null, fim: p.fim ?? null, local: null, descricao: null, sync_pendente: false }] } : e));
+    return eventosDoServidor.find((e) => e.id === id);
+  }) as never);
+  // Como o servidor: o PATCH muda o evento, e a recarga seguinte devolve a versão nova.
+  atualizarEvento.mockImplementation((async (id: string, p: { inicio?: string; fim?: string }) => { eventosDoServidor = eventosDoServidor.map((e) => (e.id === id ? { ...e, ...p } : e)); return eventosDoServidor.find((e) => e.id === id); }) as never);
   localStorage.setItem("ecos:agenda:visualizacao", JSON.stringify({ modo, dia }));
   listar.mockResolvedValue({ items: tarefasDoServidor, next_cursor: null } as never);
   buscarBlocos.mockImplementation(async () => blocosDoServidor);
@@ -236,17 +255,83 @@ describe("blocos de tempo na grade", () => {
     fireEvent.change(screen.getByLabelText("Encaixe ao arrastar"), { target: { value: "30" } });
     expect(localStorage.getItem("ecos:agenda:encaixe")).toBe("30");
   });
+});
 
-  it("evento local também pode ser movido (só nesta sessão, sem chamar o servidor)", async () => {
-    await abrirAgenda({ blocos: [] });
-    fireEvent.click(screen.getByRole("button", { name: /Evento/ }));
-    fireEvent.change(screen.getByPlaceholderText(/Reunião de planejamento/), { target: { value: "Almoço" } });
-    fireEvent.click(screen.getByRole("button", { name: /Criar evento/ }));
-    const evento = await screen.findByRole("button", { name: /^Almoço,/ });
-    fireEvent.keyDown(evento, { key: "ArrowDown" });
-    expect(screen.getByRole("button", { name: /^Almoço,/ }).getAttribute("aria-label")).toMatch(/09:15 às 10:15/);
+describe("eventos do servidor na grade", () => {
+  it("o evento aparece na coluna e no horário locais (13:00, não 16:00 UTC)", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("e1", "Almoço", "2026-09-23T16:00:00Z", "2026-09-23T17:00:00Z")] });
+    const almoco = await screen.findByRole("button", { name: /^Almoço,/ });
+    expect(almoco.getAttribute("aria-label")).toMatch(/13:00 às 14:00/);
+    expect(almoco.closest("[data-coluna-dia]")!.getAttribute("data-coluna-dia")).toBe("2026-09-23");
+    // Pede ao servidor a janela do período com margem (e o teto de 2000 eventos).
+    const pedido = vi.mocked(eventosApi.listar).mock.calls[0][0] as { de: string; ate: string; limit: number };
+    expect(pedido.limit).toBe(2000);
+    expect(pedido.de <= "2026-09-19T12:00:00.000Z" && pedido.ate >= "2026-09-27T12:00:00.000Z").toBe(true);
+  });
+
+  it("série criada semanas antes aparece nesta semana (expandida), e dia inteiro fica sem horário", async () => {
+    await abrirAgenda({
+      blocos: [],
+      eventos: [
+        ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU" }),
+        ev("d1", "Feriado", "2026-09-24T03:00:00Z", "2026-09-25T03:00:00Z", { dia_inteiro: true }),
+      ],
+    });
+    const alinhamento = await screen.findByRole("button", { name: /^Alinhamento,/ });
+    expect(alinhamento.closest("[data-coluna-dia]")!.getAttribute("data-coluna-dia")).toBe("2026-09-22");
+    expect(item("evento:d1@2026-09-24")).toBeTruthy();
+  });
+
+  it("evento simples arrastado por teclado grava o novo horário no servidor (e não mexe em tarefas nem blocos)", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("e1", "Almoço", "2026-09-23T16:00:00Z", "2026-09-23T17:00:00Z")] });
+    fireEvent.keyDown(await screen.findByRole("button", { name: /^Almoço,/ }), { key: "ArrowDown" });
+    expect(screen.getByRole("button", { name: /^Almoço,/ }).getAttribute("aria-label")).toMatch(/13:15 às 14:15/); // na hora
+    await waitFor(() => expect(atualizarEvento).toHaveBeenCalledWith("e1", { inicio: "2026-09-23T16:15:00.000Z", fim: "2026-09-23T17:15:00.000Z" }));
     expect(atualizarBloco).not.toHaveBeenCalled();
     expect(atualizarTarefa).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Almoço,/ }).getAttribute("aria-label")).toMatch(/13:15 às 14:15/)); // depois de recarregar do servidor
+  });
+
+  it("arrastar uma ocorrência de série muda só ela (exceção); a série e as outras semanas não mudam", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU" })] });
+    fireEvent.keyDown(await screen.findByRole("button", { name: /^Alinhamento,/ }), { key: "ArrowDown" });
+    expect(screen.getByRole("button", { name: /^Alinhamento,/ }).getAttribute("aria-label")).toMatch(/10:15 às 11:15/); // na hora
+    await waitFor(() => expect(atualizarOcorrencia).toHaveBeenCalledWith("s1", { original: "2026-09-22T13:00:00.000Z", inicio: "2026-09-22T13:15:00.000Z", fim: "2026-09-22T14:15:00.000Z" }));
+    expect(atualizarEvento).not.toHaveBeenCalled(); // a série em si nunca é reescrita
+    expect(atualizarBloco).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Alinhamento,/ }).getAttribute("aria-label")).toMatch(/10:15 às 11:15/)); // depois de recarregar
+  });
+
+  it("ocorrência cancelada no servidor não aparece na grade", async () => {
+    const cancelada = { original: "2026-09-22T13:00:00.000Z", cancelada: true, titulo: null, inicio: null, fim: null, local: null, descricao: null, sync_pendente: false };
+    await abrirAgenda({ blocos: [], eventos: [ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU", excecoes: [cancelada] })] });
+    await screen.findByLabelText("Encaixe ao arrastar");
+    await waitFor(() => expect(eventosApi.listar).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /^Alinhamento,/ })).toBeNull();
+  });
+
+  it("clicar numa ocorrência de série abre a edição só dela", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU", origem_google: true })] });
+    vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "" });
+    fireEvent.click(await screen.findByRole("button", { name: /^Alinhamento,/ }));
+    expect(await screen.findByText(/Só esta ocorrência muda/)).toBeTruthy();
+    expect(eventosApi.obter).toHaveBeenCalledWith("s1");
+  });
+
+  it("se o servidor recusar, o evento volta ao horário de antes e a pessoa é avisada", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("e1", "Almoço", "2026-09-23T16:00:00Z", "2026-09-23T17:00:00Z")] });
+    atualizarEvento.mockRejectedValue(new ApiError("VALIDATION_ERROR", "O fim precisa ser depois do início.", 422));
+    fireEvent.keyDown(await screen.findByRole("button", { name: /^Almoço,/ }), { key: "ArrowDown" });
+    expect(await screen.findByText(/A mudança foi desfeita/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Almoço,/ }).getAttribute("aria-label")).toMatch(/13:00 às 14:00/));
+  });
+
+  it("clicar num evento abre a edição dele (o mesmo diálogo da aba Eventos), com o dia aberto como padrão para novos", async () => {
+    await abrirAgenda({ blocos: [], eventos: [ev("e1", "Almoço", "2026-09-23T16:00:00Z", "2026-09-23T17:00:00Z")] });
+    vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "no centro" });
+    fireEvent.click(await screen.findByRole("button", { name: /^Almoço,/ }));
+    expect(await screen.findByDisplayValue("Almoço")).toBeTruthy();
+    expect(eventosApi.obter).toHaveBeenCalledWith("e1");
   });
 });
 
@@ -328,6 +413,47 @@ describe("alocar tempo por diálogo (sem arrastar)", () => {
     expect(atualizarTarefa).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog", { name: /Alocar tempo/ })).toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe("o painel do dia lista os eventos (não só as tarefas)", () => {
+  const eventosDoDia = () => [
+    ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z", { local: "Sala 2" }),
+    ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU", origem_google: true }),
+    ev("d1", "Feriado", "2026-09-22T03:00:00Z", "2026-09-23T03:00:00Z", { dia_inteiro: true }),
+  ];
+  const abrirPainel = () => fireEvent.click(document.querySelector("[data-cabecalho-dia='2026-09-22'] button")!);
+
+  it("mostra os eventos do dia (dia inteiro primeiro, depois por horário) e não diz 'Nada agendado'", async () => {
+    await abrirAgenda({ blocos: [], tarefasDoServidor: [], eventos: eventosDoDia() });
+    await screen.findByRole("button", { name: /^Almoço,/ });
+    abrirPainel();
+    const secao = await screen.findByRole("region", { name: "Eventos neste dia" });
+    expect(within(secao).getByText("Eventos · 3")).toBeTruthy();
+    expect(within(secao).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Abrir evento Feriado", "Abrir evento Alinhamento", "Abrir evento Almoço"]);
+    expect(secao.textContent).toContain("Dia inteiro");
+    expect(secao.textContent).toContain("10:00 – 11:00 · 1h"); // a ocorrência da série neste dia
+    expect(secao.textContent).toContain("13:00 – 14:00 · 1h · Sala 2");
+    expect(screen.queryByText(/Nada agendado/)).toBeNull();
+  });
+
+  it("clicar num evento do painel fecha o painel e abre o editor dele", async () => {
+    await abrirAgenda({ blocos: [], tarefasDoServidor: [], eventos: eventosDoDia() });
+    vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "" });
+    await screen.findByRole("button", { name: /^Almoço,/ });
+    abrirPainel();
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir evento Almoço" }));
+    await waitFor(() => expect(eventosApi.obter).toHaveBeenCalledWith("e1"));
+    expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull();
+    expect(await screen.findByLabelText("Título")).toBeTruthy();
+  });
+
+  it("dia sem nada continua dizendo que não há nada agendado", async () => {
+    await abrirAgenda({ blocos: [], tarefasDoServidor: [], eventos: [] });
+    await screen.findByLabelText("Encaixe ao arrastar");
+    abrirPainel();
+    expect(await screen.findByText(/Nada agendado|Dia livre/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Eventos neste dia" })).toBeNull();
   });
 });
 

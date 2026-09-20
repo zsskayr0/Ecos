@@ -24,3 +24,9 @@ if (!Element.prototype.setPointerCapture) Element.prototype.setPointerCapture = 
 if (!Element.prototype.releasePointerCapture) Element.prototype.releasePointerCapture = () => {};
 if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
 if (!Element.prototype.scrollBy) Element.prototype.scrollBy = () => {};
+
+// O jsdom não implementa <dialog>.showModal()/close(): o bastante para os diálogos nativos abrirem e fecharem nos testes.
+if (typeof HTMLDialogElement !== "undefined") {
+  if (!HTMLDialogElement.prototype.showModal) HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute("open", ""); };
+  if (!HTMLDialogElement.prototype.close) HTMLDialogElement.prototype.close = function close() { this.removeAttribute("open"); };
+}

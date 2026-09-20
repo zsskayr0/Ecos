@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BlocoPlanejado, TarefaResumo } from "@/lib/api";
+import type { BlocoPlanejado, Evento, TarefaResumo } from "@/lib/api";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
@@ -13,14 +13,17 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
     agenda: { blocos: vi.fn() },
     rotina: { ...original.rotina, listar: vi.fn() },
+    eventos: { ...original.eventos, listar: vi.fn() },
   };
 });
 
-import { agenda, rotina, tarefas } from "@/lib/api";
-import { definirEventosLocais } from "@/lib/eventos-locais";
+import { agenda, eventos as eventosApi, rotina, tarefas } from "@/lib/api";
 import { RefreshProvider, useRefreshBus } from "@/lib/refresh-bus";
 import { AppUIProvider } from "@/lib/ui-context";
 import { TodayScreen } from "./TodayScreen";
+
+vi.mock("@/lib/documento-popup", () => ({ useAbrirDocumento: () => vi.fn() }));
+vi.mock("@/screens/Eventos/EventoDialog", () => ({ EventoDialog: ({ aberto, eventoId }: { aberto: boolean; eventoId: string | null }) => aberto ? <div data-evento-aberto={eventoId}>Editor de evento</div> : null }));
 
 // Hoje = terça 22/09/2026 10:30 (Brasília).
 const AGORA = new Date("2026-09-22T13:30:00Z");
@@ -31,8 +34,18 @@ const CAPACIDADE = { data: HOJE, total_dia_min: 960, consumido_rotina_min: 0, co
 let doDia: TarefaResumo[] = [];
 let atrasadas: TarefaResumo[] = [];
 let blocos: BlocoPlanejado[] = [];
+let eventosDoServidor: Evento[] = [];
+let concluidas: TarefaResumo[] = [];
 
-function Sonda() { const { versao } = useRefreshBus(); return <span data-testid="versao">{versao}</span>; }
+/** Evento do servidor de HOJE (horário local), como a tela recebe da API. `minutos: null` = dia inteiro. */
+function eventoHoje(id: number, titulo: string, minutos: number | null, duracaoMin = 60): Evento {
+  const [a, m, d] = HOJE.split("-").map(Number);
+  const inicio = new Date(a, m - 1, d, 0, minutos ?? 0);
+  const fim = minutos === null ? new Date(a, m - 1, d + 1) : new Date(inicio.getTime() + duracaoMin * 60_000);
+  return { id: String(id), titulo, inicio: inicio.toISOString(), fim: fim.toISOString(), dia_inteiro: minutos === null, fuso: null, local: null, categoria_id: null, categoria: null, visibilidade: "privado", rrule: null, espaco: "pessoal", origem_google: false, sync_pendente: false, criado_em: "2026-09-01T00:00:00Z", atualizado_em: "2026-09-01T00:00:00Z", tarefas: [], notas: [] };
+}
+
+function Sonda() { const { versao, notificar } = useRefreshBus(); return <><span data-testid="versao">{versao}</span><button type="button" onClick={notificar}>avisar-refresh</button></>; }
 function montar() {
   render(<MemoryRouter><AppUIProvider><RefreshProvider><Sonda /><TodayScreen /></RefreshProvider></AppUIProvider></MemoryRouter>);
 }
@@ -42,11 +55,11 @@ const itensDe = (id: string) => [...(grupo(id)?.querySelectorAll("[data-item-dia
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  definirEventosLocais([]);
-  doDia = []; atrasadas = []; blocos = [];
+  doDia = []; atrasadas = []; blocos = []; eventosDoServidor = []; concluidas = [];
+  vi.mocked(eventosApi.listar).mockImplementation(async () => eventosDoServidor);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(AGORA);
-  vi.mocked(tarefas.listar).mockImplementation((async (p: { data_ate?: string }) => ({ items: p.data_ate === HOJE ? doDia : atrasadas, next_cursor: null })) as never);
+  vi.mocked(tarefas.listar).mockImplementation((async (p: { data_ate?: string; status?: string }) => ({ items: p.status === "concluida" ? concluidas : p.data_ate === HOJE ? doDia : atrasadas, next_cursor: null })) as never);
   vi.mocked(agenda.blocos).mockImplementation(async () => blocos);
   vi.mocked(tarefas.capacidade).mockResolvedValue(CAPACIDADE);
   vi.mocked(rotina.listar).mockResolvedValue([{ id: "r", tipo: "sono", hora_inicio: "23:00", hora_fim: "07:00", dias_semana: "diario", classificacao: "sono" }] as never);
@@ -54,19 +67,19 @@ beforeEach(() => {
   vi.mocked(tarefas.atualizarStatus).mockResolvedValue({ id: "x", status: "concluida" });
   vi.mocked(tarefas.timeEntries.criar).mockResolvedValue({ id: "e" });
 });
-afterEach(() => { vi.useRealTimers(); definirEventosLocais([]); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("Hoje como planejamento diário", () => {
   it("combina agendadas, prazos, eventos, atrasadas e blocos em grupos distintos e ordenados", async () => {
     doDia = [t("tarde", { scheduled_at: "2026-09-22T19:00:00Z" }), t("cedo", { scheduled_at: "2026-09-22T12:00:00Z" }), t("prazo", { due_date: HOJE })];
     atrasadas = [t("velha", { due_date: "2026-09-15" })];
     blocos = [{ id: "b1", tarefa_id: "x", tipo: "planejado", inicio_em: "2026-09-22T15:00:00+00:00", duracao_min: 60, foco: "", titulo: "Foco", status: "pendente", prioridade: "baixa" } as unknown as BlocoPlanejado];
-    definirEventosLocais([{ id: 7, titulo: "Reunião", inicio: HOJE, cor: "", minutos: 13 * 60, duracaoMin: 60 }, { id: 8, titulo: "Feriado", inicio: HOJE, cor: "", minutos: null, duracaoMin: 60 }]);
+    eventosDoServidor = [eventoHoje(7, "Reunião", 13 * 60), eventoHoje(8, "Feriado", null)];
     montar();
     await screen.findByText("Tarefa velha");
     expect(itensDe("atrasadas")).toEqual(["tarefa:velha"]);
-    expect(itensDe("dia-todo")).toEqual(["evento:8"]);
-    expect(itensDe("cronograma")).toEqual(["tarefa:cedo", "bloco:b1", "evento:7", "tarefa:tarde"]); // 09:00, 12:00, 13:00, 16:00
+    expect(itensDe("dia-todo")).toEqual([`evento:8@${HOJE}`]);
+    expect(itensDe("cronograma")).toEqual(["tarefa:cedo", "bloco:b1", `evento:7@${HOJE}`, "tarefa:tarde"]); // 09:00, 12:00, 13:00, 16:00
     expect(itensDe("sem-horario")).toEqual(["tarefa:prazo"]);
     expect(document.querySelector("[data-capacidade]")?.textContent).toMatch(/5h/);
   });
@@ -92,10 +105,30 @@ describe("Hoje como planejamento diário", () => {
   });
 
   it("estado vazio considera eventos: com um evento hoje o dia NÃO está livre", async () => {
-    definirEventosLocais([{ id: 1, titulo: "Dentista", inicio: HOJE, cor: "", minutos: 600, duracaoMin: 60 }]);
+    eventosDoServidor = [eventoHoje(1, "Dentista", 600)];
     montar();
     await screen.findByText("Dentista");
     expect(screen.queryByText("Seu dia está livre.")).toBeNull();
+  });
+
+  it("mostra as tarefas concluídas hoje em um grupo próprio e permite abri-las", async () => {
+    concluidas = [t("feita", { titulo: "Tarefa feita", status: "concluida", concluida_em: "2026-09-22T13:00:00Z" })];
+    montar();
+    expect(await screen.findByText("Concluídas neste dia")).toBeTruthy();
+    expect(document.querySelector('[data-grupo="concluidas"] [data-item-concluida="feita"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Abrir tarefa concluída Tarefa feita" })).toBeTruthy();
+    expect(screen.queryByText("Seu dia está livre.")).toBeNull();
+  });
+
+  it("as tarefas e os eventos podem ser abertos pela própria linha", async () => {
+    doDia = [t("a", { due_date: HOJE })];
+    eventosDoServidor = [eventoHoje(9, "Consulta", 600)];
+    montar();
+    await screen.findByText("Consulta");
+    expect(screen.getByRole("button", { name: "Abrir tarefa Tarefa a" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir evento Consulta" }));
+    expect(await screen.findByText("Editor de evento")).toBeTruthy();
+    expect(document.querySelector("[data-evento-aberto]")?.getAttribute("data-evento-aberto")).toBe("9");
   });
 
   it("estado vazio considera a rotina: mostra o tempo livre dela, ou pede para configurar", async () => {
@@ -118,6 +151,19 @@ describe("Hoje como planejamento diário", () => {
       fireEvent.click(screen.getByRole("button", { name: "Concluir Tarefa a" }));
       expect(screen.queryByText("Tarefa a")).toBeNull();
       await waitFor(() => expect(Number(screen.getByTestId("versao").textContent)).toBeGreaterThan(antes));
+      expect(tarefas.atualizarStatus).toHaveBeenCalledWith("a", "concluida");
+    });
+
+    it("tempo alocado de uma tarefa com prazo hoje: um item só, com ações; concluir tira tarefa e bloco", async () => {
+      doDia = [t("a", { due_date: HOJE })];
+      blocos = [{ id: "b1", tarefa_id: "a", tipo: "planejado", inicio_em: "2026-09-22T15:00:00+00:00", duracao_min: 60, foco: "", titulo: "Tarefa a", status: "pendente", prioridade: "baixa" } as unknown as BlocoPlanejado];
+      montar();
+      await screen.findByText("Prazo hoje");
+      expect(itensDe("cronograma")).toEqual(["bloco:b1"]);
+      expect(itensDe("sem-horario")).toEqual([]); // o prazo não se repete
+      expect(screen.queryByRole("button", { name: "Encaixar tempo para Tarefa a" })).toBeNull(); // já tem tempo
+      fireEvent.click(screen.getByRole("button", { name: "Concluir Tarefa a" }));
+      expect(screen.queryByText("Tarefa a")).toBeNull();
       expect(tarefas.atualizarStatus).toHaveBeenCalledWith("a", "concluida");
     });
 
@@ -155,10 +201,11 @@ describe("Hoje como planejamento diário", () => {
     });
   });
 
-  it("um evento criado depois aparece sem recarregar (estado compartilhado com a Agenda)", async () => {
+  it("um evento criado depois aparece quando o RefreshBus avisa (mesmo caminho da Agenda)", async () => {
     montar();
     await screen.findByText("Seu dia está livre.");
-    act(() => definirEventosLocais([{ id: 3, titulo: "Almoço", inicio: HOJE, cor: "", minutos: 720, duracaoMin: 60 }]));
+    eventosDoServidor = [eventoHoje(3, "Almoço", 720)];
+    fireEvent.click(screen.getByRole("button", { name: "avisar-refresh" }));
     expect(await screen.findByText("Almoço")).toBeTruthy();
     expect(screen.queryByText("Seu dia está livre.")).toBeNull();
   });

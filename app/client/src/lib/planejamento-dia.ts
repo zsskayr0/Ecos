@@ -15,8 +15,10 @@ export interface ItemDoDia {
   comPrazo?: boolean;
   /** Só em atrasadas: o dia em que venceu/estava agendada. */
   desde?: string;
-  /** Só em `bloco`: o bloco de tempo. */
+  /** Só em `bloco`: o bloco de tempo. Nele, `tarefa` (quando pendente na lista) habilita as ações rápidas. */
   blocoId?: string;
+  /** Só em `evento`: a ocorrência local, para abrir o evento correto (inclusive em séries). */
+  evento?: EventoLocal;
 }
 
 export interface PlanejamentoDoDia {
@@ -32,13 +34,17 @@ const pesoPrioridade = (t?: TarefaResumo) => (t?.prioridade === "alta" ? 0 : t?.
 /**
  * Junta tudo o que pesa no dia, cada Tarefa em UM só grupo:
  *  atrasadas (prazo/agendamento antes de hoje) > agendadas hoje (cronograma) > prazo hoje sem horário.
- * Eventos e blocos de tempo entram no cronograma (ou "dia todo"). Pura: sem relógio, sem rede.
+ * Eventos e blocos de tempo entram no cronograma (ou "dia todo"). Prazo hoje + tempo alocado hoje = um item só: o bloco
+ * (no cronograma) leva a marca de prazo e o prazo não se repete em "sem horário". Pura: sem relógio, sem rede.
  */
 export function montarPlanejamento({ hoje, tarefas, blocos, eventos }: { hoje: string; tarefas: TarefaResumo[]; blocos: BlocoPlanejado[]; eventos: EventoLocal[] }): PlanejamentoDoDia {
   const atrasadas: ItemDoDia[] = [];
   const diaTodo: ItemDoDia[] = [];
   const cronograma: ItemDoDia[] = [];
   const semHorario: ItemDoDia[] = [];
+  const pendentes = new Map(tarefas.filter((t) => t.status === "pendente").map((t) => [t.id, t]));
+  const blocosDeHoje = blocos.filter((b) => b.tipo === "planejado" && b.status !== "concluida" && diaEMinutosLocais(b.inicio_em).dia === hoje);
+  const comTempoHoje = new Set(blocosDeHoje.map((b) => b.tarefa_id));
 
   for (const t of tarefas) {
     if (t.status !== "pendente") continue;
@@ -50,18 +56,20 @@ export function montarPlanejamento({ hoje, tarefas, blocos, eventos }: { hoje: s
     const desde = [vencida, agendadaAntes].filter((d): d is string => !!d).sort()[0];
     if (desde) atrasadas.push({ ...base, tipo: agendada ? "tarefa" : "prazo", inicioMin: agendada?.minutos ?? null, desde });
     else if (agendada && agendada.dia === hoje) cronograma.push({ ...base, tipo: "tarefa", inicioMin: agendada.minutos, comPrazo: t.due_date === hoje });
-    else if (t.due_date === hoje) semHorario.push({ ...base, tipo: "prazo", inicioMin: null });
+    else if (t.due_date === hoje && !comTempoHoje.has(t.id)) semHorario.push({ ...base, tipo: "prazo", inicioMin: null });
   }
 
-  for (const b of blocos) {
-    if (b.tipo !== "planejado" || b.status === "concluida") continue;
-    const { dia, minutos } = diaEMinutosLocais(b.inicio_em);
-    if (dia === hoje) cronograma.push({ chave: `bloco:${b.id}`, tipo: "bloco", titulo: b.titulo, inicioMin: minutos, duracaoMin: b.duracao_min, blocoId: b.id });
+  for (const b of blocosDeHoje) {
+    const tarefa = pendentes.get(b.tarefa_id);
+    cronograma.push({
+      chave: `bloco:${b.id}`, tipo: "bloco", titulo: b.titulo, inicioMin: diaEMinutosLocais(b.inicio_em).minutos, duracaoMin: b.duracao_min, blocoId: b.id,
+      tarefa, comPrazo: tarefa?.due_date === hoje,
+    });
   }
 
   for (const e of eventos) {
     if (e.inicio !== hoje) continue;
-    const item: ItemDoDia = { chave: `evento:${e.id}`, tipo: "evento", titulo: e.titulo, inicioMin: e.minutos, duracaoMin: e.duracaoMin };
+    const item: ItemDoDia = { chave: `evento:${e.id}`, tipo: "evento", titulo: e.titulo, inicioMin: e.minutos, duracaoMin: e.duracaoMin, evento: e };
     (e.minutos === null ? diaTodo : cronograma).push(item);
   }
 

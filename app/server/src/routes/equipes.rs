@@ -141,14 +141,16 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-pub async fn listar_membros(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+/// Só quem é membro da Equipe vê quem participa dela, e só o necessário: o id de cada membro e o cargo.
+pub async fn listar_membros(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin", "membro"])?;
     let membros: Vec<serde_json::Value> = state
         .db
         .with(move |conn| {
-            let mut stmt = conn.prepare("SELECT usuario_id, cargo, entrou_em FROM membro_equipe WHERE equipe_id = ?1")?;
+            let mut stmt = conn.prepare("SELECT usuario_id, cargo FROM membro_equipe WHERE equipe_id = ?1")?;
             let linhas = stmt
                 .query_map([&id], |r| {
-                    Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "cargo": r.get::<_, String>(1)?, "entrou_em": r.get::<_, String>(2)? }))
+                    Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "cargo": r.get::<_, String>(1)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -271,3 +273,6 @@ pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): 
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
+
+#[cfg(test)]
+mod testes;

@@ -207,7 +207,7 @@ mod tests {
             config: Arc::new(Config {
                 ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(),
                 index_db_path: temp.join("index.db"), vault_enabled: false, vault_internal_url: String::new(),
-                session_secret: secret.clone(), ranking_interval_secs: 300, static_dir: None, cookie_secure: false,
+                session_secret: secret.clone(), ranking_interval_secs: 300, static_dir: None, cookie_secure: false, google: None,
             }),
             http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
         };

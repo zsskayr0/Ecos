@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { useEventosLocais, type EventoLocal } from "@/lib/eventos-locais";
+import type { EventoLocal } from "@/lib/eventos-locais";
+import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { AlertTriangle, ListChecks, Clock, CheckCircle2, ChevronLeft, ChevronRight, Pin, X, CalendarDays, CalendarRange, CalendarPlus, Columns3, Flag, LayoutGrid, PanelTop, Plus, Sun } from "lucide-react";
+import { AlertTriangle, ListChecks, Clock, CheckCircle2, ChevronLeft, ChevronRight, Pin, X, CalendarDays, CalendarRange, CalendarPlus, Cloud, Columns3, Flag, LayoutGrid, PanelTop, Plus, Repeat, Sun, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { agenda as agendaApi, tarefas as tarefasApi, rotina as rotinaApi, ApiError, type BlocoPlanejado, type PrioridadeTarefa, type TarefaResumo } from "@/lib/api";
+import { agenda as agendaApi, eventos as eventosApi, tarefas as tarefasApi, rotina as rotinaApi, ApiError, type BlocoPlanejado, type CategoriaEvento, type PrioridadeTarefa, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CalendarClock } from "lucide-react";
@@ -16,7 +17,7 @@ import { usePreferenciasCalendario } from "@/lib/preferencias-calendario";
 import { AlocarTempoDialog } from "./AlocarTempoDialog";
 import { useEdicaoOtimista } from "@/lib/agenda-otimista";
 import { GradeTempo, type NovaTarefaRapida } from "./GradeTempo";
-import { EditorEvento } from "./EditorEvento";
+import { EventoDialog } from "../Eventos/EventoDialog";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAppUI } from "@/lib/ui-context";
 
@@ -164,11 +165,19 @@ export function AgendaScreen() {
   const [tarefasAbertas, setTarefasAbertas] = useState(false);
   const [ancoraPopup, setAncoraPopup] = useState<AncoraPopup | null>(null);
   const [criadorEventoAberto, setCriadorEventoAberto] = useState(false);
-  const [eventosLocais, setEventosLocais] = useEventosLocais();
-  const [eventoEmEdicao, setEventoEmEdicao] = useState<EventoLocal | null>(null);
+  // Eventos vêm do servidor (os mesmos da aba Eventos, inclusive os do Google), com séries expandidas por dia.
+  const periodoDosEventos = limitesDoPeriodo(modo, diaAtual);
+  const { eventos: eventosLocais, mover: moverEventoNoServidor } = useEventosDoPeriodo(periodoDosEventos.de, periodoDosEventos.ate, versao);
+  /** Evento aberto para edição (id no servidor); `ocorrencia` = só aquela ocorrência de uma série. */
+  const [eventoEmEdicao, setEventoEmEdicao] = useState<{ id: string; ocorrencia?: string } | null>(null);
+  const [categoriasEvento, setCategoriasEvento] = useState<CategoriaEvento[]>([]);
+  useEffect(() => { eventosApi.categorias.listar().then(setCategoriasEvento).catch(() => setCategoriasEvento([])); }, [versao]);
   const abrirItemAgenda = (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
     if (item.tipo === "tarefa" || item.tipo === "prazo") abrirDocumento(`/tarefa/${item.id}`, e.type === "click" ? (e as MouseEvent<HTMLElement>) : undefined);
-    else if (item.tipo === "evento") setEventoEmEdicao(eventosLocais.find((ev) => String(ev.id) === item.id) ?? null);
+    else if (item.tipo === "evento") {
+      const evento = eventosLocais.find((ev) => String(ev.id) === item.id);
+      setEventoEmEdicao(evento?.servidorId ? { id: evento.servidorId, ocorrencia: evento.ocorrencia } : null);
+    }
   };
   useEffect(() => { rotinaApi.listar().then((b) => setSemRotina(b.length === 0)).catch(() => setSemRotina(false)); }, [versao]);
 
@@ -271,7 +280,13 @@ export function AgendaScreen() {
 
   function moverItem(item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") {
     if (item.tipo === "evento") {
-      setEventosLocais((atuais: EventoLocal[]) => atuais.map((e) => (String(e.id) === item.id ? { ...e, inicio: destino.dia, minutos: destino.inicioMin, duracaoMin: destino.duracaoMin } : e)));
+      const evento = eventosLocais.find((e) => String(e.id) === item.id);
+      if (!evento?.servidorId) return;
+      if (!evento.movivel) { setAvisoMover("Evento de vários dias: para mudar o horário, clique nele e edite."); return; }
+      // Ocorrência de série: muda só ela (o servidor grava uma exceção; a série continua no Google).
+      moverEventoNoServidor(evento.servidorId, destino, evento.ocorrencia)
+        .then(() => notificar())
+        .catch((e) => setAvisoMover(e instanceof ApiError ? `${e.message} A mudança foi desfeita.` : "Não foi possível mover o evento. A mudança foi desfeita."));
       return;
     }
     if (item.tipo !== "bloco") return; // tarefa com data própria: a Agenda não a move
@@ -360,7 +375,7 @@ export function AgendaScreen() {
       {(modo === "seis_meses" || modo === "anual") && <VisaoPeriodos modo={modo} diaAtual={diaAtual} hoje={hoje} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...eventosLocais.map(itemDoEvento)]} concluidas={concluidasNoDia} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onSelecionar={selecionarDia} onAbrirMes={(mes) => { setDiaAtual(mes); setModo("mes"); }} />}
       </div>
 
-      {tarefasAbertas && <PopupTarefas sheet={!desktop} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
+      {tarefasAbertas && <PopupTarefas sheet={!desktop} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(diaFoco))} onAbrirEvento={(ev) => { setTarefasAbertas(false); setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
       {avisoMover && (
         <div role="alert" className="ecos-fade-in absolute left-1/2 top-3 z-40 flex max-w-[90%] -translate-x-1/2 items-start gap-2 rounded-xl border border-error/40 bg-base px-4 py-3 text-sm text-error shadow-nav">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -369,8 +384,7 @@ export function AgendaScreen() {
         </div>
       )}
       {alocarAberto && <AlocarTempoDialog encaixe={encaixe} onFechar={() => setAlocarAberto(false)} onAlocar={(tarefa, destino) => { setAlocarAberto(false); void alocarTarefa(tarefa, destino); }} />}
-      {criadorEventoAberto && <EditorEvento dia={diaAtual} eventos={eventosLocais} passoMin={encaixe} onFechar={() => setCriadorEventoAberto(false)} onSalvar={(dados) => { setEventosLocais((anteriores: EventoLocal[]) => [...anteriores, { ...dados, id: Date.now() }]); setCriadorEventoAberto(false); }} />}
-      {eventoEmEdicao && <EditorEvento key={eventoEmEdicao.id} dia={diaAtual} evento={eventoEmEdicao} eventos={eventosLocais} passoMin={encaixe} onFechar={() => setEventoEmEdicao(null)} onSalvar={(dados) => { setEventosLocais((anteriores: EventoLocal[]) => anteriores.map((ev) => ev.id === eventoEmEdicao.id ? { ...ev, ...dados } : ev)); setEventoEmEdicao(null); }} onExcluir={() => { setEventosLocais((anteriores: EventoLocal[]) => anteriores.filter((ev) => ev.id !== eventoEmEdicao.id)); setEventoEmEdicao(null); }} />}
+      <EventoDialog aberto={criadorEventoAberto || eventoEmEdicao !== null} eventoId={eventoEmEdicao?.id ?? null} ocorrencia={eventoEmEdicao?.ocorrencia ?? null} diaInicial={diaAtual} categorias={categoriasEvento} eventosNoPeriodo={eventosLocais} passoMin={encaixe} onCategoriasAlteradas={notificar} onFechar={() => { setCriadorEventoAberto(false); setEventoEmEdicao(null); }} onSalvo={() => { setCriadorEventoAberto(false); setEventoEmEdicao(null); notificar(); }} />
     </div>
   );
 }
@@ -523,14 +537,47 @@ function textoDiaVazio(dia: string, hoje: string, concluidas: number): { title: 
   return { title: "Dia livre.", subtitle: "Sem blocos encaixados — aproveite ou capture algo novo." };
 }
 
-function ListaDeTarefas({ blocos, abrirDocumento, dia, concluidas }: { blocos: TarefaResumo[] | null; abrirDocumento: AbrirDocumento; dia: string; concluidas: number }) {
+function ListaDeTarefas({ blocos, abrirDocumento, dia, concluidas, temEventos = false }: { blocos: TarefaResumo[] | null; abrirDocumento: AbrirDocumento; dia: string; concluidas: number; temEventos?: boolean }) {
   const vazio = textoDiaVazio(dia, paraISO(new Date()), concluidas);
   return (
     <div className="flex flex-col gap-2.5">
       {blocos === null ? <p className="py-10 text-center text-sm text-text-muted">Carregando...</p> : blocos.length === 0 ? (
-        vazio && <EmptyState icon={CalendarClock} title={vazio.title} subtitle={vazio.subtitle} />
+        vazio && !temEventos && <EmptyState icon={CalendarClock} title={vazio.title} subtitle={vazio.subtitle} />
       ) : blocos.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")).map((t) => <CartaoTarefa key={t.id} tarefa={t} abrirDocumento={abrirDocumento} />)}
     </div>
+  );
+}
+
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+/** Eventos do dia (os do Google e os só do Ecos), no topo do painel: dia inteiro primeiro, depois por horário. */
+function EventosDoDia({ eventos, onAbrir }: { eventos: EventoLocal[]; onAbrir: (e: EventoLocal) => void }) {
+  if (eventos.length === 0) return null;
+  const ordenados = [...eventos].sort((a, b) => (a.minutos ?? -1) - (b.minutos ?? -1) || a.titulo.localeCompare(b.titulo, "pt-BR"));
+  return (
+    <section aria-label="Eventos neste dia" className="mb-5">
+      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-text-muted"><CalendarDays size={14} aria-hidden />Eventos · {eventos.length}</h3>
+      <ul className="flex flex-col gap-2">
+        {ordenados.map((e) => {
+          const hora = e.minutos === null ? "Dia inteiro" : `${hhmm(e.minutos)} – ${hhmm(Math.min(24 * 60, e.minutos + e.duracaoMin))} · ${formatDuracao(e.duracaoMin)}`;
+          return (
+            <li key={e.id}>
+              <button type="button" onClick={() => onAbrir(e)} aria-label={`Abrir evento ${e.titulo}`} className="flex w-full items-stretch overflow-hidden rounded-2xl border border-border bg-surface-1 text-left transition-colors hover:bg-surface-2">
+                <span aria-hidden className="w-1.5 shrink-0" style={{ backgroundColor: e.corHex ?? "#0891B2" }} />
+                <div className="min-w-0 flex-1 px-3 py-3">
+                  <p className="truncate text-[15px] font-medium text-text-primary">{e.titulo}</p>
+                  <p className="font-mono-value text-xs text-text-muted">{hora}{e.local ? ` · ${e.local}` : ""}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 pr-3 text-text-muted">
+                  {e.ocorrencia && <Repeat size={14} aria-label="Repete" />}
+                  {e.visibilidade === "google" ? <Cloud size={14} aria-label="Google Calendar" /> : <Lock size={13} aria-label="Só no Ecos" />}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -550,21 +597,22 @@ function CartaoTarefa({ tarefa, abrirDocumento }: { tarefa: TarefaResumo; abrirD
   );
 }
 
-function CorpoDoDia({ visao, visaoDia, semRotina, erro, capacidade, pendentes, onAjustarRotina, blocos, dia, concluidasDoDia, abrirDocumento }: { visao: "feed" | "dia"; visaoDia: import("react").ReactNode; semRotina: boolean; erro: string | null; capacidade: Capacidade | null; pendentes: number; onAjustarRotina: () => void; blocos: TarefaResumo[] | null; dia: Date; concluidasDoDia: TarefaResumo[]; abrirDocumento: AbrirDocumento }) {
+function CorpoDoDia({ visao, visaoDia, semRotina, erro, capacidade, pendentes, onAjustarRotina, blocos, dia, concluidasDoDia, abrirDocumento, eventosDoDia, onAbrirEvento }: { eventosDoDia: EventoLocal[]; onAbrirEvento: (e: EventoLocal) => void; visao: "feed" | "dia"; visaoDia: import("react").ReactNode; semRotina: boolean; erro: string | null; capacidade: Capacidade | null; pendentes: number; onAjustarRotina: () => void; blocos: TarefaResumo[] | null; dia: Date; concluidasDoDia: TarefaResumo[]; abrirDocumento: AbrirDocumento }) {
   if (visao === "dia") return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{visaoDia}</div>;
   return <div className="min-h-0 flex-1 overflow-y-auto p-5">
 
           {semRotina && <button onClick={onAjustarRotina} className="mb-4 flex w-full items-start gap-3 rounded-xl border border-steel-400/40 bg-steel-700/15 p-3 text-left text-sm text-text-primary"><CalendarClock size={18} className="shrink-0 text-steel-300" />Você ainda não contou sobre a sua rotina. <span className="font-semibold text-steel-300">Ajustar rotina</span></button>}
           {erro && <div className="mb-4 flex gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="shrink-0" />{erro}</div>}
           {capacidade?.estourado && <div className="mb-4 flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-primary"><AlertTriangle size={18} className="shrink-0 text-warning" /><p>{pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção disponível.</p></div>}
-          <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} dia={paraISO(dia)} concluidas={concluidasDoDia.length} />
+          <EventosDoDia eventos={eventosDoDia} onAbrir={onAbrirEvento} />
+          <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} dia={paraISO(dia)} concluidas={concluidasDoDia.length} temEventos={eventosDoDia.length > 0} />
           <ConcluidasDoDia tarefas={concluidasDoDia} abrirDocumento={abrirDocumento} />
         
   </div>;
 }
 
 /** O popup do dia no celular: uma folha que sobe da base, com a mesma lista (ou a grade do dia) da janela do desktop. */
-function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia }: { visaoDia: import("react").ReactNode; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
+function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia, eventosDoDia, onAbrirEvento }: { eventosDoDia: EventoLocal[]; onAbrirEvento: (e: EventoLocal) => void; visaoDia: import("react").ReactNode; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
   const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const [visao, setVisao] = useState<"feed" | "dia">("feed");
   return (
@@ -572,20 +620,20 @@ function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro,
       <section role="dialog" aria-modal="true" aria-label={`Tarefas de ${titulo}`} className={`ecos-fade-in flex w-full flex-col overflow-hidden rounded-t-2xl border-t border-border bg-base pb-[var(--ecos-safe-bottom)] shadow-nav ${visao === "dia" ? "h-[85dvh]" : "max-h-[75dvh]"}`}>
         <div aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border" />
         <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-white" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><X size={19} /></button></div></header>
-        <CorpoDoDia visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
+        <CorpoDoDia eventosDoDia={eventosDoDia} onAbrirEvento={onAbrirEvento} visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
       </section>
     </div>
   );
 }
 
-type PropsPopup = { visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento };
+type PropsPopup = { eventosDoDia: EventoLocal[]; onAbrirEvento: (e: EventoLocal) => void; visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento };
 
 /** Desktop: janela flutuante ancorada no dia. Celular: folha que sobe da base. */
 function PopupTarefas({ sheet, ...props }: PropsPopup & { sheet: boolean }) {
   return sheet ? <FolhaDoDia {...props} /> : <PopupJanela {...props} />;
 }
 
-function PopupJanela({ ancora, dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia }: { visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
+function PopupJanela({ ancora, dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia, eventosDoDia, onAbrirEvento }: { eventosDoDia: EventoLocal[]; onAbrirEvento: (e: EventoLocal) => void; visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
   const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const janelaRef = useRef<HTMLElement>(null);
   const [fixado, setFixado] = useState(false);
@@ -663,7 +711,7 @@ function PopupJanela({ ancora, dia, blocos, concluidasDoDia, capacidade, semRoti
     <div className="pointer-events-none absolute inset-0 z-20">
       <section ref={janelaRef} role="dialog" aria-modal="false" aria-label={`Tarefas de ${titulo}`} className={`${animarEntrada ? (ancora ? "" : "agenda-popup-entra") : "opacity-0"} pointer-events-auto absolute flex flex-col overflow-hidden rounded-xl border bg-base shadow-nav ${interagindo ? "border-cyan/70" : "border-border"} ${interagindo || !animarEntrada ? "" : "transition-[left,top,width,height] duration-200 ease-out"}`} style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height, transformOrigin: `${origemX}% ${origemY}` }}>
         <header onPointerDown={(e) => { if (!(e.target as HTMLElement).closest("button")) iniciar(e, "mover"); }} onPointerMove={mover} onPointerUp={encerrar} onPointerCancel={encerrar} className={`flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3 py-2 ${interagindo ? "cursor-grabbing" : "cursor-grab"}`}><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} title={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-8 w-8 items-center justify-center rounded-md ${visao === "dia" ? "bg-steel-700 text-white" : "text-text-muted hover:bg-surface-2"}`}>{visao === "feed" ? <Clock size={15} /> : <ListChecks size={15} />}</button><button type="button" onClick={() => setFixado((valor) => !valor)} title={fixado ? "Desafixar do calendário" : "Fixar posição"} aria-label={fixado ? "Desafixar" : "Fixar"} className={`flex h-8 w-8 items-center justify-center rounded-md ${fixado ? "bg-steel-700 text-white" : "text-text-muted hover:bg-surface-2"}`}><Pin size={15} /></button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></div></header>
-        <CorpoDoDia visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
+        <CorpoDoDia eventosDoDia={eventosDoDia} onAbrirEvento={onAbrirEvento} visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
         <div aria-hidden onPointerDown={(e) => iniciar(e, "redimensionar")} onPointerMove={mover} onPointerUp={encerrar} onPointerCancel={encerrar} className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize" />
       </section>
     </div>

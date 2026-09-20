@@ -1,5 +1,6 @@
 import {
   CalendarCheck2,
+  CalendarClock,
   CalendarDays,
   HelpCircle,
   Library,
@@ -31,6 +32,7 @@ interface ItemMenu {
 const MODULOS: ItemMenu[] = [
   { rota: "/hoje", rotulo: "Hoje", Icone: CalendarCheck2 },
   { rota: "/agenda", rotulo: "Agenda", Icone: CalendarDays },
+  { rota: "/eventos", rotulo: "Eventos", Icone: CalendarClock },
   { rota: "/tarefas", rotulo: "Tarefas", Icone: ListChecks },
   { rota: "/notas", rotulo: "Notas", Icone: StickyNote },
   { rota: "/feed", rotulo: "Feed", Icone: Newspaper },

@@ -3,6 +3,7 @@ import { CalendarDays, ChevronDown, ChevronLeft, Clock3, Globe2, Link2 } from "l
 import { useNavigate } from "react-router-dom";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
+import { GoogleCalendarCard } from "./GoogleCalendarCard";
 import { lerPreferenciasCalendario, salvarPreferenciasCalendario } from "@/lib/preferencias-calendario";
 
 const PAISES = ["Brasil", "Portugal", "Estados Unidos", "Canadá", "México", "Argentina", "Chile", "Colômbia", "Uruguai", "Reino Unido", "Espanha", "França", "Alemanha", "Itália", "Países Baixos", "Suíça", "Japão", "China", "Índia", "Austrália"]
@@ -39,7 +40,7 @@ export function CalendarPreferencesScreen() {
     </Secao>
     <Secao titulo="Integrações de calendário">
       <p className="mb-3 text-sm text-text-secondary">Conecte seus calendários para reunir eventos externos na Agenda.</p>
-      <div className="space-y-2"><Integracao nome="Google Calendar" descricao="Eventos, compromissos e lembretes" /><Integracao nome="Outlook Calendar" descricao="Calendário Microsoft 365 e Outlook" /><Integracao nome="iCal / CalDAV" descricao="Apple Calendar e outros calendários compatíveis" /></div>
+      <div className="space-y-2"><GoogleCalendarCard /><Integracao nome="Outlook Calendar" descricao="Calendário Microsoft 365 e Outlook" /><Integracao nome="iCal / CalDAV" descricao="Apple Calendar e outros calendários compatíveis" /></div>
       <div className="mt-4 flex items-center justify-between gap-3 text-sm text-text-primary"><span>Mostrar prazos no calendário</span><Toggle checked={deadlines} onChange={(valor) => { setDeadlines(valor); setMensagem(""); }} label="Mostrar prazos no calendário" /></div>
     </Secao>
     <button onClick={salvar} className="min-h-11 rounded-xl border border-[#1e4f82] bg-[#1e4f82] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-[background-color,border-color,transform,box-shadow] hover:border-[#28679f] hover:bg-[#28679f] hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e4f82]">Salvar preferências</button>

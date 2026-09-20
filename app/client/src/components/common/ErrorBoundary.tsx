@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { registrarErro } from "@/lib/registro-erro";
 
 interface Props {
   children: ReactNode;
@@ -25,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(erro: Error, info: { componentStack?: string | null }) {
-    console.error("Erro não tratado:", erro, info.componentStack);
+    registrarErro("erro não tratado na interface", erro, info.componentStack);
   }
 
   render() {
@@ -35,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <AlertTriangle size={32} strokeWidth={1.5} className="text-error" />
           <div>
             <p className="font-body text-[15px] font-semibold text-text-primary">Algo quebrou.</p>
-            <p className="mt-1 max-w-xs text-sm text-text-muted">{this.state.erro.message}</p>
+            <p className="mt-1 max-w-xs text-sm text-text-muted">{import.meta.env.DEV ? this.state.erro.message : "Ocorreu um erro inesperado. Tente de novo; se continuar, feche e abra o app."}</p>
           </div>
           <button
             onClick={() => this.setState({ erro: null })}

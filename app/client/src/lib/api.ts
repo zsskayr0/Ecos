@@ -188,6 +188,7 @@ async function reqBlob(path: string, tentouRenovar = false): Promise<Blob | null
 
 const get = <T>(path: string) => req<T>(path);
 const post = <T>(path: string, data?: unknown) => req<T>(path, { method: "POST", body: data !== undefined ? JSON.stringify(data) : undefined });
+const put = <T>(path: string, data?: unknown) => req<T>(path, { method: "PUT", body: data !== undefined ? JSON.stringify(data) : undefined });
 const patch = <T>(path: string, data?: unknown) => req<T>(path, { method: "PATCH", body: data !== undefined ? JSON.stringify(data) : undefined });
 const del = <T>(path: string, data?: unknown) => req<T>(path, { method: "DELETE", body: data !== undefined ? JSON.stringify(data) : undefined });
 
@@ -240,7 +241,6 @@ export const auth = {
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
 };
 
-export const avatarPerfil = {
 /** Conta e dados (LGPD): exportar o `.zip` com tudo e excluir a conta. `EXCLUIR CONTA` é a frase que o servidor exige. */
 export const FRASE_EXCLUIR_CONTA = "EXCLUIR CONTA";
 export const conta = {
@@ -252,6 +252,7 @@ export const conta = {
   excluir: () => del<{ ok: true; avisos: string[] }>("/me", { confirm: FRASE_EXCLUIR_CONTA }),
 };
 
+export const avatarPerfil = {
   obter: () => reqBlob("/me/avatar"),
   enviar: (arquivo: File) => {
     const dados = new FormData();
@@ -343,7 +344,7 @@ export const pastas = {
 // --- Media ---------------------------------------------------------------
 
 export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string; enviado_em: string; /** Biblioteca de mídia a que pertence (`pessoal` ou `equipe:<id>`). O caminho no Markdown não muda. */ espaco?: string }
-export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
+export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa" | "evento"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
 export const lixeira = {
   listar: () => get<ItemLixeira[]>("/lixeira"),
   restaurar: (id: string) => post<{ ok: true }>(`/lixeira/${encodeURIComponent(id)}/restaurar`),
@@ -552,6 +553,156 @@ export const agenda = {
   blocos: (params: { data_de: string; data_ate: string; tz?: number; tipo?: "planejado" | "real" }) => get<BlocoPlanejado[]>(`/agenda/blocos${qs(params)}`),
 };
 
+// --- Eventos & categorias (Ecos <-> Google Calendar) ----------------------
+
+export type EventoVisibilidade = "privado" | "google";
+export interface EventoVinculo { id: string; titulo: string }
+export interface EventoCategoriaResumo { id: string; nome: string; cor: string; icone: string | null }
+/** Uma ocorrência de série que difere do padrão. Só os campos que mudaram vêm preenchidos (o resto é herdado da série). */
+export interface ExcecaoEvento {
+  /** Início ORIGINAL da ocorrência (a chave). */
+  original: string;
+  cancelada: boolean;
+  titulo: string | null;
+  inicio: string | null;
+  fim: string | null;
+  /** `""` = local apagado só nesta ocorrência. */
+  local: string | null;
+  descricao: string | null;
+  sync_pendente: boolean;
+}
+
+export interface Evento {
+  id: string;
+  titulo: string;
+  /** Instantes em UTC (ISO 8601). */
+  inicio: string;
+  fim: string;
+  dia_inteiro: boolean;
+  fuso: string | null;
+  local: string | null;
+  categoria_id: string | null;
+  categoria: EventoCategoriaResumo | null;
+  /** Cor própria (#RRGGBB), só do Ecos; sem ela vale a da categoria. */
+  cor?: string | null;
+  visibilidade: EventoVisibilidade;
+  /** RRULE da série (`RRULE:FREQ=...`); a lista devolve só o evento mestre. */
+  rrule: string | null;
+  espaco: string;
+  /** Já tem vínculo com um evento do Google. */
+  origem_google: boolean;
+  /** Mudança local ainda não enviada ao Google. */
+  sync_pendente: boolean;
+  criado_em: string;
+  atualizado_em: string;
+  tarefas: EventoVinculo[];
+  notas: EventoVinculo[];
+  /** Ocorrências alteradas/canceladas da série (vazio em evento simples). */
+  excecoes?: ExcecaoEvento[];
+  /** EXDATE/RDATE da série. */
+  recorrencia_extra?: string[];
+  /** Só no detalhe (`obter`, `criar`, `atualizar`). */
+  descricao?: string;
+}
+export interface CategoriaEvento { id: string; espaco: string; nome: string; cor: string; icone: string | null; eventos?: number }
+export interface CriarEventoPayload {
+  titulo: string;
+  inicio: string;
+  fim: string;
+  dia_inteiro?: boolean;
+  fuso?: string | null;
+  local?: string | null;
+  descricao?: string;
+  categoria_id?: string | null;
+  /** Cor própria (#RRGGBB); `null` a tira. */
+  cor?: string | null;
+  visibilidade?: EventoVisibilidade;
+  rrule?: string | null;
+  /** Ids (o servidor devolve resumos). */
+  tarefas?: string[];
+  notas?: string[];
+  espaco?: string;
+}
+export type AtualizarEventoPayload = Partial<Omit<CriarEventoPayload, "espaco">>;
+/** Muda só uma ocorrência de uma série. `original` é o início que a série previa (a chave). */
+export interface AtualizarOcorrenciaPayload {
+  original: string;
+  titulo?: string;
+  inicio?: string;
+  fim?: string;
+  local?: string | null;
+  descricao?: string;
+}
+export interface TempoPorCategoria {
+  total_min: number;
+  itens: { categoria_id: string | null; nome: string; cor: string | null; quantidade: number; minutos: number }[];
+  /** Séries (RRULE) ainda não expandidas: ficam fora da soma. */
+  recorrentes_ignorados: number;
+}
+
+export const eventos = {
+  listar: (params: { de?: string; ate?: string; categoria?: string; espaco?: string; tarefa?: string; nota?: string; limit?: number } = {}) => get<Evento[]>(`/eventos${qs(params)}`),
+  obter: (id: string) => get<Evento>(`/eventos/${id}`),
+  criar: (payload: CriarEventoPayload) => post<Evento>("/eventos", payload),
+  atualizar: (id: string, payload: AtualizarEventoPayload) => patch<Evento>(`/eventos/${id}`, payload),
+  excluir: (id: string) => del<{ ok: true }>(`/eventos/${id}`),
+  /** Muda só uma ocorrência da série (no Google vira a exceção daquela instância). A série em si só se muda no Google. */
+  atualizarOcorrencia: (id: string, payload: AtualizarOcorrenciaPayload) => patch<Evento>(`/eventos/${id}/ocorrencias`, payload),
+  /** Cancela só uma ocorrência da série. */
+  cancelarOcorrencia: (id: string, original: string) => del<Evento>(`/eventos/${id}/ocorrencias${qs({ original })}`),
+  /** Substitui os vínculos com Tarefas e Notas (só do Ecos: nunca vão ao Google). */
+  definirVinculos: (id: string, vinculos: { tarefas: string[]; notas: string[] }) => put<Evento>(`/eventos/${id}/vinculos`, vinculos),
+  daTarefa: (id: string) => get<Evento[]>(`/tarefas/${id}/eventos`),
+  daNota: (id: string) => get<Evento[]>(`/notas/${id}/eventos`),
+  tempo: (params: { de: string; ate: string; espaco?: string; tarefa?: string }) => get<TempoPorCategoria>(`/eventos/tempo${qs(params)}`),
+  categorias: {
+    listar: (params: { espaco?: string } = {}) => get<CategoriaEvento[]>(`/eventos/categorias${qs(params)}`),
+    criar: (payload: { nome: string; cor: string; icone?: string | null; espaco?: string }) => post<CategoriaEvento>("/eventos/categorias", payload),
+    atualizar: (id: string, payload: { nome?: string; cor?: string; icone?: string | null }) => patch<CategoriaEvento>(`/eventos/categorias/${id}`, payload),
+    excluir: (id: string) => del<{ ok: true; eventos_afetados: number }>(`/eventos/categorias/${id}`),
+  },
+};
+
+// --- Calendário externo (Google Calendar) ----------------------------------
+
+export interface CalendarioConectado {
+  provider: string;
+  conectado_em: string;
+  email: string | null;
+  ultima_sync_em: string | null;
+  ultimo_erro: string | null;
+  /** O Google revogou ou expirou o acesso: só reconectando. */
+  precisa_reconectar: boolean;
+}
+export interface ResumoSyncCalendario {
+  criados: number;
+  atualizados: number;
+  removidos: number;
+  inalterados: number;
+  /** Edição local pendente e mais nova que a do Google: foi mantida. */
+  conflitos_mantidos_locais: number;
+  excecoes_ignoradas: number;
+  completa: boolean;
+  /** Ecos → Google (opcionais: servidores anteriores ao envio não mandam). */
+  enviados_criados?: number;
+  enviados_atualizados?: number;
+  /** Apagados no Google (excluídos ou tornados privados no Ecos). */
+  removidos_no_google?: number;
+  /** Mudaram no Google desde a última leitura: o próximo ciclo decide pelo mais recente. */
+  envios_adiados?: number;
+  /** Recusados pelo Google: continuam pendentes. */
+  envios_com_erro?: number;
+}
+
+export const calendario = {
+  config: () => get<{ conectados: CalendarioConectado[]; google_configurado: boolean }>("/calendario/config"),
+  /** URL de autorização do Google (abrir no navegador). Exige abrir o Ecos por localhost/127.0.0.1. */
+  conectar: (provider: "google") => get<{ url: string }>(`/calendario/conectar/${provider}`),
+  sincronizar: () => post<ResumoSyncCalendario>("/calendario/sincronizar"),
+  /** Os eventos ficam no Ecos, privados e sem vínculo; só a conexão some. */
+  desconectar: (provider: "google") => del<{ ok: true }>(`/calendario/${provider}`),
+};
+
 export const rotina = {
   listar: () => get<BlocoRotina[]>("/rotina/blocos"),
   criar: (payload: BlocoRotinaPayload) => post<{ id: string }>("/rotina/blocos", payload),
@@ -566,10 +717,11 @@ export const equipes = {
   atualizar: (id: string, nome: string) => patch<{ ok: true }>(`/equipes/${id}`, { nome }),
   // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
   excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
-  listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; entrou_em: string }[]>(`/equipes/${id}/membros`),
+  listarMembros: (id: string) => get<{ usuario_id: string; cargo: string }[]>(`/equipes/${id}/membros`),
   trocarCargo: (id: string, usuarioId: string, cargo: "dono" | "admin" | "membro") =>
     patch<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`, { cargo }),
   removerMembro: (id: string, usuarioId: string) => del<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`),
+  sair: (id: string) => post<{ ok: true }>(`/equipes/${id}/sair`),
   criarConvite: (id: string) => post<{ id: string; codigo: string; expira_em: string }>(`/equipes/${id}/convites`),
   aceitarConvite: (codigo: string) => post<{ ok: true }>(`/convites/${codigo}/aceitar`),
 };
@@ -646,7 +798,8 @@ export const FORMAS_PAGAMENTO = ["pix", "pix_automatico", "ted", "cartao", "dinh
 export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number];
 
 export const vault = {
-  sair: (id: string) => post<{ ok: true }>(`/equipes/${id}/sair`),
+  /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
+  resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
   bloquear: () => post<{ ok: true }>("/vault/bloquear"),
@@ -689,5 +842,3 @@ export const vault = {
     excluir: (id: string) => del<{ ok: true }>(`/vault/transacoes/${id}`),
   },
 };
-  /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
-  resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),

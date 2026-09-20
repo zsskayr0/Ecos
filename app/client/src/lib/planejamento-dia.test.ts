@@ -38,6 +38,21 @@ describe("montarPlanejamento", () => {
     expect(chaves(p.diaTodo)).toEqual(["evento:1"]);
     expect(p.total).toBe(1);
   });
+  it("prazo hoje + tempo alocado hoje = um item só: o bloco leva a marca de prazo e a tarefa habilita as ações", () => {
+    const bloco = { id: "b1", tarefa_id: "a", tipo: "planejado", inicio_em: "2026-09-22T15:00:00+00:00", duracao_min: 60, foco: "", titulo: "Tarefa a", status: "pendente", prioridade: "baixa" } as unknown as BlocoPlanejado;
+    const p = plano([t("a", { due_date: HOJE }), t("b", { due_date: HOJE })], [bloco]);
+    expect(chaves(p.cronograma)).toEqual(["bloco:b1"]);
+    expect(p.cronograma[0].comPrazo).toBe(true);
+    expect(p.cronograma[0].tarefa?.id).toBe("a");
+    expect(chaves(p.semHorario)).toEqual(["tarefa:b"]); // sem tempo alocado, o prazo segue em "sem horário"
+    expect(p.total).toBe(2);
+  });
+  it("bloco de tarefa fora da lista (ex.: já concluída) continua no cronograma, sem ações", () => {
+    const bloco = { id: "b2", tarefa_id: "sumiu", tipo: "planejado", inicio_em: "2026-09-22T15:00:00+00:00", duracao_min: 30, foco: "", titulo: "Foco", status: "pendente", prioridade: "baixa" } as unknown as BlocoPlanejado;
+    const p = plano([], [bloco]);
+    expect(p.cronograma[0].tarefa).toBeUndefined();
+    expect(p.cronograma[0].comPrazo).toBe(false);
+  });
   it("dia vazio: total 0", () => { expect(plano([]).total).toBe(0); });
 });
 
