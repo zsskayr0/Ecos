@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 8;
+const SCHEMA_VERSION_CONHECIDA: i64 = 9;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
@@ -25,6 +25,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0006_time_entries_up.sql")).down(include_str!("../../migrations/0006_time_entries_down.sql")),
         M::up(include_str!("../../migrations/0007_pasta_por_espaco_up.sql")).down(include_str!("../../migrations/0007_pasta_por_espaco_down.sql")),
         M::up(include_str!("../../migrations/0008_tarefa_concluida_em_up.sql")).down(include_str!("../../migrations/0008_tarefa_concluida_em_down.sql")),
+        M::up(include_str!("../../migrations/0010_consentimento_up.sql")).down(include_str!("../../migrations/0010_consentimento_down.sql")),
     ])
 }
 

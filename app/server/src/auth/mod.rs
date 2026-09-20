@@ -18,6 +18,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::state::AppState;
 
+/// Idade mínima para criar conta (a definir com a revisão jurídica). Não há
+/// verificação nem data de nascimento: só a declaração, registrada em `consentimento`.
+pub const IDADE_MINIMA: u8 = 18;
+
 /// Pública e sem custo de informação sensível (só um booleano) — permite ao
 /// cliente decidir, antes de qualquer tentativa de login, se deve mostrar a
 /// tela de "criar conta" (instância nova, modelo Jellyfin/Immich: primeiro
@@ -27,11 +31,13 @@ pub struct StatusResposta {
     pub instancia_vazia: bool,
     /// Versão da release do servidor (tela Sobre do cliente).
     pub versao: &'static str,
+    /// Idade mínima que o cadastro exige declarar.
+    pub idade_minima: u8,
 }
 
 pub async fn status(State(state): State<AppState>) -> AppResult<Json<StatusResposta>> {
     let total: i64 = state.db.with(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
-    Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION") }))
+    Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION"), idade_minima: IDADE_MINIMA }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +50,10 @@ pub struct RegistrarPayload {
     /// juntos, seção UX).
     #[serde(default)]
     pub nome: Option<String>,
+    /// Declaração de idade mínima ("tenho N anos ou mais"). Obrigatória e
+    /// gravada em `consentimento`; sem ela o cadastro é recusado.
+    #[serde(default)]
+    pub declara_idade_minima: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,6 +81,12 @@ fn validar_registro(payload: &RegistrarPayload) -> AppResult<()> {
         campos.push(CampoInvalido {
             campo: "senha".into(),
             motivo: "não pode conter espaços".into(),
+        });
+    }
+    if !payload.declara_idade_minima {
+        campos.push(CampoInvalido {
+            campo: "declara_idade_minima".into(),
+            motivo: format!("é preciso declarar ter {IDADE_MINIMA} anos ou mais"),
         });
     }
     if campos.is_empty() {
@@ -105,6 +121,10 @@ pub async fn registrar(
             conn.execute(
                 "INSERT INTO usuario (id, nome_usuario, nome, senha_hash, recovery_key_hash) VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![usuario_id, nome_usuario, nome, senha_hash, recovery_key_hash],
+            )?;
+            conn.execute(
+                "INSERT INTO consentimento (usuario_id, tipo, versao) VALUES (?1, 'idade_minima', ?2)",
+                rusqlite::params![usuario_id, IDADE_MINIMA.to_string()],
             )?;
             conn.execute("INSERT INTO perfil_rotina (usuario_id) VALUES (?1)", [&usuario_id])?;
             conn.execute("INSERT INTO config_sync (usuario_id, modo) VALUES (?1, 'local_unico')", [
@@ -378,4 +398,55 @@ pub async fn atualizar_perfil(State(state): State<AppState>, Extension(usuario):
             .await?;
     }
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::config::{Ambiente, Config};
+    use crate::db::IndexDb;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use std::sync::{Arc, Mutex};
+    use tower::Service;
+
+    async fn registrar_via_http(corpo: serde_json::Value) -> (StatusCode, AppState) {
+        let temp = std::env::temp_dir().join(format!("ecos-auth-test-{}", new_id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let state = AppState {
+            db: IndexDb::open(&temp.join("index.db")).unwrap(),
+            config: Arc::new(Config {
+                ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(),
+                index_db_path: temp.join("index.db"), vault_enabled: false, vault_internal_url: String::new(),
+                session_secret: b"segredo-efemero-exclusivo-do-teste".to_vec(), ranking_interval_secs: 300,
+                static_dir: None, cookie_secure: false,
+            }),
+            http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
+        };
+        let mut app = crate::routes::montar(state.clone());
+        let resp = app.call(Request::post("/api/v1/auth/registrar").header("content-type", "application/json").body(Body::from(corpo.to_string())).unwrap()).await.unwrap();
+        let status = resp.status();
+        let _ = to_bytes(resp.into_body(), 8192).await;
+        (status, state)
+    }
+
+    async fn total_consentimentos(state: &AppState) -> i64 {
+        state.db.with(|c| c.query_row("SELECT COUNT(*) FROM consentimento WHERE tipo = 'idade_minima' AND versao = '18'", [], |r| r.get(0))).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn cadastro_sem_declarar_a_idade_e_recusado_e_nao_cria_conta() {
+        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123" })).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let usuarios: i64 = state.db.with(|c| c.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await.unwrap();
+        assert_eq!(usuarios, 0);
+        assert_eq!(total_consentimentos(&state).await, 0);
+    }
+
+    #[tokio::test]
+    async fn cadastro_declarando_a_idade_grava_o_consentimento() {
+        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(total_consentimentos(&state).await, 1);
+    }
 }

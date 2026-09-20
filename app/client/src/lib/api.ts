@@ -208,9 +208,9 @@ export interface Pagina<T> {
 // --- Auth & Profile (section 11.1/11.2) -----------------------------------
 
 export const auth = {
-  status: () => get<{ instancia_vazia: boolean; versao: string }>("/auth/status"),
-  registrar: (nome_usuario: string, senha: string, nome?: string) =>
-    post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome }),
+  status: () => get<{ instancia_vazia: boolean; versao: string; idade_minima: number }>("/auth/status"),
+  registrar: (nome_usuario: string, senha: string, nome: string | undefined, declara_idade_minima: boolean) =>
+    post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome, declara_idade_minima }),
   login: async (usuario: string, senha: string) => {
     if (estaNoTauri()) {
       const servidor = obterServidorBaseUrl();

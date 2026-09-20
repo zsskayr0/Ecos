@@ -23,7 +23,7 @@ interface AuthState {
   perfil: Perfil | null;
   erro: string | null;
   login: (usuario: string, senha: string) => Promise<void>;
-  registrar: (nomeUsuario: string, senha: string, nome: string) => Promise<{ recovery_key: string }>;
+  registrar: (nomeUsuario: string, senha: string, nome: string, declaraIdadeMinima: boolean) => Promise<{ recovery_key: string }>;
   logout: () => Promise<void>;
   /** Calls `/me` again — used after editing the profile, joining a Team, etc. */
   recarregarPerfil: () => Promise<void>;
@@ -92,10 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const registrar = useCallback(async (nomeUsuario: string, senha: string, nome: string) => {
+  const registrar = useCallback(async (nomeUsuario: string, senha: string, nome: string, declaraIdadeMinima: boolean) => {
     setErro(null);
     try {
-      const resposta = await auth.registrar(nomeUsuario, senha, nome);
+      const resposta = await auth.registrar(nomeUsuario, senha, nome, declaraIdadeMinima);
       // registrar() doesn't open a session on its own (section 11.1) —
       // explicit login right after (that already writes the browser
       // cookie). Deliberately NOT calling `recarregarPerfil()` here: the

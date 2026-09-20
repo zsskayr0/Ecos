@@ -28,6 +28,9 @@ export function AuthScreen() {
   const [primeiroNome, setPrimeiroNome] = useState("");
   const [sobrenome, setSobrenome] = useState("");
   const [senha, setSenha] = useState("");
+  // Declaração de idade mínima (sem coletar data de nascimento); o servidor exige e registra.
+  const [idadeMinima, setIdadeMinima] = useState(18);
+  const [declaraIdade, setDeclaraIdade] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroLocal, setErroLocal] = useState<string | null>(null);
@@ -54,8 +57,9 @@ export function AuthScreen() {
     let cancelado = false;
     auth
       .status()
-      .then(({ instancia_vazia }) => {
+      .then(({ instancia_vazia, idade_minima }) => {
         if (cancelado) return;
+        if (idade_minima) setIdadeMinima(idade_minima);
         setInstanciaVazia(instancia_vazia);
         if (instancia_vazia) setModo("registro");
       })
@@ -79,7 +83,7 @@ export function AuthScreen() {
         await login(nomeUsuario, senha);
       } else {
         const nomeCompleto = `${primeiroNome.trim()} ${sobrenome.trim()}`.trim();
-        const { recovery_key } = await registrar(nomeUsuario, senha, nomeCompleto);
+        const { recovery_key } = await registrar(nomeUsuario, senha, nomeCompleto, declaraIdade);
         setRecoveryKey(recovery_key);
       }
     } catch (e) {
@@ -180,6 +184,18 @@ export function AuthScreen() {
               {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 8 caracteres.</span>}
             </label>
 
+            {modo === "registro" && (
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={declaraIdade}
+                  onChange={(e) => setDeclaraIdade(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-steel-500"
+                />
+                <span>Declaro ter {idadeMinima} anos ou mais. Guardamos só esta declaração, não a data de nascimento.</span>
+              </label>
+            )}
+
             {bloqueadoAte !== null ? (
               <div className="flex flex-col items-center gap-1 rounded-2xl border border-error/40 bg-error/10 p-4 text-center">
                 <AlertTriangle size={18} className="text-error" strokeWidth={1.75} />
@@ -208,7 +224,7 @@ export function AuthScreen() {
                 bloqueadoAte !== null ||
                 !nomeUsuario.trim() ||
                 senha.length < (modo === "registro" ? 8 : 1) ||
-                (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim()))
+                (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade))
               }
               className="mt-1 rounded-2xl bg-text-primary py-3.5 text-center font-body text-[15px] font-semibold text-base transition-opacity disabled:opacity-40"
             >
