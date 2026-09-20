@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlocoPlanejado, TarefaResumo } from "@/lib/api";
 
+vi.mock("@/lib/use-espaco-filtro", () => ({ useEspacoFiltro: () => undefined }));
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
   return {

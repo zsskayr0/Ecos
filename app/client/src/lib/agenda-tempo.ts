@@ -154,6 +154,26 @@ export function itensDaTarefa(t: TarefaResumo, { mostrarPrazos }: { mostrarPrazo
   return itens;
 }
 
+/**
+ * Tarefas concluídas agrupadas pelo dia LOCAL em que foram concluídas (`concluida_em`), cada dia em ordem de horário.
+ * Reaberta (`pendente`) ou sem `concluida_em` não conta: o dia só fica marcado enquanto a conclusão existe.
+ */
+export function concluidasPorDia(tarefas: TarefaResumo[]): Map<string, TarefaResumo[]> {
+  const porDia = new Map<string, TarefaResumo[]>();
+  for (const t of tarefas) {
+    if (t.status !== "concluida" || !t.concluida_em) continue;
+    const dia = dataLocalISO(new Date(t.concluida_em));
+    porDia.set(dia, [...(porDia.get(dia) ?? []), t]);
+  }
+  for (const lista of porDia.values()) lista.sort((a, b) => a.concluida_em!.localeCompare(b.concluida_em!));
+  return porDia;
+}
+
+/** Hora local `HH:MM` de um instante (ISO/UTC do servidor). */
+export function horaLocal(instanteISO: string): string {
+  return rotuloHorario(diaEMinutosLocais(instanteISO).minutos);
+}
+
 export function itemDoBloco(b: BlocoPlanejado): ItemAgenda {
   const { dia, minutos } = diaEMinutosLocais(b.inicio_em);
   return {

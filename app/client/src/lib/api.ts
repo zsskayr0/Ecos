@@ -454,7 +454,7 @@ export interface AtualizarTarefaPayload {
 }
 
 export const tarefas = {
-  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; tz?: number; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
+  listar: (params: { pasta?: string; data_de?: string; data_ate?: string; concluida_de?: string; concluida_ate?: string; tz?: number; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
     // `pasta=` vazio é o filtro "só as sem pasta" (`COALESCE(pasta_id, '') = ''` no servidor); `qs` descarta vazios, então ele vai à parte.
     const { pasta, ...resto } = params;
     const base = qs(resto);

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Flag, MoreHorizontal, Trash2, X } from "lucide-react";
+import { CheckCircle2, Expand, Flag, Inbox, MoreHorizontal, Trash2, X } from "lucide-react";
 import {
-  DURACAO_VISUAL_MINIMA_MIN, INICIO_PADRAO_MIN, MINUTOS_DIA, OPCOES_ENCAIXE, PX_POR_HORA, PX_POR_MINUTO, acaoDaTecla, aplicarAcao, capacidadesDo, descreverPosicao, distribuirColunas, duracaoDoPonteiro,
+  DURACAO_VISUAL_MINIMA_MIN, INICIO_PADRAO_MIN, MINUTOS_DIA, OPCOES_ENCAIXE, PX_POR_HORA, PX_POR_MINUTO, acaoDaTecla, aplicarAcao, capacidadesDo, descreverPosicao, diaEMinutosLocais, horaLocal, distribuirColunas, duracaoDoPonteiro,
   duracaoParaAlocar, meioDiaLocal, posicaoDoPonteiro, posicaoIgual, rotuloHorario, type ColunaGeometria, type FaixaDiaTodoGeometria, type ItemAgenda, type Posicao,
 } from "@/lib/agenda-tempo";
+import type { TarefaResumo } from "@/lib/api";
 import { useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
 
 /** Quanto o dedo precisa ficar parado sobre um bloco para "pegá-lo" (antes disso, arrastar rola a tela). */
@@ -19,6 +20,8 @@ export interface GradeTempoProps {
   dias: string[];
   hoje: string;
   itens: ItemAgenda[];
+  /** Tarefas concluídas por dia local: o dia ganha um selo no cabeçalho e um ✓ na hora exata em que foi concluída. */
+  concluidas?: Map<string, TarefaResumo[]>;
   /** Granularidade do arrasto, em minutos. */
   encaixe: number;
   onMudarEncaixe: (encaixe: number) => void;
@@ -39,6 +42,19 @@ export interface GradeTempoProps {
   agora?: Date;
   /** Muda a cada pedido "Hoje": a grade rola até o horário atual (uma vez por pedido). */
   rolarParaAgora?: number;
+  /** Clicar (ou arrastar) num horário vazio abre a criação rápida; ao confirmar, a tela pai cria a Tarefa e aloca o tempo. */
+  onCriarNoHorario?: (dados: NovaTarefaRapida) => Promise<string | void> | string | void;
+  /** Depois da criação rápida, abre a visualização completa da tarefa recém-criada. */
+  onAbrirTarefaCriada?: (id: string) => void;
+  /** Abre o formulário completo quando ainda não há título suficiente para criar a tarefa. */
+  onAbrirCriacaoCompleta?: () => void;
+}
+
+export interface NovaTarefaRapida {
+  titulo: string;
+  corpo: string;
+  prioridade: "baixa" | "media" | "alta";
+  destino: Posicao;
 }
 
 interface Gesto {
@@ -60,7 +76,7 @@ function estiloCorLivre(hex?: string): CSSProperties | undefined {
   return { backgroundColor: `${hex}33`, color: `color-mix(in srgb, ${hex} 70%, var(--ecos-text-primary))` };
 }
 
-export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelecionarDia, onAbrirItem, onMover, onRemover, onAlocarTarefa, inicioMin = INICIO_PADRAO_MIN, agora = new Date(), rolarParaAgora = 0 }: GradeTempoProps) {
+export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEncaixe, onSelecionarDia, onAbrirItem, onMover, onRemover, onAlocarTarefa, inicioMin = INICIO_PADRAO_MIN, agora = new Date(), rolarParaAgora = 0, onCriarNoHorario, onAbrirTarefaCriada, onAbrirCriacaoCompleta }: GradeTempoProps) {
   const rolagemRef = useRef<HTMLDivElement>(null);
   const [gesto, setGesto] = useState<Gesto | null>(null);
   const [previaExterna, setPreviaExterna] = useState<{ pos: Posicao; titulo: string } | null>(null);
@@ -68,6 +84,40 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
   const [aviso, setAviso] = useState("");
   const focoPendente = useRef<string | null>(null);
   const cancelarGesto = useRef<(() => void) | null>(null);
+  const [selecao, setSelecao] = useState<Posicao | null>(null);
+  const [criando, setCriando] = useState<{ pos: Posicao; rect: DOMRect } | null>(null);
+  const previaSelecaoRef = useRef<HTMLDivElement>(null);
+  const animacaoSelecaoRef = useRef<{ origem?: DOMRect } | null>(null);
+  const fimDaAnimacaoSelecaoRef = useRef<Promise<void>>(Promise.resolve());
+
+  // FLIP: a prévia troca de coluna no DOM, mas visualmente percorre a distância entre o dia antigo e o novo.
+  useLayoutEffect(() => {
+    const elemento = previaSelecaoRef.current;
+    const animacao = animacaoSelecaoRef.current;
+    if (!elemento || !animacao || !selecao) return;
+    animacaoSelecaoRef.current = null;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || typeof elemento.animate !== "function") {
+      fimDaAnimacaoSelecaoRef.current = Promise.resolve();
+      return;
+    }
+    if (!animacao.origem) {
+      const entrada = elemento.animate(
+        [{ opacity: 0, transform: "translateY(5px) scale(0.96)" }, { opacity: 1, transform: "none" }],
+        { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+      );
+      fimDaAnimacaoSelecaoRef.current = entrada.finished.then(() => undefined, () => undefined);
+      return;
+    }
+    const destino = elemento.getBoundingClientRect();
+    const movimento = elemento.animate(
+      [
+        { transform: `translate(${animacao.origem.left - destino.left}px, ${animacao.origem.top - destino.top}px)`, opacity: 0.86 },
+        { transform: "translate(0, 0)", opacity: 1 },
+      ],
+      { duration: 320, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+    fimDaAnimacaoSelecaoRef.current = movimento.finished.then(() => undefined, () => undefined);
+  }, [selecao?.dia, selecao?.inicioMin]);
 
   const gridTemplateColumns = `56px repeat(${dias.length}, minmax(120px, 1fr))`;
   const horarios = useMemo(() => itens.filter((i) => i.inicioMin !== null), [itens]);
@@ -161,6 +211,49 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
       setAviso(`${e.tarefa.titulo}: ${descreverPosicao(destino)}`);
     }
   });
+
+  /** Pressionar num horário vazio: um clique reserva 1 h, arrastar define a duração; ao soltar abre a criação rápida. */
+  function aoPressionarVazio(e: ReactPointerEvent<HTMLElement>, dia: string) {
+    if (!onCriarNoHorario || e.target !== e.currentTarget) return;
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    cancelarGesto.current?.();
+    animacaoSelecaoRef.current = { origem: previaSelecaoRef.current?.getBoundingClientRect() };
+    setCriando(null);
+    const topo = e.currentTarget.getBoundingClientRect().top;
+    const minutoDe = (y: number) => Math.min(MINUTOS_DIA, Math.max(0, Math.round(((y - topo) / PX_POR_MINUTO) / encaixe) * encaixe));
+    const inicio = Math.min(minutoDe(e.clientY), MINUTOS_DIA - encaixe);
+    const origemY = e.clientY;
+    let arrastou = false;
+    let atual: Posicao = { dia, inicioMin: inicio, duracaoMin: Math.min(60, MINUTOS_DIA - inicio) };
+    setSelecao(atual);
+    const mover = (ev: PointerEvent) => {
+      if (!arrastou && Math.abs(ev.clientY - origemY) < LIMIAR_MOUSE_PX) return;
+      arrastou = true;
+      const fim = minutoDe(ev.clientY);
+      const proxima = { dia, inicioMin: Math.min(inicio, fim), duracaoMin: Math.max(encaixe, Math.abs(fim - inicio)) };
+      if (proxima.inicioMin === atual.inicioMin && proxima.duracaoMin === atual.duracaoMin) return;
+      atual = proxima;
+      setSelecao(atual);
+    };
+    const limpar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); window.removeEventListener("pointercancel", cancelar); cancelarGesto.current = null; };
+    const cancelar = () => { limpar(); setSelecao(null); };
+    const soltar = () => {
+      limpar();
+      const fimDaAnimacao = fimDaAnimacaoSelecaoRef.current;
+      void fimDaAnimacao.then(() => requestAnimationFrame(() => {
+        const bloco = previaSelecaoRef.current;
+        if (!bloco) return;
+        // Mede somente a posição final: getBoundingClientRect durante o FLIP inclui o translate temporário.
+        setCriando({ pos: atual, rect: bloco.getBoundingClientRect() });
+      }));
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+    window.addEventListener("pointercancel", cancelar);
+    cancelarGesto.current = cancelar;
+  }
+
+  function fecharCriacao() { setCriando(null); setSelecao(null); }
 
   function anunciar(item: ItemAgenda, pos: Posicao) {
     setAviso(`${item.titulo}: ${descreverPosicao(pos)}`);
@@ -406,7 +499,7 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
               const d = meioDiaLocal(dia);
               return (
                 // O dia NÃO é um botão: só o número abre o popup. O número fica no topo e no meio da coluna, o dia da semana logo abaixo.
-                <div key={dia} data-cabecalho-dia={dia} className="flex flex-col items-center justify-start gap-0.5 border-b border-r border-border/35 bg-surface-1 px-2 pt-1.5 text-center">
+                <div key={dia} data-cabecalho-dia={dia} className="relative flex flex-col items-center justify-start gap-0.5 border-b border-r border-border/35 bg-surface-1 px-2 pt-1.5 text-center">
                   <button
                     type="button"
                     aria-label={`Ver tarefas de ${d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`}
@@ -416,6 +509,10 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
                     {d.getDate()}
                   </button>
                   <span className="text-[11px] font-medium capitalize text-text-muted transition-colors duration-300 peer-hover:text-text-primary">{d.toLocaleDateString("pt-BR", { weekday: "short" })}</span>
+                  {(concluidas?.get(dia)?.length ?? 0) > 0 && (() => {
+                    const feitas = concluidas!.get(dia)!;
+                    return <span data-concluidas={feitas.length} title={`Concluída${feitas.length === 1 ? "" : "s"}: ${feitas.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-pill bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{feitas.length}<span className="sr-only"> {feitas.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>;
+                  })()}
                 </div>
               );
             })}
@@ -459,8 +556,9 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
               const previaAqui = gesto?.tipo === "mover" && gesto.previa.inicioMin !== null && gesto.previa.dia === dia ? gesto.previa : null;
               const previaDeFora = previaExterna && previaExterna.pos.dia === dia && previaExterna.pos.inicioMin !== null ? previaExterna : null;
               return (
-                <div key={dia} data-coluna-dia={dia} className={`relative border-r border-border/35 ${dia === hoje ? "bg-surface-1/40" : "bg-base"}`}>
+                <div key={dia} data-coluna-dia={dia} onPointerDown={(e) => aoPressionarVazio(e, dia)} className={`relative border-r border-border/35 ${dia === hoje ? "bg-surface-1/40" : "bg-base"}`}>
                   {Array.from({ length: 24 }, (_, h) => <div key={h} aria-hidden className="pointer-events-none absolute inset-x-0 border-b border-border/35" style={{ top: h * PX_POR_HORA, height: PX_POR_HORA }} />)}
+                  {(concluidas?.get(dia) ?? []).map((t) => <span key={`concluida:${t.id}`} aria-hidden data-concluida-em={t.id} className="pointer-events-none absolute right-0.5 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-success text-base shadow-sm" style={{ top: diaEMinutosLocais(t.concluida_em!).minutos * PX_POR_MINUTO }}><CheckCircle2 size={12} strokeWidth={2.5} /></span>)}
                   {daqui.map((item) => {
                     const cap = capacidadesDo(item);
                     const emGesto = gesto?.chave === item.chave;
@@ -476,7 +574,7 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
                         data-colunas={colunas}
                         title={`${item.titulo} · ${rotuloHorario(pos.inicioMin as number)}–${rotuloHorario((pos.inicioMin as number) + pos.duracaoMin)}`}
                         style={{ top: (pos.inicioMin as number) * PX_POR_MINUTO, height: altura, left: `calc(${(coluna / colunas) * 100}% + 2px)`, width: `calc(${100 / colunas}% - 4px)`, ...estiloCorLivre(item.corHex) }}
-                        className={`group absolute select-none overflow-hidden rounded border-l-2 border-current px-1.5 py-0.5 pr-7 outline-none ring-cyan focus-visible:z-20 focus-visible:ring-2 hover:z-20 ${cursor} ${item.classe} ${item.tipo === "tarefa" ? "border-y border-r border-dashed" : ""} ${emGesto ? (gesto?.tipo === "redimensionar" ? "z-20 shadow-nav" : "opacity-40") : ""} ${emGesto && gesto?.levantado ? "scale-[1.03] shadow-nav" : ""} ${item.salvando ? "animate-pulse" : ""}`}
+                        className={`group absolute select-none overflow-hidden rounded border-l-2 border-current px-1.5 py-0.5 pr-7 outline-none ring-cyan focus-visible:z-20 focus-visible:ring-2 hover:z-20 ${cursor} ${item.classe} ${emGesto ? (gesto?.tipo === "redimensionar" ? "z-20 shadow-nav" : "opacity-40") : ""} ${emGesto && gesto?.levantado ? "scale-[1.03] shadow-nav" : ""} ${item.salvando ? "animate-pulse" : ""}`}
                       >
                         {corpoDoItem(item, pos, false)}
                         {cap.redimensionar && (
@@ -493,6 +591,11 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
                   {previaAqui && (
                     <div aria-hidden data-previa="mover" className="pointer-events-none absolute z-30 rounded border border-dashed border-cyan/80 bg-cyan/10 px-1.5 py-0.5 text-[10px] text-cyan" style={{ top: (previaAqui.inicioMin as number) * PX_POR_MINUTO, height: Math.max(previaAqui.duracaoMin, DURACAO_VISUAL_MINIMA_MIN) * PX_POR_MINUTO, left: 2, right: 2 }}>
                       {rotuloHorario(previaAqui.inicioMin as number)}–{rotuloHorario((previaAqui.inicioMin as number) + previaAqui.duracaoMin)}
+                    </div>
+                  )}
+                  {selecao && selecao.dia === dia && (
+                    <div ref={previaSelecaoRef} aria-hidden data-previa="criar" className="pointer-events-none absolute z-20 flex items-start gap-1.5 overflow-hidden rounded border-l-2 border-current bg-steel-500 px-2 py-2 text-xs font-medium text-white transition-[top,height] duration-100 ease-out will-change-[top,height]" style={{ top: (selecao.inicioMin as number) * PX_POR_MINUTO, height: Math.max(selecao.duracaoMin, DURACAO_VISUAL_MINIMA_MIN) * PX_POR_MINUTO, left: 2, right: 2 }}>
+                      <span className="truncate font-mono-value">{rotuloHorario(selecao.inicioMin as number)}-{rotuloHorario((selecao.inicioMin as number) + selecao.duracaoMin)}</span>
                     </div>
                   )}
                   {previaDeFora && (
@@ -513,6 +616,24 @@ export function GradeTempo({ dias, hoje, itens, encaixe, onMudarEncaixe, onSelec
       </div>
 
       <div role="status" aria-live="polite" className="sr-only">{aviso}</div>
+
+      {criando && onCriarNoHorario && (
+        <CriacaoRapida
+          pos={criando.pos}
+          ancora={criando.rect}
+          hoje={hoje}
+          onFechar={fecharCriacao}
+          onSalvar={async (dados) => { await onCriarNoHorario({ ...dados, destino: criando.pos }); fecharCriacao(); }}
+          onAbrirCriacaoCompleta={onAbrirCriacaoCompleta ? () => { fecharCriacao(); onAbrirCriacaoCompleta(); } : undefined}
+          onAbrirCompleto={onAbrirTarefaCriada ? async (dados) => {
+            const id = await onCriarNoHorario({ ...dados, destino: criando.pos });
+            if (typeof id === "string") {
+              fecharCriacao();
+              onAbrirTarefaCriada(id);
+            }
+          } : undefined}
+        />
+      )}
 
       {itemDoMenu && (
         <MenuDeMovimento
@@ -602,5 +723,97 @@ function MenuDeMovimento({ item, encaixe, podeRemover, onFechar, onAplicar, onRe
         </footer>
       </form>
     </div>
+  );
+}
+
+
+const PRIORIDADES_CICLO: NovaTarefaRapida["prioridade"][] = ["baixa", "media", "alta"];
+const COR_PRIORIDADE = { baixa: "text-text-muted", media: "text-warning", alta: "text-error" } as const;
+
+/** Popup de criação rápida ancorado no horário selecionado: título, notas, prioridade e criar (Enter). */
+function CriacaoRapida({ pos, ancora, hoje, onFechar, onSalvar, onAbrirCompleto, onAbrirCriacaoCompleta }: { pos: Posicao; ancora: DOMRect; hoje: string; onFechar: () => void; onSalvar: (dados: { titulo: string; corpo: string; prioridade: NovaTarefaRapida["prioridade"] }) => Promise<void>; onAbrirCompleto?: (dados: { titulo: string; corpo: string; prioridade: NovaTarefaRapida["prioridade"] }) => Promise<void>; onAbrirCriacaoCompleta?: () => void }) {
+  const raiz = useRef<HTMLFormElement>(null);
+  const campoTitulo = useRef<HTMLInputElement>(null);
+  const [titulo, setTitulo] = useState("");
+  const [corpo, setCorpo] = useState("");
+  const [prioridade, setPrioridade] = useState<NovaTarefaRapida["prioridade"]>("baixa");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  useEffect(() => campoTitulo.current?.focus(), []);
+
+  useEffect(() => {
+    const fora = (e: PointerEvent) => {
+      const alvo = e.target as HTMLElement;
+      // A própria grade cuida da troca de horário; não apague a prévia antes que ela possa deslizar para o novo dia.
+      if (alvo.closest?.("[data-coluna-dia]")) return;
+      if (!raiz.current?.contains(alvo)) onFechar();
+    };
+    const tecla = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onFechar(); };
+    document.addEventListener("pointerdown", fora);
+    document.addEventListener("keydown", tecla);
+    return () => { document.removeEventListener("pointerdown", fora); document.removeEventListener("keydown", tecla); };
+  }, [onFechar]);
+
+  const inicio = pos.inicioMin as number;
+  const dataBase = meioDiaLocal(pos.dia);
+  const diasDiferenca = Math.round((dataBase.getTime() - meioDiaLocal(hoje).getTime()) / 86_400_000);
+  const relativo = diasDiferenca === 0 ? "Hoje" : diasDiferenca === 1 ? "Amanhã" : diasDiferenca === -1 ? "Ontem" : diasDiferenca < 0 ? `${-diasDiferenca} dias atrás` : `Em ${diasDiferenca} dias`;
+  const passado = diasDiferenca < 0;
+  const rotulo = `${relativo}, ${dataBase.toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(".", "")}, ${rotuloHorario(inicio)} – ${rotuloHorario(inicio + pos.duracaoMin)}`;
+
+  const largura = 320;
+  const alturaEstimada = 230;
+  const cabeDireita = ancora.right + 8 + largura <= window.innerWidth - 8;
+  const left = cabeDireita ? ancora.right + 8 : Math.max(8, ancora.left - 8 - largura);
+  const top = Math.min(Math.max(8, ancora.top), Math.max(8, window.innerHeight - alturaEstimada - 8));
+
+  async function enviar(abrirCompleto = false) {
+    const limpo = titulo.trim();
+    if (salvando) return;
+    if (!limpo) {
+      if (abrirCompleto) onAbrirCriacaoCompleta?.();
+      return;
+    }
+    setSalvando(true);
+    setErro("");
+    try {
+      const dados = { titulo: limpo, corpo: corpo.trim(), prioridade };
+      await (abrirCompleto && onAbrirCompleto ? onAbrirCompleto(dados) : onSalvar(dados));
+    }
+    catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível criar a tarefa."); setSalvando(false); }
+  }
+
+  return (
+    <form
+      ref={raiz}
+      role="dialog"
+      aria-label="Nova tarefa"
+      onSubmit={(e) => { e.preventDefault(); void enviar(false); }}
+      className="ecos-fade-in fixed z-[110] flex flex-col overflow-hidden rounded-xl border border-border bg-surface-1 shadow-nav"
+      style={{ left, top, width: largura }}
+    >
+      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className={`truncate text-xs font-medium ${passado ? "text-error" : "text-cyan"}`}>{rotulo}</span>
+        <button type="button" onClick={() => setPrioridade((p) => PRIORIDADES_CICLO[(PRIORIDADES_CICLO.indexOf(p) + 1) % PRIORIDADES_CICLO.length])} title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}. Clique para alterar`} className={`flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 ${COR_PRIORIDADE[prioridade]}`}>
+          <Flag size={15} fill={prioridade === "baixa" ? "none" : "currentColor"} />
+        </button>
+      </header>
+      <div className="space-y-1 px-3 py-3">
+        <input ref={campoTitulo} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="O que você gostaria de fazer?" aria-label="Título da tarefa" className="w-full bg-transparent font-display text-base font-semibold text-text-primary outline-none placeholder:text-text-muted/60" />
+        <textarea value={corpo} onChange={(e) => setCorpo(e.target.value)} placeholder="Digite o conteúdo" aria-label="Conteúdo da tarefa" rows={3} className="w-full resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted/60" />
+        {erro && <p role="alert" className="text-xs text-error">{erro}</p>}
+      </div>
+      <footer className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+        <span className="flex items-center gap-1.5 text-xs text-text-secondary"><Inbox size={14} aria-hidden />Caixa de Entrada</span>
+        <div className="flex items-center gap-1.5">
+          {onAbrirCompleto && (
+            <button type="button" onClick={() => void enviar(true)} disabled={salvando} className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-steel-400 hover:bg-surface-2 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40" title={titulo.trim() ? "Salvar e abrir a visualização completa" : "Abrir o formulário completo"}>
+              <Expand size={13} aria-hidden />Completo
+            </button>
+          )}
+          <button type="submit" disabled={!titulo.trim() || salvando} className="rounded-lg bg-[#1e5f96] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#174d7b] disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-text-muted disabled:shadow-none">{salvando ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </footer>
+    </form>
   );
 }

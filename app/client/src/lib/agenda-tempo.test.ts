@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { BlocoPlanejado, TarefaResumo } from "@/lib/api";
 import {
-  ENCAIXE_PADRAO, HORA_PADRAO_MIN, MINUTOS_DIA, PX_POR_MINUTO, acaoDaTecla, aplicarAcao, aplicarPayloadNoBloco, arredondar, capacidadesDo, dataLocalISO, descreverPosicao,
-  diaEMinutosLocais, diasEntre, distribuirColunas, duracaoDoPonteiro, duracaoParaAlocar, instanteLocalISO, itemDoBloco, itensDaTarefa, payloadDoBloco, posicaoDoPonteiro,
+  ENCAIXE_PADRAO, HORA_PADRAO_MIN, MINUTOS_DIA, PX_POR_MINUTO, acaoDaTecla, aplicarAcao, aplicarPayloadNoBloco, arredondar, capacidadesDo, concluidasPorDia, dataLocalISO, descreverPosicao,
+  diaEMinutosLocais, diasEntre, distribuirColunas, duracaoDoPonteiro, duracaoParaAlocar, horaLocal, instanteLocalISO, itemDoBloco, itensDaTarefa, payloadDoBloco, posicaoDoPonteiro,
   somarDiasISO, type Posicao,
 } from "./agenda-tempo";
 
@@ -345,5 +345,29 @@ describe("teclado e menu", () => {
   });
   it("encaixe padrão é 15 min", () => {
     expect(ENCAIXE_PADRAO).toBe(15);
+  });
+});
+
+describe("concluidasPorDia", () => {
+  it("agrupa pelo dia local da conclusão (23:30 em Brasília é o dia 19, não o 20 de UTC), em ordem de horário", () => {
+    const mapa = concluidasPorDia([
+      tarefa({ id: "b", status: "concluida", concluida_em: "2026-09-20T02:30:00Z" }),
+      tarefa({ id: "a", status: "concluida", concluida_em: "2026-09-19T12:00:00Z" }),
+      tarefa({ id: "c", status: "concluida", concluida_em: "2026-09-20T15:00:00Z" }),
+    ]);
+    expect(mapa.get("2026-09-19")?.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(mapa.get("2026-09-20")?.map((t) => t.id)).toEqual(["c"]);
+  });
+
+  it("ignora pendentes (reabertas) e concluídas sem instante", () => {
+    const mapa = concluidasPorDia([
+      tarefa({ id: "x", status: "pendente", concluida_em: "2026-09-19T12:00:00Z" }),
+      tarefa({ id: "y", status: "concluida", concluida_em: null }),
+    ]);
+    expect(mapa.size).toBe(0);
+  });
+
+  it("horaLocal mostra o horário do relógio local", () => {
+    expect(horaLocal("2026-09-19T12:05:00Z")).toBe("09:05");
   });
 });

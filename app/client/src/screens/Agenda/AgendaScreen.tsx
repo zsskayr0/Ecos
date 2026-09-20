@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { useEventosLocais, type EventoLocal } from "@/lib/eventos-locais";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { AlertTriangle, ListChecks, CheckCircle2, ChevronLeft, ChevronRight, Pin, X, CalendarDays, CalendarRange, CalendarPlus, Columns3, Flag, LayoutGrid, PanelTop, Plus, Sun } from "lucide-react";
+import { AlertTriangle, ListChecks, Clock, CheckCircle2, ChevronLeft, ChevronRight, Pin, X, CalendarDays, CalendarRange, CalendarPlus, Columns3, Flag, LayoutGrid, PanelTop, Plus, Sun } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { agenda as agendaApi, tarefas as tarefasApi, rotina as rotinaApi, ApiError, type BlocoPlanejado, type PrioridadeTarefa, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
@@ -10,13 +10,15 @@ import { CalendarClock } from "lucide-react";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
-import { ENCAIXE_PADRAO, HORA_PADRAO_MIN, OPCOES_ENCAIXE, aplicarPayloadNoBloco, dataLocalISO, duracaoParaAlocar, instanteLocalISO, itensDaTarefa, itemDoBloco, meioDiaLocal, payloadDoBloco, somarDiasISO, type ItemAgenda, type PayloadBloco, type Posicao } from "@/lib/agenda-tempo";
+import { ENCAIXE_PADRAO, HORA_PADRAO_MIN, concluidasPorDia, horaLocal, OPCOES_ENCAIXE, aplicarPayloadNoBloco, dataLocalISO, duracaoParaAlocar, instanteLocalISO, itensDaTarefa, itemDoBloco, meioDiaLocal, payloadDoBloco, somarDiasISO, type ItemAgenda, type PayloadBloco, type Posicao } from "@/lib/agenda-tempo";
 import { useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
 import { usePreferenciasCalendario } from "@/lib/preferencias-calendario";
 import { AlocarTempoDialog } from "./AlocarTempoDialog";
 import { useEdicaoOtimista } from "@/lib/agenda-otimista";
-import { GradeTempo } from "./GradeTempo";
+import { GradeTempo, type NovaTarefaRapida } from "./GradeTempo";
 import { EditorEvento } from "./EditorEvento";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
+import { useAppUI } from "@/lib/ui-context";
 
 type ModoAgenda = "dia" | "tres_dias" | "semana" | "quinzenal" | "mes" | "seis_meses" | "anual";
 type AncoraPopup = { left: number; top: number; width: number; height: number };
@@ -107,15 +109,16 @@ export function AgendaScreen() {
   const desktop = useIsDesktop();
   const agendaRef = useRef<HTMLDivElement>(null);
   const abrirDocumento = useAbrirDocumento();
+  const { abrirCaptura } = useAppUI();
   const { versao, notificar } = useRefreshBus();
   const [estadoInicial] = useState(lerEstadoInicialAgenda);
   const [modo, setModo] = useState<ModoAgenda>(estadoInicial.modo);
   const [diaAtual, setDiaAtual] = useState(estadoInicial.dia);
   const [pedidoAgora, setPedidoAgora] = useState(0);
   const hoje = new Date();
-  // No desktop, clicar num dia só abre o popup dele: o período que está na tela (diaAtual) não se move.
+  // Clicar num dia só abre o popup dele (janela no desktop, folha no celular): o período que está na tela (diaAtual) não se move.
   const [diaPopup, setDiaPopup] = useState(estadoInicial.dia);
-  const diaFoco = desktop ? diaPopup : diaAtual;
+  const diaFoco = diaPopup;
   const dataStr = paraISO(diaFoco);
   const dataPeriodo = paraISO(diaAtual);
   // Ao trocar de mês/semana/etc. a visão desliza para o lado de onde o período veio; ao trocar de modo, ela "acomoda" (sem remontar: a grade mantém a rolagem).
@@ -148,6 +151,7 @@ export function AgendaScreen() {
 
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [itensDoPeriodo, setItensDoPeriodo] = useState<TarefaResumo[]>([]);
+  const [concluidasDoPeriodo, setConcluidasDoPeriodo] = useState<TarefaResumo[]>([]);
   /** Tempo alocado a tarefas no calendário (blocos). Não confundir com `blocos`, a lista de tarefas do dia do popup. */
   const [blocosDeTempo, setBlocosDeTempo] = useState<BlocoPlanejado[]>([]);
   const [alocarAberto, setAlocarAberto] = useState(false);
@@ -177,6 +181,7 @@ export function AgendaScreen() {
     } catch { /* cache indisponível */ }
   }, [modo, diaAtual]);
 
+  const espaco = useEspacoFiltro();
   useEffect(() => {
     let vivo = true;
     setErro(null);
@@ -184,7 +189,7 @@ export function AgendaScreen() {
     const [a, m, d] = dataStr.split("-").map(Number);
     const tz = -new Date(a, m - 1, d, 12).getTimezoneOffset();
     Promise.all([
-      tarefasApi.listar({ data_de: dataStr, data_ate: dataStr, tz, limit: 100 }),
+      tarefasApi.listar({ data_de: dataStr, data_ate: dataStr, tz, espaco, limit: 100 }),
       tarefasApi.capacidade(dataStr, tz),
     ])
       .then(([t, c]) => {
@@ -200,7 +205,7 @@ export function AgendaScreen() {
     return () => {
       vivo = false;
     };
-  }, [dataStr, versao]);
+  }, [dataStr, versao, espaco]);
 
   useEffect(() => {
     let vivo = true;
@@ -209,9 +214,20 @@ export function AgendaScreen() {
     const tz = -new Date(ano, mes - 1, dia, 12).getTimezoneOffset();
     // Nas visões de tempo busca 1 dia a mais de cada lado: o corte de dia do servidor usa o fuso de um único dia (horário de verão!) e a grade refiltra no fuso local.
     const comMargem = modo === "dia" || modo === "tres_dias" || modo === "semana" || modo === "quinzenal";
-    tarefasApi.listar({ data_de: comMargem ? somarDiasISO(de, -1) : de, data_ate: comMargem ? somarDiasISO(ate, 1) : ate, tz, limit: 500 }).then((resultado) => { if (vivo) setItensDoPeriodo(resultado.items); }).catch(() => { if (vivo) setItensDoPeriodo([]); });
+    tarefasApi.listar({ data_de: comMargem ? somarDiasISO(de, -1) : de, data_ate: comMargem ? somarDiasISO(ate, 1) : ate, tz, espaco, limit: 500 }).then((resultado) => { if (vivo) setItensDoPeriodo(resultado.items); }).catch(() => { if (vivo) setItensDoPeriodo([]); });
     return () => { vivo = false; };
-  }, [modo, dataPeriodo, versao]);
+  }, [modo, dataPeriodo, versao, espaco]);
+
+  // Dias em que Tarefas foram concluídas (`concluida_em`): o dia fica marcado no calendário. Sempre com 1 dia de margem de cada lado — o servidor corta o dia num fuso só; o agrupamento final é pelo dia local.
+  useEffect(() => {
+    let vivo = true;
+    const { de, ate } = limitesDoPeriodo(modo, diaAtual);
+    const [ano, mes, dia] = de.split("-").map(Number);
+    const tz = -new Date(ano, mes - 1, dia, 12).getTimezoneOffset();
+    tarefasApi.listar({ concluida_de: somarDiasISO(de, -1), concluida_ate: somarDiasISO(ate, 1), status: "concluida", tz, espaco, limit: 500 }).then((resultado) => { if (vivo) setConcluidasDoPeriodo(resultado.items); }).catch(() => { if (vivo) setConcluidasDoPeriodo([]); });
+    return () => { vivo = false; };
+  }, [modo, dataPeriodo, versao, espaco]);
+  const concluidasNoDia = concluidasPorDia(concluidasDoPeriodo);
 
   // Blocos de tempo do período (só as visões de horário os desenham). Mesma margem de 1 dia: o corte de dia do servidor usa o fuso de um único dia.
   useEffect(() => {
@@ -281,6 +297,13 @@ export function AgendaScreen() {
     }
   }
 
+  /** Criação rápida pela grade: cria a Tarefa na Caixa de Entrada e já aloca o tempo selecionado. */
+  async function criarTarefaNoHorario(dados: NovaTarefaRapida) {
+    const { id } = await tarefasApi.criar({ titulo: dados.titulo, corpo: dados.corpo || undefined, prioridade: dados.prioridade, duration_min: dados.destino.duracaoMin });
+    await alocarTarefa({ id, titulo: dados.titulo, duracaoMin: dados.destino.duracaoMin, prioridade: dados.prioridade }, dados.destino);
+    return id;
+  }
+
   /** Solta no mês: sem horário para escolher, o tempo cai às 09:00 daquele dia (dá para arrastar o bloco depois). */
   function alocarNoDia(tarefa: TarefaArrastavel, dia: string) {
     void alocarTarefa(tarefa, { dia, inicioMin: HORA_PADRAO_MIN, duracaoMin: duracaoParaAlocar(tarefa.duracaoMin) });
@@ -302,14 +325,12 @@ export function AgendaScreen() {
   const ehHojeFn = (d: Date) => paraISO(d) === paraISO(hoje);
   const pendentes = blocos?.filter((b) => b.status === "pendente").length ?? 0;
   const selecionarDia = (data: Date, alvo?: HTMLElement) => {
-    if (!desktop) setDiaAtual(data);
-    else {
-      setDiaPopup(data);
-      const pai = agendaRef.current?.getBoundingClientRect();
-      const retangulo = alvo?.getBoundingClientRect();
-      if (pai && retangulo) setAncoraPopup({ left: retangulo.left - pai.left, top: retangulo.top - pai.top, width: retangulo.width, height: retangulo.height });
-      setTarefasAbertas(true);
-    }
+    setDiaPopup(data);
+    const pai = agendaRef.current?.getBoundingClientRect();
+    const retangulo = alvo?.getBoundingClientRect();
+    if (desktop && pai && retangulo) setAncoraPopup({ left: retangulo.left - pai.left, top: retangulo.top - pai.top, width: retangulo.width, height: retangulo.height });
+    else setAncoraPopup(null);
+    setTarefasAbertas(true);
   };
   // "Hoje" é igual em todas as visões: se o período visível já contém hoje, abre o popup do dia; senão navega até o período
   // certo e (nas visões de tempo) rola a grade até o horário atual.
@@ -326,72 +347,28 @@ export function AgendaScreen() {
     return somarDias(atual, direcao * (modo === "tres_dias" ? 3 : modo === "quinzenal" ? 14 : modo === "semana" ? 7 : 1));
   });
 
-  useEffect(() => {
-    if (!desktop) setTarefasAbertas(false);
-  }, [desktop]);
-
   return (
-    <div ref={agendaRef} className={`relative px-4 pt-1 ${desktop ? "flex h-full min-h-0 flex-col pb-4" : ""}`}>
-      {!desktop && <div className="mb-4 flex justify-center rounded-pill bg-surface-2 p-1 self-center w-fit mx-auto">
-        {(["mes", "semana", "dia"] as ModoAgenda[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => setModo(m)}
-            className={`rounded-pill px-4 py-1.5 text-sm font-medium capitalize ${modo === m ? "bg-steel-700 text-white" : "text-text-muted"}`}
-          >
-            {m === "mes" ? "Mês" : m === "semana" ? "Semana" : "Dia"}
-          </button>
-        ))}
-      </div>}
-
+    <div ref={agendaRef} className={`relative flex min-h-0 flex-col ${desktop ? "h-full px-4 pt-1 pb-4" : "h-[calc(100dvh-13rem-var(--ecos-safe-top)-var(--ecos-safe-bottom))] min-h-[30rem] px-3 pt-1"}`}>
       <div ref={areaRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {modo === "mes" && (
-        <VisaoMes desktop={desktop} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} onMudarMes={(delta) => setDiaAtual((d) => new Date(d.getFullYear(), d.getMonth() + delta, Math.min(d.getDate(), 28)))} onSelecionar={selecionarDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
+        <VisaoMes onAbrirItem={abrirItemAgenda} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} concluidas={concluidasNoDia} onSelecionar={selecionarDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
       )}
       {(modo === "tres_dias" || modo === "semana" || modo === "quinzenal") && (
-        <VisaoTempo pedidoAgora={pedidoAgora} desktop={desktop} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />
+        <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />
       )}
-      {modo === "dia" && (desktop ? <VisaoTempo pedidoAgora={pedidoAgora} desktop modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} /> :
-        <VisaoDia desktop={false} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} hoje={hoje} diaAtual={diaAtual} onMudarDia={(delta) => setDiaAtual((d) => somarDias(d, delta))} onSelecionar={selecionarDia} />
-      )}
-      {(modo === "seis_meses" || modo === "anual") && <VisaoPeriodos modo={modo} diaAtual={diaAtual} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onSelecionar={selecionarDia} />}
+      {modo === "dia" && <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />}
+      {(modo === "seis_meses" || modo === "anual") && <VisaoPeriodos modo={modo} diaAtual={diaAtual} hoje={hoje} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...eventosLocais.map(itemDoEvento)]} concluidas={concluidasNoDia} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onSelecionar={selecionarDia} onAbrirMes={(mes) => { setDiaAtual(mes); setModo("mes"); }} />}
       </div>
 
-      {semRotina && !desktop && (
-        <button onClick={() => navigate("/perfil/rotina")} className="mb-4 flex w-full items-start gap-3 rounded-2xl border border-steel-400/40 bg-steel-700/15 p-4 text-left">
-          <CalendarClock size={20} className="mt-0.5 shrink-0 text-steel-300" strokeWidth={1.75} />
-          <span className="text-sm leading-snug text-text-primary">Você ainda não contou sobre a sua rotina. Sem ela a Agenda não sabe quantas horas o seu dia tem. <span className="font-semibold text-steel-300">Ajustar rotina</span></span>
-        </button>
-      )}
-
-      {erro && !desktop && (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-          {erro}
-        </div>
-      )}
-
-      {capacidade?.estourado && !desktop && (
-        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning/10 p-4">
-          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning" strokeWidth={1.75} />
-          <p className="text-sm leading-snug text-text-primary">
-            {pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem{" "}
-            {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção
-            disponível. A conta não fecha — alguma vai sobrar pra amanhã. Qual?
-          </p>
-        </div>
-      )}
-
-      {!desktop && <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} />}
-      {desktop && tarefasAbertas && <PopupTarefas key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} />}
-      {desktop && avisoMover && (
+      {tarefasAbertas && <PopupTarefas sheet={!desktop} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
+      {avisoMover && (
         <div role="alert" className="ecos-fade-in absolute left-1/2 top-3 z-40 flex max-w-[90%] -translate-x-1/2 items-start gap-2 rounded-xl border border-error/40 bg-base px-4 py-3 text-sm text-error shadow-nav">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <span>{avisoMover}</span>
           <button type="button" onClick={() => setAvisoMover(null)} aria-label="Dispensar aviso" className="ml-1 rounded p-0.5 text-text-muted hover:bg-surface-2"><X size={14} /></button>
         </div>
       )}
-      {desktop && alocarAberto && <AlocarTempoDialog encaixe={encaixe} onFechar={() => setAlocarAberto(false)} onAlocar={(tarefa, destino) => { setAlocarAberto(false); void alocarTarefa(tarefa, destino); }} />}
+      {alocarAberto && <AlocarTempoDialog encaixe={encaixe} onFechar={() => setAlocarAberto(false)} onAlocar={(tarefa, destino) => { setAlocarAberto(false); void alocarTarefa(tarefa, destino); }} />}
       {criadorEventoAberto && <EditorEvento dia={diaAtual} eventos={eventosLocais} passoMin={encaixe} onFechar={() => setCriadorEventoAberto(false)} onSalvar={(dados) => { setEventosLocais((anteriores: EventoLocal[]) => [...anteriores, { ...dados, id: Date.now() }]); setCriadorEventoAberto(false); }} />}
       {eventoEmEdicao && <EditorEvento key={eventoEmEdicao.id} dia={diaAtual} evento={eventoEmEdicao} eventos={eventosLocais} passoMin={encaixe} onFechar={() => setEventoEmEdicao(null)} onSalvar={(dados) => { setEventosLocais((anteriores: EventoLocal[]) => anteriores.map((ev) => ev.id === eventoEmEdicao.id ? { ...ev, ...dados } : ev)); setEventoEmEdicao(null); }} onExcluir={() => { setEventosLocais((anteriores: EventoLocal[]) => anteriores.filter((ev) => ev.id !== eventoEmEdicao.id)); setEventoEmEdicao(null); }} />}
     </div>
@@ -417,10 +394,10 @@ function RelogioAnimado() {
 function AcoesAgenda({ modo, onMudarModo, onHoje, onNavegar = () => {}, onAbrirEvento = () => {}, onAlocar }: { modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar?: (direcao: number) => void; onAbrirEvento?: () => void; onAlocar?: () => void }) {
   const atual = PERIODOS.find((periodo) => periodo.valor === modo);
   const Icone = atual?.icone ?? CalendarDays;
-  return <div className="flex items-center gap-2"><button onClick={() => onNavegar(-1)} className="group flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Período anterior"><ChevronLeft size={18} className="transition-transform duration-300 ease-out group-hover:-translate-x-1 group-active:-translate-x-2.5 group-active:duration-500" /></button><MenuSuspenso ariaLabel="Escolher período da agenda" valor={modo} opcoes={PERIODOS} onChange={onMudarModo} corAtiva={atual?.cor ?? TOM.aco} classeGatilho="group flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" gatilho={({ aberto }) => <><Icone size={16} className="transition-transform duration-300 ease-out group-hover:-rotate-12 group-hover:scale-125 group-active:rotate-[360deg] group-active:scale-90 group-active:duration-700" /><span>{atual?.rotulo}</span><ChevronRight size={14} className={`transition-transform duration-200 ${aberto ? "rotate-90" : ""}`} /></>} /><button onClick={() => onNavegar(1)} className="group flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Próximo período"><ChevronRight size={18} className="transition-transform duration-300 ease-out group-hover:translate-x-1 group-active:translate-x-2.5 group-active:duration-500" /></button><button onClick={(e) => onHoje(e.currentTarget)} className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary">Hoje</button><button onClick={onAbrirEvento} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><Plus size={16} className="transition-transform duration-500 ease-out group-hover:rotate-90 group-active:rotate-[450deg] group-active:duration-700" />Evento</button>{onAlocar && <button onClick={onAlocar} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><RelogioAnimado />Alocar tempo</button>}</div>;
+  return <div className="flex flex-wrap items-center gap-2"><button onClick={() => onNavegar(-1)} className="group flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Período anterior"><ChevronLeft size={18} className="transition-transform duration-300 ease-out group-hover:-translate-x-1 group-active:-translate-x-2.5 group-active:duration-500" /></button><MenuSuspenso ariaLabel="Escolher período da agenda" valor={modo} opcoes={PERIODOS} onChange={onMudarModo} corAtiva={atual?.cor ?? TOM.aco} classeGatilho="group flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" gatilho={({ aberto }) => <><Icone size={16} className="transition-transform duration-300 ease-out group-hover:-rotate-12 group-hover:scale-125 group-active:rotate-[360deg] group-active:scale-90 group-active:duration-700" /><span>{atual?.rotulo}</span><ChevronRight size={14} className={`transition-transform duration-200 ${aberto ? "rotate-90" : ""}`} /></>} /><button onClick={() => onNavegar(1)} className="group flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Próximo período"><ChevronRight size={18} className="transition-transform duration-300 ease-out group-hover:translate-x-1 group-active:translate-x-2.5 group-active:duration-500" /></button><button onClick={(e) => onHoje(e.currentTarget)} className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary">Hoje</button><button onClick={onAbrirEvento} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><Plus size={16} className="transition-transform duration-500 ease-out group-hover:rotate-90 group-active:rotate-[450deg] group-active:duration-700" /><span className="hidden sm:inline">Evento</span><span className="sr-only sm:hidden">Novo evento</span></button>{onAlocar && <button onClick={onAlocar} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><RelogioAnimado /><span className="hidden sm:inline">Alocar tempo</span><span className="sr-only sm:hidden">Alocar tempo</span></button>}</div>;
 }
 
-function VisaoMes({ desktop, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, itens, onMudarMes, onSelecionar, onAlocarTarefa, mostrarPrazos, onAlocar }: { desktop: boolean; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; itens: TarefaResumo[]; onMudarMes: (delta: number) => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, dia: string) => void; mostrarPrazos: boolean; onAlocar?: () => void }) {
+function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, itens, concluidas, onSelecionar, onAlocarTarefa, mostrarPrazos, onAlocar }: { onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; itens: TarefaResumo[]; concluidas: Map<string, TarefaResumo[]>; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, dia: string) => void; mostrarPrazos: boolean; onAlocar?: () => void }) {
   const { offset, totalDias, ano, mes } = gerarDiasDoMes(diaAtual);
   // Uma tarefa arrastada de uma lista pode cair num dia do mês: o dia sob o ponteiro ganha destaque e, ao soltar, recebe o tempo dela.
   const [diaSobre, setDiaSobre] = useState<string | null>(null);
@@ -433,14 +410,14 @@ function VisaoMes({ desktop, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento
   });
   const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
-  if (desktop) return (
+  return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-2xl capitalize text-text-primary">{nomeMes}</h1></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
+        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-xl lg:text-2xl capitalize text-text-primary">{nomeMes}</h1></div>
         <AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} onAlocar={onAlocar} />
       </div>
       <div className="grid grid-cols-7 border-b border-border bg-surface-1">
-        {["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"].map((nome) => <div key={nome} className="border-r border-border px-3 py-2 text-xs font-medium text-text-muted last:border-r-0">{nome}</div>)}
+        {["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"].map((nome) => <div key={nome} className="border-r border-border px-1 py-2 text-center text-xs font-medium text-text-muted last:border-r-0 lg:px-3 lg:text-left"><span className="lg:hidden" aria-label={nome}>{nome[0]}</span><span className="hidden lg:inline">{nome}</span></div>)}
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden">
         {Array.from({ length: 42 }, (_, indice) => {
@@ -452,157 +429,114 @@ function VisaoMes({ desktop, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento
           const ativo = paraISO(data) === paraISO(diaAtual);
           const ehHoje = paraISO(data) === paraISO(hoje);
           const iso = paraISO(data);
-          return <div key={numeroDoDia} data-dia-mes={iso} className={`group min-h-[84px] border-b border-r border-border p-2 text-left transition-colors duration-200 ${diaSobre === iso ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : ativo ? "bg-surface-2" : "bg-base"}`}>
-            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => onSelecionar(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${ativo ? "bg-steel-500 font-semibold text-white" : ehHoje ? "bg-surface-2 font-semibold text-text-primary ring-1 ring-steel-400" : "text-text-secondary hover:bg-surface-2"}`}>{numeroDoDia}</button>{tarefasDoDia.slice(0, 2).map((tarefa) => <span key={tarefa.chave} data-marca={tarefa.tipo === "prazo" ? "prazo" : undefined} className={`mt-1 block truncate rounded px-1.5 py-0.5 text-[11px] font-medium ${tarefa.classe}`}>{(tarefa.tipo === "prazo" || tarefa.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline" />}{tarefa.titulo}</span>)}{tarefasDoDia.length > 2 && <span className="mt-1 block text-[11px] text-text-muted">+{tarefasDoDia.length - 2} tarefas</span>}
+          const concluidasDoDia = concluidas.get(iso) ?? [];
+          return <div key={numeroDoDia} data-dia-mes={iso} className={`group relative min-h-0 overflow-hidden border-b border-r border-border p-1 text-left lg:min-h-[84px] lg:p-2 transition-colors duration-200 ${diaSobre === iso ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : ativo ? "bg-surface-2" : "bg-base"}`}>
+            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => onSelecionar(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${ativo ? "bg-steel-500 font-semibold text-white" : ehHoje ? "bg-surface-2 font-semibold text-text-primary ring-1 ring-steel-400" : "text-text-secondary hover:bg-surface-2"}`}>{numeroDoDia}</button>{concluidasDoDia.length > 0 && <span data-concluidas={concluidasDoDia.length} title={`Concluída${concluidasDoDia.length === 1 ? "" : "s"}: ${concluidasDoDia.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-pill bg-success/15 px-1 py-0.5 text-[9px] font-semibold text-success lg:bottom-auto lg:right-1.5 lg:top-1.5 lg:px-1.5 lg:text-[10px]"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{concluidasDoDia.length}<span className="sr-only"> {concluidasDoDia.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>}{tarefasDoDia.length > 0 && <span aria-hidden className="mt-1 flex flex-wrap justify-center gap-0.5 lg:hidden">{tarefasDoDia.slice(0, 4).map((t) => <i key={t.chave} className={`h-1.5 w-1.5 rounded-full ${t.tipo === "prazo" ? "bg-warning" : t.tipo === "evento" ? "bg-violet" : t.classe.includes("error") ? "bg-error" : "bg-cyan"}`} />)}</span>}{tarefasDoDia.slice(0, 2).map((tarefa) => <button type="button" key={tarefa.chave} data-marca={tarefa.tipo === "prazo" ? "prazo" : undefined} title={tarefa.titulo} onClick={(e) => onAbrirItem(tarefa, e)} className={`mt-1 hidden w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] lg:block font-medium transition-[filter] hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${tarefa.classe}`}>{(tarefa.tipo === "prazo" || tarefa.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline" />}{tarefa.titulo}</button>)}{tarefasDoDia.length > 2 && <span className="mt-1 hidden text-[11px] text-text-muted lg:block">+{tarefasDoDia.length - 2} tarefas</span>}
           </div>;
         })}
       </div>
     </section>
   );
 
-  return (
-    <>
-      <div className="mb-3 flex items-center justify-between">
-        <button onClick={() => onMudarMes(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Mês anterior">
-          <ChevronLeft size={18} />
-        </button>
-        <h1 className="font-display text-xl capitalize text-text-primary">{nomeMes}</h1>
-        <button onClick={() => onMudarMes(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próximo mês">
-          <ChevronRight size={18} />
-        </button>
-      </div>
-
-      <div className="mb-4 grid grid-cols-7 gap-y-2 rounded-card bg-surface-1 p-3">
-        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
-          <div key={i} className="text-center text-xs font-medium text-text-muted">
-            {d}
-          </div>
-        ))}
-        {Array.from({ length: offset }).map((_, i) => (
-          <div key={`vazio-${i}`} />
-        ))}
-        {Array.from({ length: totalDias }, (_, i) => i + 1).map((dia) => {
-          const data = new Date(ano, mes, dia);
-          const ativo = paraISO(data) === paraISO(diaAtual);
-          const ehHoje = paraISO(data) === paraISO(hoje);
-          return (
-            <button
-              key={dia}
-              data-dia-mes={paraISO(data)}
-              onClick={(e) => onSelecionar(data, e.currentTarget)}
-              className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors hover:bg-steel-600/30 ${diaSobre === paraISO(data) ? "ring-2 ring-cyan" : ""} ${
-                ativo ? "bg-steel-700 font-semibold text-white" : ehHoje ? "border border-steel-500 text-text-primary" : "text-text-secondary"
-              }`}
-            >
-              {dia}
-            </button>
-          );
-        })}
-      </div>
-    </>
-  );
 }
 
-function VisaoSemana({ desktop, modo, onMudarModo, onHoje, diaAtual, hoje, onMudarSemana, onSelecionar }: { desktop: boolean; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; diaAtual: Date; hoje: Date; onMudarSemana: (delta: number) => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void }) {
-  const inicio = inicioDaSemana(diaAtual);
-  const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
-  const rotulo = `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, 6).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
-
-  if (desktop) return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-2xl text-text-primary">{rotulo}</h1></div><AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} /></div>
-      <div key={paraISO(inicio)} className="agenda-calendario-entra grid min-h-0 flex-1 grid-cols-7 overflow-hidden">
-        {dias.map((data) => { const ativo = paraISO(data) === paraISO(diaAtual); const ehHoje = paraISO(data) === paraISO(hoje); return <button key={paraISO(data)} onClick={(e) => onSelecionar(data, e.currentTarget)} className={`group min-h-[180px] border-r border-border p-3 text-left transition-colors duration-200 hover:bg-surface-1 last:border-r-0 ${ativo ? "bg-surface-2" : "bg-base"}`}><span className="block text-xs font-medium text-text-muted">{data.toLocaleDateString("pt-BR", { weekday: "long" })}</span><span className={`mt-2 flex h-8 w-8 items-center justify-center rounded-full text-sm ${ativo ? "bg-steel-500 font-semibold text-white" : ehHoje ? "bg-surface-2 font-semibold text-text-primary ring-1 ring-steel-400" : "text-text-secondary group-hover:bg-surface-2"}`}>{data.getDate()}</span></button>; })}
-      </div>
-    </section>
-  );
-
-  return (
-    <>
-      <div className="mb-3 flex items-center justify-between">
-        <button onClick={() => onMudarSemana(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Semana anterior">
-          <ChevronLeft size={18} />
-        </button>
-        <h1 className="font-display text-lg text-text-primary">{rotulo}</h1>
-        <button onClick={() => onMudarSemana(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próxima semana">
-          <ChevronRight size={18} />
-        </button>
-      </div>
-
-      <div className="mb-4 grid grid-cols-7 gap-1 rounded-card bg-surface-1 p-3">
-        {dias.map((data) => {
-          const ativo = paraISO(data) === paraISO(diaAtual);
-          const ehHoje = paraISO(data) === paraISO(hoje);
-          return (
-            <button key={paraISO(data)} onClick={(e) => onSelecionar(data, e.currentTarget)} className="flex flex-col items-center gap-1">
-              <span className="text-[10px] font-medium uppercase text-text-muted">{data.toLocaleDateString("pt-BR", { weekday: "narrow" })}</span>
-              <span
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm ${
-                  ativo ? "bg-steel-700 font-semibold text-white" : ehHoje ? "border border-steel-500 text-text-primary" : "text-text-secondary"
-                }`}
-              >
-                {data.getDate()}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-function VisaoTempo({ pedidoAgora, desktop, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, onSelecionar, eventos, tarefas, blocos, inicioMin, mostrarPrazos, encaixe, onMudarEncaixe, onAbrirItem, onMoverItem, onRemoverItem, onAlocarTarefa, onAlocar }: { pedidoAgora: number; desktop: boolean; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; onSelecionar: (d: Date, alvo?: HTMLElement) => void; eventos: EventoLocal[]; tarefas: TarefaResumo[]; blocos: BlocoPlanejado[]; inicioMin: number; mostrarPrazos: boolean; encaixe: number; onMudarEncaixe: (encaixe: number) => void; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; onMoverItem: (item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") => void; onRemoverItem: (item: ItemAgenda) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, destino: Posicao) => void; onAlocar: () => void }) {
+function VisaoTempo({ concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, onSelecionar, eventos, tarefas, blocos, inicioMin, mostrarPrazos, encaixe, onMudarEncaixe, onAbrirItem, onMoverItem, onRemoverItem, onAlocarTarefa, onCriarNoHorario, onAbrirTarefaCriada, onAbrirCriacaoCompleta, onAlocar }: { concluidas: Map<string, TarefaResumo[]>; onCriarNoHorario: (dados: NovaTarefaRapida) => Promise<string>; onAbrirTarefaCriada: (id: string) => void; onAbrirCriacaoCompleta: () => void; pedidoAgora: number; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; onSelecionar: (d: Date, alvo?: HTMLElement) => void; eventos: EventoLocal[]; tarefas: TarefaResumo[]; blocos: BlocoPlanejado[]; inicioMin: number; mostrarPrazos: boolean; encaixe: number; onMudarEncaixe: (encaixe: number) => void; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; onMoverItem: (item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") => void; onRemoverItem: (item: ItemAgenda) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, destino: Posicao) => void; onAlocar: () => void }) {
   const quantidade = modo === "dia" ? 1 : modo === "tres_dias" ? 3 : modo === "quinzenal" ? 14 : 7;
   const inicio = modo === "dia" || modo === "tres_dias" ? diaAtual : inicioDaSemana(diaAtual);
   const rotulo = `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, quantidade - 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
-  if (!desktop) return <VisaoSemana desktop={false} modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} diaAtual={diaAtual} hoje={hoje} onMudarSemana={onNavegar} onSelecionar={onSelecionar} />;
   const dias = Array.from({ length: quantidade }, (_, indice) => somarDiasISO(paraISO(inicio), indice));
   const itens = [...tarefas.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocos.map(itemDoBloco), ...eventos.map(itemDoEvento)].filter((i) => dias.includes(i.dia));
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-2xl text-text-primary">{rotulo}</h1></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
+        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-xl lg:text-2xl text-text-primary">{rotulo}</h1></div>
         <AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} onAlocar={onAlocar} />
       </div>
-      <GradeTempo rolarParaAgora={pedidoAgora} dias={dias} hoje={paraISO(hoje)} itens={itens} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={onMudarEncaixe} onSelecionarDia={(dia, alvo) => onSelecionar(meioDiaLocal(dia), alvo)} onAbrirItem={onAbrirItem} onMover={onMoverItem} onRemover={onRemoverItem} onAlocarTarefa={onAlocarTarefa} />
+      <GradeTempo concluidas={concluidas} rolarParaAgora={pedidoAgora} dias={dias} hoje={paraISO(hoje)} itens={itens} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={onMudarEncaixe} onSelecionarDia={(dia, alvo) => onSelecionar(meioDiaLocal(dia), alvo)} onAbrirItem={onAbrirItem} onMover={onMoverItem} onRemover={onRemoverItem} onAlocarTarefa={onAlocarTarefa} onCriarNoHorario={onCriarNoHorario} onAbrirTarefaCriada={onAbrirTarefaCriada} onAbrirCriacaoCompleta={onAbrirCriacaoCompleta} />
     </section>
   );
 }
 
-function VisaoPeriodos({ modo, diaAtual, onMudarModo, onHoje, onNavegar, onAbrirEvento, onSelecionar }: { modo: ModoAgenda; diaAtual: Date; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void }) {
+function VisaoPeriodos({ modo, diaAtual, hoje, itens, concluidas, onMudarModo, onHoje, onNavegar, onAbrirEvento, onSelecionar, onAbrirMes }: { modo: ModoAgenda; diaAtual: Date; hoje: Date; itens: ItemAgenda[]; concluidas: Map<string, TarefaResumo[]>; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAbrirMes: (mes: Date) => void }) {
   const meses = Array.from({ length: modo === "anual" ? 12 : 6 }, (_, indice) => new Date(diaAtual.getFullYear(), (modo === "anual" ? 0 : diaAtual.getMonth()) + indice, 1));
-  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-2xl text-text-primary">{modo === "anual" ? diaAtual.getFullYear() : "Próximos 6 meses"}</h1></div><AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} /></div><div className="grid flex-1 grid-cols-3 gap-px bg-border p-px lg:grid-cols-4">{meses.map((mes) => <button data-mini-mes={paraISO(mes)} key={paraISO(mes)} onClick={(e) => onSelecionar(mes, e.currentTarget)} className="bg-base p-4 text-left transition-colors hover:bg-surface-1"><h2 className="font-medium capitalize text-text-primary">{mes.toLocaleDateString("pt-BR", { month: "long" })}</h2><p className="mt-2 text-sm text-text-muted">Ver agenda do mês</p></button>)}</div></section>;
+  const porDia = new Map<string, ItemAgenda[]>();
+  itens.forEach((item) => porDia.set(item.dia, [...(porDia.get(item.dia) ?? []), item]));
+  const totalPeriodo = itens.filter((item) => {
+    const primeiro = paraISO(meses[0]);
+    const ultimoMes = meses[meses.length - 1];
+    const ultimo = paraISO(new Date(ultimoMes.getFullYear(), ultimoMes.getMonth() + 1, 0));
+    return item.dia >= primeiro && item.dia <= ultimo;
+  }).length;
+
+  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
+      <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><div className="flex items-baseline gap-3"><h1 className="font-display text-xl lg:text-2xl text-text-primary">{modo === "anual" ? diaAtual.getFullYear() : "Próximos 6 meses"}</h1><span className="text-xs text-text-muted">{totalPeriodo} {totalPeriodo === 1 ? "item" : "itens"} no período</span></div></div>
+      <AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} />
+    </div>
+    <div className={`min-h-0 flex-1 bg-surface-1/40 ${modo === "anual" ? "overflow-hidden p-2" : "overflow-y-auto p-3 sm:p-4"}`}>
+      <div className={`grid gap-2 ${modo === "anual" ? "h-full grid-cols-2 grid-rows-6 md:grid-cols-3 md:grid-rows-4 lg:grid-cols-4 lg:grid-rows-3" : "gap-3 sm:grid-cols-2 xl:grid-cols-3"}`}>
+        {meses.map((mes) => <MiniMes key={paraISO(mes)} compacto={modo === "anual"} mes={mes} hoje={hoje} diaSelecionado={diaAtual} porDia={porDia} concluidas={concluidas} onSelecionar={onSelecionar} onAbrirMes={onAbrirMes} />)}
+      </div>
+    </div>
+  </section>;
 }
 
-function VisaoDia({ desktop, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, hoje, diaAtual, onMudarDia, onSelecionar }: { desktop: boolean; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; hoje: Date; diaAtual: Date; onMudarDia: (delta: number) => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void }) {
-  const rotulo = diaAtual.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-  if (desktop) return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-2xl capitalize text-text-primary">{rotulo}</h1></div><AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} /></div><button onClick={(e) => onSelecionar(diaAtual, e.currentTarget)} className="agenda-calendario-entra group min-h-[280px] flex-1 p-5 text-left transition-colors duration-200 hover:bg-surface-1"><span className="text-xs font-medium uppercase tracking-wide text-text-muted">{diaAtual.toLocaleDateString("pt-BR", { weekday: "long" })}</span><span className={`mt-3 flex h-10 w-10 items-center justify-center rounded-full text-base ${paraISO(diaAtual) === paraISO(hoje) ? "bg-steel-500 font-semibold text-white" : "bg-surface-2 text-text-primary group-hover:bg-steel-700"}`}>{diaAtual.getDate()}</span><p className="mt-6 text-sm text-text-muted">Clique para ver as tarefas deste dia</p></button></section>
-  );
-  return (
-    <div className="mb-4 flex items-center justify-between rounded-card bg-surface-1 p-3">
-      <button onClick={() => onMudarDia(-1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Dia anterior">
-        <ChevronLeft size={18} />
+function MiniMes({ mes, hoje, diaSelecionado, porDia, concluidas, onSelecionar, onAbrirMes, compacto = false }: { mes: Date; hoje: Date; diaSelecionado: Date; porDia: Map<string, ItemAgenda[]>; concluidas: Map<string, TarefaResumo[]>; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAbrirMes: (mes: Date) => void; compacto?: boolean }) {
+  const { offset, totalDias, ano, mes: indiceMes } = gerarDiasDoMes(mes);
+  const inicioMes = paraISO(new Date(ano, indiceMes, 1));
+  const fimMes = paraISO(new Date(ano, indiceMes + 1, 0));
+  const itensMes = [...porDia.entries()].reduce((total, [dia, lista]) => total + (dia >= inicioMes && dia <= fimMes ? lista.length : 0), 0);
+  return <article data-mini-mes={inicioMes} className={`min-h-0 overflow-hidden border border-border bg-base shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-steel-400/50 hover:shadow-md ${compacto ? "flex flex-col rounded-xl p-2" : "rounded-2xl p-3"}`}>
+    <div className={`flex items-center justify-between gap-1 ${compacto ? "mb-0.5" : "mb-2"}`}>
+      <button type="button" onClick={() => onAbrirMes(mes)} className={`group flex min-w-0 items-center gap-1 rounded-lg text-left font-semibold capitalize text-text-primary hover:text-cyan ${compacto ? "px-1 py-0.5 text-xs" : "px-1 py-1"}`}>
+        {mes.toLocaleDateString("pt-BR", { month: "long" })}<ChevronRight size={14} className="text-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-cyan" />
       </button>
-      <h1 className="font-display text-lg capitalize text-text-primary">{rotulo}</h1>
-      <button onClick={() => onMudarDia(1)} className="rounded-full p-1.5 text-text-muted hover:bg-surface-2" aria-label="Próximo dia">
-        <ChevronRight size={18} />
-      </button>
+      <span className={`shrink-0 rounded-pill bg-surface-2 font-medium text-text-muted ${compacto ? "px-1.5 py-px text-[8px]" : "px-2 py-0.5 text-[10px]"}`}>{itensMes} {itensMes === 1 ? "item" : "itens"}</span>
     </div>
-  );
+    <div className={`grid grid-cols-7 text-center ${compacto ? "min-h-0 flex-1 grid-rows-7" : ""}`}>
+      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((nome, indice) => <span key={`${nome}-${indice}`} className={`font-semibold text-text-muted ${compacto ? "flex items-center justify-center text-[9px]" : "pb-1 text-[9px]"}`}>{nome}</span>)}
+      {Array.from({ length: 42 }, (_, indice) => {
+        const numero = indice - offset + 1;
+        if (numero < 1 || numero > totalDias) return <span key={`v-${indice}`} className={compacto ? "min-h-0" : "h-8"} />;
+        const data = new Date(ano, indiceMes, numero);
+        const iso = paraISO(data);
+        const lista = porDia.get(iso) ?? [];
+        const nConcluidas = concluidas.get(iso)?.length ?? 0;
+        const ehHoje = iso === paraISO(hoje);
+        const selecionado = iso === paraISO(diaSelecionado);
+        return <button type="button" key={iso} data-dia-mes={iso} title={`${data.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}${lista.length ? ` · ${lista.length} ${lista.length === 1 ? "item" : "itens"}` : ""}${nConcluidas ? ` · ${nConcluidas} ${nConcluidas === 1 ? "concluída" : "concluídas"}` : ""}`} onClick={(e) => onSelecionar(data, e.currentTarget)} className={`group/dia relative mx-auto flex flex-col items-center justify-center transition-all duration-150 hover:bg-surface-2 hover:text-text-primary active:scale-90 ${compacto ? "h-full w-full rounded-md text-[11px] md:text-xs" : "h-8 w-8 rounded-lg text-[11px]"} ${selecionado ? "bg-steel-700 font-semibold text-white" : ehHoje ? "font-semibold text-cyan ring-1 ring-inset ring-cyan" : "text-text-secondary"}`}>
+          <span>{numero}</span>
+          {nConcluidas > 0 && <CheckCircle2 data-concluidas={nConcluidas} aria-hidden size={compacto ? 8 : 9} strokeWidth={2.5} className={`absolute right-0.5 top-0.5 ${selecionado ? "text-white" : "text-success"}`} />}
+          {lista.length > 0 && <span className={`absolute flex gap-px ${compacto ? "bottom-0.5" : "bottom-0.5"}`}>{lista.slice(0, compacto ? 2 : 3).map((item) => <i key={item.chave} className={`${compacto ? "h-1 w-1" : "h-1 w-1"} rounded-full ${selecionado ? "bg-white" : item.tipo === "prazo" ? "bg-warning" : item.tipo === "evento" ? "bg-violet" : "bg-cyan"}`} />)}</span>}
+        </button>;
+      })}
+    </div>
+  </article>;
 }
 
 type AbrirDocumento = (path: string, evento?: MouseEvent<HTMLElement>) => void;
 
+/** O que dizer de um dia sem nada agendado: depende de ele já ter passado, ser hoje ou vir depois — e de ter havido conclusões. */
+function textoDiaVazio(dia: string, hoje: string, concluidas: number): { title: string; subtitle: string } | null {
+  if (dia < hoje) return concluidas > 0 ? null : { title: "Nada agendado neste dia.", subtitle: "Nenhuma tarefa foi agendada nem concluída nesta data." };
+  if (dia === hoje) return { title: concluidas > 0 ? "Nada mais agendado para hoje." : "Nada agendado para hoje.", subtitle: "Encaixe uma tarefa neste dia ou capture algo novo." };
+  return { title: "Dia livre.", subtitle: "Sem blocos encaixados — aproveite ou capture algo novo." };
+}
 
-function ListaDeTarefas({ blocos, abrirDocumento }: { blocos: TarefaResumo[] | null; abrirDocumento: AbrirDocumento }) {
+function ListaDeTarefas({ blocos, abrirDocumento, dia, concluidas }: { blocos: TarefaResumo[] | null; abrirDocumento: AbrirDocumento; dia: string; concluidas: number }) {
+  const vazio = textoDiaVazio(dia, paraISO(new Date()), concluidas);
   return (
     <div className="flex flex-col gap-2.5">
       {blocos === null ? <p className="py-10 text-center text-sm text-text-muted">Carregando...</p> : blocos.length === 0 ? (
-        <EmptyState icon={CalendarClock} title="Dia livre." subtitle="Sem blocos encaixados — aproveite ou capture algo novo." />
+        vazio && <EmptyState icon={CalendarClock} title={vazio.title} subtitle={vazio.subtitle} />
       ) : blocos.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")).map((t) => <CartaoTarefa key={t.id} tarefa={t} abrirDocumento={abrirDocumento} />)}
     </div>
   );
+}
+
+function ConcluidasDoDia({ tarefas, abrirDocumento }: { tarefas: TarefaResumo[]; abrirDocumento: AbrirDocumento }) {
+  if (tarefas.length === 0) return null;
+  return <section aria-label="Concluídas neste dia" className="mt-5"><h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-success"><CheckCircle2 size={14} aria-hidden />Concluídas neste dia · {tarefas.length}</h3><ul className="flex flex-col gap-1.5">{tarefas.map((t) => <li key={t.id}><button type="button" onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} className="flex w-full items-center gap-3 rounded-xl bg-surface-1 px-3 py-2 text-left hover:bg-surface-2"><span className="font-mono-value text-xs text-success">{horaLocal(t.concluida_em!)}</span><span className="min-w-0 flex-1 truncate text-sm text-text-muted line-through">{t.titulo}</span></button></li>)}</ul></section>;
 }
 
 function CartaoTarefa({ tarefa, abrirDocumento }: { tarefa: TarefaResumo; abrirDocumento: AbrirDocumento }) {
@@ -616,10 +550,46 @@ function CartaoTarefa({ tarefa, abrirDocumento }: { tarefa: TarefaResumo; abrirD
   );
 }
 
-function PopupTarefas({ ancora, dia, blocos, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento }: { ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
+function CorpoDoDia({ visao, visaoDia, semRotina, erro, capacidade, pendentes, onAjustarRotina, blocos, dia, concluidasDoDia, abrirDocumento }: { visao: "feed" | "dia"; visaoDia: import("react").ReactNode; semRotina: boolean; erro: string | null; capacidade: Capacidade | null; pendentes: number; onAjustarRotina: () => void; blocos: TarefaResumo[] | null; dia: Date; concluidasDoDia: TarefaResumo[]; abrirDocumento: AbrirDocumento }) {
+  if (visao === "dia") return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{visaoDia}</div>;
+  return <div className="min-h-0 flex-1 overflow-y-auto p-5">
+
+          {semRotina && <button onClick={onAjustarRotina} className="mb-4 flex w-full items-start gap-3 rounded-xl border border-steel-400/40 bg-steel-700/15 p-3 text-left text-sm text-text-primary"><CalendarClock size={18} className="shrink-0 text-steel-300" />Você ainda não contou sobre a sua rotina. <span className="font-semibold text-steel-300">Ajustar rotina</span></button>}
+          {erro && <div className="mb-4 flex gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="shrink-0" />{erro}</div>}
+          {capacidade?.estourado && <div className="mb-4 flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-primary"><AlertTriangle size={18} className="shrink-0 text-warning" /><p>{pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção disponível.</p></div>}
+          <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} dia={paraISO(dia)} concluidas={concluidasDoDia.length} />
+          <ConcluidasDoDia tarefas={concluidasDoDia} abrirDocumento={abrirDocumento} />
+        
+  </div>;
+}
+
+/** O popup do dia no celular: uma folha que sobe da base, com a mesma lista (ou a grade do dia) da janela do desktop. */
+function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia }: { visaoDia: import("react").ReactNode; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
+  const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  const [visao, setVisao] = useState<"feed" | "dia">("feed");
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onClick={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+      <section role="dialog" aria-modal="true" aria-label={`Tarefas de ${titulo}`} className={`ecos-fade-in flex w-full flex-col overflow-hidden rounded-t-2xl border-t border-border bg-base pb-[var(--ecos-safe-bottom)] shadow-nav ${visao === "dia" ? "h-[85dvh]" : "max-h-[75dvh]"}`}>
+        <div aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border" />
+        <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-white" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><X size={19} /></button></div></header>
+        <CorpoDoDia visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
+      </section>
+    </div>
+  );
+}
+
+type PropsPopup = { visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento };
+
+/** Desktop: janela flutuante ancorada no dia. Celular: folha que sobe da base. */
+function PopupTarefas({ sheet, ...props }: PropsPopup & { sheet: boolean }) {
+  return sheet ? <FolhaDoDia {...props} /> : <PopupJanela {...props} />;
+}
+
+function PopupJanela({ ancora, dia, blocos, concluidasDoDia, capacidade, semRotina, erro, pendentes, onFechar, onAjustarRotina, abrirDocumento, visaoDia }: { visaoDia: import("react").ReactNode; ancora: AncoraPopup | null; dia: Date; blocos: TarefaResumo[] | null; concluidasDoDia: TarefaResumo[]; capacidade: Capacidade | null; semRotina: boolean; erro: string | null; pendentes: number; onFechar: () => void; onAjustarRotina: () => void; abrirDocumento: AbrirDocumento }) {
   const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const janelaRef = useRef<HTMLElement>(null);
   const [fixado, setFixado] = useState(false);
+  const [visao, setVisao] = useState<"feed" | "dia">("feed");
   const [interagindo, setInteragindo] = useState(false);
   const [animarEntrada, setAnimarEntrada] = useState(false);
   const [rect, setRect] = useState({ left: 16, top: 16, width: 360, height: 500 });
@@ -644,10 +614,30 @@ function PopupTarefas({ ancora, dia, blocos, capacidade, semRotina, erro, penden
 
   // A posição contextual precisa estar aplicada antes da primeira animação;
   // caso contrário o browser usa a posição inicial (canto do painel) como origem.
+  // A janela nasce do próprio número do dia: parte do retângulo dele e cresce até a posição final.
   useEffect(() => {
-    const quadro = requestAnimationFrame(() => setAnimarEntrada(true));
+    const quadro = requestAnimationFrame(() => {
+      setAnimarEntrada(true);
+      const el = janelaRef.current;
+      if (!el || !ancora || typeof el.animate !== "function" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+      el.animate(
+        [{ opacity: 0, transform: "scale(0.85)" }, { opacity: 1, transform: "scale(1)" }],
+        { duration: 220, easing: "ease-out" },
+      );
+    });
     return () => cancelAnimationFrame(quadro);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Clicar fora do popup fecha; o clique num dia seguinte reabre já no novo dia.
+  useEffect(() => {
+    if (fixado) return;
+    const fora = (e: globalThis.PointerEvent) => {
+      if (!janelaRef.current?.contains(e.target as Node)) onFechar();
+    };
+    document.addEventListener("pointerdown", fora);
+    return () => document.removeEventListener("pointerdown", fora);
+  }, [onFechar, fixado]);
 
   function iniciar(e: PointerEvent<HTMLElement>, tipo: "mover" | "redimensionar") {
     e.preventDefault();
@@ -671,14 +661,9 @@ function PopupTarefas({ ancora, dia, blocos, capacidade, semRotina, erro, penden
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      <section ref={janelaRef} role="dialog" aria-modal="false" aria-label={`Tarefas de ${titulo}`} className={`${animarEntrada ? "agenda-popup-entra" : "opacity-0"} pointer-events-auto absolute flex flex-col overflow-hidden rounded-xl border bg-base shadow-nav ${interagindo ? "border-cyan/70" : "border-border"} ${interagindo ? "" : "transition-[left,top,width,height] duration-200 ease-out"}`} style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height, transformOrigin: `${origemX}% ${origemY}` }}>
-        <header onPointerDown={(e) => { if (!(e.target as HTMLElement).closest("button")) iniciar(e, "mover"); }} onPointerMove={mover} onPointerUp={encerrar} onPointerCancel={encerrar} className={`flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3 py-2 ${interagindo ? "cursor-grabbing" : "cursor-grab"}`}><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setFixado((valor) => !valor)} title={fixado ? "Desafixar do calendário" : "Fixar posição"} aria-label={fixado ? "Desafixar" : "Fixar"} className={`flex h-8 w-8 items-center justify-center rounded-md ${fixado ? "bg-steel-700 text-white" : "text-text-muted hover:bg-surface-2"}`}><Pin size={15} /></button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></div></header>
-        <div className="min-h-0 overflow-y-auto p-5">
-          {semRotina && <button onClick={onAjustarRotina} className="mb-4 flex w-full items-start gap-3 rounded-xl border border-steel-400/40 bg-steel-700/15 p-3 text-left text-sm text-text-primary"><CalendarClock size={18} className="shrink-0 text-steel-300" />Você ainda não contou sobre a sua rotina. <span className="font-semibold text-steel-300">Ajustar rotina</span></button>}
-          {erro && <div className="mb-4 flex gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="shrink-0" />{erro}</div>}
-          {capacidade?.estourado && <div className="mb-4 flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-primary"><AlertTriangle size={18} className="shrink-0 text-warning" /><p>{pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção disponível.</p></div>}
-          <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} />
-        </div>
+      <section ref={janelaRef} role="dialog" aria-modal="false" aria-label={`Tarefas de ${titulo}`} className={`${animarEntrada ? (ancora ? "" : "agenda-popup-entra") : "opacity-0"} pointer-events-auto absolute flex flex-col overflow-hidden rounded-xl border bg-base shadow-nav ${interagindo ? "border-cyan/70" : "border-border"} ${interagindo || !animarEntrada ? "" : "transition-[left,top,width,height] duration-200 ease-out"}`} style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height, transformOrigin: `${origemX}% ${origemY}` }}>
+        <header onPointerDown={(e) => { if (!(e.target as HTMLElement).closest("button")) iniciar(e, "mover"); }} onPointerMove={mover} onPointerUp={encerrar} onPointerCancel={encerrar} className={`flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3 py-2 ${interagindo ? "cursor-grabbing" : "cursor-grab"}`}><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} title={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-8 w-8 items-center justify-center rounded-md ${visao === "dia" ? "bg-steel-700 text-white" : "text-text-muted hover:bg-surface-2"}`}>{visao === "feed" ? <Clock size={15} /> : <ListChecks size={15} />}</button><button type="button" onClick={() => setFixado((valor) => !valor)} title={fixado ? "Desafixar do calendário" : "Fixar posição"} aria-label={fixado ? "Desafixar" : "Fixar"} className={`flex h-8 w-8 items-center justify-center rounded-md ${fixado ? "bg-steel-700 text-white" : "text-text-muted hover:bg-surface-2"}`}><Pin size={15} /></button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></div></header>
+        <CorpoDoDia visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
         <div aria-hidden onPointerDown={(e) => iniciar(e, "redimensionar")} onPointerMove={mover} onPointerUp={encerrar} onPointerCancel={encerrar} className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize" />
       </section>
     </div>
