@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { obterServidorBaseUrl, definirServidorBaseUrl, estaNoTauri } from "@/lib/server-config";
 import { ApiError, auth } from "@/lib/api";
+import { SincronizacaoBackup } from "./SincronizacaoBackup";
 
 /**
  * Where the compiled app finds `ecos-app` — user feedback: "deixa
@@ -44,7 +45,7 @@ export function ServerConfigScreen() {
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <div className="mb-5 flex items-center gap-2">
-        <button onClick={() => navigate(-1)} className="text-text-muted">
+        <button data-voltar onClick={() => navigate(-1)} className="text-text-muted">
           <ChevronLeft size={22} />
         </button>
         <h1 className="font-display text-xl text-text-primary">Servidor</h1>
@@ -56,7 +57,8 @@ export function ServerConfigScreen() {
           : "Deixe em branco pra usar o servidor padrão desta página. Só mexa aqui se você sabe que precisa apontar pra outro ecos-app."}
       </p>
 
-      <label className="flex flex-col gap-1.5">
+      <div className="flex items-end gap-3">
+      <label className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Endereço</span>
         <input
           value={url}
@@ -68,6 +70,14 @@ export function ServerConfigScreen() {
           className="ecos-input font-mono-value"
         />
       </label>
+        <button
+          onClick={testarEEntrar}
+          disabled={testando || (!url.trim() && estaNoTauri())}
+          className="flex h-[42px] shrink-0 items-center justify-center rounded-2xl bg-surface-2 px-6 text-sm font-semibold text-text-primary hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface-2"
+        >
+          {testando ? "Testando..." : "Salvar"}
+        </button>
+      </div>
 
       {resultado === "ok" && (
         <div className="mt-4 flex items-start gap-2 rounded-2xl border border-success/40 bg-success/10 p-3 text-sm text-success">
@@ -82,13 +92,6 @@ export function ServerConfigScreen() {
         </div>
       )}
 
-      <button
-        onClick={testarEEntrar}
-        disabled={testando || (!url.trim() && estaNoTauri())}
-        className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
-      >
-        {testando ? "Testando..." : "Salvar"}
-      </button>
 
       {url && (
         <button
@@ -97,11 +100,13 @@ export function ServerConfigScreen() {
             setUrl("");
             setResultado(null);
           }}
-          className="mt-3 w-full rounded-2xl bg-surface-2 py-3 text-center text-sm font-medium text-text-secondary"
+          className="mt-3 rounded-2xl bg-surface-2 px-6 py-3 text-sm font-semibold text-text-primary hover:bg-surface-3"
         >
           Voltar pro padrão
         </button>
       )}
+
+      <SincronizacaoBackup />
     </div>
   );
 }

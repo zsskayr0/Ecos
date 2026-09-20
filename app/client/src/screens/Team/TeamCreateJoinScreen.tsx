@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { equipes, ApiError } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -12,6 +12,8 @@ import { useAuth } from "@/lib/auth-context";
  */
 export function TeamCreateJoinScreen() {
   const navigate = useNavigate();
+  const dentro = useLocation().pathname.startsWith("/configuracoes");
+  const baseEquipe = dentro ? "/configuracoes/equipes" : "/equipe";
   const { notificar } = useRefreshBus();
   const { recarregarPerfil } = useAuth();
   const [modo, setModo] = useState<"criar" | "entrar">("criar");
@@ -30,7 +32,7 @@ export function TeamCreateJoinScreen() {
       // once at login — without this, the new Team wouldn't show up in
       // the Profile until reloading the whole page.
       await recarregarPerfil();
-      navigate(`/equipe/${r.id}`);
+      navigate(`${baseEquipe}/${r.id}`);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível criar a Equipe.");
     } finally {
@@ -45,7 +47,7 @@ export function TeamCreateJoinScreen() {
       await equipes.aceitarConvite(codigo.trim().toUpperCase());
       notificar();
       await recarregarPerfil();
-      navigate("/perfil");
+      navigate(dentro ? "/configuracoes/equipes" : "/perfil");
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Código inválido ou expirado.");
     } finally {

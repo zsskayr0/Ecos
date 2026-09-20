@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil } from "lucide-react";
+import { ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil, Camera, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { equipes as equipesApi, ApiError } from "@/lib/api";
@@ -9,7 +9,8 @@ import { useAppUI } from "@/lib/ui-context";
 import { corDaEquipe } from "@/lib/team-color";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import type { Cargo } from "@/lib/types";
-import { useAvatarEquipe } from "@/lib/team-avatar";
+import { definirAvatarEquipeLocal, useAvatarEquipe } from "@/lib/team-avatar";
+import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 
 interface Membro {
   usuario_id: string;
@@ -36,6 +37,7 @@ export function TeamProfileScreen() {
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const fotoEquipe = useAvatarEquipe(equipeId);
 
@@ -90,6 +92,15 @@ export function TeamProfileScreen() {
   }
 
   const cor = corDaEquipe(equipe.id);
+  const meuCargo = membros.find((m) => m.usuario_id === perfil?.id)?.cargo;
+  const podeEditarFoto = meuCargo === "dono" || meuCargo === "admin";
+  async function trocarFoto(arquivo?: File) {
+    if (!arquivo) return;
+    setEnviandoFoto(true);
+    try { definirAvatarEquipeLocal(equipe!.id, await prepararFotoPerfil(arquivo)); }
+    catch (e) { window.alert(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
+    finally { setEnviandoFoto(false); }
+  }
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -99,7 +110,11 @@ export function TeamProfileScreen() {
       </button>
 
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
-        <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} url={fotoEquipe} />
+        <span className="relative">
+          <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} url={fotoEquipe} />
+          {enviandoFoto && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white"><Loader2 size={20} className="animate-spin" /></span>}
+          {podeEditarFoto && <label className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-surface-1 text-text-secondary shadow-nav hover:text-text-primary" title="Trocar foto da equipe"><Camera size={15} /><span className="sr-only">Trocar foto da equipe</span><input type="file" accept="image/*" className="sr-only" onChange={(e) => { void trocarFoto(e.target.files?.[0]); e.target.value = ""; }} /></label>}
+        </span>
         {editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
       </div>
 
@@ -151,7 +166,7 @@ export function TeamProfileScreen() {
           const souEu = m.usuario_id === perfil?.id;
           return (
             <div key={m.usuario_id} className="flex items-center gap-3 rounded-2xl px-1 py-2.5">
-              <Avatar nome={souEu ? nomeExibicao(perfil!) : m.usuario_id} tamanho={38} />
+              <AvatarMembro usuarioId={m.usuario_id} nome={souEu ? nomeExibicao(perfil!) : m.usuario_id} versao={souEu ? perfil!.avatar_atualizado_em : null} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium text-text-primary">
                   {souEu ? nomeExibicao(perfil!) : <span className="font-mono-value text-sm">{m.usuario_id.slice(0, 10)}…</span>}
@@ -174,4 +189,9 @@ function Stat({ valor, label }: { valor: number; label: string }) {
       <p className="text-xs text-text-muted">{label}</p>
     </div>
   );
+}
+
+function AvatarMembro({ usuarioId, nome, versao }: { usuarioId: string; nome: string; versao: number | null }) {
+  const { url } = useFotoPerfil(usuarioId, versao);
+  return <Avatar nome={nome} tamanho={38} url={url} />;
 }

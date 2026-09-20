@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Camera, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Pencil, Plus, Trash2, Users, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMinhasEquipes, type MinhaEquipe } from "@/lib/use-minhas-equipes";
-import { corDaEquipe } from "@/lib/team-color";
+import { corDaEquipe, definirCorDaEquipe } from "@/lib/team-color";
 import { Avatar } from "@/components/common/Avatar";
 import { PaletaCores } from "@/components/common/PaletaCores";
 import { ApiError, avatarPerfil, equipes as equipesApi } from "@/lib/api";
 import { limparFotoLegada, notificarFotoPerfilAtualizada, prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import { definirAvatarEquipeLocal, useAvatarEquipe } from "@/lib/team-avatar";
+import { ToggleItem } from "@/screens/Settings/SettingsScreen";
+import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { nomeExibicao, useAuth } from "@/lib/auth-context";
 
@@ -17,6 +19,9 @@ const CHAVE_COR_PESSOAL = "ecos:cor-equipe-pessoal";
 /** Gerenciador único de equipes, usado tanto pelas Configurações quanto pelo seletor do menu da conta. */
 export function TeamsScreen() {
   const navigate = useNavigate();
+  const { intercalarEquipes, setIntercalarEquipes } = useAppUI();
+  const dentro = useLocation().pathname.startsWith("/configuracoes");
+  const baseEquipe = dentro ? "/configuracoes/equipes" : "/equipe";
   const { equipes, carregando } = useMinhasEquipes();
   const { notificar } = useRefreshBus();
   const { perfil, recarregarPerfil } = useAuth();
@@ -73,14 +78,15 @@ export function TeamsScreen() {
   }
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-    <div className="mb-5 flex items-center gap-2"><button onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Equipes</h1></div>
+    <div className="mb-5 flex items-center gap-2"><button data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Equipes</h1></div>
+    <div className="mb-6"><ToggleItem label="Intercalação de equipes" descricao="Exibe itens de todas as equipes e permite filtrá-los." ativo={intercalarEquipes} onChange={setIntercalarEquipes} /></div>
     {erro && <div className="mb-4 flex items-center gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} />{erro}</div>}
     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Suas equipes</p>
     <div ref={menus} className="overflow-visible rounded-2xl bg-surface-1">
       {perfil && <LinhaPessoal nome={nomeExibicao(perfil)} perfilId={perfil.id} versaoFoto={perfil.avatar_atualizado_em} cor={corPessoal} menuAberto={menuAberto === "pessoal"} enviandoFoto={enviandoFoto === "pessoal"} onMenu={() => setMenuAberto((id) => id === "pessoal" ? null : "pessoal")} onFoto={(arquivo) => void trocarFotoPessoal(arquivo)} onCor={mudarCorPessoal} />}
-      {carregando ? <p className="border-t border-border/60 px-4 py-5 text-sm text-text-muted">Carregando…</p> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`/equipe/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} />)}
+      {carregando ? <p className="border-t border-border/60 px-4 py-5 text-sm text-text-muted">Carregando…</p> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`${baseEquipe}/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} />)}
     </div>
-    <button onClick={() => navigate("/equipe/nova")} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-steel-300 hover:bg-surface-1"><Plus size={17} />Criar ou entrar em uma equipe</button>
+    <button onClick={() => navigate(`${baseEquipe}/nova`)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-steel-300 hover:bg-surface-1"><Plus size={17} />Criar ou entrar em uma equipe</button>
     <p className="mt-4 flex items-center gap-2 text-xs text-text-muted"><Users size={14} />Dono e administradores podem editar a equipe; somente o dono pode excluí-la.</p>
     {dialogo && <DialogoEquipe dialogo={dialogo} onFechar={() => setDialogo(null)} onConfirmar={confirmar} />}
   </div>;
@@ -104,13 +110,20 @@ function LinhaPessoal({ nome, perfilId, versaoFoto, cor, menuAberto, enviandoFot
 function LinhaEquipe({ equipe, menuAberto, enviandoFoto, onAbrir, onMenu, onFoto, onRenomear, onExcluir }: { equipe: MinhaEquipe; menuAberto: boolean; enviandoFoto: boolean; onAbrir: () => void; onMenu: () => void; onFoto: (arquivo?: File) => void; onRenomear: () => void; onExcluir: () => void }) {
   const foto = useAvatarEquipe(equipe.id);
   const podeEditar = equipe.cargo === "dono" || equipe.cargo === "admin";
+  const [cor, setCor] = useState(() => corDaEquipe(equipe.id));
+  const [corTemporaria, setCorTemporaria] = useState(cor);
+  useEffect(() => { if (menuAberto) setCorTemporaria(cor); }, [cor, menuAberto]);
+  const mudou = corTemporaria.toLowerCase() !== cor.toLowerCase();
   return <div className="relative flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-0">
-    <button onClick={onAbrir} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left hover:bg-surface-2"><span className="relative"><Avatar nome={equipe.nome} corFundo={corDaEquipe(equipe.id)} tamanho={38} url={foto} />{enviandoFoto && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white"><Loader2 size={15} className="animate-spin" /></span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-[15px] text-text-primary">{equipe.nome}</span><span className="text-xs text-text-muted">{equipe.cargo}</span></span><ChevronRight size={16} className="text-text-muted" /></button>
-    {podeEditar && <button type="button" onClick={onMenu} aria-label={`Ações de ${equipe.nome}`} aria-expanded={menuAberto} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><MoreHorizontal size={18} /></button>}
-    {menuAberto && <div className="ecos-menu absolute right-2 top-full z-40 -mt-1 w-48 rounded-xl border border-border bg-surface-1 p-1 shadow-nav">
+    <button onClick={onAbrir} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left hover:bg-surface-2"><span className="relative"><Avatar nome={equipe.nome} corFundo={menuAberto ? corTemporaria : cor} tamanho={38} url={foto} />{enviandoFoto && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white"><Loader2 size={15} className="animate-spin" /></span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-[15px] text-text-primary">{equipe.nome}</span><span className="text-xs text-text-muted">{equipe.cargo}</span></span><ChevronRight size={16} className="text-text-muted" /></button>
+    <button type="button" onClick={onMenu} aria-label={`Ações de ${equipe.nome}`} aria-expanded={menuAberto} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><MoreHorizontal size={18} /></button>
+    {menuAberto && <div className="ecos-menu absolute right-2 top-full z-40 -mt-1 w-64 rounded-xl border border-border bg-surface-1 p-1 shadow-nav">
+      {podeEditar && <>
       <label className="ecos-menu-item flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary"><Camera size={15} />Trocar foto<input type="file" accept="image/*" className="sr-only" onChange={(e) => { onFoto(e.target.files?.[0]); e.currentTarget.value = ""; }} /></label>
       <button onClick={onRenomear} className="ecos-menu-item flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary"><Pencil size={15} />Renomear</button>
       {equipe.cargo === "dono" && <button onClick={onExcluir} className="ecos-menu-item flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir equipe</button>}
+      </>}
+      <div className="border-t border-border/60 px-2 py-2"><p className="mb-2 text-xs font-medium text-text-muted">Cor da equipe</p><PaletaCores valor={corTemporaria} onChange={setCorTemporaria} /><button type="button" disabled={!mudou} onClick={() => { definirCorDaEquipe(equipe.id, corTemporaria); setCor(corTemporaria); }} className={`mt-2 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-all duration-150 ${!mudou ? "cursor-default border-border bg-transparent text-text-secondary" : "border-steel-500 bg-steel-600 text-white shadow-sm hover:bg-steel-500 active:scale-[0.98]"}`}>{!mudou ? "Cor salva" : "Salvar cor"}</button></div>
     </div>}
   </div>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Briefcase, ChevronDown, ChevronLeft, Clock3, Moon, Sun, Utensils, Car, Sparkles, Coffee } from "lucide-react";
 import { ApiError, rotina, type BlocoRotina } from "@/lib/api";
 
@@ -85,6 +85,7 @@ const resumoDuracao = (janela: Janela, dias = 7) => `${horasTexto(minutosDaJanel
  */
 export function RotinaScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const primeiraVez = params.get("onboarding") === "1";
   const [estado, setEstado] = useState<Estado | null>(null);
@@ -97,7 +98,7 @@ export function RotinaScreen() {
       .catch((e) => { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar sua rotina."); setEstado(structuredClone(PADRAO)); });
   }, []);
 
-  const sair = () => navigate(primeiraVez ? "/feed" : "/perfil");
+  const sair = () => navigate(primeiraVez ? "/feed" : location.pathname.startsWith("/configuracoes") ? "/configuracoes" : "/perfil");
   if (!estado) return <p className="px-4 py-10 text-center text-sm text-text-muted">Carregando...</p>;
 
   const atualizar = (patch: Partial<Estado>) => setEstado((e) => (e ? { ...e, ...patch } : e));
@@ -139,11 +140,11 @@ export function RotinaScreen() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-      <button onClick={sair} className="mb-4 flex items-center gap-1 text-sm text-text-muted">
+      <button data-voltar onClick={sair} className="mb-4 flex items-center gap-1 text-sm text-text-muted">
         <ChevronLeft size={18} />
         {primeiraVez ? "Pular por enquanto" : "Voltar"}
       </button>
-      <h1 className="font-display text-2xl text-text-primary">{primeiraVez ? "Conte sobre a sua rotina" : "Ajustar rotina"}</h1>
+      <h1 className="font-display text-2xl text-text-primary">{primeiraVez ? "Conte sobre a sua rotina" : "Rotina"}</h1>
       <p className="mb-6 mt-1 max-w-2xl text-sm text-text-secondary">
         Com isso a Agenda sabe quantas horas do dia são suas de verdade e avisa quando as tarefas não cabem. Dá para mudar quando quiser.
       </p>

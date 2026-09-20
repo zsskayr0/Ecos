@@ -104,6 +104,7 @@ interface Props {
 export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFocar, aoFixar, conteudo, titulo }: Props) {
   const [saindo, setSaindo] = useState(false);
   const fechandoRef = useRef(false);
+  const janelaDeConfiguracoes = path.startsWith("/configuracoes");
   // Toda saída (X, Esc, "voltar", salvar/apagar) anima antes de a janela deixar de existir.
   const aoFechar = useCallback(() => {
     if (fechandoRef.current) return;
@@ -113,8 +114,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       return;
     }
     setSaindo(true);
-    window.setTimeout(aoFecharDeVez, DURACAO_SAIDA_JANELA_MS);
-  }, [aoFecharDeVez]);
+    window.setTimeout(aoFecharDeVez, janelaDeConfiguracoes ? 240 : DURACAO_SAIDA_JANELA_MS);
+  }, [aoFecharDeVez, janelaDeConfiguracoes]);
 
   const [rect, setRect] = useState(() => retanguloInicial(ordem));
   const [arrastando, setArrastando] = useState(false);
@@ -219,7 +220,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
         tabIndex={-1}
         onPointerDownCapture={aoFocar}
         onKeyDown={(e) => e.key === "Escape" && aoFechar()}
-        className={`${saindo ? "ecos-janela-saindo" : "ecos-fade-in"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
+        className={`${saindo ? (janelaDeConfiguracoes ? "ecos-configuracoes-saindo" : "ecos-janela-saindo") : "ecos-fade-in"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
           arrastando ? "border-cyan/60" : "border-border"
         }`}
         style={{

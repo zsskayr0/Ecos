@@ -282,8 +282,17 @@ body {
   pointer-events: none;
   animation: ecos-janela-sai 160ms ease-in forwards;
 }
+@keyframes ecos-configuracoes-sai {
+  0% { opacity: 1; transform: translateZ(0) translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translateZ(0) translateY(14px) scale(0.955); filter: blur(2px); }
+}
+.ecos-configuracoes-saindo {
+  pointer-events: none;
+  transform-origin: 50% 45%;
+  animation: ecos-configuracoes-sai 240ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
 @media (prefers-reduced-motion: reduce) {
-  .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo { animation: none; }
+  .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo, .ecos-configuracoes-saindo { animation: none; }
 }
 
 /* Editor de evento da Agenda: entrada/saída do modal, seções em cascata e blocos que abrem/fecham suavemente. */
@@ -311,3 +320,6 @@ body {
 
 /* Editor de evento: a cor escolhida vira o acento (--ecos-cyan-rgb é sobrescrita no formulário); texto sobre o acento acompanha o contraste. */
 .ecos-acento-evento .text-black { color: var(--ev-contraste, #000); }
+
+/* Configurações no desktop: a navegação é a barra lateral, então o "voltar" das telas some. */
+.config-desktop [data-voltar] { display: none; }

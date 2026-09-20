@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { CalendarClock, ChevronLeft, ChevronRight, FileText, ListChecks, Type, AlignLeft, CalendarDays, Camera, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { UserPen, ChevronLeft, ChevronRight, FileText, ListChecks, Type, AlignLeft, CalendarDays, Camera, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
@@ -19,6 +19,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
  */
 export function ProfileScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { perfil, recarregarPerfil } = useAuth();
   const { equipes } = useMinhasEquipes();
   const { notificar } = useRefreshBus();
@@ -68,7 +69,7 @@ export function ProfileScreen() {
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <div className="mb-4 flex items-center">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-text-muted">
+        <button data-voltar onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-text-muted">
           <ChevronLeft size={18} />
           Voltar
         </button>
@@ -90,21 +91,11 @@ export function ProfileScreen() {
 
       {mensagemPerfil && <div className={`mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm ${mensagemPerfil.tipo === "erro" ? "border-error/40 bg-error/10 text-error" : "border-success/40 bg-success/10 text-success"}`}>{mensagemPerfil.tipo === "erro" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}{mensagemPerfil.texto}</div>}
 
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Nome de usuário</p>
-      <form onSubmit={(e) => { e.preventDefault(); void salvarNomeUsuario(); }} className="mb-6 rounded-2xl border border-border bg-surface-1 p-4">
-        <label className="block text-sm text-text-secondary">Nome de usuário
-          <input value={nomeUsuario} onChange={(e) => setNomeUsuario(e.target.value)} autoComplete="username" className="ecos-input mt-1.5 w-full" />
-        </label>
-        <p className="mt-2 text-xs text-text-muted">Usado para entrar na sua conta. Mínimo de 3 caracteres.</p>
-        <button disabled={salvandoNome || nomeUsuario.trim().length < 3 || nomeUsuario.trim() === perfil.nome_usuario} className="mt-3 rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-steel-500 disabled:cursor-not-allowed disabled:opacity-40">{salvandoNome ? "Salvando…" : "Salvar nome de usuário"}</button>
-      </form>
-
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Rotina</p>
-      <button onClick={() => navigate("/perfil/rotina")} className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4 text-left">
-        <CalendarClock size={22} strokeWidth={1.75} className="shrink-0 text-steel-300" />
+      <button onClick={() => navigate("/configuracoes/editar-perfil")} className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4 text-left">
+        <UserPen size={22} strokeWidth={1.75} className="shrink-0 text-steel-300" />
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-medium text-text-primary">Ajustar rotina</p>
-          <p className="text-xs text-text-muted">Sono, trabalho, refeições e horário de produção — a Agenda usa isso para calcular o seu dia.</p>
+          <p className="text-[15px] font-medium text-text-primary">Editar perfil</p>
+          <p className="text-xs text-text-muted">Nome de usuário e senha.</p>
         </div>
         <ChevronRight size={18} className="shrink-0 text-text-muted" />
       </button>

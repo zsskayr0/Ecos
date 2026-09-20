@@ -20,9 +20,10 @@ import { TeamsScreen } from "@/screens/Team/TeamsScreen";
 import { ProfileScreen } from "@/screens/Profile/ProfileScreen";
 import { RotinaScreen } from "@/screens/Profile/RotinaScreen";
 import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen";
+import { EditarPerfilScreen } from "@/screens/Profile/EditarPerfilScreen";
+import { ConfiguracoesLayout } from "@/screens/Settings/ConfiguracoesLayout";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
 import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
-import { SyncBackupScreen } from "@/screens/Settings/SyncBackupScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
@@ -82,14 +83,23 @@ export const screenRoutes = (
 
     <Route path="/notificacoes" element={<NotificationsScreen />} />
 
-    <Route path="/configuracoes" element={<SettingsScreen />} />
-    <Route path="/configuracoes/servidor" element={<ServerConfigScreen />} />
-    <Route path="/configuracoes/sync" element={<SyncBackupScreen />} />
-    <Route path="/configuracoes/privacidade" element={<PrivacyVaultScreen />} />
-    <Route path="/configuracoes/aparencia" element={<AparenciaScreen />} />
-    <Route path="/configuracoes/calendario" element={<CalendarPreferencesScreen />} />
-    <Route path="/configuracoes/organizacao" element={<OrganizationScreen />} />
-    <Route path="/configuracoes/sobre" element={<AboutScreen />} />
+    <Route path="/configuracoes" element={<ConfiguracoesLayout />}>
+      <Route index element={<SettingsScreen />} />
+      <Route path="servidor" element={<ServerConfigScreen />} />
+      <Route path="sync" element={<Navigate to="/configuracoes/servidor" replace />} />
+      <Route path="privacidade" element={<PrivacyVaultScreen />} />
+      <Route path="aparencia" element={<AparenciaScreen />} />
+      <Route path="calendario" element={<CalendarPreferencesScreen />} />
+      <Route path="organizacao" element={<OrganizationScreen />} />
+      <Route path="sobre" element={<AboutScreen />} />
+      <Route path="perfil" element={<ProfileScreen />} />
+      <Route path="editar-perfil" element={<EditarPerfilScreen />} />
+      <Route path="rotina" element={<RotinaScreen />} />
+      <Route path="equipes" element={<TeamsScreen />} />
+      <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
+      <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
+      <Route path="notificacoes" element={<NotificationsScreen />} />
+    </Route>
 
     <Route path="/ajuda" element={<HelpScreen />} />
 
