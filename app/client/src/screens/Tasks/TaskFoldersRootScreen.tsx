@@ -16,8 +16,8 @@ import { useAppUI } from "@/lib/ui-context";
  * 3.2) but for the `Tarefas/` tree. Reachable from the Drawer (section 3.9)
  * since Tarefas already has a slot in the bottom nav for the Agenda
  * time-blocking view (section 2.1) — this is the folder-browsing mode,
- * not a second nav icon. Also lists loose (no-folder) Tarefas, same fix
- * as `NotesRootScreen` for the same reported gap.
+ * not a second nav icon. The list below is deliberately unfiltered by
+ * folder: its folder chip must be able to show the contents of any folder.
  */
 export function TaskFoldersRootScreen() {
   const navigate = useNavigate();
@@ -27,18 +27,18 @@ export function TaskFoldersRootScreen() {
   const { espacoAtivo, intercalarEquipes, filtroEquipeId } = useAppUI();
   const [modo, setModo] = useModoVisualizacao("tarefas");
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
-  const [soltas, setSoltas] = useState<TarefaResumo[] | null>(null);
+  const [tarefas, setTarefas] = useState<TarefaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    // `pasta: ""` is the loose-items filter for Tarefa (`COALESCE(pasta_id,
-    // '') = ''` in `tarefas::listar` — unlike Nota, omitting `pasta`
-    // entirely returns every Tarefa regardless of folder).
+    // Não passe `pasta` aqui. A barra de filtros opera localmente sobre esta
+    // lista; buscar só `pasta: ""` fazia qualquer pasta escolhida resultar
+    // em zero itens, mesmo que ela tivesse tarefas.
     const espaco = intercalarEquipes ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined) : espacoAtivo;
-    Promise.all([pastas.listar({ tipo: "tarefa", espaco }), tarefasApi.listar({ pasta: "", espaco, limit: 100 })])
+    Promise.all([pastas.listar({ tipo: "tarefa", espaco }), tarefasApi.listar({ espaco, limit: 100 })])
       .then(([p, t]) => {
         setSubpastas(p.subpastas);
-        setSoltas(t.items);
+        setTarefas(t.items);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
   }, [versao, espacoAtivo, intercalarEquipes, filtroEquipeId]);
@@ -65,16 +65,16 @@ export function TaskFoldersRootScreen() {
         aoCriar={() => navigate("/tarefas/pasta/nova")}
       />
 
-      <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Sem pasta</p>
+      <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Todas as tarefas</p>
       <div>
-        {soltas === null ? (
+        {tarefas === null ? (
           <p className="py-6 text-center text-sm text-text-muted">Carregando...</p>
-        ) : soltas.length === 0 ? (
+        ) : tarefas.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">
-            Nenhuma tarefa solta — tudo o que você tem está catalogado numa pasta.
+            Nenhuma tarefa criada ainda.
           </p>
         ) : (
-          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada modo={modo} itens={soltas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada modo={modo} itens={tarefas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

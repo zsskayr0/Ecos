@@ -50,6 +50,8 @@ export interface CapturaDraft {
   prioridadeTarefa: PrioridadeTarefa;
   tagsTarefa: string[];
   pastaTarefa: string | null;
+  /** null = espaço ativo do app. */
+  espacoTarefa: string | null;
   subtarefasTarefa: SubtarefaInput[];
   /** Pasta e tags escolhidas na Nota (as `#hashtags` do texto são somadas ao salvar). */
   pastaNota: string | null;
@@ -77,6 +79,7 @@ export const DRAFT_VAZIO: CapturaDraft = {
   prioridadeTarefa: "baixa",
   tagsTarefa: [],
   pastaTarefa: null,
+  espacoTarefa: null,
   subtarefasTarefa: [],
   pastaNota: null,
   tagsNota: [],
@@ -141,7 +144,13 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   const sessaoCaptura = useRef(0);
 
   useEffect(() => { onTitleChange?.(draft.texto.trim()); }, [draft.texto, onTitleChange]);
-  useEffect(() => { try { localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(draft)); } catch { /* cache indisponível */ } }, [draft]);
+  // Item já criado no servidor não é "rascunho": guardá-lo faz a próxima captura reabrir (e duplicar) a tarefa/nota anterior.
+  useEffect(() => {
+    try {
+      if (itemCriado) localStorage.removeItem(CHAVE_RASCUNHO);
+      else localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(draft));
+    } catch { /* cache indisponível */ }
+  }, [draft, itemCriado]);
 
   // Dentro de uma pasta, a Tarefa/Nota nova já nasce nela — uma vez por captura, para não brigar com a escolha da pessoa.
   const contexto = pastaContexto !== undefined ? pastaContexto : pastaDoCaminho(location.pathname);
@@ -230,7 +239,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
           if (sessao === sessaoCaptura.current) setItemCriado({ tipo: "nota", id: criado.id });
         }
       } else {
-        const dados = payloadReal("tarefa", draft, espacoAtivo);
+        const dados = payloadReal("tarefa", draft, draft.espacoTarefa ?? espacoAtivo);
         if (itemCriado?.tipo === "tarefa") await tarefas.atualizar(itemCriado.id, dados);
         else {
           const criado = await tarefas.criar(dados as unknown as Parameters<typeof tarefas.criar>[0]);

@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 
 /** Inside a folder — compact subfolders at the top, notes below with the same card as the Feed (section 3.2). */
 export function FolderScreen() {
@@ -32,9 +33,10 @@ export function FolderScreen() {
   useEffect(() => { definirTituloJanela?.(nomeExibicao); }, [definirTituloJanela, nomeExibicao]);
 
 
+  const espaco = useEspacoFiltro();
   useEffect(() => {
     let vivo = true;
-    Promise.all([pastasApi.listar({ tipo: "nota", pasta_pai: caminho }), notasApi.listar({ pasta: caminho, limit: 100 })])
+    Promise.all([pastasApi.listar({ tipo: "nota", pasta_pai: caminho, espaco }), notasApi.listar({ pasta: caminho, espaco, limit: 100 })])
       .then(([p, n]) => {
         if (!vivo) return;
         setSubpastas(p.subpastas);

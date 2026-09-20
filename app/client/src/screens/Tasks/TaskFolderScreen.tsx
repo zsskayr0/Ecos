@@ -11,6 +11,7 @@ import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 
 /** Inside a Tarefa folder — same shape as `FolderScreen` (Notas, section 3.2), reusing the Feed's own `TaskCard`. */
 export function TaskFolderScreen() {
@@ -33,9 +34,10 @@ export function TaskFolderScreen() {
   useEffect(() => { definirTituloJanela?.(nomeExibicao); }, [definirTituloJanela, nomeExibicao]);
 
 
+  const espaco = useEspacoFiltro();
   useEffect(() => {
     let vivo = true;
-    Promise.all([pastasApi.listar({ tipo: "tarefa", pasta_pai: caminho }), tarefasApi.listar({ pasta: caminho, limit: 100 })])
+    Promise.all([pastasApi.listar({ tipo: "tarefa", pasta_pai: caminho, espaco }), tarefasApi.listar({ pasta: caminho, espaco, limit: 100 })])
       .then(([p, t]) => {
         if (!vivo) return;
         setSubpastas(p.subpastas);

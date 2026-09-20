@@ -4,6 +4,8 @@ import { ApiError, notas, pastas } from "@/lib/api";
 import { useIsMobile } from "@/lib/use-viewport";
 
 interface Props {
+  /** Espaço (Pessoal/equipe) cujas pastas são listadas e onde novas pastas nascem. */
+  espaco?: string;
   pasta: string | null;
   onPasta: (pasta: string | null) => void;
   /** Tags escolhidas aqui (removíveis). */
@@ -21,7 +23,7 @@ const normalizarTag = (bruta: string) => bruta.trim().replace(/^#+/, "").replace
  * menu com "criar pasta" embutido; as tags são chips com campo de adição e
  * sugestões das tags que você mais usa nas outras notas.
  */
-export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disabled }: Props) {
+export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTags, disabled }: Props) {
   const mobile = useIsMobile();
   const [pastasLista, setPastasLista] = useState<{ caminho: string; nome: string }[]>([]);
   const [menuAberto, setMenuAberto] = useState(false);
@@ -33,11 +35,11 @@ export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disab
   const raiz = useRef<HTMLDivElement>(null);
 
   const carregarPastas = () =>
-    pastas.listar({ tipo: "nota" }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ tipo: "nota", espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
 
   useEffect(() => {
     let vivo = true;
-    pastas.listar({ tipo: "nota" }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ tipo: "nota", espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
     notas
       .listar({ limit: 100 })
       .then((r) => {
@@ -48,7 +50,7 @@ export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disab
       })
       .catch(() => undefined);
     return () => { vivo = false; };
-  }, []);
+  }, [espaco]);
 
   useEffect(() => {
     if (!menuAberto) return;
@@ -75,7 +77,7 @@ export function NoteOrganizer({ pasta, onPasta, tags, tagsNoTexto, onTags, disab
     setCriando(true);
     setErroPasta(null);
     try {
-      const { caminho } = await pastas.criar({ tipo: "nota", nome });
+      const { caminho } = await pastas.criar({ tipo: "nota", nome, espaco });
       await carregarPastas();
       onPasta(caminho);
       setNovaPasta("");

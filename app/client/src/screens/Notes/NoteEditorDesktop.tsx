@@ -194,8 +194,8 @@ export function NoteEditorDesktop() {
               className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>
           </div>
 
-          <NoteOrganizer pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
-          <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco })} disabled={salvando} />
+          <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
+          <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
 
           <AttachmentsField tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
 

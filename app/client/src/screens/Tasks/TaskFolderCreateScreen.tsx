@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { pastas, ApiError } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 
 /** `POST /api/v1/pastas` with `tipo: "tarefa"` — same mechanism as `FolderCreateScreen` (Notas). */
 export function TaskFolderCreateScreen() {
   const navigate = useNavigate();
   const { notificar } = useRefreshBus();
+  const espaco = useEspacoFiltro();
   const [nome, setNome] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -17,7 +19,7 @@ export function TaskFolderCreateScreen() {
     setSalvando(true);
     setErro(null);
     try {
-      await pastas.criar({ tipo: "tarefa", nome: nome.trim() });
+      await pastas.criar({ tipo: "tarefa", nome: nome.trim(), espaco });
       notificar();
       navigate("/tarefas");
     } catch (e) {

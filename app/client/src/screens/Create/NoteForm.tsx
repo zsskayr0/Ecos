@@ -5,6 +5,7 @@ import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
 import { TitleField } from "@/components/common/TitleField";
 import { descriptionTags } from "@/lib/task-fields";
+import { useAppUI } from "@/lib/ui-context";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 
 /** Nova nota, no mesmo padrão da edição: título, pasta e tags à mão, anexos e o editor. */
 export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
+  const { espacoAtivo } = useAppUI();
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   return (
     <div className="flex min-w-0 flex-col gap-4 py-5 md:pt-4">
@@ -29,6 +31,7 @@ export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
       />
 
       <NoteOrganizer
+        espaco={espacoAtivo}
         pasta={draft.pastaNota}
         onPasta={(pastaNota) => setDraft((d) => ({ ...d, pastaNota }))}
         tags={draft.tagsNota}
