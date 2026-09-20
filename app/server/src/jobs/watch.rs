@@ -16,7 +16,9 @@ fn assinatura(raiz: &std::path::Path) -> (u64, u64, std::time::SystemTime) {
     let mut bytes = 0u64;
     let mut novo = std::time::UNIX_EPOCH;
     for (_, dir) in crate::espacos::listar(raiz) {
-        for e in walkdir::WalkDir::new(dir).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
+        // A mídia (`<Espaço>/src`) não muda o índice: fica fora da assinatura.
+        let raiz_midia = dir.join("src");
+        for e in walkdir::WalkDir::new(&dir).into_iter().filter_entry(|e| e.path() != raiz_midia).filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
             if let Ok(m) = e.metadata() {
                 n += 1;
                 bytes += m.len();
@@ -90,7 +92,11 @@ pub fn iniciar(state: AppState) {
                     // Mídia e dados internos não mudam o índice de Notas/Tarefas.
                     let relevante = evento.paths.iter().any(|p| {
                         let rel = p.strip_prefix(&notes_root).unwrap_or(p);
-                        !matches!(rel.components().next(), Some(c) if c.as_os_str() == "src" || c.as_os_str() == ".ecos")
+                        let mut partes = rel.components().map(|c| c.as_os_str());
+                        let topo = partes.next();
+                        let segundo = partes.next();
+                        // `.ecos`, o `src/` legado e a mídia de cada espaço (`<Espaço>/src`).
+                        !(topo.is_some_and(|c| c == ".ecos" || c == "src") || segundo.is_some_and(|c| c == "src"))
                     });
                     if !relevante { continue; }
                     // Debounce simples: agrupa rajadas de eventos (ex. o

@@ -104,10 +104,8 @@ impl Config {
         std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Notas"))?;
         std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas"))?;
         std::fs::write(notes_root.join(crate::espacos::PESSOAL_DIR).join(crate::espacos::MARCADOR), "pessoal")?;
-        // Mídias são ativos globais do cofre, não cópias escondidas ao lado
-        // de cada Markdown. `src/Media` é deliberadamente simples de
-        // navegar/backup e não se confunde com Notas ou Tarefas.
-        std::fs::create_dir_all(notes_root.join("src").join("Media"))?;
+        // A mídia é uma biblioteca por espaço (`<Espaço>/src/Media`), criada no primeiro envio.
+        // Um `src/` na raiz é do layout antigo e vai para o Pessoal na migração (ver `espacos.rs`).
         std::fs::create_dir_all(notes_root.join(".ecos"))?;
 
         let index_db_path = std::env::var("ECOS_INDEX_DB_PATH")

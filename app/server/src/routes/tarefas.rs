@@ -553,6 +553,12 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     } else {
         std::fs::write(&caminho_absoluto_destino, conteudo)?;
         std::fs::remove_file(&caminho_absoluto_atual)?;
+        // A biblioteca de mídia é por espaço: o que o corpo referencia vai junto para o novo espaço.
+        if fm.espaco.to_string() != espaco_antes {
+            if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &espaco_antes, &fm.espaco.to_string()) {
+                tracing::warn!(error = %err, "não foi possível levar a mídia para o novo espaço");
+            }
+        }
         // A Tarefa mudou de pasta — seus anexos são arquivos irmãos do
         // `.md` (`_anexos/<id>/`, ver `anexos_dir`); sem mover essa pasta
         // junto, os links Markdown no corpo continuariam válidos por
@@ -621,7 +627,9 @@ pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> A
 /// comum, editável/removível como qualquer outra linha do corpo.
 pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &id).await?;
-    let midia = crate::routes::media::enviar_para_biblioteca(&state, multipart).await?;
+    // A mídia vai para a biblioteca do espaço onde o item mora.
+    let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| "pessoal".to_string());
+    let midia = crate::routes::media::enviar_para_biblioteca(&state, &espaco, multipart).await?;
     let referencia_relativa = midia.caminho;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
