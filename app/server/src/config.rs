@@ -12,6 +12,45 @@ pub enum Ambiente {
     Desenvolvimento,
 }
 
+/// Credenciais e endereços do Google (OAuth + Calendar API). Só existe quando `GOOGLE_CLIENT_ID` e
+/// `GOOGLE_CLIENT_SECRET` estão no ambiente; os endereços só são trocados nos testes (servidor de mentira).
+#[derive(Clone)]
+pub struct GoogleConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub auth_url: String,
+    pub token_url: String,
+    pub revoke_url: String,
+    pub api_base: String,
+    /// Intervalo do job de sincronização (mínimo de 60 s).
+    pub intervalo_secs: u64,
+    /// Depois de criar/editar/apagar um evento do Google, envia logo (em ~1,5 s) em vez de esperar o próximo ciclo.
+    pub envio_imediato: bool,
+}
+
+// À mão de propósito: o `derive(Debug)` imprimiria o client secret em qualquer `{:?}` da `Config`.
+impl std::fmt::Debug for GoogleConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleConfig").field("client_id", &self.client_id).field("client_secret", &"<oculto>").field("api_base", &self.api_base).finish()
+    }
+}
+
+impl GoogleConfig {
+    fn do_ambiente() -> Option<Self> {
+        let cheio = |k: &str| std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        Some(Self {
+            client_id: cheio("GOOGLE_CLIENT_ID")?,
+            client_secret: cheio("GOOGLE_CLIENT_SECRET")?,
+            auth_url: cheio("GOOGLE_AUTH_URL").unwrap_or_else(|| "https://accounts.google.com/o/oauth2/v2/auth".into()),
+            token_url: cheio("GOOGLE_TOKEN_URL").unwrap_or_else(|| "https://oauth2.googleapis.com/token".into()),
+            revoke_url: cheio("GOOGLE_REVOKE_URL").unwrap_or_else(|| "https://oauth2.googleapis.com/revoke".into()),
+            api_base: cheio("GOOGLE_API_BASE").unwrap_or_else(|| "https://www.googleapis.com/calendar/v3".into()),
+            intervalo_secs: env_u64("ECOS_CALENDARIO_INTERVAL_SECS", 300).max(60),
+            envio_imediato: env_bool("ECOS_CALENDARIO_ENVIO_IMEDIATO", true),
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub ambiente: Ambiente,
@@ -39,6 +78,8 @@ pub struct Config {
     /// isso; ligar `ECOS_COOKIE_SECURE=true` só quando há HTTPS de verdade
     /// na frente (proxy TLS local próprio).
     pub cookie_secure: bool,
+    /// `None` = integração com o Google Calendar desligada (sem credenciais no ambiente).
+    pub google: Option<GoogleConfig>,
 }
 
 fn env_bool(key: &str, default: bool) -> bool {
@@ -126,6 +167,7 @@ impl Config {
             ranking_interval_secs: env_u64("ECOS_RANKING_INTERVAL_SECS", 300),
             static_dir: std::env::var("ECOS_STATIC_DIR").ok().map(PathBuf::from).filter(|p| p.is_dir()),
             cookie_secure: env_bool("ECOS_COOKIE_SECURE", false),
+            google: GoogleConfig::do_ambiente(),
         })
     }
 }

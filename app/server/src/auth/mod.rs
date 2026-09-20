@@ -467,7 +467,7 @@ pub async fn atualizar_perfil(State(state): State<AppState>, Extension(usuario):
 }
 
 #[cfg(test)]
-mod testes {
+pub(crate) mod testes {
     use super::*;
     use crate::config::{Ambiente, Config};
     use crate::db::IndexDb;
@@ -476,9 +476,9 @@ mod testes {
     use std::sync::{Arc, Mutex};
     use tower::Service;
 
-    const SEGREDO: &[u8] = b"segredo-efemero-exclusivo-do-teste";
+    pub(crate) const SEGREDO: &[u8] = b"segredo-efemero-exclusivo-do-teste";
 
-    fn novo_estado() -> AppState {
+    pub(crate) fn novo_estado() -> AppState {
         let temp = std::env::temp_dir().join(format!("ecos-auth-test-{}", new_id()));
         std::fs::create_dir_all(&temp).unwrap();
         AppState {
@@ -487,13 +487,13 @@ mod testes {
                 ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(),
                 index_db_path: temp.join("index.db"), vault_enabled: false, vault_internal_url: String::new(),
                 session_secret: SEGREDO.to_vec(), ranking_interval_secs: 300,
-                static_dir: None, cookie_secure: false,
+                static_dir: None, cookie_secure: false, google: None,
             }),
             http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
         }
     }
 
-    async fn chamar(state: &AppState, metodo: &str, rota: &str, token: Option<&str>, corpo: serde_json::Value) -> (StatusCode, serde_json::Value) {
+    pub(crate) async fn chamar(state: &AppState, metodo: &str, rota: &str, token: Option<&str>, corpo: serde_json::Value) -> (StatusCode, serde_json::Value) {
         let mut req = Request::builder().method(metodo).uri(rota).header("content-type", "application/json");
         if let Some(t) = token {
             req = req.header("authorization", format!("Bearer {t}"));

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarCheck2, CalendarClock, Check, Clock, Flag, TimerReset } from "lucide-react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { AlertTriangle, CalendarCheck2, CalendarClock, Check, CheckCircle2, Clock, Flag, TimerReset } from "lucide-react";
 import { agenda as agendaApi, rotina as rotinaApi, tarefas, ApiError, type BlocoPlanejado, type TarefaResumo } from "@/lib/api";
 import { dataLocalISO, diaEMinutosLocais, duracaoParaAlocar, instanteLocalISO, rotuloHorario, somarDiasISO } from "@/lib/agenda-tempo";
 import { montarPlanejamento, proximoHorarioLivre, type ItemDoDia } from "@/lib/planejamento-dia";
-import { useEventosLocais } from "@/lib/eventos-locais";
+import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
+import { useAbrirDocumento } from "@/lib/documento-popup";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { EventoDialog } from "@/screens/Eventos/EventoDialog";
 
 type Capacidade = Awaited<ReturnType<typeof tarefas.capacidade>>;
 const fmtDuracao = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}min` : ""}` : `${min}min`);
@@ -20,15 +22,18 @@ const fmtDia = (iso: string) => iso.split("-").reverse().slice(0, 2).join("/");
 export function TodayScreen() {
   const { filtroEquipeId, espacoAtivo, intercalarEquipes } = useAppUI();
   const { versao, notificar } = useRefreshBus();
-  const [eventos] = useEventosLocais();
+  const abrirDocumento = useAbrirDocumento();
   const [lista, setLista] = useState<TarefaResumo[] | null>(null);
+  const [concluidas, setConcluidas] = useState<TarefaResumo[] | null>(null);
   const [blocos, setBlocos] = useState<BlocoPlanejado[]>([]);
   const [capacidade, setCapacidade] = useState<Capacidade | null>(null);
   const [temRotina, setTemRotina] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [reagendando, setReagendando] = useState<string | null>(null);
+  const [eventoEmEdicao, setEventoEmEdicao] = useState<{ id: string; ocorrencia?: string } | null>(null);
   const hoje = dataLocalISO(new Date());
+  const { eventos } = useEventosDoPeriodo(hoje, hoje, versao);
 
   useEffect(() => {
     let ativo = true;
@@ -44,6 +49,9 @@ export function TodayScreen() {
       const vistos = new Set<string>();
       setLista([...atrasadas.items, ...doDia.items].filter((t) => !vistos.has(t.id) && !!vistos.add(t.id)));
     }).catch((e) => { if (ativo) { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o dia."); setLista([]); } });
+    tarefas.listar({ concluida_de: hoje, concluida_ate: hoje, status: "concluida", espaco, tz, limit: 200 })
+      .then((resultado) => { if (ativo) setConcluidas(resultado.items); })
+      .catch(() => { if (ativo) setConcluidas([]); });
     // Blocos, capacidade e rotina são complementos: se falharem o dia continua utilizável.
     agendaApi.blocos({ data_de: hoje, data_ate: hoje, tz }).then((b) => { if (ativo) setBlocos(b); }).catch(() => { if (ativo) setBlocos([]); });
     tarefas.capacidade(hoje, tz).then((c) => { if (ativo) setCapacidade(c); }).catch(() => { if (ativo) setCapacidade(null); });
@@ -60,6 +68,7 @@ export function TodayScreen() {
   };
   const concluir = (t: TarefaResumo) => {
     setLista((atual) => atual && atual.filter((x) => x.id !== t.id)); // some na hora
+    setBlocos((atuais) => atuais.filter((b) => b.tarefa_id !== t.id)); // e o tempo alocado dela também
     return executar(() => tarefas.atualizarStatus(t.id, "concluida"), "Não foi possível concluir a tarefa.");
   };
   const reagendar = (t: TarefaResumo, dia: string) => {
@@ -77,6 +86,13 @@ export function TodayScreen() {
     if (inicio === null) { setAviso("Não há um intervalo livre hoje para encaixar essa tarefa."); return; }
     return executar(() => tarefas.timeEntries.criar(t.id, { tipo: "planejado", inicio_em: instanteLocalISO(hoje, inicio), duracao_min: duracao }), "Não foi possível encaixar o tempo.");
   };
+  const abrirItem = (item: ItemDoDia, e: MouseEvent<HTMLButtonElement>) => {
+    if (item.tarefa) {
+      abrirDocumento(`/tarefa/${item.tarefa.id}`, e);
+      return;
+    }
+    if (item.evento?.servidorId) setEventoEmEdicao({ id: item.evento.servidorId, ocorrencia: item.evento.ocorrencia });
+  };
 
   const botao = "flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2";
   const linha = (item: ItemDoDia) => {
@@ -88,16 +104,16 @@ export function TodayScreen() {
       : `${rotuloHorario(item.inicioMin)}–${rotuloHorario(item.inicioMin + item.duracaoMin)}`;
     return <li key={item.chave} data-item-dia={item.chave} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-l-4 border-border bg-surface-1 px-3 py-2 ${borda}`}>
       <span className="w-24 shrink-0 text-xs tabular-nums text-text-muted">{quando}</span>
-      <span className="min-w-0 flex-1 text-sm text-text-primary">{item.titulo}
+      {(item.tarefa || item.evento?.servidorId) ? <button type="button" onClick={(e) => abrirItem(item, e)} aria-label={`Abrir ${item.tipo === "evento" ? "evento" : "tarefa"} ${item.titulo}`} className="min-w-0 flex-1 text-left text-sm text-text-primary hover:text-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70">{item.titulo}
         {item.tipo === "evento" && <span className="ml-2 text-[10px] uppercase tracking-wide text-text-muted">Evento</span>}
         {item.tipo === "bloco" && <span className="ml-2 text-[10px] uppercase tracking-wide text-text-muted">Tempo alocado</span>}
         {item.comPrazo && <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">Prazo hoje</span>}
         {alta && <span className="ml-2 rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">ALTA</span>}
-      </span>
+      </button> : <span className="min-w-0 flex-1 text-sm text-text-primary">{item.titulo}</span>}
       {t && <span className="flex items-center gap-1">
         <button type="button" aria-label={`Concluir ${item.titulo}`} title="Concluir" onClick={() => concluir(t)} className={`${botao} hover:text-success`}><Check size={16} /></button>
         <button type="button" aria-label={`Reagendar ${item.titulo}`} title="Reagendar" aria-expanded={reagendando === t.id} onClick={() => setReagendando(reagendando === t.id ? null : t.id)} className={`${botao} hover:text-text-primary`}><CalendarClock size={16} /></button>
-        <button type="button" aria-label={`Encaixar tempo para ${item.titulo}`} title="Encaixar tempo hoje" onClick={() => encaixar(t)} className={`${botao} hover:text-cyan`}><TimerReset size={16} /></button>
+        {item.tipo !== "bloco" && <button type="button" aria-label={`Encaixar tempo para ${item.titulo}`} title="Encaixar tempo hoje" onClick={() => encaixar(t)} className={`${botao} hover:text-cyan`}><TimerReset size={16} /></button>}
       </span>}
       {t && reagendando === t.id && <div role="group" aria-label={`Reagendar ${item.titulo}`} className="flex w-full flex-wrap items-center gap-2 pt-1 text-xs">
         <button type="button" onClick={() => reagendar(t, hoje)} className="rounded-lg border border-border px-2 py-1 hover:bg-surface-2">Hoje</button>
@@ -114,9 +130,18 @@ export function TodayScreen() {
       <ul className="flex flex-col gap-2">{itens.map(linha)}</ul>
     </section>
   );
+  const grupoConcluidas = (itens: TarefaResumo[]) => itens.length === 0 ? null : (
+    <section aria-labelledby="grupo-concluidas" data-grupo="concluidas">
+      <h2 id="grupo-concluidas" className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-success"><CheckCircle2 size={12} />Concluídas neste dia<span className="font-normal">({itens.length})</span></h2>
+      <ul className="flex flex-col gap-2">{itens.map((t) => <li key={t.id} data-item-concluida={t.id} className="flex items-center gap-3 rounded-xl border border-success/25 bg-success/5 px-3 py-2">
+        <CheckCircle2 size={16} className="shrink-0 text-success" aria-hidden />
+        <button type="button" onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} aria-label={`Abrir tarefa concluída ${t.titulo}`} className="min-w-0 flex-1 text-left text-sm text-text-muted line-through hover:text-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70">{t.titulo}</button>
+      </li>)}</ul>
+    </section>
+  );
 
   const livre = capacidade ? (capacidade.disponivel_producao_total_min ?? capacidade.disponivel_producao_min) : null;
-  const carregando = lista === null;
+  const carregando = lista === null || concluidas === null;
   return <div className="px-4 pt-1">
     <header className="mb-4 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-steel-700/20 text-steel-300"><CalendarCheck2 size={21} /></span><div><h1 className="font-display text-2xl text-text-primary">Hoje</h1><p className="text-sm text-text-secondary">{carregando ? "Carregando o dia…" : `${plano.total} ${plano.total === 1 ? "item" : "itens"} no planejamento`}</p></div></header>
     {capacidade && temRotina !== false && <div data-capacidade className={`mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border px-3 py-2 text-sm ${capacidade.estourado ? "border-error/40 bg-error/10 text-error" : "border-border bg-surface-1 text-text-secondary"}`}>
@@ -126,13 +151,15 @@ export function TodayScreen() {
     </div>}
     {erro && <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{erro}</div>}
     {aviso && <div role="alert" className="mb-4 rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning">{aviso}</div>}
-    {carregando ? <p className="py-10 text-center text-sm text-text-muted">Carregando…</p> : plano.total === 0 ? (
+    {carregando ? <p className="py-10 text-center text-sm text-text-muted">Carregando…</p> : plano.total === 0 && concluidas.length === 0 ? (
       <EmptyState icon={CalendarCheck2} title="Seu dia está livre." subtitle={temRotina === false ? "Sem tarefas, prazos ou eventos hoje. Configure sua rotina para ver quanto tempo você tem disponível." : livre !== null ? `Sem tarefas, prazos ou eventos hoje — ${fmtDuracao(Math.max(0, livre))} livres na sua rotina para encaixar algo.` : "Sem tarefas, prazos ou eventos hoje."} />
     ) : <div className="space-y-5">
       {grupo("atrasadas", "Atrasadas", plano.atrasadas, true)}
       {grupo("dia-todo", "Dia todo", plano.diaTodo)}
       {grupo("cronograma", "Cronograma de hoje", plano.cronograma)}
       {grupo("sem-horario", "Sem horário", plano.semHorario)}
+      {grupoConcluidas(concluidas)}
     </div>}
+    <EventoDialog aberto={eventoEmEdicao !== null} eventoId={eventoEmEdicao?.id ?? null} ocorrencia={eventoEmEdicao?.ocorrencia ?? null} categorias={[]} onFechar={() => setEventoEmEdicao(null)} onSalvo={() => { setEventoEmEdicao(null); notificar(); }} />
   </div>;
 }

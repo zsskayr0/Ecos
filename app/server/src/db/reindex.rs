@@ -6,7 +6,7 @@
 
 use super::IndexDb;
 use chrono::{DateTime, Utc};
-use ecos_core::types::{CalendarioProvider, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
+use ecos_core::types::{CalendarioProvider, CategoriaEvento, EventoFrontMatter, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
 use ecos_core::{frontmatter, wikilink};
 use rusqlite::params;
 use sha2::{Digest, Sha256};
@@ -47,6 +47,7 @@ fn calendario_provider_str(provider: CalendarioProvider) -> &'static str {
 pub struct ResultadoReindex {
     pub notas: usize,
     pub tarefas: usize,
+    pub eventos: usize,
     pub documentos: usize,
     pub erros: Vec<String>,
     /// `.md` soltos ainda sendo escritos/copiados: a adoção espera o arquivo estabilizar.
@@ -69,12 +70,32 @@ struct TarefaColetada {
     modificado_em: Option<DateTime<Utc>>,
 }
 
+struct EventoColetado {
+    front_matter: EventoFrontMatter,
+    caminho_relativo: String,
+}
+
 struct DocumentoColetado {
     caminho_relativo: String,
     nome: String,
     tamanho_bytes: i64,
     hash_conteudo: String,
     pasta_id: Option<String>,
+}
+
+/// Exceções como o front as recebe (datas em RFC 3339, campos ausentes = herdados da série).
+fn excecoes_json(excecoes: &[ecos_core::types::Excecao]) -> String {
+    let itens: Vec<serde_json::Value> = excecoes
+        .iter()
+        .map(|x| {
+            serde_json::json!({
+                "original": x.original.to_rfc3339(), "cancelada": x.cancelada, "titulo": x.titulo,
+                "inicio": x.inicio.map(|d| d.to_rfc3339()), "fim": x.fim.map(|d| d.to_rfc3339()),
+                "local": x.local, "descricao": x.descricao, "sync_pendente": x.sync_pendente,
+            })
+        })
+        .collect();
+    serde_json::to_string(&itens).unwrap_or_else(|_| "[]".into())
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -254,6 +275,31 @@ fn coletar_tarefas(vault_root: &Path, tarefas_dir: &Path, erros: &mut Vec<String
     out
 }
 
+fn coletar_eventos(vault_root: &Path, eventos_dir: &Path, erros: &mut Vec<String>) -> Vec<EventoColetado> {
+    let mut out = Vec::new();
+    if !eventos_dir.exists() {
+        return out;
+    }
+    for entry in WalkDir::new(eventos_dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let raw = match std::fs::read_to_string(path) {
+            Ok(v) => v,
+            Err(err) => {
+                erros.push(format!("{}: falha ao ler ({err})", path.display()));
+                continue;
+            }
+        };
+        match frontmatter::parse::<EventoFrontMatter>(&raw) {
+            Ok(doc) => out.push(EventoColetado { caminho_relativo: caminho_relativo_str(vault_root, path), front_matter: doc.front_matter }),
+            Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
+        }
+    }
+    out
+}
+
 /// Documento (PDF) — mesma árvore de `Notas/`, sem front-matter, identidade
 /// por hash de conteúdo (seção 1.3).
 fn coletar_documentos(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<String>) -> Vec<DocumentoColetado> {
@@ -290,6 +336,9 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     let mut adiados = 0;
     let mut notas: Vec<NotaColetada> = Vec::new();
     let mut tarefas: Vec<TarefaColetada> = Vec::new();
+    let mut eventos: Vec<EventoColetado> = Vec::new();
+    // (espaço, categoria)
+    let mut categorias: Vec<(String, CategoriaEvento)> = Vec::new();
     let mut documentos = Vec::new();
     // (espaço, pasta) — pastas vazias também entram no índice.
     let mut pastas_notas: Vec<(String, String)> = Vec::new();
@@ -305,6 +354,11 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         let mut t = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
         t.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
         tarefas.extend(t);
+        let eventos_dir = dir.join(crate::eventos_fs::DIR);
+        let mut ev = coletar_eventos(&notes_root, &eventos_dir, &mut erros);
+        ev.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        eventos.extend(ev);
+        categorias.extend(crate::eventos_fs::ler_categorias(&eventos_dir).into_iter().map(|c| (espaco.clone(), c)));
         documentos.extend(coletar_documentos(&notes_root, &notas_dir, &mut erros));
         pastas_notas.extend(enumerar_pastas(&notas_dir).into_iter().map(|p| (espaco.clone(), p)));
         pastas_tarefas.extend(enumerar_pastas(&tarefas_dir).into_iter().map(|p| (espaco.clone(), p)));
@@ -317,6 +371,10 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
     let total_notas = notas.len();
     let total_tarefas = tarefas.len();
+    let total_eventos = eventos.len();
+    // Vínculos de evento para itens que não existem mais são descartados (sem erro).
+    let ids_tarefas: std::collections::HashSet<String> = tarefas.iter().map(|t| t.front_matter.id.clone()).collect();
+    let ids_notas: std::collections::HashSet<String> = notas.iter().map(|n| n.front_matter.id.clone()).collect();
     let total_documentos = documentos.len();
 
     db.with(move |conn| {
@@ -324,6 +382,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tx.execute("DELETE FROM links_nota", [])?;
         tx.execute("DELETE FROM nota_tag", [])?;
         tx.execute("DELETE FROM nota", [])?;
+        tx.execute("DELETE FROM evento", [])?; // evento_tarefa/evento_nota caem em cascata
+        tx.execute("DELETE FROM categoria_evento", [])?;
         tx.execute("DELETE FROM tarefa_tag", [])?;
         tx.execute("DELETE FROM tarefa", [])?;
         tx.execute("DELETE FROM documento_cache", [])?;
@@ -444,6 +504,55 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             }
         }
 
+        for (espaco, c) in &categorias {
+            tx.execute(
+                "INSERT OR REPLACE INTO categoria_evento (id, espaco, nome, cor, icone) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![c.id, espaco, c.nome, c.cor, c.icone],
+            )?;
+        }
+
+        for item in &eventos {
+            let fm = &item.front_matter;
+            tx.execute(
+                "INSERT OR REPLACE INTO evento (id, caminho_arquivo, titulo, inicio, fim, dia_inteiro, fuso, local, categoria_id, \
+                 visibilidade, rrule, espaco, google_calendar_id, google_event_id, google_etag, google_updated, sync_pendente, \
+                 criado_em, atualizado_em, criado_por, excecoes, recorrencia_extra, excecoes_pendentes, cor) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                params![
+                    fm.id,
+                    item.caminho_relativo,
+                    fm.titulo,
+                    fm.inicio.to_rfc3339(),
+                    fm.fim.to_rfc3339(),
+                    fm.dia_inteiro,
+                    fm.fuso,
+                    fm.local,
+                    fm.categoria_id,
+                    fm.visibilidade.como_str(),
+                    fm.rrule,
+                    fm.espaco.to_string(),
+                    fm.google.calendar_id,
+                    fm.google.event_id,
+                    fm.google.etag,
+                    fm.google.updated.map(|d| d.to_rfc3339()),
+                    fm.sync_pendente,
+                    fm.criado_em.to_rfc3339(),
+                    fm.atualizado_em.to_rfc3339(),
+                    fm.criado_por,
+                    excecoes_json(&fm.excecoes),
+                    serde_json::to_string(&fm.recorrencia_extra).unwrap_or_else(|_| "[]".into()),
+                    fm.excecoes.iter().filter(|x| x.sync_pendente).count() as i64,
+                    fm.cor,
+                ],
+            )?;
+            for tarefa_id in fm.tarefas.iter().filter(|t| ids_tarefas.contains(*t)) {
+                tx.execute("INSERT OR IGNORE INTO evento_tarefa (evento_id, tarefa_id) VALUES (?1, ?2)", params![fm.id, tarefa_id])?;
+            }
+            for nota_id in fm.notas.iter().filter(|n| ids_notas.contains(*n)) {
+                tx.execute("INSERT OR IGNORE INTO evento_nota (evento_id, nota_id) VALUES (?1, ?2)", params![fm.id, nota_id])?;
+            }
+        }
+
         for ((tipo, espaco, caminho), contagem) in contagem_pastas {
             let nome = caminho.rsplit('/').next().unwrap_or(&caminho).to_string();
             tx.execute(
@@ -461,6 +570,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     Ok(ResultadoReindex {
         notas: total_notas,
         tarefas: total_tarefas,
+        eventos: total_eventos,
         documentos: total_documentos,
         erros,
         adiados,

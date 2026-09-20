@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ApiError, auth } from "./api";
+import { limparConteudoLocal } from "./dados-locais";
 
 export interface Perfil {
   id: string;
@@ -121,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(null);
       setStatus("deslogado");
       gravarSessaoAtiva(false);
+      limparConteudoLocal(); // rascunhos, buscas e abas abertas não ficam no aparelho
     }
   }, []);
 

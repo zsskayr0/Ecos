@@ -782,6 +782,140 @@ pub struct ConfigSync {
     pub modo: ModoSync,
 }
 
+// ---------------------------------------------------------------------
+// Evento de calendário (Ecos <-> Google Calendar)
+// ---------------------------------------------------------------------
+
+/// `Privado` nunca sai do Ecos; `Google` é sincronizado com o calendário externo.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventoVisibilidade {
+    #[default]
+    Privado,
+    Google,
+}
+
+impl EventoVisibilidade {
+    pub fn como_str(self) -> &'static str {
+        match self {
+            EventoVisibilidade::Privado => "privado",
+            EventoVisibilidade::Google => "google",
+        }
+    }
+}
+
+/// Vínculo com o evento do Google. Vazio enquanto o evento só existe no Ecos.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoogleRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated: Option<DateTime<Utc>>,
+}
+
+impl GoogleRef {
+    pub fn esta_vazio(&self) -> bool {
+        self.calendar_id.is_none() && self.event_id.is_none() && self.etag.is_none() && self.updated.is_none()
+    }
+}
+
+/// Front-matter do evento (`<espaço>/Eventos/*.md`); o corpo do `.md` é a descrição.
+/// Vive no arquivo (e não só no índice SQLite) porque o índice é descartável.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventoFrontMatter {
+    pub id: String,
+    pub titulo: String,
+    pub inicio: DateTime<Utc>,
+    pub fim: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dia_inteiro: bool,
+    /// Fuso IANA de exibição (ex. `America/Sao_Paulo`); `inicio`/`fim` são sempre UTC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuso: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub categoria_id: Option<String>,
+    /// Cor própria do evento (`#RRGGBB`), só do Ecos: vale sobre a cor da categoria. Nunca vai ao Google.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cor: Option<String>,
+    #[serde(default)]
+    pub visibilidade: EventoVisibilidade,
+    /// RRULE (RFC 5545) da série; a expansão de ocorrências é feita na leitura. Séries vêm do Google e lá são
+    /// gerenciadas: o Ecos só muda ou cancela uma ocorrência (`excecoes`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rrule: Option<String>,
+    /// Outras linhas de `recurrence` do Google (EXDATE, RDATE, EXRULE): guardadas para expandir certo.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recorrencia_extra: Vec<String>,
+    /// Ocorrências da série que diferem do padrão (remarcadas, editadas ou canceladas).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excecoes: Vec<Excecao>,
+    /// Vínculos só do Ecos (nunca vão ao Google).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tarefas: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notas: Vec<String>,
+    #[serde(default, skip_serializing_if = "GoogleRef::esta_vazio")]
+    pub google: GoogleRef,
+    /// Mudança local ainda não enviada ao Google.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sync_pendente: bool,
+    pub espaco: Espaco,
+    pub criado_em: DateTime<Utc>,
+    pub atualizado_em: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub criado_por: Option<String>,
+}
+
+/// Uma ocorrência de série que difere do padrão. A chave é o início ORIGINAL da ocorrência (o `originalStartTime` do
+/// Google); só os campos que mudaram são guardados (`None` = herda da série). No Google é o "evento-instância".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Excecao {
+    pub original: DateTime<Utc>,
+    /// Ocorrência cancelada: some da série.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cancelada: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub titulo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inicio: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fim: Option<DateTime<Utc>>,
+    /// `Some("")` = local apagado só nesta ocorrência.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descricao: Option<String>,
+    #[serde(default, skip_serializing_if = "GoogleRef::esta_vazio")]
+    pub google: GoogleRef,
+    /// Mudança local ainda não enviada ao Google.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sync_pendente: bool,
+    pub atualizado_em: DateTime<Utc>,
+}
+
+impl EventoFrontMatter {
+    pub fn duracao_min(&self) -> i64 {
+        (self.fim - self.inicio).num_minutes()
+    }
+}
+
+/// Categoria de evento (nome, cor, ícone) — por espaço, em `<espaço>/Eventos/_categorias.yaml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CategoriaEvento {
+    pub id: String,
+    pub nome: String,
+    /// `#RRGGBB`.
+    pub cor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icone: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -869,5 +1003,70 @@ mod tests {
         let texto = crate::frontmatter::serialize(&fm, "").unwrap();
         assert!(texto.contains("concluida_em"));
         assert_eq!(crate::frontmatter::parse::<TarefaFrontMatter>(&texto).unwrap().front_matter.concluida_em, Some(t));
+    }
+}
+
+#[cfg(test)]
+mod testes_evento {
+    use super::*;
+
+    fn evento() -> EventoFrontMatter {
+        let t: DateTime<Utc> = "2026-09-21T13:00:00Z".parse().unwrap();
+        EventoFrontMatter {
+            id: "e1".into(),
+            titulo: "Reunião".into(),
+            inicio: t,
+            fim: t + chrono::Duration::minutes(45),
+            dia_inteiro: false,
+            fuso: None,
+            local: None,
+            categoria_id: Some("c1".into()),
+            cor: None,
+            visibilidade: EventoVisibilidade::Privado,
+            rrule: None,
+            recorrencia_extra: vec![],
+            excecoes: vec![],
+            tarefas: vec!["t1".into()],
+            notas: vec![],
+            google: GoogleRef::default(),
+            sync_pendente: false,
+            espaco: Espaco::Pessoal,
+            criado_em: t,
+            atualizado_em: t,
+            criado_por: None,
+        }
+    }
+
+    #[test]
+    fn evento_faz_roundtrip_e_omite_campos_vazios() {
+        let fm = evento();
+        let texto = crate::frontmatter::serialize(&fm, "pauta
+").unwrap();
+        assert!(!texto.contains("google"));
+        assert!(!texto.contains("sync_pendente"));
+        assert!(!texto.contains("notas"));
+        let doc = crate::frontmatter::parse::<EventoFrontMatter>(&texto).unwrap();
+        assert_eq!(doc.front_matter.tarefas, vec!["t1".to_string()]);
+        assert_eq!(doc.front_matter.duracao_min(), 45);
+        assert_eq!(doc.front_matter.visibilidade, EventoVisibilidade::Privado);
+        assert_eq!(doc.body, "pauta
+");
+    }
+
+    #[test]
+    fn evento_minimo_aplica_defaults() {
+        let src = "---
+id: e2
+titulo: X
+inicio: 2026-09-21T13:00:00Z
+fim: 2026-09-21T14:00:00Z
+espaco: pessoal
+criado_em: 2026-09-21T10:00:00Z
+atualizado_em: 2026-09-21T10:00:00Z
+---
+";
+        let fm = crate::frontmatter::parse::<EventoFrontMatter>(src).unwrap().front_matter;
+        assert_eq!(fm.visibilidade, EventoVisibilidade::Privado);
+        assert!(fm.google.esta_vazio() && fm.tarefas.is_empty() && !fm.dia_inteiro);
     }
 }

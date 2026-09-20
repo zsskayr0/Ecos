@@ -15,7 +15,6 @@ import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 interface Membro {
   usuario_id: string;
   cargo: string;
-  entrou_em: string;
 }
 
 /**

@@ -228,7 +228,7 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
 
     // Itens criados por ela em equipes (antes do UPDATE que zera a autoria no banco).
     let autorais: Vec<String> = state.db.with({ let id = id.clone(); move |conn| {
-        let mut stmt = conn.prepare("SELECT caminho_arquivo FROM nota WHERE criado_por = ?1 AND espaco != 'pessoal' UNION ALL SELECT caminho_arquivo FROM tarefa WHERE criado_por = ?1 AND espaco != 'pessoal'")?;
+        let mut stmt = conn.prepare("SELECT caminho_arquivo FROM nota WHERE criado_por = ?1 AND espaco != 'pessoal' UNION ALL SELECT caminho_arquivo FROM tarefa WHERE criado_por = ?1 AND espaco != 'pessoal' UNION ALL SELECT caminho_arquivo FROM evento WHERE criado_por = ?1 AND espaco != 'pessoal'")?;
         let linhas = stmt.query_map([&id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
         Ok(linhas)
     } }).await?;
@@ -242,7 +242,7 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
         for tabela in ["membro_equipe", "notificacao", "dispositivo", "config_sync", "config_calendario", "perfil_rotina", "sessao"] {
             tx.execute(&format!("DELETE FROM {tabela} WHERE usuario_id = ?1"), [&id])?;
         }
-        for tabela in ["nota", "tarefa"] { tx.execute(&format!("UPDATE {tabela} SET criado_por = NULL WHERE criado_por = ?1"), [&id])?; }
+        for tabela in ["nota", "tarefa", "evento"] { tx.execute(&format!("UPDATE {tabela} SET criado_por = NULL WHERE criado_por = ?1"), [&id])?; }
         tx.execute("DELETE FROM usuario WHERE id = ?1", [&id])?;
         tx.commit()
     } }).await?;
@@ -304,7 +304,7 @@ mod tests {
             config: Arc::new(Config {
                 ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(), index_db_path: temp.join("index.db"),
                 vault_enabled: false, vault_internal_url: String::new(), session_secret: segredo.clone(),
-                ranking_interval_secs: 300, static_dir: None, cookie_secure: false,
+                ranking_interval_secs: 300, static_dir: None, cookie_secure: false, google: None,
             }),
             http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
         };
@@ -338,7 +338,7 @@ mod tests {
             config: Arc::new(Config {
                 ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(), index_db_path: temp.join("index.db"),
                 vault_enabled: false, vault_internal_url: String::new(), session_secret: segredo.clone(),
-                ranking_interval_secs: 300, static_dir: None, cookie_secure: false,
+                ranking_interval_secs: 300, static_dir: None, cookie_secure: false, google: None,
             }),
             http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
         };

@@ -8,8 +8,31 @@ export type Repeticao = {
   fim: { tipo: "nunca" } | { tipo: "data"; data: string } | { tipo: "vezes"; vezes: number };
 };
 
-/** Evento criado na Agenda. Vive só nesta sessão (ainda não há backend de eventos); `minutos === null` = dia inteiro. */
-export type EventoLocal = { id: number; titulo: string; inicio: string; cor: string; minutos: number | null; duracaoMin: number; local?: string; descricao?: string; repete?: Repeticao; /** Cor livre (#RRGGBB) escolhida no editor; `cor` guarda só a classe de reserva. */ corHex?: string };
+/**
+ * Evento como a Agenda o desenha: um item por dia (um evento de vários dias ou uma série vira vários itens); `minutos ===
+ * null` = dia inteiro. Vem do servidor (`lib/eventos-agenda.ts`); `id` é único por item (`<idDoServidor>@<dia>`).
+ */
+export type EventoLocal = {
+  id: number | string;
+  titulo: string;
+  /** Dia LOCAL (`YYYY-MM-DD`) deste item. */
+  inicio: string;
+  cor: string;
+  minutos: number | null;
+  duracaoMin: number;
+  local?: string;
+  descricao?: string;
+  repete?: Repeticao;
+  /** Cor da categoria (#RRGGBB); `cor` guarda só a classe de reserva. */
+  corHex?: string;
+  /** Id do evento no servidor (o mesmo para todos os itens de uma série ou de um evento de vários dias). */
+  servidorId?: string;
+  /** Cabe no arrasto: ocupa um dia só. Ocorrência de série se move como exceção (só ela); evento de vários dias não. */
+  movivel?: boolean;
+  /** Início ORIGINAL (ISO) desta ocorrência, se o item vem de uma série: é o que identifica a ocorrência no servidor. */
+  ocorrencia?: string;
+  visibilidade?: "privado" | "google";
+};
 
 // Estado compartilhado entre a Agenda e a tela Hoje: um evento criado/movido num lado aparece imediatamente no outro.
 let eventos: EventoLocal[] = [];

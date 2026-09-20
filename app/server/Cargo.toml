@@ -43,9 +43,10 @@ time.workspace = true
 bip39.workspace = true
 
 reqwest.workspace = true
-# `oauth2` ainda não é dependência — as rotas de calendário (seção 11.13)
-# são contrato + `NotImplemented` nesta build (ver routes/calendario.rs);
-# adicionar de volta quando a integração real entrar.
+# OAuth do Google feito à mão (PKCE + reqwest, seção 10.2): sem a crate `oauth2`.
+# Tokens do calendário cifrados em repouso (AES-256-GCM) e fusos IANA dos eventos.
+aes-gcm = "0.10"
+chrono-tz = "0.10"
 
 notify.workspace = true
 walkdir.workspace = true

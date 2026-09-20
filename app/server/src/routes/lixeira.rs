@@ -7,7 +7,7 @@ use crate::{error::{AppError, AppResult}, state::AppState};
 pub struct Registro { pub item: super::media::ItemLixeira, pub anexos: Option<String> }
 fn root(s: &AppState) -> PathBuf { s.config.notes_root.join(".ecos/lixeira/documentos") }
 fn seguro(s: &AppState, rel: &str, tipo: &str) -> AppResult<PathBuf> {
-    let arvore = match tipo { "nota" => "Notas", "tarefa" => "Tarefas", _ => return Err(AppError::new(ErrorCode::Forbidden)) };
+    let arvore = match tipo { "nota" => "Notas", "tarefa" => "Tarefas", "evento" => "Eventos", _ => return Err(AppError::new(ErrorCode::Forbidden)) };
     let p = Path::new(rel);
     if p.components().any(|c| !matches!(c, Component::Normal(_))) { return Err(AppError::new(ErrorCode::Forbidden)); }
     let mut partes = p.components().map(|c| c.as_os_str().to_string_lossy().to_string());
