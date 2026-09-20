@@ -285,16 +285,30 @@ fn coletar_documentos(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<Strin
 /// watcher de arquivos (`notify`) detecta escrita relevante.
 pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<ResultadoReindex> {
     let notes_root = notes_root.to_path_buf();
-    let notas_dir = notes_root.join("Notas");
-    let tarefas_dir = notes_root.join("Tarefas");
 
     let mut erros = Vec::new();
     let mut adiados = 0;
-    let notas = coletar_notas(&notes_root, &notas_dir, &mut erros, &mut adiados);
-    let tarefas = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
-    let documentos = coletar_documentos(&notes_root, &notas_dir, &mut erros);
-    let pastas_notas = enumerar_pastas(&notas_dir);
-    let pastas_tarefas = enumerar_pastas(&tarefas_dir);
+    let mut notas: Vec<NotaColetada> = Vec::new();
+    let mut tarefas: Vec<TarefaColetada> = Vec::new();
+    let mut documentos = Vec::new();
+    // (espaço, pasta) — pastas vazias também entram no índice.
+    let mut pastas_notas: Vec<(String, String)> = Vec::new();
+    let mut pastas_tarefas: Vec<(String, String)> = Vec::new();
+    // O espaço de um item é o do diretório onde ele mora (o front-matter acompanha).
+    for (espaco, dir) in crate::espacos::listar(&notes_root) {
+        let Ok(valor) = espaco.parse::<ecos_core::types::Espaco>() else { continue };
+        let notas_dir = dir.join("Notas");
+        let tarefas_dir = dir.join("Tarefas");
+        let mut n = coletar_notas(&notes_root, &notas_dir, &mut erros, &mut adiados);
+        n.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        notas.extend(n);
+        let mut t = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
+        t.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        tarefas.extend(t);
+        documentos.extend(coletar_documentos(&notes_root, &notas_dir, &mut erros));
+        pastas_notas.extend(enumerar_pastas(&notas_dir).into_iter().map(|p| (espaco.clone(), p)));
+        pastas_tarefas.extend(enumerar_pastas(&tarefas_dir).into_iter().map(|p| (espaco.clone(), p)));
+    }
 
     let titulo_para_id: HashMap<String, String> = notas
         .iter()
@@ -319,11 +333,11 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
         // (tipo, espaço, caminho) -> contagem de itens diretos.
         let mut contagem_pastas: HashMap<(&'static str, String, String), i64> = HashMap::new();
-        for pasta in &pastas_notas {
-            contagem_pastas.entry(("nota", "pessoal".into(), pasta.clone())).or_insert(0);
+        for (espaco, pasta) in &pastas_notas {
+            contagem_pastas.entry(("nota", espaco.clone(), pasta.clone())).or_insert(0);
         }
-        for pasta in &pastas_tarefas {
-            contagem_pastas.entry(("tarefa", "pessoal".into(), pasta.clone())).or_insert(0);
+        for (espaco, pasta) in &pastas_tarefas {
+            contagem_pastas.entry(("tarefa", espaco.clone(), pasta.clone())).or_insert(0);
         }
 
         for item in &notas {
@@ -464,9 +478,9 @@ mod testes_concluida_em {
     #[tokio::test]
     async fn indexa_concluida_em_com_fallback_pra_concluidas_antigas_e_null_pra_pendentes() {
         let raiz = std::env::temp_dir().join(format!("ecos-reindex-concluida-{}", ecos_core::new_id()));
-        std::fs::create_dir_all(raiz.join("Tarefas")).unwrap();
-        std::fs::create_dir_all(raiz.join("Notas")).unwrap();
-        let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Tarefas").join(nome), conteudo).unwrap();
+        std::fs::create_dir_all(raiz.join("Pessoal").join("Tarefas")).unwrap();
+        std::fs::create_dir_all(raiz.join("Pessoal").join("Notas")).unwrap();
+        let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Pessoal").join("Tarefas").join(nome), conteudo).unwrap();
         escreve("a.md", tarefa("a", "concluida", "atualizado_em: 2026-09-19T12:00:00Z\nconcluida_em: 2026-09-19T10:00:00Z\n"));
         escreve("b.md", tarefa("b", "concluida", "atualizado_em: 2026-09-10T08:00:00Z\n"));
         escreve("c.md", tarefa("c", "pendente", "atualizado_em: 2026-09-11T08:00:00Z\nconcluida_em: 2026-09-11T09:00:00Z\n"));

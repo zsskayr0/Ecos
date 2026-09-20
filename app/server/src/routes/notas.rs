@@ -21,7 +21,8 @@ use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
 fn notas_dir(state: &AppState) -> PathBuf {
-    state.config.notes_root.join("Notas")
+    // Só fallback: a raiz real de cada árvore depende do espaço (`espacos::raiz`).
+    state.config.notes_root.join(crate::espacos::PESSOAL_DIR).join("Notas")
 }
 
 fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
@@ -206,9 +207,10 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
+    let raiz = crate::espacos::raiz(&state, &espaco.to_string(), "Notas").await?;
     let dir = match pasta_relativa {
-        Some(p) => notas_dir(&state).join(p),
-        None => notas_dir(&state),
+        Some(p) => raiz.join(p),
+        None => raiz,
     };
     std::fs::create_dir_all(&dir)?;
 
@@ -255,6 +257,8 @@ pub struct ImportarNotaPayload {
     pub conteudo: String,
     #[serde(default)]
     pub pasta: Option<String>,
+    #[serde(default)]
+    pub espaco: Option<String>,
 }
 
 /// Importa um `.md` de fora (arrastado para a aba Notas): mesma "adoção" do arquivo solto na pasta —
@@ -276,11 +280,17 @@ pub async fn importar(State(state): State<AppState>, Json(payload): Json<Importa
         .unwrap_or(payload.conteudo);
     let doc = frontmatter::parse::<NotaFrontMatter>(&conteudo)?;
 
+    let espaco = payload.espaco.as_deref().unwrap_or("pessoal");
+    espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
+    let raiz = crate::espacos::raiz(&state, espaco, "Notas").await?;
     let dir = match pasta_relativa {
-        Some(p) => notas_dir(&state).join(p),
-        None => notas_dir(&state),
+        Some(p) => raiz.join(p),
+        None => raiz,
     };
     std::fs::create_dir_all(&dir)?;
+    let mut doc = doc;
+    doc.front_matter.espaco = espaco.parse().unwrap_or(doc.front_matter.espaco);
+    let conteudo = frontmatter::serialize(&doc.front_matter, &doc.body)?;
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(nome), "md");
     std::fs::write(&caminho_absoluto, conteudo)?;
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
@@ -347,6 +357,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
     }
+    let espaco_antes = fm.espaco.to_string();
     if let Some(espaco) = payload.espaco {
         fm.espaco = espaco.parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     }
@@ -363,9 +374,11 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 
     // `pasta` ausente = não mexe; `pasta: ""` explícito = mover pra raiz;
     // `pasta: "X"` = mover pra `Notas/X`.
+    let raiz_destino = crate::espacos::raiz(&state, &fm.espaco.to_string(), "Notas").await?;
     let dir_destino = match payload.pasta.as_deref() {
-        Some(p) if !p.is_empty() => notas_dir(&state).join(p),
-        Some(_) => notas_dir(&state),
+        Some(p) if !p.is_empty() => raiz_destino.join(p),
+        Some(_) => raiz_destino.clone(),
+        None if fm.espaco.to_string() != espaco_antes => raiz_destino.clone(),
         None => caminho_absoluto_atual
             .parent()
             .map(|p| p.to_path_buf())

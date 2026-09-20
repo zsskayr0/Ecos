@@ -11,11 +11,11 @@ use crate::db::reindex::reindexar_tudo;
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::state::AppState;
 
-fn raiz_da_arvore(state: &AppState, tipo: &str) -> std::path::PathBuf {
-    match tipo {
-        "tarefa" => state.config.notes_root.join("Tarefas"),
-        _ => state.config.notes_root.join("Notas"),
-    }
+async fn raiz_da_arvore(state: &AppState, tipo: &str, espaco: Option<&str>) -> AppResult<std::path::PathBuf> {
+    let arvore = if tipo == "tarefa" { "Tarefas" } else { "Notas" };
+    let espaco = espaco.filter(|e| !e.is_empty()).unwrap_or("pessoal");
+    espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
+    crate::espacos::raiz(state, espaco, arvore).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,13 +68,14 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
 
     // Conteúdo direto (Notas e Documentos misturados, seção 11.5) — só faz
     // sentido pra árvore de Notas; Tarefas não tem Documento.
+    let espaco_itens = q.espaco.clone();
     let itens: Vec<serde_json::Value> = if tipo == "tarefa" {
         state
             .db
             .with(move |conn| {
-                let mut stmt = conn.prepare("SELECT id, titulo, status FROM tarefa WHERE COALESCE(pasta_id, '') = ?1")?;
+                let mut stmt = conn.prepare("SELECT id, titulo, status FROM tarefa WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2)")?;
                 let linhas = stmt
-                    .query_map([&pasta_pai], |r| {
+                    .query_map(rusqlite::params![&pasta_pai, &espaco_itens], |r| {
                         Ok(serde_json::json!({ "tipo": "tarefa", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "status": r.get::<_, String>(2)? }))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
@@ -86,10 +87,11 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
             .db
             .with({
                 let pasta_pai = pasta_pai.clone();
+                let espaco_itens = espaco_itens.clone();
                 move |conn| {
-                    let mut stmt = conn.prepare("SELECT id, titulo, modo FROM nota WHERE COALESCE(pasta_id, '') = ?1")?;
+                    let mut stmt = conn.prepare("SELECT id, titulo, modo FROM nota WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2)")?;
                     let linhas = stmt
-                        .query_map([&pasta_pai], |r| {
+                        .query_map(rusqlite::params![&pasta_pai, &espaco_itens], |r| {
                             Ok(serde_json::json!({ "tipo": "nota", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "modo": r.get::<_, String>(2)? }))
                         })?
                         .collect::<Result<Vec<_>, _>>()?;
@@ -121,6 +123,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
 
 #[derive(Debug, Deserialize)]
 pub struct CriarPastaPayload {
+    #[serde(default)]
+    pub espaco: Option<String>,
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     #[serde(default)]
@@ -136,7 +140,7 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarPasta
         }]));
     }
     let nome = ecos_core::naming::sanitizar_nome_arquivo(&payload.nome);
-    let raiz = raiz_da_arvore(&state, &payload.tipo);
+    let raiz = raiz_da_arvore(&state, &payload.tipo, payload.espaco.as_deref()).await?;
     let dir = match &payload.pasta_pai {
         Some(p) if !p.is_empty() => raiz.join(p).join(&nome),
         _ => raiz.join(&nome),
@@ -149,6 +153,8 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<CriarPasta
 
 #[derive(Debug, Deserialize)]
 pub struct RenomearPastaPayload {
+    #[serde(default)]
+    pub espaco: Option<String>,
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     pub caminho_atual: String,
@@ -156,7 +162,7 @@ pub struct RenomearPastaPayload {
 }
 
 pub async fn renomear(State(state): State<AppState>, Json(payload): Json<RenomearPastaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let raiz = raiz_da_arvore(&state, &payload.tipo);
+    let raiz = raiz_da_arvore(&state, &payload.tipo, payload.espaco.as_deref()).await?;
     let de = raiz.join(&payload.caminho_atual);
     let para = raiz.join(&payload.novo_caminho);
     if !de.is_dir() {
@@ -172,13 +178,15 @@ pub async fn renomear(State(state): State<AppState>, Json(payload): Json<Renomea
 
 #[derive(Debug, Deserialize)]
 pub struct ExcluirPastaPayload {
+    #[serde(default)]
+    pub espaco: Option<String>,
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     pub caminho: String,
 }
 
 pub async fn excluir(State(state): State<AppState>, Json(payload): Json<ExcluirPastaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let raiz = raiz_da_arvore(&state, &payload.tipo);
+    let raiz = raiz_da_arvore(&state, &payload.tipo, payload.espaco.as_deref()).await?;
     let dir = raiz.join(&payload.caminho);
     if !dir.is_dir() {
         return Err(AppError::new(ErrorCode::NotFound));

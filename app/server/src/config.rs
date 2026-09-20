@@ -99,8 +99,11 @@ impl Config {
         let notes_root: PathBuf = std::env::var("ECOS_NOTES_PATH")
             .unwrap_or_else(|_| "./data/notes".to_string())
             .into();
-        std::fs::create_dir_all(notes_root.join("Notas"))?;
-        std::fs::create_dir_all(notes_root.join("Tarefas"))?;
+        // Layout por espaço: `<Pessoal|Equipe>/{Notas,Tarefas}` (ver `espacos.rs`).
+        // Um vault ainda no layout antigo (`Notas/`, `Tarefas/` na raiz) é migrado no boot.
+        std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Notas"))?;
+        std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas"))?;
+        std::fs::write(notes_root.join(crate::espacos::PESSOAL_DIR).join(crate::espacos::MARCADOR), "pessoal")?;
         // Mídias são ativos globais do cofre, não cópias escondidas ao lado
         // de cada Markdown. `src/Media` é deliberadamente simples de
         // navegar/backup e não se confunde com Notas ou Tarefas.

@@ -9,7 +9,18 @@ fn root(s: &AppState) -> PathBuf { s.config.notes_root.join(".ecos/lixeira/docum
 fn seguro(s: &AppState, rel: &str, tipo: &str) -> AppResult<PathBuf> {
     let arvore = match tipo { "nota" => "Notas", "tarefa" => "Tarefas", _ => return Err(AppError::new(ErrorCode::Forbidden)) };
     let p = Path::new(rel);
-    if p.components().next().map(|c| c.as_os_str()) != Some(std::ffi::OsStr::new(arvore)) || p.components().any(|c| !matches!(c, Component::Normal(_))) { return Err(AppError::new(ErrorCode::Forbidden)); }
+    if p.components().any(|c| !matches!(c, Component::Normal(_))) { return Err(AppError::new(ErrorCode::Forbidden)); }
+    let mut partes = p.components().map(|c| c.as_os_str().to_string_lossy().to_string());
+    let primeiro = partes.next().unwrap_or_default();
+    // Registros antigos (layout sem espaço) apontam para `Notas/...`: voltam para o Pessoal.
+    let p = if primeiro == arvore {
+        Path::new(crate::espacos::PESSOAL_DIR).join(p)
+    } else {
+        let e_espaco = crate::espacos::listar(&s.config.notes_root).iter().any(|(_, d)| d.file_name().is_some_and(|n| n.to_string_lossy() == primeiro));
+        if !e_espaco || partes.next().as_deref() != Some(arvore) { return Err(AppError::new(ErrorCode::Forbidden)); }
+        p.to_path_buf()
+    };
+    let p = p.as_path();
     Ok(s.config.notes_root.join(p))
 }
 fn validar(s: &AppState, path: &Path) -> AppResult<()> {

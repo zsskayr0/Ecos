@@ -18,7 +18,8 @@ use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
 fn tarefas_dir(state: &AppState) -> PathBuf {
-    state.config.notes_root.join("Tarefas")
+    // Só fallback: a raiz real de cada árvore depende do espaço (`espacos::raiz`).
+    state.config.notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas")
 }
 
 fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
@@ -342,9 +343,10 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
+    let raiz = crate::espacos::raiz(&state, &espaco.to_string(), "Tarefas").await?;
     let dir = match pasta_relativa {
-        Some(p) => tarefas_dir(&state).join(p),
-        None => tarefas_dir(&state),
+        Some(p) => raiz.join(p),
+        None => raiz,
     };
     std::fs::create_dir_all(&dir)?;
 
@@ -494,6 +496,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
     }
+    let espaco_antes = fm.espaco.to_string();
     if let Some(espaco) = payload.espaco {
         fm.espaco = espaco.parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     }
@@ -523,9 +526,12 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         corpo = novo_corpo;
     }
 
+    // Trocar de espaço move o arquivo para a árvore do novo espaço (a pasta antiga não existe lá).
+    let raiz_destino = crate::espacos::raiz(&state, &fm.espaco.to_string(), "Tarefas").await?;
     let dir_destino = match payload.pasta.as_deref() {
-        Some(p) if !p.is_empty() => tarefas_dir(&state).join(p),
-        Some(_) => tarefas_dir(&state),
+        Some(p) if !p.is_empty() => raiz_destino.join(p),
+        Some(_) => raiz_destino.clone(),
+        None if fm.espaco.to_string() != espaco_antes => raiz_destino.clone(),
         None => caminho_absoluto_atual
             .parent()
             .map(|p| p.to_path_buf())
@@ -873,7 +879,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(obter(&app, &token, &id).await["duration_min"], 90);
 
         // 6) Persistiu de verdade no arquivo `.md` (fonte da verdade), não só na memória/índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
+        let arquivo = walkdir::WalkDir::new(raiz.join("Pessoal").join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("duration_min: 90"), "front matter: {conteudo}");
         assert!(conteudo.contains("2026-09-25T02:30:00"), "front matter: {conteudo}");
@@ -950,7 +956,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(t["duration_min"], 45);
 
         // 9) Persistiu no `.md` (a fonte da verdade), não só no índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("Tarefas")).into_iter().filter_map(Result::ok)
+        let arquivo = walkdir::WalkDir::new(raiz.join("Pessoal").join("Tarefas")).into_iter().filter_map(Result::ok)
             .find(|e| std::fs::read_to_string(e.path()).map_or(false, |c| c.contains("Escrever relatório"))).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("planejado") && conteudo.contains("duracao_min: 90"), "front matter: {conteudo}");

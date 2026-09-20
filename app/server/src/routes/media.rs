@@ -239,7 +239,7 @@ mod tests {
             assert_eq!(created.status(), StatusCode::OK);
             let created: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 8192).await.unwrap()).unwrap();
             let entity_id = created["id"].as_str().unwrap();
-            let path = walkdir::WalkDir::new(temp.join(arvore)).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md")).unwrap().path().to_path_buf();
+            let path = walkdir::WalkDir::new(temp.join("Pessoal").join(arvore)).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md")).unwrap().path().to_path_buf();
             let original = std::fs::read(&path).unwrap();
             let attachments = path.parent().unwrap().join("_anexos").join(entity_id);
             std::fs::create_dir_all(&attachments).unwrap();

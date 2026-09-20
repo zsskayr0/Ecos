@@ -15,8 +15,8 @@ fn assinatura(raiz: &std::path::Path) -> (u64, u64, std::time::SystemTime) {
     let mut n = 0u64;
     let mut bytes = 0u64;
     let mut novo = std::time::UNIX_EPOCH;
-    for sub in ["Notas", "Tarefas"] {
-        for e in walkdir::WalkDir::new(raiz.join(sub)).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
+    for (_, dir) in crate::espacos::listar(raiz) {
+        for e in walkdir::WalkDir::new(dir).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
             if let Ok(m) = e.metadata() {
                 n += 1;
                 bytes += m.len();
@@ -79,17 +79,20 @@ pub fn iniciar(state: AppState) {
             }
         };
 
-        for sub in ["Notas", "Tarefas"] {
-            let caminho = notes_root.join(sub);
-            std::fs::create_dir_all(&caminho).ok();
-            if let Err(err) = watcher.watch(&caminho, RecursiveMode::Recursive) {
-                tracing::warn!(error = %err, pasta = %caminho.display(), "watch falhou pra esta pasta");
-            }
+        // Vigia a raiz inteira: equipes novas criam diretórios de espaço depois do boot.
+        if let Err(err) = watcher.watch(&notes_root, RecursiveMode::Recursive) {
+            tracing::warn!(error = %err, pasta = %notes_root.display(), "watch falhou pra raiz das notas");
         }
 
         for resultado in rx.iter() {
             match resultado {
-                Ok(_evento) => {
+                Ok(evento) => {
+                    // Mídia e dados internos não mudam o índice de Notas/Tarefas.
+                    let relevante = evento.paths.iter().any(|p| {
+                        let rel = p.strip_prefix(&notes_root).unwrap_or(p);
+                        !matches!(rel.components().next(), Some(c) if c.as_os_str() == "src" || c.as_os_str() == ".ecos")
+                    });
+                    if !relevante { continue; }
                     // Debounce simples: agrupa rajadas de eventos (ex. o
                     // editor grava em duas etapas) numa reindexação só.
                     std::thread::sleep(Duration::from_millis(300));

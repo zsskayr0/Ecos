@@ -7,6 +7,7 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod espacos;
 mod jobs;
 mod middleware;
 mod routes;
@@ -29,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
     let db = IndexDb::open(&config.index_db_path)?;
 
+    espacos::migrar_legado(&db, &config.notes_root).await?;
     tracing::info!(notes_root = %config.notes_root.display(), "reindexando na inicialização");
     let resultado = db::reindex::reindexar_tudo(&db, &config.notes_root).await?;
     tracing::info!(
