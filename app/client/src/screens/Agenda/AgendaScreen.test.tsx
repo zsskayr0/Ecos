@@ -21,6 +21,7 @@ import { agenda, ApiError, rotina, tarefas } from "@/lib/api";
 import { EVENTO_ARRASTE_TAREFA } from "@/lib/arraste-tarefa";
 import { CHAVE_PREFERENCIAS_CALENDARIO, salvarPreferenciasCalendario } from "@/lib/preferencias-calendario";
 import { RefreshProvider } from "@/lib/refresh-bus";
+import { AppUIProvider } from "@/lib/ui-context";
 import { AgendaScreen } from "./AgendaScreen";
 
 // Semana de 20 (dom) a 26/09/2026 (sáb). Brasília = UTC-3. Terça 22/09.
@@ -84,7 +85,7 @@ async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: 
   buscarBlocos.mockImplementation(async () => blocosDoServidor);
   vi.mocked(tarefas.capacidade).mockResolvedValue({ data: dia, total_dia_min: 0, consumido_rotina_min: 0, consumido_eventos_externos_min: 0, consumido_tarefas_min: 0, disponivel_producao_min: 0, tempo_livre_min: 0, estourado: false });
   vi.mocked(rotina.listar).mockResolvedValue([]);
-  render(<MemoryRouter><RefreshProvider><AgendaScreen /></RefreshProvider></MemoryRouter>);
+  render(<MemoryRouter><AppUIProvider><RefreshProvider><AgendaScreen /></RefreshProvider></AppUIProvider></MemoryRouter>);
   // Espera a visão montar: nas de horário, o seletor de encaixe da grade; no mês, as células dos dias.
   if (modo === "mes") return await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes]"); expect(c).toBeTruthy(); return c!; });
   return await screen.findByLabelText("Encaixe ao arrastar");
@@ -318,7 +319,7 @@ describe("alocar tempo por diálogo (sem arrastar)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Alocar tempo/ }));
     const dialogo = await screen.findByRole("dialog", { name: /Alocar tempo/ });
     await within(dialogo).findByRole("option", { name: "Reunião de time" });
-    expect((within(dialogo).getByLabelText("Tempo (min)") as HTMLInputElement).value).toBe("45"); // a estimativa da tarefa
+    expect((within(dialogo).getByLabelText("Duração personalizada em minutos") as HTMLInputElement).value).toBe("45"); // a estimativa da tarefa
     fireEvent.click(within(dialogo).getByRole("button", { name: "Início" }));
     fireEvent.click(within(dialogo).getByRole("button", { name: "Hora 14" }));
     fireEvent.click(within(dialogo).getByRole("button", { name: "Minuto 30" }));
@@ -490,7 +491,8 @@ describe("preferências: início do dia e prazos (refletem sem recarregar)", () 
       salvarPreferenciasCalendario({ deadlines: false });
       await abrirAgenda({ tarefasDoServidor: [TAREFA_PRAZO], blocos: [] });
       await waitFor(() => expect(listar).toHaveBeenCalled());
-      expect(listar.mock.calls.every((c) => c[0] && "data_de" in c[0])).toBe(true);
+      // A busca de concluídas (`concluida_de`) é outra: só as listas da agenda entram na conta.
+      expect(listar.mock.calls.filter((c) => !(c[0] && "concluida_de" in c[0])).every((c) => c[0] && "data_de" in c[0])).toBe(true);
     });
 
     it("mês: com prazos ligados a célula do dia do prazo mostra a marca com bandeira; desligado, some", async () => {

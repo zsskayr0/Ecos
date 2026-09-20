@@ -15,6 +15,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 import { agenda, rotina, tarefas } from "@/lib/api";
 import { RefreshProvider } from "@/lib/refresh-bus";
+import { AppUIProvider } from "@/lib/ui-context";
 import { AgendaScreen } from "./AgendaScreen";
 
 // Hoje = terça 22/09/2026 10:30 (Brasília). Só o Date é falso, para o waitFor seguir normal.
@@ -26,7 +27,7 @@ async function abrir(modo: string, dia: string) {
   vi.mocked(agenda.blocos).mockResolvedValue([]);
   vi.mocked(tarefas.capacidade).mockResolvedValue({ data: dia, total_dia_min: 0, consumido_rotina_min: 0, consumido_eventos_externos_min: 0, consumido_tarefas_min: 0, disponivel_producao_min: 0, tempo_livre_min: 0, estourado: false });
   vi.mocked(rotina.listar).mockResolvedValue([]);
-  render(<MemoryRouter><RefreshProvider><AgendaScreen /></RefreshProvider></MemoryRouter>);
+  render(<MemoryRouter><AppUIProvider><RefreshProvider><AgendaScreen /></RefreshProvider></AppUIProvider></MemoryRouter>);
   await screen.findAllByRole("button", { name: "Hoje" });
 }
 const clicarHoje = () => fireEvent.click(screen.getAllByRole("button", { name: "Hoje" })[0]);

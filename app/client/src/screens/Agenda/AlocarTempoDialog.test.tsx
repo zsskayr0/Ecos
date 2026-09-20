@@ -26,7 +26,7 @@ async function abrir(props: { encaixe?: number } = {}) {
   await screen.findByRole("option", { name: "Escrever relatório" });
   return { onFechar, onAlocar };
 }
-const duracao = () => screen.getByLabelText("Tempo (min)") as HTMLInputElement;
+const duracao = () => screen.getByLabelText("Duração personalizada em minutos") as HTMLInputElement;
 const escolher = (titulo: string) => fireEvent.click(screen.getByRole("option", { name: titulo }));
 const abrirRelogio = () => fireEvent.click(screen.getByRole("button", { name: "Início" }));
 const relogio = () => screen.getByRole("dialog", { name: /Início: escolher/ });
@@ -82,11 +82,12 @@ describe("Alocar tempo por diálogo", () => {
     expect(duracao().value).toBe("30");
   });
 
-  it("os atalhos de duração preenchem o tempo e mostram o intervalo resultante", async () => {
+  it("o menu de durações preenche o tempo e mostram o intervalo resultante", async () => {
     await abrir();
-    fireEvent.click(screen.getByRole("button", { name: "1h" }));
+    fireEvent.click(screen.getByRole("button", { name: "Escolher duração" }));
+    fireEvent.click(screen.getByText("1h"));
     expect(duracao().value).toBe("60");
-    expect(screen.getByText("10:15 – 11:15")).toBeTruthy();
+    expect(screen.getAllByText(/10:15 – 11:15/).length).toBeGreaterThan(0);
   });
 
   it("depois de digitar o tempo, ele só volta a sugerir a estimativa ao escolher outra tarefa", async () => {
