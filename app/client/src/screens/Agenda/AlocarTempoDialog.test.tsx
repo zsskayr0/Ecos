@@ -73,13 +73,13 @@ describe("Alocar tempo por diálogo", () => {
     expect(screen.getByText("Nenhuma tarefa encontrada.")).toBeTruthy();
   });
 
-  it("já vem com a estimativa da tarefa como tempo; sem estimativa usa 30 min", async () => {
+  it("o tempo começa em 5 min, com ou sem estimativa, e não muda ao trocar de tarefa", async () => {
     await abrir();
-    expect(duracao().value).toBe("45");
+    expect(duracao().value).toBe("5");
     escolher("Revisar contrato");
-    expect(duracao().value).toBe("120");
+    expect(duracao().value).toBe("5");
     escolher("Sem estimativa");
-    expect(duracao().value).toBe("30");
+    expect(duracao().value).toBe("5");
   });
 
   it("o menu de durações preenche o tempo e mostram o intervalo resultante", async () => {
@@ -90,12 +90,12 @@ describe("Alocar tempo por diálogo", () => {
     expect(screen.getAllByText(/10:15 – 11:15/).length).toBeGreaterThan(0);
   });
 
-  it("depois de digitar o tempo, ele só volta a sugerir a estimativa ao escolher outra tarefa", async () => {
+  it("o tempo digitado é mantido ao escolher outra tarefa", async () => {
     await abrir();
     fireEvent.change(duracao(), { target: { value: "75" } });
     expect(duracao().value).toBe("75");
     escolher("Revisar contrato");
-    expect(duracao().value).toBe("120");
+    expect(duracao().value).toBe("75");
   });
 
   it("o seletor de horário abre colunas de horas e minutos no passo do encaixe, e escolher muda o início", async () => {
@@ -139,7 +139,7 @@ describe("Alocar tempo por diálogo", () => {
   it("recusa tempo inválido e explica", async () => {
     const { onAlocar } = await abrir();
     fireEvent.change(duracao(), { target: { value: "0" } });
-    expect(screen.getByRole("alert").textContent).toMatch(/1 a 1440/);
+    expect(screen.getByRole("alert").textContent).toMatch(/de 5 minutos a 24/);
     expect((screen.getByRole("button", { name: "Alocar" }) as HTMLButtonElement).disabled).toBe(true);
     expect(onAlocar).not.toHaveBeenCalled();
   });

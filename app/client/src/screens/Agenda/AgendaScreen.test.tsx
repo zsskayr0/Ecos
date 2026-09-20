@@ -311,7 +311,7 @@ describe("arrastar uma tarefa da lista para o calendário (aloca tempo, não mud
 });
 
 describe("alocar tempo por diálogo (sem arrastar)", () => {
-  it("escolhe a tarefa, o dia e a hora e cria o bloco com a duração dela", async () => {
+  it("escolhe a tarefa, o dia e a hora e cria o bloco com a duração escolhida (5 min por padrão)", async () => {
     criarBloco.mockResolvedValue({ id: "novo" });
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-22T13:07:00Z")); // o diálogo começa em hoje
@@ -319,12 +319,12 @@ describe("alocar tempo por diálogo (sem arrastar)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Alocar tempo/ }));
     const dialogo = await screen.findByRole("dialog", { name: /Alocar tempo/ });
     await within(dialogo).findByRole("option", { name: "Reunião de time" });
-    expect((within(dialogo).getByLabelText("Duração personalizada em minutos") as HTMLInputElement).value).toBe("45"); // a estimativa da tarefa
+    expect((within(dialogo).getByLabelText("Duração personalizada em minutos") as HTMLInputElement).value).toBe("5"); // o tempo começa em 5 min
     fireEvent.click(within(dialogo).getByRole("button", { name: "Início" }));
     fireEvent.click(within(dialogo).getByRole("button", { name: "Hora 14" }));
     fireEvent.click(within(dialogo).getByRole("button", { name: "Minuto 30" }));
     fireEvent.click(within(dialogo).getByRole("button", { name: "Alocar" }));
-    await waitFor(() => expect(criarBloco).toHaveBeenCalledWith("t1", { tipo: "planejado", inicio_em: "2026-09-22T17:30:00.000Z", duracao_min: 45 }));
+    await waitFor(() => expect(criarBloco).toHaveBeenCalledWith("t1", { tipo: "planejado", inicio_em: "2026-09-22T17:30:00.000Z", duracao_min: 5 }));
     expect(atualizarTarefa).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog", { name: /Alocar tempo/ })).toBeNull();
     vi.useRealTimers();
