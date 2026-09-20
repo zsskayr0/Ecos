@@ -78,3 +78,17 @@ hidden:
 - Direct LAN sync: pairing by code and the `dispositivo` table are real;
   mDNS announcement runs; encrypted file transfer between paired devices
   isn't implemented yet.
+
+## License
+
+The source code is released under the [MIT License](LICENSE). Third-party
+software, fonts and icons keep their own licenses; see
+[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) (regenerate with
+`npm run licencas` in `app/client`).
+
+The name "Ecos" and the Ecos logo/icon (`app/client/src/assets/brand`, the
+favicon and `app/client/src-tauri/icons`) are trademarks of Roque Co. and are
+**not** covered by the MIT License. You may fork and redistribute the code, but
+please don't use the name or logo to identify your fork or imply that it is
+the official Ecos. Google Calendar, Outlook and Apple Calendar are trademarks
+of their respective owners and are mentioned only to indicate compatibility.

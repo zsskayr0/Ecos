@@ -25,11 +25,13 @@ use crate::state::AppState;
 #[derive(Debug, Serialize)]
 pub struct StatusResposta {
     pub instancia_vazia: bool,
+    /// Versão da release do servidor (tela Sobre do cliente).
+    pub versao: &'static str,
 }
 
 pub async fn status(State(state): State<AppState>) -> AppResult<Json<StatusResposta>> {
     let total: i64 = state.db.with(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
-    Ok(Json(StatusResposta { instancia_vazia: total == 0 }))
+    Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION") }))
 }
 
 #[derive(Debug, Deserialize)]

@@ -29,6 +29,7 @@ import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
 import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
+import { LicensesScreen } from "@/screens/Settings/LicensesScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 import { MediaScreen } from "@/screens/Media/MediaScreen";
 import { FileViewerScreen } from "@/screens/Media/FileViewerScreen";
@@ -96,6 +97,7 @@ export const screenRoutes = (
       <Route path="editar-perfil" element={<EditarPerfilScreen />} />
       <Route path="rotina" element={<RotinaScreen />} />
       <Route path="equipes" element={<TeamsScreen />} />
+      <Route path="sobre/licencas" element={<LicensesScreen />} />
       <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
       <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
       <Route path="notificacoes" element={<NotificationsScreen />} />

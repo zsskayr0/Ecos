@@ -1,0 +1,22 @@
+# Configuração do cargo-about (ver app/client/scripts/gerar-licencas.mjs).
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+    "BSL-1.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+]
+ignore-dev-dependencies = true
+ignore-build-dependencies = false
+private = { ignore = true }
+workarounds = ["ring"]
