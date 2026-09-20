@@ -3,6 +3,8 @@ import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
+import { AceiteTermosCampo } from "@/components/legal/AceiteTermosCampo";
+import { DocumentoLegalDialog, type DocumentoLegal } from "@/components/legal/DocumentoLegalDialog";
 
 /**
  * GAP-07: not one of the 12 screens in the front-end spec (which assumes
@@ -31,6 +33,8 @@ export function AuthScreen() {
   // Declaração de idade mínima (sem coletar data de nascimento); o servidor exige e registra.
   const [idadeMinima, setIdadeMinima] = useState(18);
   const [declaraIdade, setDeclaraIdade] = useState(false);
+  const [aceitaTermos, setAceitaTermos] = useState(false);
+  const [lendo, setLendo] = useState<DocumentoLegal | null>(null);
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroLocal, setErroLocal] = useState<string | null>(null);
@@ -83,7 +87,7 @@ export function AuthScreen() {
         await login(nomeUsuario, senha);
       } else {
         const nomeCompleto = `${primeiroNome.trim()} ${sobrenome.trim()}`.trim();
-        const { recovery_key } = await registrar(nomeUsuario, senha, nomeCompleto, declaraIdade);
+        const { recovery_key } = await registrar(nomeUsuario, senha, nomeCompleto, declaraIdade, aceitaTermos);
         setRecoveryKey(recovery_key);
       }
     } catch (e) {
@@ -195,6 +199,7 @@ export function AuthScreen() {
                 <span>Declaro ter {idadeMinima} anos ou mais. Guardamos só esta declaração, não a data de nascimento.</span>
               </label>
             )}
+            {modo === "registro" && <AceiteTermosCampo marcado={aceitaTermos} onChange={setAceitaTermos} onLer={setLendo} />}
 
             {bloqueadoAte !== null ? (
               <div className="flex flex-col items-center gap-1 rounded-2xl border border-error/40 bg-error/10 p-4 text-center">
@@ -224,7 +229,7 @@ export function AuthScreen() {
                 bloqueadoAte !== null ||
                 !nomeUsuario.trim() ||
                 senha.length < (modo === "registro" ? 8 : 1) ||
-                (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade))
+                (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade || !aceitaTermos))
               }
               className="mt-1 rounded-2xl bg-text-primary py-3.5 text-center font-body text-[15px] font-semibold text-base transition-opacity disabled:opacity-40"
             >
@@ -232,6 +237,7 @@ export function AuthScreen() {
             </button>
           </form>
       </div>
+      <DocumentoLegalDialog documento={lendo} onClose={() => setLendo(null)} />
     </>
   );
 }

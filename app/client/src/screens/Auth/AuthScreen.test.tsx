@@ -5,7 +5,7 @@ const registrar = vi.fn().mockResolvedValue({ recovery_key: "chave" });
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ login: vi.fn(), registrar, recarregarPerfil: vi.fn() }) }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
-  auth: { status: () => Promise.resolve({ instancia_vazia: true, versao: "0.4.0", idade_minima: 18 }) },
+  auth: { status: () => Promise.resolve({ instancia_vazia: true, versao: "0.4.0", idade_minima: 18, termos_versao: "2026-09-20" }) },
 }));
 
 import { AuthScreen } from "./AuthScreen";
@@ -27,8 +27,12 @@ describe("cadastro: declaração de idade mínima", () => {
     const botao = screen.getByRole("button", { name: "Criar conta" }) as HTMLButtonElement;
     expect(botao.disabled).toBe(true);
     fireEvent.click(caixa);
+    expect(botao.disabled).toBe(true); // falta aceitar os Termos
+    const termos = screen.getByRole("checkbox", { name: /Li e aceito os/ }) as HTMLInputElement;
+    expect(termos.checked).toBe(false); // nunca vem marcado
+    fireEvent.click(termos);
     expect(botao.disabled).toBe(false);
     fireEvent.click(botao);
-    await waitFor(() => expect(registrar).toHaveBeenCalledWith("diogo", "senha-forte-123", "Diogo Roque", true));
+    await waitFor(() => expect(registrar).toHaveBeenCalledWith("diogo", "senha-forte-123", "Diogo Roque", true, true));
   });
 });

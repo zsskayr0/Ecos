@@ -208,9 +208,9 @@ export interface Pagina<T> {
 // --- Auth & Profile (section 11.1/11.2) -----------------------------------
 
 export const auth = {
-  status: () => get<{ instancia_vazia: boolean; versao: string; idade_minima: number }>("/auth/status"),
-  registrar: (nome_usuario: string, senha: string, nome: string | undefined, declara_idade_minima: boolean) =>
-    post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome, declara_idade_minima }),
+  status: () => get<{ instancia_vazia: boolean; versao: string; idade_minima: number; termos_versao: string }>("/auth/status"),
+  registrar: (nome_usuario: string, senha: string, nome: string | undefined, declara_idade_minima: boolean, aceita_termos: boolean) =>
+    post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome, declara_idade_minima, aceita_termos }),
   login: async (usuario: string, senha: string) => {
     if (estaNoTauri()) {
       const servidor = obterServidorBaseUrl();
@@ -235,7 +235,8 @@ export const auth = {
     await post<void>("/auth/logout");
   },
   perfil: () =>
-    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[] }>("/me"),
+    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[]; termos_pendente: boolean; termos_versao: string }>("/me"),
+  aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
 };
 

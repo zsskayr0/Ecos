@@ -8,6 +8,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { DesktopShell } from "@/desktop/DesktopShell";
 import { screenRoutes } from "@/routes/screen-routes";
 import { AuthScreen } from "@/screens/Auth/AuthScreen";
+import { ReaceiteTermos } from "@/components/legal/ReaceiteTermos";
 import { OnboardingScreen } from "@/screens/Onboarding/OnboardingScreen";
 import { ConectarServidorScreen, useFluxoConectar } from "@/screens/Onboarding/ConectarServidorScreen";
 import { CarregandoScreen } from "@/screens/Onboarding/CarregandoScreen";
@@ -27,7 +28,7 @@ const ABERTURA_MINIMA_MS = 900;
  * com transição. Quem já está logado passa direto, sem abertura.
  */
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { status } = useAuth();
+  const { status, perfil } = useAuth();
   const fluxoConectar = useFluxoConectar();
   const [abertura, setAbertura] = useState(true);
   useEffect(() => {
@@ -40,7 +41,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // would just be a network error. User feedback: "deixa configurável no
   // próprio app" (`server-config.ts`).
   const semServidor = precisaConfigurarServidor();
-  if (!semServidor && status === "autenticado") return <>{children}</>;
+  if (!semServidor && status === "autenticado") return perfil?.termos_pendente ? <ReaceiteTermos /> : <>{children}</>;
 
   if (abertura || (!semServidor && status === "carregando")) {
     return (

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { auth } from "@/lib/api";
+import { DocumentoLegalDialog, type DocumentoLegal } from "@/components/legal/DocumentoLegalDialog";
 
 /** GAP-04 (continued): "Sobre o Ecos" listed in the Settings index with no detailed content. */
 export function AboutScreen() {
   const navigate = useNavigate();
   // Versão = release do servidor a que este cliente está conectado.
   const [versao, setVersao] = useState<string | null>(null);
+  const [lendo, setLendo] = useState<DocumentoLegal | null>(null);
   useEffect(() => {
     let vivo = true;
     auth.status().then((s) => vivo && setVersao(s.versao)).catch(() => {});
@@ -41,6 +43,12 @@ export function AboutScreen() {
         Licenças de código aberto
         <ChevronRight size={17} className="text-text-muted" aria-hidden="true" />
       </Link>
+      <div className="mt-3 flex gap-2">
+        {([["termos", "Termos de uso"], ["privacidade", "Política de privacidade"]] as const).map(([doc, rotulo]) => (
+          <button key={doc} type="button" onClick={() => setLendo(doc)} className="flex-1 rounded-xl border border-border bg-base p-3 text-sm text-text-primary transition-colors hover:border-steel-400 hover:bg-surface-2">{rotulo}</button>
+        ))}
+      </div>
+      <DocumentoLegalDialog documento={lendo} onClose={() => setLendo(null)} />
     </div>
   );
 }

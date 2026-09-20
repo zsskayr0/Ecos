@@ -22,6 +22,11 @@ use crate::state::AppState;
 /// verificação nem data de nascimento: só a declaração, registrada em `consentimento`.
 pub const IDADE_MINIMA: u8 = 18;
 
+/// Versão vigente dos Termos de Uso e da Política de Privacidade (um aceite só
+/// cobre os dois). Mudou o texto em app/client/src/legal? Mude esta data: toda
+/// conta com aceite de outra versão passa a ver a tela de novo aceite.
+pub const TERMOS_VERSAO: &str = "2026-09-20";
+
 /// Pública e sem custo de informação sensível (só um booleano) — permite ao
 /// cliente decidir, antes de qualquer tentativa de login, se deve mostrar a
 /// tela de "criar conta" (instância nova, modelo Jellyfin/Immich: primeiro
@@ -33,11 +38,13 @@ pub struct StatusResposta {
     pub versao: &'static str,
     /// Idade mínima que o cadastro exige declarar.
     pub idade_minima: u8,
+    /// Versão vigente dos Termos/Política, que o cadastro grava ao aceitar.
+    pub termos_versao: &'static str,
 }
 
 pub async fn status(State(state): State<AppState>) -> AppResult<Json<StatusResposta>> {
     let total: i64 = state.db.with(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
-    Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION"), idade_minima: IDADE_MINIMA }))
+    Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION"), idade_minima: IDADE_MINIMA, termos_versao: TERMOS_VERSAO }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +61,9 @@ pub struct RegistrarPayload {
     /// gravada em `consentimento`; sem ela o cadastro é recusado.
     #[serde(default)]
     pub declara_idade_minima: bool,
+    /// "Li e aceito os Termos de uso e a Política de privacidade" — obrigatório.
+    #[serde(default)]
+    pub aceita_termos: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,6 +97,12 @@ fn validar_registro(payload: &RegistrarPayload) -> AppResult<()> {
         campos.push(CampoInvalido {
             campo: "declara_idade_minima".into(),
             motivo: format!("é preciso declarar ter {IDADE_MINIMA} anos ou mais"),
+        });
+    }
+    if !payload.aceita_termos {
+        campos.push(CampoInvalido {
+            campo: "aceita_termos".into(),
+            motivo: "é preciso aceitar os Termos de uso e a Política de privacidade".into(),
         });
     }
     if campos.is_empty() {
@@ -125,6 +141,10 @@ pub async fn registrar(
             conn.execute(
                 "INSERT INTO consentimento (usuario_id, tipo, versao) VALUES (?1, 'idade_minima', ?2)",
                 rusqlite::params![usuario_id, IDADE_MINIMA.to_string()],
+            )?;
+            conn.execute(
+                "INSERT INTO consentimento (usuario_id, tipo, versao) VALUES (?1, 'termos', ?2)",
+                rusqlite::params![usuario_id, TERMOS_VERSAO],
             )?;
             conn.execute("INSERT INTO perfil_rotina (usuario_id) VALUES (?1)", [&usuario_id])?;
             conn.execute("INSERT INTO config_sync (usuario_id, modo) VALUES (?1, 'local_unico')", [
@@ -360,14 +380,60 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
         })
         .await?;
 
+    let termos_aceitos: bool = state
+        .db
+        .with({
+            let usuario_id = usuario_id.clone();
+            move |conn| conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM consentimento WHERE usuario_id = ?1 AND tipo = 'termos' AND versao = ?2)",
+                rusqlite::params![usuario_id, TERMOS_VERSAO],
+                |r| r.get(0),
+            )
+        })
+        .await?;
+
     Ok(Json(serde_json::json!({
         "id": usuario_id,
         "nome_usuario": nome_usuario,
+        "termos_pendente": !termos_aceitos,
+        "termos_versao": TERMOS_VERSAO,
         "nome": nome,
         "cofre_ativado": state.config.vault_enabled,
         "avatar_atualizado_em": crate::routes::avatar::versao(&state, &usuario_id),
         "equipes": equipes,
     })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AceitarTermosPayload {
+    pub versao: String,
+}
+
+/// `POST /me/aceites/termos` — registra o aceite da versão vigente (novo aceite
+/// depois que os textos mudam). Recusa versão diferente da vigente, para o
+/// cliente nunca gravar um aceite de texto que a pessoa não viu.
+pub async fn aceitar_termos(
+    State(state): State<AppState>,
+    Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>,
+    Json(payload): Json<AceitarTermosPayload>,
+) -> AppResult<Json<serde_json::Value>> {
+    if payload.versao != TERMOS_VERSAO {
+        return Err(AppError::validation(vec![CampoInvalido {
+            campo: "versao".into(),
+            motivo: format!("a versão vigente é {TERMOS_VERSAO}; recarregue o app"),
+        }]));
+    }
+    let usuario_id = usuario.0.clone();
+    state
+        .db
+        .with(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO consentimento (usuario_id, tipo, versao) VALUES (?1, 'termos', ?2)",
+                rusqlite::params![usuario_id, TERMOS_VERSAO],
+            )
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true, "versao": TERMOS_VERSAO })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -410,43 +476,97 @@ mod testes {
     use std::sync::{Arc, Mutex};
     use tower::Service;
 
-    async fn registrar_via_http(corpo: serde_json::Value) -> (StatusCode, AppState) {
+    const SEGREDO: &[u8] = b"segredo-efemero-exclusivo-do-teste";
+
+    fn novo_estado() -> AppState {
         let temp = std::env::temp_dir().join(format!("ecos-auth-test-{}", new_id()));
         std::fs::create_dir_all(&temp).unwrap();
-        let state = AppState {
+        AppState {
             db: IndexDb::open(&temp.join("index.db")).unwrap(),
             config: Arc::new(Config {
                 ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(),
                 index_db_path: temp.join("index.db"), vault_enabled: false, vault_internal_url: String::new(),
-                session_secret: b"segredo-efemero-exclusivo-do-teste".to_vec(), ranking_interval_secs: 300,
+                session_secret: SEGREDO.to_vec(), ranking_interval_secs: 300,
                 static_dir: None, cookie_secure: false,
             }),
             http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
-        };
-        let mut app = crate::routes::montar(state.clone());
-        let resp = app.call(Request::post("/api/v1/auth/registrar").header("content-type", "application/json").body(Body::from(corpo.to_string())).unwrap()).await.unwrap();
+        }
+    }
+
+    async fn chamar(state: &AppState, metodo: &str, rota: &str, token: Option<&str>, corpo: serde_json::Value) -> (StatusCode, serde_json::Value) {
+        let mut req = Request::builder().method(metodo).uri(rota).header("content-type", "application/json");
+        if let Some(t) = token {
+            req = req.header("authorization", format!("Bearer {t}"));
+        }
+        let resp = crate::routes::montar(state.clone()).call(req.body(Body::from(corpo.to_string())).unwrap()).await.unwrap();
         let status = resp.status();
-        let _ = to_bytes(resp.into_body(), 8192).await;
+        let bytes = to_bytes(resp.into_body(), 65536).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    async fn registrar_via_http(corpo: serde_json::Value) -> (StatusCode, AppState) {
+        let state = novo_estado();
+        let (status, _) = chamar(&state, "POST", "/api/v1/auth/registrar", None, corpo).await;
         (status, state)
     }
 
-    async fn total_consentimentos(state: &AppState) -> i64 {
-        state.db.with(|c| c.query_row("SELECT COUNT(*) FROM consentimento WHERE tipo = 'idade_minima' AND versao = '18'", [], |r| r.get(0))).await.unwrap()
+    async fn contar(state: &AppState, tipo: &'static str, versao: &'static str) -> i64 {
+        state.db.with(move |c| c.query_row("SELECT COUNT(*) FROM consentimento WHERE tipo = ?1 AND versao = ?2", [tipo, versao], |r| r.get(0))).await.unwrap()
+    }
+
+    async fn total_usuarios(state: &AppState) -> i64 {
+        state.db.with(|c| c.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await.unwrap()
     }
 
     #[tokio::test]
     async fn cadastro_sem_declarar_a_idade_e_recusado_e_nao_cria_conta() {
-        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123" })).await;
+        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123", "aceita_termos": true })).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        let usuarios: i64 = state.db.with(|c| c.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await.unwrap();
-        assert_eq!(usuarios, 0);
-        assert_eq!(total_consentimentos(&state).await, 0);
+        assert_eq!(total_usuarios(&state).await, 0);
+        assert_eq!(contar(&state, "idade_minima", "18").await, 0);
     }
 
     #[tokio::test]
-    async fn cadastro_declarando_a_idade_grava_o_consentimento() {
+    async fn cadastro_sem_aceitar_os_termos_e_recusado_e_nao_cria_conta() {
         let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true })).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(total_usuarios(&state).await, 0);
+        assert_eq!(contar(&state, "termos", TERMOS_VERSAO).await, 0);
+    }
+
+    #[tokio::test]
+    async fn cadastro_completo_grava_idade_e_termos_com_a_versao_vigente() {
+        let (status, state) = registrar_via_http(serde_json::json!({
+            "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true, "aceita_termos": true
+        })).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(total_consentimentos(&state).await, 1);
+        assert_eq!(contar(&state, "idade_minima", "18").await, 1);
+        assert_eq!(contar(&state, "termos", TERMOS_VERSAO).await, 1);
+        let data: String = state.db.with(|c| c.query_row("SELECT aceito_em FROM consentimento WHERE tipo = 'termos'", [], |r| r.get(0))).await.unwrap();
+        assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn versao_antiga_dos_termos_fica_pendente_ate_novo_aceite() {
+        let state = novo_estado();
+        state.db.with(|c| {
+            c.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash) VALUES ('u1', 'ana', 'x', 'x')", [])?;
+            c.execute("INSERT INTO consentimento (usuario_id, tipo, versao) VALUES ('u1', 'termos', '2000-01-01')", [])?;
+            Ok(())
+        }).await.unwrap();
+        let token = session::emitir_access_token("u1", SEGREDO).unwrap();
+
+        let (_, perfil) = chamar(&state, "GET", "/api/v1/me", Some(&token), serde_json::Value::Null).await;
+        assert_eq!(perfil["termos_pendente"], true);
+        assert_eq!(perfil["termos_versao"], TERMOS_VERSAO);
+
+        let (status, _) = chamar(&state, "POST", "/api/v1/me/aceites/termos", Some(&token), serde_json::json!({ "versao": "2000-01-01" })).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "só a versão vigente pode ser aceita");
+
+        let (status, _) = chamar(&state, "POST", "/api/v1/me/aceites/termos", Some(&token), serde_json::json!({ "versao": TERMOS_VERSAO })).await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, perfil) = chamar(&state, "GET", "/api/v1/me", Some(&token), serde_json::Value::Null).await;
+        assert_eq!(perfil["termos_pendente"], false);
+        assert_eq!(contar(&state, "termos", "2000-01-01").await, 1, "o aceite antigo fica no histórico");
     }
 }

@@ -1,5 +1,10 @@
 # Termos de Uso do Ecos — MINUTA
 
+Versão vigente: **2026-09-20**.
+
+<!-- Ao mudar este texto, atualize a versão aqui, em privacidade.md e `TERMOS_VERSAO`
+em app/server/src/auth/mod.rs: todos os usuários passam a ver o novo aceite. -->
+
 > Minuta sujeita a revisão jurídica. O operador da instância deve completar e
 > adaptar o texto (identificação do operador, foro, demais cláusulas).
 
@@ -11,5 +16,5 @@ de nascimento; registra apenas que a declaração foi feita, com a data e a regr
 vigente. Quem não tiver a idade mínima não deve criar conta.
 
 <!-- Se a revisão jurídica optar por permitir menores com consentimento de
-responsável, alterar `IDADE_MINIMA` em app/server/src/auth/mod.rs, o texto acima
-e o da política, e avaliar coletar o consentimento do responsável no cadastro. -->
+responsável, alterar `IDADE_MINIMA` e `TERMOS_VERSAO` em app/server/src/auth/mod.rs,
+o texto acima e o da política, e avaliar coletar o consentimento do responsável. -->

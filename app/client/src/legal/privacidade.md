@@ -1,5 +1,7 @@
 # Política de Privacidade do Ecos — MINUTA
 
+Versão vigente: **2026-09-20** (a mesma dos Termos de Uso).
+
 > Minuta sujeita a revisão jurídica. O operador da instância deve completar o
 > texto (controlador, contato do encarregado, finalidades, retenção, direitos).
 
