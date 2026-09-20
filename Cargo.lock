@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-app"
-version = "0.2.4-alpha"
+version = "0.3.0-alpha"
 dependencies = [
  "anyhow",
  "argon2",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-core"
-version = "0.2.4-alpha"
+version = "0.3.0-alpha"
 dependencies = [
  "chrono",
  "regex",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-vault-db"
-version = "0.2.4-alpha"
+version = "0.3.0-alpha"
 dependencies = [
  "anyhow",
  "argon2",
