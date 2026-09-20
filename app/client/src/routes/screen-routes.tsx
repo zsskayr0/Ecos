@@ -26,6 +26,7 @@ import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
 import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
 import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
 import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
+import { ContaDadosScreen } from "@/screens/Settings/ContaDadosScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
 import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
@@ -91,6 +92,7 @@ export const screenRoutes = (
       <Route path="privacidade" element={<PrivacyVaultScreen />} />
       <Route path="aparencia" element={<AparenciaScreen />} />
       <Route path="calendario" element={<CalendarPreferencesScreen />} />
+      <Route path="conta" element={<ContaDadosScreen />} />
       <Route path="organizacao" element={<OrganizationScreen />} />
       <Route path="sobre" element={<AboutScreen />} />
       <Route path="perfil" element={<ProfileScreen />} />

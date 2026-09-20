@@ -49,8 +49,8 @@ fn rotas_pareamento_sensiveis() -> Router<AppState> {
 
 fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
-        .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::auth::excluir_conta))
-        .route("/me/export", get(crate::auth::exportar))
+        .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
+        .route("/me/export", get(crate::conta::exportar))
         .route("/me/avatar", get(avatar::obter_meu).put(avatar::enviar).delete(avatar::remover).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
         .route("/usuarios/:id/avatar", get(avatar::obter_de_usuario))
         .route("/captura", post(captura::capturar))
@@ -99,6 +99,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .merge(rotas_pareamento_sensiveis())
         .route("/sync/dispositivos/:id", patch(sync::atualizar_dispositivo).delete(sync::excluir_dispositivo))
         .route("/sync/config", patch(sync::atualizar_config))
+        .route("/equipes/:id/sair", post(equipes::sair))
         .route("/sync/dispositivos/:id/push", patch(sync::atualizar_push))
         .route("/calendario/config", get(calendario::config))
         .route("/calendario/conectar/:provider", get(calendario::conectar))

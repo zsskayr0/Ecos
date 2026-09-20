@@ -50,6 +50,13 @@ pub async fn exigir_sessao(
     let claims = session::validar_access_token(&token, &state.config.session_secret)
         .ok_or(AppError::new(ErrorCode::Unauthorized))?;
 
+    // O access token é stateless (15 min): sem isto, uma conta excluída continuaria entrando até ele expirar.
+    let sub = claims.sub.clone();
+    let existe = state.db.with(move |conn| conn.query_row("SELECT 1 FROM usuario WHERE id = ?1", [&sub], |_| Ok(())).map(|_| true).or_else(|e| if matches!(e, rusqlite::Error::QueryReturnedNoRows) { Ok(false) } else { Err(e) })).await.unwrap_or(false);
+    if !existe {
+        return Err(AppError::new(ErrorCode::Unauthorized));
+    }
+
     req.extensions_mut().insert(UsuarioAutenticado(claims.sub));
     Ok(next.run(req).await)
 }

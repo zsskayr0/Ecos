@@ -240,6 +240,17 @@ export const auth = {
 };
 
 export const avatarPerfil = {
+/** Conta e dados (LGPD): exportar o `.zip` com tudo e excluir a conta. `EXCLUIR CONTA` é a frase que o servidor exige. */
+export const FRASE_EXCLUIR_CONTA = "EXCLUIR CONTA";
+export const conta = {
+  exportar: async () => {
+    const zip = await reqBlob("/me/export");
+    if (!zip) throw new ApiError("NOT_FOUND", "O servidor não tem a exportação de dados. Atualize o servidor Ecos e tente novamente.", 404);
+    return zip;
+  },
+  excluir: () => del<{ ok: true; avisos: string[] }>("/me", { confirm: FRASE_EXCLUIR_CONTA }),
+};
+
   obter: () => reqBlob("/me/avatar"),
   enviar: (arquivo: File) => {
     const dados = new FormData();
@@ -634,6 +645,7 @@ export const FORMAS_PAGAMENTO = ["pix", "pix_automatico", "ted", "cartao", "dinh
 export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number];
 
 export const vault = {
+  sair: (id: string) => post<{ ok: true }>(`/equipes/${id}/sair`),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
   bloquear: () => post<{ ok: true }>("/vault/bloquear"),
@@ -676,3 +688,5 @@ export const vault = {
     excluir: (id: string) => del<{ ok: true }>(`/vault/transacoes/${id}`),
   },
 };
+  /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
+  resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),

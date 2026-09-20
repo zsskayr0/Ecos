@@ -1,5 +1,5 @@
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Bell, CalendarClock, CalendarDays, FolderTree, Info, Palette, Server, ShieldCheck, User, Users, type LucideIcon } from "lucide-react";
+import { Bell, CalendarClock, CalendarDays, DatabaseBackup, FolderTree, Info, Palette, Server, ShieldCheck, User, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 
 export interface Aba { para: string; rotulo: string; Icone: LucideIcon; fim?: boolean }
@@ -18,6 +18,7 @@ export const GRUPOS: { titulo: string; abas: Aba[] }[] = [
   { titulo: "Sistema", abas: [
     { para: "/configuracoes/servidor", rotulo: "Servidor e backup", Icone: Server },
     { para: "/configuracoes/privacidade", rotulo: "Privacidade e cofre", Icone: ShieldCheck },
+    { para: "/configuracoes/conta", rotulo: "Conta e dados", Icone: DatabaseBackup },
     { para: "/configuracoes/notificacoes", rotulo: "Notificações", Icone: Bell },
   ] },
   { titulo: "Ecos", abas: [{ para: "/configuracoes/sobre", rotulo: "Sobre", Icone: Info }] },

@@ -114,6 +114,7 @@ export function tituloDaRota(path: string): string {
       aparencia: "Aparência",
       organizacao: "Organização",
       sobre: "Sobre",
+      conta: "Conta e dados",
     };
     return nomes[segundo] ?? "Configurações";
   }

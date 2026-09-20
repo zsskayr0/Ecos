@@ -37,12 +37,12 @@ fn mime_da_extensao(ext: &str) -> &'static str {
     match ext { "png" => "image/png", "jpg" => "image/jpeg", _ => "image/webp" }
 }
 
-fn arquivo_existente(state: &AppState, usuario_id: &str) -> Option<(PathBuf, &'static str)> {
+pub(crate) fn arquivo_existente(state: &AppState, usuario_id: &str) -> Option<(PathBuf, &'static str)> {
     if !id_seguro(usuario_id) { return None; }
     EXTENSOES.iter().map(|ext| (raiz(state).join(format!("{usuario_id}.{ext}")), *ext)).find(|(p, _)| p.is_file())
 }
 
-fn remover_todos(state: &AppState, usuario_id: &str) {
+pub(crate) fn remover_todos(state: &AppState, usuario_id: &str) {
     for ext in EXTENSOES { let _ = std::fs::remove_file(raiz(state).join(format!("{usuario_id}.{ext}"))); }
 }
 

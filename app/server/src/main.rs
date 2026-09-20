@@ -5,6 +5,7 @@
 
 mod auth;
 mod config;
+mod conta;
 mod db;
 mod error;
 mod espacos;
@@ -13,6 +14,7 @@ mod middleware;
 mod routes;
 mod state;
 
+mod zip;
 use config::Config;
 use db::IndexDb;
 use middleware::{rate_limit::RateLimitLayer, security_headers};

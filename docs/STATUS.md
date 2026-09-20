@@ -73,7 +73,7 @@ e/ou smoke manual). "Stub" = rota existe com contrato correto, corpo
 
 | Item | Estado |
 |---|---|
-| `GET /me/export` | 🟡 Manifesto JSON (caminhos de Notas/Tarefas); **não gera `.zip`** |
+| `GET /me/export` | ✅ `.zip` real (notas, tarefas, anexos, avatar, itens de equipe criados pela pessoa); tela Configurações → Conta e dados |
 | `DELETE /me`, `DELETE /equipes/:id` com confirmação | ✅ Feito |
 | Templates de Política de Privacidade/Termos | ❌ Não é código — fica pro operador adaptar (texto, fora de escopo de backend) |
 

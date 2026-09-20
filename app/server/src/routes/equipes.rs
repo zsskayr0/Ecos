@@ -197,6 +197,23 @@ pub async fn remover_membro(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// `POST /equipes/:id/sair` — a própria pessoa deixa a equipe. Os itens que ela criou continuam na equipe
+/// com a autoria original (histórico compartilhado). Dono com outras pessoas precisa transferir a
+/// propriedade antes; quem é a única pessoa deve excluir a equipe.
+pub async fn sair(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(equipe_id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
+    exigir_cargo(&cargo, &["dono", "admin", "membro"])?;
+    let total: i64 = state.db.with({ let id = equipe_id.clone(); move |conn| conn.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1", [&id], |r| r.get(0)) }).await?;
+    if total <= 1 {
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Você é a única pessoa desta equipe. Para sair, exclua a equipe."));
+    }
+    if cargo.as_deref() == Some("dono") {
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Você é dono desta equipe. Transfira a propriedade para outra pessoa antes de sair."));
+    }
+    state.db.with(move |conn| conn.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario.0])).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 fn gerar_codigo_convite() -> String {
     let mut rng = rand::thread_rng();
     (0..8).map(|_| rng.sample(rand::distributions::Alphanumeric) as char).collect::<String>().to_uppercase()

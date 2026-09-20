@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
+import { ApiError, vault } from "@/lib/api";
 
 const FRASE_CONFIRMACAO = "apagar meu cofre";
 
@@ -17,6 +18,24 @@ export function PrivacyVaultScreen() {
   const [ocultarValores, setOcultarValores] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [frase, setFrase] = useState("");
+  const [apagando, setApagando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [apagado, setApagado] = useState(false);
+
+  async function resetarCofre() {
+    setApagando(true);
+    setErro(null);
+    try {
+      await vault.resetar();
+      setApagado(true);
+      setConfirmando(false);
+      setFrase("");
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Não foi possível resetar o Cofre. Nada foi apagado; tente novamente.");
+    } finally {
+      setApagando(false);
+    }
+  }
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -53,6 +72,8 @@ export function PrivacyVaultScreen() {
           desfeita.
         </p>
 
+        {apagado && <p role="status" className="mb-3 text-sm text-success">Cofre resetado. O servidor guardou um backup de segurança antes de apagar.</p>}
+
         {!confirmando ? (
           <button
             onClick={() => setConfirmando(true)}
@@ -70,22 +91,27 @@ export function PrivacyVaultScreen() {
               onChange={(e) => setFrase(e.target.value)}
               className="ecos-input"
               placeholder={FRASE_CONFIRMACAO}
+              disabled={apagando}
             />
+            {erro && <p role="alert" className="text-sm text-error">{erro}</p>}
             <div className="flex gap-2">
               <button
                 onClick={() => {
                   setConfirmando(false);
                   setFrase("");
+                  setErro(null);
                 }}
+                disabled={apagando}
                 className="flex-1 rounded-2xl bg-surface-2 py-2.5 text-sm font-medium text-text-primary"
               >
                 Cancelar
               </button>
               <button
-                disabled={frase.trim().toLowerCase() !== FRASE_CONFIRMACAO}
+                onClick={() => void resetarCofre()}
+                disabled={frase.trim().toLowerCase() !== FRASE_CONFIRMACAO || apagando}
                 className="flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
-                Apagar permanentemente
+                {apagando ? "Apagando…" : "Apagar permanentemente"}
               </button>
             </div>
           </div>

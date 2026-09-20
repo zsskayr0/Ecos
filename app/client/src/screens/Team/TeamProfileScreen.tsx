@@ -28,9 +28,9 @@ interface Membro {
 export function TeamProfileScreen() {
   const { equipeId } = useParams();
   const navigate = useNavigate();
-  const { perfil } = useAuth();
+  const { perfil, recarregarPerfil } = useAuth();
   const { setFiltroEquipeId, setEspacoAtivo } = useAppUI();
-  const { versao } = useRefreshBus();
+  const { versao, notificar } = useRefreshBus();
   const [convidarAberto, setConvidarAberto] = useState(false);
   const [codigoConvite, setCodigoConvite] = useState<string | null>(null);
   const [equipe, setEquipe] = useState<{ id: string; nome: string; estatisticas: { notas: number; tarefas: number } } | null>(null);
@@ -39,6 +39,8 @@ export function TeamProfileScreen() {
   const [editando, setEditando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [novoNome, setNovoNome] = useState("");
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
+  const [saindo, setSaindo] = useState(false);
   const fotoEquipe = useAvatarEquipe(equipeId);
 
   useEffect(() => {
@@ -60,6 +62,23 @@ export function TeamProfileScreen() {
       setCodigoConvite(r.codigo);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível gerar o convite.");
+    }
+  }
+
+  async function sairDaEquipe() {
+    if (!equipeId) return;
+    setSaindo(true);
+    setErro(null);
+    try {
+      await equipesApi.sair(equipeId);
+      notificar();
+      void recarregarPerfil();
+      navigate("/equipes", { replace: true });
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Não foi possível sair da equipe.");
+      setConfirmandoSaida(false);
+    } finally {
+      setSaindo(false);
     }
   }
 
@@ -178,6 +197,23 @@ export function TeamProfileScreen() {
           );
         })}
       </div>
+
+      {meuCargo && (
+        <section aria-labelledby="sair-equipe" className="mt-8 rounded-2xl border border-error/30 p-4">
+          <h2 id="sair-equipe" className="mb-1 text-sm font-semibold text-error">Sair da equipe</h2>
+          <p className="mb-3 text-xs text-text-secondary">
+            Você perde o acesso às notas e tarefas desta equipe. O que você criou continua com a equipe, com você como autor original.
+          </p>
+          {!confirmandoSaida ? (
+            <button type="button" onClick={() => setConfirmandoSaida(true)} className="min-h-11 w-full rounded-2xl border border-error/50 text-sm font-semibold text-error">Sair da equipe</button>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" disabled={saindo} onClick={() => setConfirmandoSaida(false)} className="min-h-11 flex-1 rounded-2xl bg-surface-2 text-sm font-medium text-text-primary disabled:opacity-40">Cancelar</button>
+              <button type="button" disabled={saindo} onClick={() => void sairDaEquipe()} className="min-h-11 flex-1 rounded-2xl bg-error text-sm font-semibold text-white disabled:opacity-40">{saindo ? "Saindo…" : "Confirmar saída"}</button>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
