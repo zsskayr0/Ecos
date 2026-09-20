@@ -24,7 +24,7 @@ export function FoldersScreen() {
   const espaco = useEspacoFiltro();
   useEffect(() => {
     let ativo = true;
-    Promise.all([pastas.listar({ tipo: "nota", espaco }), pastas.listar({ tipo: "tarefa", espaco }), media.listar()]).then(([notasResposta, tarefasResposta, arquivosResposta]) => {
+    Promise.all([pastas.listar({ tipo: "nota", espaco }), pastas.listar({ tipo: "tarefa", espaco }), media.listar(espaco)]).then(([notasResposta, tarefasResposta, arquivosResposta]) => {
       if (!ativo) return;
       setNotas(notasResposta.subpastas); setTarefas(tarefasResposta.subpastas); setArquivos(arquivosResposta.sort((a, b) => a.caminho.localeCompare(b.caminho, "pt-BR"))); setErro(null);
     }).catch((e) => { if (ativo) { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."); setNotas([]); setTarefas([]); setArquivos([]); } });

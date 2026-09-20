@@ -153,7 +153,7 @@ export function TaskComposer({ editedAt, completedAt, value, onChange, onSave, s
       {titleActions}
     </div>
     {showPriority && <TaskPriority value={value.prioridade} onChange={(prioridade) => onChange({ prioridade })} disabled={saving} />}
-    <AttachmentsField tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} compact />
+    <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} compact />
     <div ref={grade} className="grid min-w-0 gap-7 md:gap-0" style={largo ? { gridTemplateColumns: `minmax(0,1fr) ${LARGURA_DIVISORIA}px ${larguraSidebar}px` } : undefined}>
       <div className="min-w-0 space-y-6 md:pr-3">
         <section aria-label="Descrição" className="block">

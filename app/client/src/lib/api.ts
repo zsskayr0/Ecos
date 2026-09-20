@@ -330,7 +330,7 @@ export const pastas = {
 
 // --- Media ---------------------------------------------------------------
 
-export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string; enviado_em: string }
+export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string; enviado_em: string; /** Biblioteca de mídia a que pertence (`pessoal` ou `equipe:<id>`). O caminho no Markdown não muda. */ espaco?: string }
 export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
 export const lixeira = {
   listar: () => get<ItemLixeira[]>("/lixeira"),
@@ -340,14 +340,15 @@ export const lixeira = {
 /** Biblioteca global: o mesmo caminho Markdown pode ser usado por qualquer
  * Nota ou Tarefa, sem criar uma nova cópia do arquivo. */
 export const media = {
-  listar: () => get<Midia[]>("/media"),
+  listar: (espaco?: string) => get<Midia[]>(`/media${qs({ espaco })}`),
   excluir: (caminho: string) => req<{ ok: true }>(media.urlArquivo(caminho).slice(BASE().length), { method: "DELETE" }),
-  enviar: async (arquivo: File) => {
+  /** `espaco`: biblioteca de destino (a do item que vai usar o arquivo); sem ele o servidor usa o Pessoal. */
+  enviar: async (arquivo: File, espaco?: string) => {
     if (arquivo.size > 120 * 1024 * 1024) throw new ApiError("ARQUIVO_GRANDE", "O arquivo excede 120 MB. Escolha um arquivo menor.", 413);
     if (!arquivo.size) throw new ApiError("ARQUIVO_VAZIO", "O arquivo está vazio. Escolha outro arquivo.", 422);
     const formData = new FormData();
     formData.append("arquivo", arquivo);
-    const item = await req<Midia>("/media", { method: "POST", body: formData });
+    const item = await req<Midia>(`/media${qs({ espaco })}`, { method: "POST", body: formData });
     if (!item?.caminho || !item?.mime) throw new ApiError("RESPOSTA_INESPERADA", "O servidor não confirmou o envio do arquivo. Atualize o servidor Ecos e tente novamente.", 502);
     return item;
   },

@@ -10,6 +10,8 @@ interface Props {
   onBusyChange?: (ocupado: boolean) => void;
   compact?: boolean;
   disabled?: boolean;
+  /** Espaço do item: o arquivo vai para a biblioteca de mídia dele (trocar o espaço do item leva a mídia junto). */
+  espaco?: string;
 }
 
 const EXTENSAO_POR_TIPO: Record<string, string> = {
@@ -74,7 +76,7 @@ export function AttachmentsField(props: Props) {
     setErro(null);
     atual.current.onBusyChange?.(true);
     try {
-      const item = await media.enviar(arquivo);
+      const item = await media.enviar(arquivo, atual.current.espaco);
       const { corpo, onCorpoChange } = atual.current;
       onCorpoChange(inserirReferencia(corpo, media.referencia(item), posicao));
       setArquivoFalhou(null);

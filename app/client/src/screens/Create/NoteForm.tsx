@@ -40,7 +40,7 @@ export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
         disabled={salvando}
       />
 
-      <AttachmentsField tipo="nota" corpo={draft.corpo} onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
+      <AttachmentsField tipo="nota" espaco={espacoAtivo} corpo={draft.corpo} onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
 
       <CorpoEditor
         corpo={draft.corpo}

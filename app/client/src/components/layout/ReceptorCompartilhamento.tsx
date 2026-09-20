@@ -12,7 +12,7 @@ type Aviso = { tipo: "enviando" | "erro"; texto: string };
  * logado — sem sessão as imagens ficam à espera no lado nativo até o login.
  */
 export function ReceptorCompartilhamento() {
-  const { capturaAberta, trocarTipoCaptura, empilharAnexosDeCaptura } = useAppUI();
+  const { capturaAberta, trocarTipoCaptura, empilharAnexosDeCaptura, espacoAtivo } = useAppUI();
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const capturaRef = useRef(capturaAberta);
   capturaRef.current = capturaAberta;
@@ -25,7 +25,7 @@ export function ReceptorCompartilhamento() {
     let ultimoErro = "";
     for (const arquivo of arquivos) {
       try {
-        const item = await media.enviar(arquivo);
+        const item = await media.enviar(arquivo, espacoAtivo);
         empilharAnexosDeCaptura([media.referencia(item)]);
       } catch (e) {
         falhas += 1;

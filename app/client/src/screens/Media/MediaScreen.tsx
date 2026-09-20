@@ -3,6 +3,7 @@ import { ChevronDown, FileText, Image as ImageIcon, Library, Trash2, X } from "l
 import { EmptyState } from "@/components/common/EmptyState";
 import { ApiError, media, notas, tarefas, type Midia } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 
 function tamanho(n: number) { return n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`; }
@@ -28,9 +29,10 @@ export function MediaScreen() {
   const [ordem, setOrdem] = useState<"recentes" | "antigos" | "nome" | "tamanho">("recentes");
   const { versao, notificar } = useRefreshBus();
   const abrirDocumento = useAbrirDocumento();
+  const espaco = useEspacoFiltro();
   useEffect(() => {
     let ativo = true;
-    Promise.all([media.listar(), notas.listar({ limit: 100 }), tarefas.listar({ limit: 100 })]).then(async ([lista, listaNotas, listaTarefas]) => { if (ativo) {
+    Promise.all([media.listar(espaco), notas.listar({ limit: 100 }), tarefas.listar({ limit: 100 })]).then(async ([lista, listaNotas, listaTarefas]) => { if (ativo) {
       const detalhes = await Promise.all(listaTarefas.items.map((t) => tarefas.obter(t.id).catch(() => null)));
       const textos = [...listaNotas.items.map((n) => n.corpo), ...detalhes.flatMap((t) => t ? [t.corpo] : [])].join("\n");
       setUso(new Set(lista.filter((item) => textos.includes(item.caminho)).map((item) => item.caminho))); setItens(lista); setErro(null);
@@ -38,7 +40,7 @@ export function MediaScreen() {
       if (ativo) { setItens([]); setErro(e instanceof ApiError ? e.message : "Não foi possível carregar os arquivos. Tente novamente."); }
     });
     return () => { ativo = false; };
-  }, [versao]);
+  }, [versao, espaco]);
 
   const tipos = [...new Set(itens?.map((item) => item.mime) ?? [])];
   const filtrados = (itens ?? []).filter((item) => (filtroUso === "todos" || (filtroUso === "usados") === uso.has(item.caminho)) && (filtroTipo === "todos" || item.mime === filtroTipo)).sort((a, b) => ordem === "nome" ? a.nome.localeCompare(b.nome, "pt-BR") : ordem === "tamanho" ? b.tamanho_bytes - a.tamanho_bytes : ordem === "antigos" ? a.enviado_em.localeCompare(b.enviado_em) : b.enviado_em.localeCompare(a.enviado_em));
