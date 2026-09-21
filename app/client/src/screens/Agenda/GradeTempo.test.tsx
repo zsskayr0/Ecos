@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PX_POR_MINUTO, type ItemAgenda, type Posicao } from "@/lib/agenda-tempo";
 import { EVENTO_ARRASTE_TAREFA, type TarefaArrastavel } from "@/lib/arraste-tarefa";
-import { GradeTempo, LONGO_TOQUE_MS, type GradeTempoProps } from "./GradeTempo";
+import { CHAVE_FAIXA_DIA_TODO, GradeTempo, LONGO_TOQUE_MS, type GradeTempoProps } from "./GradeTempo";
 
 const D1 = "2026-09-21";
 const D2 = "2026-09-22";
@@ -28,6 +28,8 @@ function retangulo(left: number, top: number, right: number, bottom: number): DO
 }
 
 beforeEach(() => {
+  // A maioria dos testes olha os itens dentro da faixa; o padrão do app ("Resumo") tem os seus próprios testes, mais abaixo.
+  localStorage.setItem(CHAVE_FAIXA_DIA_TODO, "todos");
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const el = this as HTMLElement;
     if (el.dataset.colunaDia) { const i = DIAS.indexOf(el.dataset.colunaDia); return retangulo(100 + i * 100, TOPO_HORAS, 200 + i * 100, TOPO_HORAS + 24 * 64); }
@@ -45,7 +47,7 @@ beforeEach(() => {
     return retangulo(0, 0, 0, 0);
   });
 });
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); localStorage.clear(); });
 
 function montar(itens: ItemAgenda[], props: Partial<GradeTempoProps> = {}) {
   const onMover = vi.fn();
@@ -389,7 +391,29 @@ describe("tarefa com data própria e prazo: só aparecem, a Agenda não os move"
   it("dizem no rótulo que a Agenda não os move", () => {
     montar([agendada(), prazo()]);
     expect(bloco("T").getAttribute("aria-label")).toMatch(/não a move/);
-    expect(bloco("P").getAttribute("aria-label")).toMatch(/prazo em .*22.*não o move/i);
+    expect(bloco("P").getAttribute("aria-label")).toMatch(/prazo em .*22.*arraste para um horário/i);
+  });
+});
+
+describe("prazo levado a um horário vira bloco de tempo", () => {
+  const prazo = () => item({ id: "P", tipo: "prazo", dia: D2, inicioMin: null, classe: "bg-warning/15 text-warning" });
+
+  it("soltar o prazo num horário chama onMover com o horário; a tela pai cria o bloco", () => {
+    const { onMover } = montar([prazo()]);
+    fireEvent.pointerDown(bloco("P"), { ...ponteiro(), clientX: 250, clientY: Y_FAIXA });
+    mover(350, yDe(600));
+    soltar(350, yDe(600));
+    expect(onMover).toHaveBeenCalledTimes(1);
+    expect(onMover.mock.calls[0][0]).toMatchObject({ tipo: "prazo", id: "P" });
+    expect(onMover.mock.calls[0][1]).toMatchObject({ dia: D3, inicioMin: 600 });
+  });
+
+  it("soltar o prazo de volta na faixa 'O dia todo' não faz nada", () => {
+    const { onMover } = montar([prazo()]);
+    fireEvent.pointerDown(bloco("P"), { ...ponteiro(), clientX: 250, clientY: Y_FAIXA });
+    mover(350, Y_FAIXA);
+    soltar(350, Y_FAIXA);
+    expect(onMover).not.toHaveBeenCalled();
   });
 });
 
@@ -830,5 +854,189 @@ describe("tarefa arrastada de uma lista para a grade (alocar tempo)", () => {
     montar([]);
     emitir("soltar", xDaColuna(1), yDe(300));
     expect(screen.getByRole("status").textContent).toMatch(/Escrever relatório.*05:00 às 05:45/);
+  });
+});
+
+
+describe('faixa "O dia todo": Ocultar, Resumo e Todos', () => {
+  const prazo = (id: string, dia = D2, duracaoMin = 60, extra: Partial<ItemAgenda> = {}) => item({ id, tipo: "prazo", dia, inicioMin: null, duracaoMin, classe: "bg-warning/15 text-warning", ...extra });
+  const oitoPrazos = () => Array.from({ length: 8 }, (_, i) => prazo(`P${i}`, D2, i < 5 ? 90 : 60));
+  const faixa = () => document.querySelector<HTMLElement>("[data-faixa-dia]")!.parentElement as HTMLElement;
+  const modo = (nome: string) => fireEvent.click(within(screen.getByRole("group", { name: "Faixa O dia todo" })).getByRole("button", { name: nome }));
+  const listaAberta = () => document.querySelector<HTMLElement>("[data-lista-dia-todo]");
+  beforeEach(() => localStorage.removeItem(CHAVE_FAIXA_DIA_TODO)); // sem escolha guardada: vale o padrão
+
+  it("o padrão é Resumo: um chip por dia ('8 prazos · 10,5 h'), sem a lista de itens e com altura de uma linha", () => {
+    montar(oitoPrazos());
+    const chip = document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!;
+    expect(chip.textContent).toBe("8 prazos · 10,5 h");
+    expect(document.querySelector("[data-faixa-dia] [data-item]")).toBeNull();
+    expect(faixa().style.height).toBe("36px");
+    expect(document.querySelector(`[data-resumo-dia='${D1}']`)).toBeNull(); // dia sem nada não ganha chip
+    expect(screen.getByRole("group", { name: "Faixa O dia todo" }).querySelector("[aria-pressed='true']")!.textContent).toBe("Resumo");
+  });
+
+  it("tarefa sem estimativa não entra nas horas; singular; e eventos de dia inteiro são contados à parte", () => {
+    montar([prazo("A", D1, 30, { semEstimativa: true }), prazo("B", D2, 120), item({ id: "E", tipo: "evento", dia: D2, inicioMin: null })]);
+    expect(document.querySelector(`[data-resumo-dia='${D1}']`)!.textContent).toBe("1 prazo");
+    expect(document.querySelector(`[data-resumo-dia='${D2}']`)!.textContent).toBe("1 prazo · 1 evento · 2 h");
+  });
+
+  it("clicar no chip abre a lista do dia; Escape ou clicar fora fecham", () => {
+    montar(oitoPrazos());
+    const chip = document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!;
+    fireEvent.click(chip);
+    expect(within(listaAberta()!).getAllByRole("button")).toHaveLength(8);
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(listaAberta()).toBeNull();
+    fireEvent.click(chip);
+    fireEvent.pointerDown(document.body);
+    expect(listaAberta()).toBeNull();
+  });
+
+  it("Resumo devolve o grid: com 8 prazos no dia a faixa ocupa 36 px e sobram 6 h ou mais numa janela de ~720 px", () => {
+    montar(oitoPrazos());
+    const janela = 720, cabecalho = 60, faixaPx = parseFloat(faixa().style.height), barraDeAjuda = 40;
+    expect((janela - cabecalho - faixaPx - barraDeAjuda) / 64).toBeGreaterThanOrEqual(6);
+  });
+
+  it("Todos: a altura para em 3 linhas e cada dia rola por dentro (não cresce sem limite)", () => {
+    montar(oitoPrazos());
+    modo("Todos");
+    expect(faixa().style.height).toBe("96px");
+    expect(document.querySelector<HTMLElement>(`[data-faixa-dia='${D2}']`)!.className).toContain("overflow-y-auto");
+    expect(document.querySelectorAll(`[data-faixa-dia='${D2}'] [data-item]`)).toHaveLength(8);
+  });
+
+  it("Todos com poucos itens continua compacto (44 px, como antes)", () => {
+    montar([prazo("A")]);
+    modo("Todos");
+    expect(faixa().style.height).toBe("44px");
+  });
+
+  it("Ocultar tira a faixa e oferece o botão 'O dia todo (N)', que lista o período inteiro por dia", () => {
+    montar([prazo("A", D1), prazo("B", D2), prazo("C", D2)]);
+    modo("Ocultar");
+    expect(document.querySelector("[data-faixa-dia]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /O dia todo \(3\)/ }));
+    expect(within(listaAberta()!).getAllByRole("button")).toHaveLength(3);
+  });
+
+  it("o estado é lembrado entre sessões (remontar a grade volta como a pessoa deixou)", () => {
+    const { unmount } = montar(oitoPrazos());
+    modo("Todos");
+    expect(localStorage.getItem(CHAVE_FAIXA_DIA_TODO)).toBe("todos");
+    unmount();
+    montar(oitoPrazos());
+    expect(document.querySelectorAll(`[data-faixa-dia='${D2}'] [data-item]`)).toHaveLength(8);
+    modo("Ocultar");
+    cleanup();
+    montar(oitoPrazos());
+    expect(document.querySelector("[data-faixa-dia]")).toBeNull();
+  });
+
+  it("armazenamento indisponível: cai no Resumo sem quebrar", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("bloqueado"); });
+    montar(oitoPrazos());
+    expect(document.querySelector(`[data-resumo-dia='${D2}']`)).toBeTruthy();
+  });
+
+  describe("arrastar um prazo para um horário em cada estado", () => {
+    const arrastar = (el: HTMLElement) => {
+      fireEvent.pointerDown(el, { ...ponteiro(), clientX: 250, clientY: Y_FAIXA });
+      mover(xDaColuna(2), yDe(600));
+      soltar(xDaColuna(2), yDe(600));
+    };
+    const confere = (onMover: ReturnType<typeof vi.fn>) => {
+      expect(onMover).toHaveBeenCalledTimes(1);
+      expect(onMover.mock.calls[0][0]).toMatchObject({ tipo: "prazo", id: "P0" });
+      expect(destinoDe(onMover.mock.calls[0])).toMatchObject({ dia: D3, inicioMin: 600 });
+    };
+    const daLista = () => within(listaAberta()!).getAllByRole("button").find((b) => b.dataset.item === "prazo:P0")!;
+
+    it("Todos: direto da faixa", () => {
+      const { onMover } = montar(oitoPrazos());
+      modo("Todos");
+      arrastar(bloco("P0"));
+      confere(onMover);
+    });
+
+    it("Resumo: a partir da lista do dia; a lista se fecha ao soltar", () => {
+      const { onMover } = montar(oitoPrazos());
+      fireEvent.click(document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!);
+      arrastar(daLista());
+      confere(onMover);
+      expect(listaAberta()).toBeNull();
+    });
+
+    it("Ocultar: a partir da lista do período", () => {
+      const { onMover } = montar(oitoPrazos());
+      modo("Ocultar");
+      fireEvent.click(screen.getByRole("button", { name: /O dia todo \(8\)/ }));
+      arrastar(daLista());
+      confere(onMover);
+    });
+
+    it("durante o arrasto a lista fica translúcida e deixa o ponteiro passar", () => {
+      montar(oitoPrazos());
+      fireEvent.click(document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!);
+      fireEvent.pointerDown(daLista(), { ...ponteiro(), clientX: 250, clientY: Y_FAIXA });
+      mover(xDaColuna(2), yDe(600));
+      expect(listaAberta()!.className).toContain("pointer-events-none");
+      soltar(xDaColuna(2), yDe(600));
+    });
+  });
+
+  it("só o cabeçalho dos dias e a faixa (agora curta) ficam fixos no topo; as horas rolam", () => {
+    montar(oitoPrazos());
+    expect(faixa().className).toContain("sticky");
+    expect(faixa().style.top).toBe("60px");
+  });
+});
+
+describe("blocos sobrepostos ficam legíveis", () => {
+  const evento = (id: string) => item({ id, tipo: "evento", dia: D2, inicioMin: 480, duracaoMin: 60, titulo: `Inova Week - Palestra ${id}` });
+  const oito = () => Array.from({ length: 8 }, (_, i) => evento(`E${i}`));
+
+  it("8 eventos no mesmo horário: cada um mostra o nome (na vertical) e o título completo ao passar o mouse", () => {
+    montar(oito());
+    const e = bloco("E3");
+    expect(e.getAttribute("data-colunas")).toBe("8");
+    expect(e.getAttribute("title")).toContain("Inova Week - Palestra E3");
+    expect(e.textContent).toContain("Inova Week - Palestra E3");
+    expect(e.className).not.toContain("pr-7"); // sem o espaço do botão de menu, que engolia a largura
+    expect(e.className).toContain("hover:!w-[calc(100%-4px)]"); // ao passar o mouse abre na largura toda
+    expect(e.querySelector("[class*='writing-mode']")).toBeTruthy();
+  });
+
+  it("blocos com espaço (2 por horário) mantêm o layout normal, com o nome em texto corrido", () => {
+    montar([evento("A"), evento("B")]);
+    expect(bloco("A").getAttribute("data-colunas")).toBe("2");
+    expect(bloco("A").querySelector("[class*='writing-mode']")).toBeNull();
+    expect(bloco("A").className).toContain("pr-7");
+  });
+
+  it("um bloco sozinho não muda de largura ao passar o mouse", () => {
+    montar([evento("A")]);
+    expect(bloco("A").className).not.toContain("hover:!w-");
+  });
+});
+
+describe("o nome do bloco acompanha a rolagem", () => {
+  it("bloco que começa acima da área visível mantém o nome no topo visível (e volta ao lugar quando some a diferença)", () => {
+    montar([item({ id: "L", tipo: "evento", dia: D2, inicioMin: 240, duracaoMin: 210, titulo: "Bloco longo" })]);
+    const rolagem = screen.getByTestId("grade-rolagem");
+    const rotulo = () => bloco("L").querySelector<HTMLElement>("[data-corpo-bloco]")!;
+    let topo = 0;
+    Object.defineProperty(rolagem, "scrollTop", { configurable: true, get: () => topo, set: (v: number) => { topo = v; } });
+    fireEvent.scroll(rolagem);
+    expect(rotulo().style.transform).toBe(""); // começa na parte visível: nada a compensar
+    topo = 6 * 64; // rolado até 06:00; o bloco começou às 04:00 (256 px)
+    fireEvent.scroll(rolagem);
+    expect(rotulo().style.transform).toBe(`translateY(${6 * 64 - 240 * PX_POR_MINUTO}px)`);
+    topo = 0;
+    fireEvent.scroll(rolagem);
+    expect(rotulo().style.transform).toBe("");
   });
 });

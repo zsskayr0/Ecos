@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { CheckCircle2, Expand, Flag, Inbox, MoreHorizontal, Trash2, X } from "lucide-react";
+import { CheckCircle2, Expand, Flag, Inbox, ListChecks, MoreHorizontal, Trash2, X } from "lucide-react";
 import {
   DURACAO_VISUAL_MINIMA_MIN, INICIO_PADRAO_MIN, MINUTOS_DIA, OPCOES_ENCAIXE, PX_POR_HORA, PX_POR_MINUTO, acaoDaTecla, aplicarAcao, capacidadesDo, descreverPosicao, diaEMinutosLocais, horaLocal, distribuirColunas, duracaoDoPonteiro,
   duracaoParaAlocar, meioDiaLocal, posicaoDoPonteiro, posicaoIgual, rotuloHorario, type ColunaGeometria, type FaixaDiaTodoGeometria, type ItemAgenda, type Posicao,
 } from "@/lib/agenda-tempo";
 import type { TarefaResumo } from "@/lib/api";
 import { useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
+import { formatarHoras } from "@/lib/agenda-planejamento";
 
 /** Quanto o dedo precisa ficar parado sobre um bloco para "pegá-lo" (antes disso, arrastar rola a tela). */
 export const LONGO_TOQUE_MS = 350;
@@ -14,6 +15,24 @@ const LIMIAR_MOUSE_PX = 4;
 const TOLERANCIA_TOQUE_PX = 8;
 const ALTURA_CABECALHO = 60;
 const BORDA_ROLAGEM_PX = 40;
+/** Faixa "O dia todo": em "Resumo" é uma linha só de chips; em "Todos" cresce até `MAX_LINHAS_TODOS` linhas e depois rola por dentro. */
+const ALTURA_FAIXA_RESUMO = 36;
+const ALTURA_LINHA_FAIXA = 28;
+const MAX_LINHAS_TODOS = 3;
+/** Blocos que dividem a largura com tantos outros ou mais passam a mostrar o nome na vertical (e o nome inteiro ao passar o mouse). */
+const COLUNAS_ESTREITO = 3;
+
+export type ModoFaixa = "ocultar" | "resumo" | "todos";
+export const CHAVE_FAIXA_DIA_TODO = "ecos:agenda:faixa-dia-todo";
+const MODOS_FAIXA: { valor: ModoFaixa; rotulo: string }[] = [{ valor: "ocultar", rotulo: "Ocultar" }, { valor: "resumo", rotulo: "Resumo" }, { valor: "todos", rotulo: "Todos" }];
+
+/** O estado da faixa é uma preferência de trabalho: volta como a pessoa deixou (Resumo, se nunca escolheu). */
+function lerModoFaixa(): ModoFaixa {
+  try {
+    const salvo = localStorage.getItem(CHAVE_FAIXA_DIA_TODO);
+    return salvo === "ocultar" || salvo === "todos" ? salvo : "resumo";
+  } catch { return "resumo"; }
+}
 
 export interface GradeTempoProps {
   /** Dias mostrados, `YYYY-MM-DD` local, em ordem. */
@@ -70,6 +89,19 @@ let descartarCliqueFantasma: (() => void) | null = null;
 
 const posDoItem = (i: Posicao): Posicao => ({ dia: i.dia, inicioMin: i.inicioMin, duracaoMin: i.duracaoMin });
 
+/** "8 prazos · 10,5 h": o que o dia guarda na faixa. As horas somam só o que tem estimativa. */
+export function resumoDoDia(itens: ItemAgenda[]): { rotulo: string } {
+  const prazos = itens.filter((i) => i.tipo === "prazo");
+  const outros = itens.length - prazos.length;
+  const minutos = prazos.reduce((soma, i) => soma + (i.semEstimativa ? 0 : i.duracaoMin), 0);
+  const partes = [
+    prazos.length > 0 ? `${prazos.length} ${prazos.length === 1 ? "prazo" : "prazos"}` : null,
+    outros > 0 ? `${outros} ${outros === 1 ? "evento" : "eventos"}` : null,
+    minutos > 0 ? formatarHoras(minutos) : null,
+  ].filter(Boolean);
+  return { rotulo: partes.join(" · ") };
+}
+
 /** Cor livre do evento: fundo translúcido e texto/borda numa mistura da cor com o texto do tema (legível em claro e escuro). */
 function estiloCorLivre(hex?: string): CSSProperties | undefined {
   if (!hex) return undefined;
@@ -82,6 +114,14 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
   const [previaExterna, setPreviaExterna] = useState<{ pos: Posicao; titulo: string } | null>(null);
   const [menuDe, setMenuDe] = useState<string | null>(null);
   const [aviso, setAviso] = useState("");
+  const [modoFaixa, setModoFaixa] = useState<ModoFaixa>(lerModoFaixa);
+  /** Lista aberta a partir de um chip de resumo (`dia`) ou do botão "O dia todo" (`dia: null` = o período inteiro). */
+  const [lista, setLista] = useState<{ dia: string | null; ancora: DOMRect } | null>(null);
+  const escolherModoFaixa = (modo: ModoFaixa) => {
+    setModoFaixa(modo);
+    setLista(null);
+    try { localStorage.setItem(CHAVE_FAIXA_DIA_TODO, modo); } catch { /* preferência não salva */ }
+  };
   const focoPendente = useRef<string | null>(null);
   const cancelarGesto = useRef<(() => void) | null>(null);
   const [selecao, setSelecao] = useState<Posicao | null>(null);
@@ -133,7 +173,9 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
     return mapa;
   }, [dias, horarios]);
 
-  const alturaDiaTodo = Math.max(44, ...dias.map((dia) => diaTodo.filter((i) => i.dia === dia).length * 28 + 12));
+  const alturaDiaTodo = modoFaixa === "ocultar" ? 0
+    : modoFaixa === "resumo" ? ALTURA_FAIXA_RESUMO
+      : Math.min(Math.max(44, ...dias.map((dia) => diaTodo.filter((i) => i.dia === dia).length * ALTURA_LINHA_FAIXA + 12)), MAX_LINHAS_TODOS * ALTURA_LINHA_FAIXA + 12);
   const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
 
   // A grade vem rolada até o início configurado (as linhas fixas ocupam o topo, então a hora de início fica logo abaixo delas).
@@ -141,6 +183,22 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
   useLayoutEffect(() => {
     if (rolagemRef.current) rolagemRef.current.scrollTop = Math.min(Math.max(0, inicioMin), MINUTOS_DIA) * PX_POR_MINUTO;
   }, [dias[0], inicioMin]);
+
+  // Bloco que começa acima da parte visível (ex.: 03:59–07:29 com a grade rolada até 06:00): o nome acompanha a rolagem e
+  // fica no topo visível do bloco, em vez de ficar escondido sob as linhas fixas. Direto no DOM: roda a cada quadro de rolagem.
+  function ajustarRotulos() {
+    const raiz = rolagemRef.current;
+    if (!raiz) return;
+    const topoVisivel = raiz.scrollTop; // em coordenadas da coluna de horas (as linhas fixas ocupam o que vem antes)
+    raiz.querySelectorAll<HTMLElement>("[data-corpo-bloco]").forEach((rotulo) => {
+      const bloco = rotulo.parentElement as HTMLElement;
+      const topo = parseFloat(bloco.style.top);
+      const altura = parseFloat(bloco.style.height);
+      const desloca = Math.min(Math.max(0, topoVisivel - topo), Math.max(0, altura - rotulo.offsetHeight));
+      rotulo.style.transform = desloca > 0 ? `translateY(${desloca}px)` : "";
+    });
+  }
+  useLayoutEffect(ajustarRotulos);
 
   const ultimoPedidoAgora = useRef(rolarParaAgora);
   useLayoutEffect(() => {
@@ -157,6 +215,20 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
     focoPendente.current = null;
     el?.focus({ preventScroll: false });
   });
+
+  const arrastouDaLista = useRef(false);
+  useEffect(() => {
+    if (gesto) { arrastouDaLista.current = true; return; }
+    if (arrastouDaLista.current) { arrastouDaLista.current = false; setLista(null); }
+  }, [gesto]);
+  useEffect(() => {
+    if (!lista) return;
+    const fora = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest("[data-lista-dia-todo], [data-abre-lista]")) setLista(null); };
+    const tecla = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setLista(null); };
+    document.addEventListener("pointerdown", fora);
+    document.addEventListener("keydown", tecla);
+    return () => { document.removeEventListener("pointerdown", fora); document.removeEventListener("keydown", tecla); };
+  }, [lista]);
 
   useEffect(() => () => {
     cancelarGesto.current?.();
@@ -298,7 +370,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
       // As linhas fixas cobrem o topo das colunas: soltar sobre o cabeçalho dos dias, ou sobre a faixa "O dia todo" quando o item não a aceita,
       // não é um horário (o que estaria "embaixo" ficou escondido) — nesse caso o gesto não muda nada.
       const r = rolagemRef.current?.getBoundingClientRect();
-      if (r && (y < r.top + ALTURA_CABECALHO || (y < r.top + ALTURA_CABECALHO + alturaDiaTodo && !cap.diaInteiro))) return null;
+      if (r && (y < r.top + ALTURA_CABECALHO || (alturaDiaTodo > 0 && y < r.top + ALTURA_CABECALHO + alturaDiaTodo && !cap.diaInteiro))) return null;
       return posicaoDoPonteiro({ ...g, x, y, deslocamentoMin, duracaoMin: origem.duracaoMin, encaixe, permiteDiaInteiro: cap.diaInteiro });
     }
 
@@ -409,7 +481,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
       return;
     }
     const cap = capacidadesDo(item);
-    if (!cap.mover && !cap.remover) return; // Tarefa com data própria: só abre
+    if ((!cap.mover && !cap.remover) || item.tipo === "prazo") return; // Tarefa com data própria e prazo: só abrem (o prazo só vai a um horário pelo ponteiro; no teclado, "Alocar tempo")
     if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10") || e.key === "m" || e.key === "M") {
       e.preventDefault();
       setMenuDe(item.chave);
@@ -432,10 +504,10 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
 
   const itemDoMenu = menuDe ? itens.find((i) => i.chave === menuDe) ?? null : null;
 
-  function corpoDoItem(item: ItemAgenda, pos: Posicao, diaInteiro: boolean) {
+  function corpoDoItem(item: ItemAgenda, pos: Posicao, diaInteiro: boolean, estreito = false) {
     const cap = capacidadesDo(item);
     const horario = diaInteiro ? "" : `${rotuloHorario(pos.inicioMin as number)}–${rotuloHorario((pos.inicioMin as number) + pos.duracaoMin)}`;
-    return (
+    const corpo = (
       <>
         <span className={`flex items-center gap-1 truncate text-xs font-medium ${item.concluida ? "line-through opacity-70" : ""}`}>
           {item.tipo === "prazo" && <><Flag size={11} aria-hidden className="shrink-0" /><span className="sr-only">Prazo: </span></>}
@@ -443,7 +515,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
         </span>
         {!diaInteiro && <span className="block truncate font-mono-value text-[10px] opacity-80">{horario}</span>}
         {item.comPrazo && <span data-marca-prazo className="mt-0.5 inline-flex items-center gap-1 rounded bg-warning/20 px-1 text-[10px] font-medium text-warning"><Flag size={10} aria-hidden />Prazo hoje</span>}
-        {(cap.mover || cap.remover) && (
+        {(cap.mover || cap.remover) && item.tipo !== "prazo" && (
           <button
             type="button"
             data-acao="menu"
@@ -457,12 +529,41 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
         )}
       </>
     );
+    if (!estreito) return corpo;
+    // Coluna estreita: o nome fica de pé (legível em ~20 px) e, ao passar o mouse ou focar, o bloco se abre com o conteúdo normal.
+    return (
+      <>
+        <span aria-hidden className="block max-h-full overflow-hidden text-[11px] font-medium leading-tight [writing-mode:vertical-rl] group-hover:hidden group-focus:hidden group-focus-visible:hidden">{item.titulo}</span>
+        <div className="hidden group-hover:block group-focus:block group-focus-visible:block">{corpo}</div>
+      </>
+    );
+  }
+
+  /** Um item de "O dia todo" (prazo ou evento): o mesmo elemento na faixa e na lista, para o arraste funcionar nos dois. */
+  function itemDiaTodo(item: ItemAgenda) {
+    const emGesto = gesto?.chave === item.chave;
+    const { cursor, ...atributos } = propsDoItem(item, item);
+    return (
+      <div
+        key={item.chave}
+        {...atributos}
+        title={item.titulo}
+        style={estiloCorLivre(item.corHex)}
+        className={`group relative select-none rounded px-2 py-1 pr-7 outline-none ring-cyan focus-visible:ring-2 ${cursor} ${item.classe} ${emGesto ? "opacity-40" : ""} ${emGesto && gesto?.levantado ? "scale-105 shadow-nav" : ""}`}
+      >
+        {corpoDoItem(item, item, true)}
+      </div>
+    );
+  }
+
+  function abrirLista(dia: string | null, alvo: HTMLElement) {
+    setLista((atual) => (atual && atual.dia === dia ? null : { dia, ancora: alvo.getBoundingClientRect() }));
   }
 
   function propsDoItem(item: ItemAgenda, pos: Posicao) {
     const cap = capacidadesDo(item);
-    const fixo = !cap.mover && !cap.remover;
-    const dica = item.tipo === "prazo" ? "Prazo da tarefa: a Agenda não o move." : fixo ? "Tarefa agendada: a Agenda não a move." : "Setas movem, Shift e setas mudam a duração, M abre o menu.";
+    const fixo = (!cap.mover && !cap.remover) || item.tipo === "prazo";
+    const dica = item.tipo === "prazo" ? "Prazo da tarefa: arraste para um horário para reservar tempo." : fixo ? "Tarefa agendada: a Agenda não a move." : "Setas movem, Shift e setas mudam a duração, M abre o menu.";
     const rotuloPosicao = item.tipo === "prazo" ? `prazo em ${meioDiaLocal(pos.dia).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}` : `${descreverPosicao(pos)}${item.comPrazo ? ", com prazo neste dia" : ""}`;
     return {
       role: "button" as const,
@@ -481,17 +582,32 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-1.5 text-xs text-text-muted">
-        <span className="truncate">Arraste uma tarefa da lista para alocar tempo · arraste o bloco para mover · borda de baixo muda a duração · segure no toque · setas no teclado</span>
+        <span className="truncate">Arraste um prazo para um horário para reservar tempo (ou use “Alocar tempo”) · arraste o bloco para mover · borda de baixo muda a duração · segure no toque · setas no teclado</span>
+        <div className="flex shrink-0 items-center gap-3">
+        {diaTodo.length > 0 && modoFaixa === "ocultar" && (
+          <button type="button" data-abre-lista onClick={(e) => abrirLista(null, e.currentTarget)} aria-expanded={lista?.dia === null && lista !== null} className="flex items-center gap-1 rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary hover:bg-surface-2">
+            <ListChecks size={12} aria-hidden />O dia todo ({diaTodo.length})
+          </button>
+        )}
+        <div role="group" aria-label="Faixa O dia todo" className="flex items-center gap-1.5">
+          <span>Faixa</span>
+          <span className="flex overflow-hidden rounded border border-border">
+            {MODOS_FAIXA.map(({ valor, rotulo }) => (
+              <button key={valor} type="button" aria-pressed={modoFaixa === valor} onClick={() => escolherModoFaixa(valor)} className={`px-1.5 py-0.5 text-xs transition-colors ${modoFaixa === valor ? "bg-steel-500 text-white" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}>{rotulo}</button>
+            ))}
+          </span>
+        </div>
         <label className="flex shrink-0 items-center gap-1.5">
           Encaixe
           <select aria-label="Encaixe ao arrastar" value={encaixe} onChange={(e) => onMudarEncaixe(Number(e.target.value))} className="rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary">
             {OPCOES_ENCAIXE.map((m) => <option key={m} value={m}>{m === 60 ? "1 h" : `${m} min`}</option>)}
           </select>
         </label>
+        </div>
       </div>
 
       {/* `isolate`: os z-index das linhas fixas (cabeçalho dos dias, "O dia todo") valem só aqui dentro; sem isso eles passam por cima do popup do dia e de qualquer outra camada da Agenda. */}
-      <div ref={rolagemRef} data-testid="grade-rolagem" className="isolate min-h-0 flex-1 overflow-auto">
+      <div ref={rolagemRef} data-testid="grade-rolagem" onScroll={ajustarRotulos} className="isolate min-h-0 flex-1 overflow-auto">
         <div className="relative min-w-[680px]">
           <div className="sticky top-0 z-30 grid bg-surface-1" style={{ gridTemplateColumns, height: ALTURA_CABECALHO }}>
             <div className="sticky left-0 z-30 border-b border-r border-border/35 bg-surface-1" />
@@ -518,34 +634,26 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
             })}
           </div>
 
+          {modoFaixa !== "ocultar" && (
           <div className="sticky z-30 grid bg-base" style={{ gridTemplateColumns, top: ALTURA_CABECALHO, height: alturaDiaTodo }}>
             <div className="sticky left-0 z-30 border-b border-r border-border/35 bg-base pr-2 pt-2 text-right text-[10px] font-medium uppercase text-text-muted">O dia todo</div>
             {dias.map((dia) => {
               const daqui = diaTodo.filter((i) => i.dia === dia);
               const alvoDaPrevia = gesto?.tipo === "mover" && gesto.previa.inicioMin === null && gesto.previa.dia === dia;
+              const resumo = resumoDoDia(daqui);
               return (
-                <div key={dia} data-faixa-dia={dia} className={`flex flex-col gap-1 border-b border-r border-border/35 p-1.5 transition-colors ${alvoDaPrevia ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : "bg-base"}`}>
-                  {daqui.map((item) => {
-                    const emGesto = gesto?.chave === item.chave;
-                    const p = propsDoItem(item, item);
-                    const { cursor, ...atributos } = p;
-                    return (
-                      <div
-                        key={item.chave}
-                        {...atributos}
-                        title={item.titulo}
-                        style={estiloCorLivre(item.corHex)}
-                        className={`group relative select-none rounded px-2 py-1 pr-7 outline-none ring-cyan focus-visible:ring-2 ${cursor} ${item.classe} ${emGesto ? "opacity-40" : ""} ${emGesto && gesto?.levantado ? "scale-105 shadow-nav" : ""}`}
-                      >
-                        {corpoDoItem(item, item, true)}
-                      </div>
-                    );
-                  })}
+                <div key={dia} data-faixa-dia={dia} className={`flex min-h-0 flex-col gap-1 border-b border-r border-border/35 p-1.5 transition-colors ${modoFaixa === "todos" ? "overflow-y-auto" : "overflow-hidden"} ${alvoDaPrevia ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : "bg-base"}`}>
+                  {modoFaixa === "todos" ? daqui.map(itemDiaTodo) : daqui.length > 0 && (
+                    <button type="button" data-abre-lista data-resumo-dia={dia} aria-expanded={lista?.dia === dia} onClick={(e) => abrirLista(dia, e.currentTarget)} title={resumo.rotulo} className="flex w-full items-center gap-1 rounded bg-warning/15 px-1.5 py-1 text-left text-xs font-medium text-warning outline-none ring-cyan hover:brightness-125 focus-visible:ring-2">
+                      <Flag size={11} aria-hidden className="shrink-0" /><span className="truncate">{resumo.rotulo}</span>
+                    </button>
+                  )}
                   {gesto?.tipo === "mover" && alvoDaPrevia && !daqui.some((i) => i.chave === gesto.chave) && <div aria-hidden className="pointer-events-none rounded border border-dashed border-cyan/70 px-2 py-1 text-xs text-cyan">Dia inteiro</div>}
                 </div>
               );
             })}
           </div>
+          )}
 
           <div className="relative grid" style={{ gridTemplateColumns, height: 24 * PX_POR_HORA }}>
             <div className="sticky left-0 z-10 border-r border-border/35 bg-base">
@@ -566,6 +674,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
                     const { coluna, colunas } = colunasPorDia.get(item.chave) ?? { coluna: 0, colunas: 1 };
                     const altura = Math.max(pos.duracaoMin, DURACAO_VISUAL_MINIMA_MIN) * PX_POR_MINUTO;
                     const { cursor, ...atributos } = propsDoItem(item, pos);
+                    const estreito = colunas >= COLUNAS_ESTREITO;
                     return (
                       <div
                         key={item.chave}
@@ -574,9 +683,9 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
                         data-colunas={colunas}
                         title={`${item.titulo} · ${rotuloHorario(pos.inicioMin as number)}–${rotuloHorario((pos.inicioMin as number) + pos.duracaoMin)}`}
                         style={{ top: (pos.inicioMin as number) * PX_POR_MINUTO, height: altura, left: `calc(${(coluna / colunas) * 100}% + 2px)`, width: `calc(${100 / colunas}% - 4px)`, ...estiloCorLivre(item.corHex) }}
-                        className={`group absolute select-none overflow-hidden rounded border-l-2 border-current px-1.5 py-0.5 pr-7 outline-none ring-cyan focus-visible:z-20 focus-visible:ring-2 hover:z-20 ${cursor} ${item.classe} ${emGesto ? (gesto?.tipo === "redimensionar" ? "z-20 shadow-nav" : "opacity-40") : ""} ${emGesto && gesto?.levantado ? "scale-[1.03] shadow-nav" : ""} ${item.salvando ? "animate-pulse" : ""}`}
+                        className={`group absolute select-none overflow-hidden rounded border-l-2 border-current outline-none ring-cyan focus-visible:z-20 focus-visible:ring-2 hover:z-20 ${estreito ? "px-0.5 py-0.5" : "px-1.5 py-0.5 pr-7"} ${colunas > 1 && !gesto ? "hover:!left-0.5 hover:!w-[calc(100%-4px)] hover:shadow-nav focus-visible:!left-0.5 focus-visible:!w-[calc(100%-4px)]" : ""} ${cursor} ${item.classe} ${emGesto ? (gesto?.tipo === "redimensionar" ? "z-20 shadow-nav" : "opacity-40") : ""} ${emGesto && gesto?.levantado ? "scale-[1.03] shadow-nav" : ""} ${item.salvando ? "animate-pulse" : ""}`}
                       >
-                        {corpoDoItem(item, pos, false)}
+                        <div data-corpo-bloco className="will-change-transform">{corpoDoItem(item, pos, false, estreito)}</div>
                         {cap.redimensionar && (
                           <span
                             data-resize="baixo"
@@ -614,6 +723,26 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
           </div>
         </div>
       </div>
+
+      {lista && (() => {
+        const dosDias = (lista.dia ? [lista.dia] : dias).map((dia) => ({ dia, itens: diaTodo.filter((i) => i.dia === dia) })).filter((g) => g.itens.length > 0);
+        const largura = 272;
+        const left = Math.max(8, Math.min(lista.ancora.left, window.innerWidth - largura - 8));
+        return (
+          // Durante um arrasto a lista fica translúcida e deixa o ponteiro passar: o horário de destino aparece por baixo dela.
+          <div data-lista-dia-todo role="group" aria-label={lista.dia ? `O dia todo, ${meioDiaLocal(lista.dia).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}` : "O dia todo, período inteiro"} style={{ left, top: lista.ancora.bottom + 4, width: largura }} className={`ecos-fade-in fixed z-[115] max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-base p-2 shadow-nav transition-opacity ${gesto ? "pointer-events-none opacity-30" : ""}`}>
+            <p className="px-1 pb-1.5 text-xs text-text-muted">Arraste um prazo para um horário para reservar tempo.</p>
+            <div className="flex flex-col gap-1">
+              {dosDias.map(({ dia, itens }) => (
+                <div key={dia} className="flex flex-col gap-1">
+                  {!lista.dia && <p className="px-1 pt-1 text-xs font-semibold capitalize text-text-secondary">{meioDiaLocal(dia).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}</p>}
+                  {itens.map(itemDiaTodo)}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div role="status" aria-live="polite" className="sr-only">{aviso}</div>
 

@@ -9,7 +9,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...original,
     tarefas: {
-      ...original.tarefas, listar: vi.fn(), capacidade: vi.fn(), atualizar: vi.fn(),
+      ...original.tarefas, listar: vi.fn(), capacidade: vi.fn(), atualizar: vi.fn(), atualizarStatus: vi.fn(),
       timeEntries: { ...original.tarefas.timeEntries, criar: vi.fn(), atualizar: vi.fn(), excluir: vi.fn() },
     },
     agenda: { blocos: vi.fn() },
@@ -24,6 +24,7 @@ import { CHAVE_PREFERENCIAS_CALENDARIO, salvarPreferenciasCalendario } from "@/l
 import { RefreshProvider } from "@/lib/refresh-bus";
 import { AppUIProvider } from "@/lib/ui-context";
 import { AgendaScreen } from "./AgendaScreen";
+import { CHAVE_FAIXA_DIA_TODO } from "./GradeTempo";
 
 // Semana de 20 (dom) a 26/09/2026 (sáb). Brasília = UTC-3. Terça 22/09.
 const DIAS_SEMANA = ["2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"];
@@ -86,7 +87,7 @@ function registrarScrollTop() {
 }
 const rolagem = () => (screen.getByTestId("grade-rolagem") as HTMLElement & { __st?: number }).__st;
 
-async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: string; dia?: string; blocos?: BlocoPlanejado[]; eventos?: Evento[] } = {}) {
+async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: string; dia?: string; blocos?: BlocoPlanejado[]; eventos?: Evento[]; capacidadeMin?: number } = {}) {
   const { tarefasDoServidor = [TAREFA_AGENDADA], modo = "semana", dia = "2026-09-22" } = opcoes;
   blocosDoServidor = opcoes.blocos ?? [BLOCO];
   eventosDoServidor = opcoes.eventos ?? [];
@@ -103,8 +104,13 @@ async function abrirAgenda(opcoes: { tarefasDoServidor?: TarefaResumo[]; modo?: 
   listar.mockResolvedValue({ items: tarefasDoServidor, next_cursor: null } as never);
   buscarBlocos.mockImplementation(async () => blocosDoServidor);
   vi.mocked(tarefas.capacidade).mockResolvedValue({ data: dia, total_dia_min: 0, consumido_rotina_min: 0, consumido_eventos_externos_min: 0, consumido_tarefas_min: 0, disponivel_producao_min: 0, tempo_livre_min: 0, estourado: false });
-  vi.mocked(rotina.listar).mockResolvedValue([]);
+  // Com `capacidadeMin` a Rotina existe e cada dia da semana tem essa capacidade de produção; sem ela, a Rotina está vazia.
+  if (opcoes.capacidadeMin !== undefined) {
+    vi.mocked(rotina.listar).mockResolvedValue([{ id: "r1", tipo: "trabalho", hora_inicio: "09:00", hora_fim: "17:00", dias_semana: "diario", classificacao: "disponivel_producao" }]);
+    vi.mocked(tarefas.capacidade).mockResolvedValue({ data: dia, total_dia_min: 1440, consumido_rotina_min: 0, consumido_eventos_externos_min: 0, consumido_tarefas_min: 0, disponivel_producao_min: opcoes.capacidadeMin, disponivel_producao_total_min: opcoes.capacidadeMin, tempo_livre_min: 0, estourado: false });
+  } else vi.mocked(rotina.listar).mockResolvedValue([]);
   render(<MemoryRouter><AppUIProvider><RefreshProvider><AgendaScreen /></RefreshProvider></AppUIProvider></MemoryRouter>);
+  if (modo === "quinzenal") return await screen.findByRole("group", { name: "Filtros do planejamento" });
   // Espera a visão montar: nas de horário, o seletor de encaixe da grade; no mês, as células dos dias.
   if (modo === "mes") return await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes]"); expect(c).toBeTruthy(); return c!; });
   return await screen.findByLabelText("Encaixe ao arrastar");
@@ -117,6 +123,7 @@ const emitir = (fase: "mover" | "soltar" | "cancelar", x: number, y: number, tar
 beforeEach(() => {
   telaLarga();
   localStorage.clear();
+  localStorage.setItem(CHAVE_FAIXA_DIA_TODO, "todos"); // os testes olham os itens dentro da faixa; o padrão "Resumo" tem testes próprios
   registrarScrollTop();
   for (const f of [atualizarTarefa, criarBloco, atualizarBloco, excluirBloco, listar, buscarBlocos]) f.mockReset();
 });
@@ -550,7 +557,8 @@ describe("o popup do dia só abre pelo NÚMERO", () => {
 describe("preferências: início do dia e prazos (refletem sem recarregar)", () => {
   const TAREFA_PRAZO: TarefaResumo = { ...TAREFA_AGENDADA, id: "t2", titulo: "Entregar o relatório", scheduled_at: null, due_date: "2026-09-22" };
   const TAREFA_AGENDADA_COM_PRAZO: TarefaResumo = { ...TAREFA_AGENDADA, id: "t3", titulo: "Reunião com prazo", scheduled_at: "2026-09-22T13:00:00Z", due_date: "2026-09-22" };
-  const MODOS = ["dia", "tres_dias", "semana", "quinzenal"] as const;
+  // A Quinzenal virou visão de planejamento (cards por dia, sem horas): não tem rolagem inicial nem faixa "O dia todo".
+  const MODOS = ["dia", "tres_dias", "semana"] as const;
 
   describe("início do dia", () => {
     it.each(MODOS)("aplica na visão '%s': a grade vem rolada até 06:00 (padrão) e mantém as 24 horas", async (modo) => {
@@ -678,5 +686,265 @@ describe("preferências: início do dia e prazos (refletem sem recarregar)", () 
       const marca = await waitFor(() => { const m = item("prazo:t2"); expect(m).toBeTruthy(); return m; });
       expect(marca.innerHTML).toContain("line-through");
     });
+  });
+});
+
+
+describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", () => {
+  // Quinzena: 20/09 (dom) a 03/10 (sáb). Segunda 21/09 = 10,5 h; quarta 23/09 = 5 h.
+  const t = (id: string, titulo: string, extra: Partial<TarefaResumo> = {}): TarefaResumo => ({ ...TAREFA_AGENDADA, id, titulo, scheduled_at: null, due_date: "2026-09-21", duration_min: 60, prioridade: "media", ...extra });
+  const PESADA = [t("a", "Escrever relatório final", { duration_min: 300, prioridade: "baixa" }), t("b", "Revisar contrato", { duration_min: 330, prioridade: "alta" }), t("c", "Planejar sprint", { duration_min: 300, due_date: "2026-09-23" })];
+  const carga = (dia: string) => document.querySelector<HTMLElement>(`[data-carga="${dia}"]`)!;
+  const coluna = (dia: string) => document.querySelector<HTMLElement>(`[data-dia-plan="${dia}"]`)!;
+  const cartoes = (dia: string) => [...coluna(dia).querySelectorAll<HTMLElement>("[data-item^='plano:']")].map((c) => c.querySelector("button")!.textContent ?? "");
+
+  const abrirCartao = async (titulo: string) => {
+    const cartao = await waitFor(() => { const c = [...document.querySelectorAll<HTMLElement>("[data-item^='plano:']")].find((n) => n.textContent?.includes(titulo)); expect(c).toBeTruthy(); return c!; });
+    fireEvent.pointerEnter(cartao.closest("li")!, { pointerType: "mouse", buttons: 0 });
+    await waitFor(() => expect(document.querySelector("[data-cartao-detalhes]")).toBeTruthy());
+  };
+
+  it("usa colunas de cards por dia em vez do grid de horas", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA });
+    expect(document.querySelectorAll("[data-dia-plan]")).toHaveLength(14);
+    expect(screen.queryByLabelText("Encaixe ao arrastar")).toBeNull();
+    expect(screen.queryByText("O dia todo")).toBeNull();
+  });
+
+  it("mostra a carga de cada dia contra a capacidade da Rotina e marca o dia estourado", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA, capacidadeMin: 480 });
+    await waitFor(() => expect(carga("2026-09-21").textContent).toContain("10,5 h / 8 h"));
+    expect(carga("2026-09-21").getAttribute("data-situacao")).toBe("sobrecarregado");
+    expect(carga("2026-09-21").textContent).toMatch(/acima da capacidade/);
+    expect(carga("2026-09-23").textContent).toContain("5 h / 8 h");
+    expect(carga("2026-09-23").getAttribute("data-situacao")).toBe("ok");
+  });
+
+  it("sem Rotina configurada mostra só a carga, sem julgar nem dividir por capacidade", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA });
+    await waitFor(() => expect(carga("2026-09-21").textContent).toContain("10,5 h"));
+    expect(carga("2026-09-21").textContent).not.toContain("/");
+    expect(carga("2026-09-21").getAttribute("data-situacao")).toBe("sem-capacidade");
+  });
+
+  it("ordena por prioridade e mostra prioridade em texto (não só cor), duração e o título em até 2 linhas", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA });
+    await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
+    expect(cartoes("2026-09-21")[0]).toMatch(/Revisar contrato.*Prioridade alta.*5h30/);
+    expect(cartoes("2026-09-21")[1]).toMatch(/Escrever relatório final.*Prioridade baixa.*5h/);
+    expect(coluna("2026-09-21").querySelector("[data-prioridade='alta']")!.className).toContain("border-l-error");
+    expect(screen.getByRole("button", { name: /Revisar contrato\. Prioridade alta, 5h30/ })).toBeTruthy();
+    expect(coluna("2026-09-21").querySelector(".line-clamp-2")).toBeTruthy();
+  });
+
+  it("ao passar o mouse abre o card completo com prioridade, prazo e botão Abrir", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Título bem comprido que o chip corta na tela", { tags: ["casa"], prioridade: "alta" })] });
+    const cartao = await waitFor(() => { const c = coluna("2026-09-21").querySelector<HTMLElement>("[data-item^='plano:']"); expect(c).toBeTruthy(); return c!; });
+    expect(document.querySelector("[data-cartao-detalhes]")).toBeNull();
+    fireEvent.pointerEnter(cartao.closest("li")!, { pointerType: "mouse", buttons: 0 });
+    const detalhes = await waitFor(() => { const d = document.querySelector<HTMLElement>("[data-cartao-detalhes]"); expect(d).toBeTruthy(); return d!; });
+    expect(within(detalhes).getByText("Título bem comprido que o chip corta na tela")).toBeTruthy();
+    expect(detalhes.textContent).toMatch(/Prioridade alta/);
+    expect(detalhes.textContent).toMatch(/#casa/);
+    expect(detalhes.textContent).toMatch(/Prazo segunda-feira, 21 de setembro/);
+    expect(within(detalhes).getByRole("button", { name: "Abrir" })).toBeTruthy();
+    fireEvent.pointerLeave(cartao.closest("li")!);
+    expect(document.querySelector("[data-cartao-detalhes]")).toBeNull();
+  });
+
+  it("concluídas ficam ocultas por padrão; o botão de filtro as mostra", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Aberta"), t("f", "Feita", { status: "concluida", concluida_em: "2026-09-20T12:00:00Z" })] });
+    await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(1));
+    const botao = screen.getByRole("button", { name: /Mostrar concluídas/ });
+    expect(botao.textContent).toContain("(1)");
+    fireEvent.click(botao);
+    expect(cartoes("2026-09-21")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /Ocultar concluídas/ }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("filtra por prioridade e por tag", async () => {
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Casa alta", { prioridade: "alta", tags: ["casa"] }), t("b", "Trabalho baixa", { prioridade: "baixa", tags: ["trabalho"] })] });
+    await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText("Filtrar por prioridade"), { target: { value: "baixa" } });
+    expect(cartoes("2026-09-21")).toHaveLength(1);
+    expect(cartoes("2026-09-21")[0]).toContain("Trabalho baixa");
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    fireEvent.change(screen.getByLabelText("Filtrar por tag"), { target: { value: "casa" } });
+    expect(cartoes("2026-09-21")).toHaveLength(1);
+    expect(cartoes("2026-09-21")[0]).toContain("Casa alta");
+  });
+
+  it("checkbox conclui a tarefa: some do dia na hora e o servidor recebe o status", async () => {
+    vi.mocked(tarefas.atualizarStatus).mockResolvedValue({ id: "a", status: "concluida" });
+    await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Aberta", { duration_min: 120 })], capacidadeMin: 480 });
+    await waitFor(() => expect(carga("2026-09-21").textContent).toContain("2 h / 8 h"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Concluir Aberta" }));
+    expect(cartoes("2026-09-21")).toHaveLength(0);
+    expect(carga("2026-09-21").textContent).toContain("0 min / 8 h");
+    await waitFor(() => expect(tarefas.atualizarStatus).toHaveBeenCalledWith("a", "concluida"));
+  });
+
+  describe("mover entre dias (define o prazo)", () => {
+    it("'Mover para…' muda o prazo na hora, recalcula a carga dos dois dias e só o due_date vai ao servidor", async () => {
+      atualizarTarefa.mockResolvedValue({ id: "a" });
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA, capacidadeMin: 480 });
+      await waitFor(() => expect(carga("2026-09-21").textContent).toContain("10,5 h / 8 h"));
+      await abrirCartao("Revisar contrato");
+      fireEvent.change(screen.getByLabelText("Mover Revisar contrato para"), { target: { value: "2026-09-24" } });
+      expect(cartoes("2026-09-21")).toHaveLength(1);
+      expect(cartoes("2026-09-24")[0]).toContain("Revisar contrato");
+      expect(carga("2026-09-21").textContent).toContain("5 h / 8 h");
+      expect(carga("2026-09-21").getAttribute("data-situacao")).toBe("ok");
+      expect(carga("2026-09-24").textContent).toContain("5,5 h / 8 h");
+      await waitFor(() => expect(atualizarTarefa).toHaveBeenCalledWith("b", { due_date: "2026-09-24" }));
+    });
+
+    it("se o servidor recusar, a tarefa volta ao dia de origem e a pessoa é avisada", async () => {
+      atualizarTarefa.mockRejectedValue(new ApiError("FORBIDDEN", "Sem permissão.", 403));
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA });
+      await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
+      await abrirCartao("Revisar contrato");
+      fireEvent.change(screen.getByLabelText("Mover Revisar contrato para"), { target: { value: "2026-09-24" } });
+      expect(cartoes("2026-09-24")).toHaveLength(1);
+      expect((await screen.findByRole("alert")).textContent).toMatch(/Sem permissão.*desfeita/);
+      await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
+      expect(cartoes("2026-09-24")).toHaveLength(0);
+    });
+
+    it("setas ←/→ num card de prazo movem um dia (alternativa ao arrasto) e o foco continua nele", async () => {
+      atualizarTarefa.mockResolvedValue({ id: "a" });
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Aberta")] });
+      const botao = await waitFor(() => { const b = coluna("2026-09-21").querySelector<HTMLElement>("[data-item^='plano:'] button"); expect(b).toBeTruthy(); return b!; });
+      fireEvent.keyDown(botao, { key: "ArrowRight" });
+      expect(cartoes("2026-09-22")).toHaveLength(1);
+      expect(document.activeElement).toBe(coluna("2026-09-22").querySelector("[data-item^='plano:'] button")); // antes da recarga do servidor (o mock devolve os dados antigos)
+      await waitFor(() => expect(atualizarTarefa).toHaveBeenCalledWith("a", { due_date: "2026-09-22" }));
+    });
+
+    it("tarefa com hora marcada (bloco) não muda de dia aqui", async () => {
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("g", "Reunião", { scheduled_at: "2026-09-22T13:00:00Z", due_date: null })] });
+      const cartao = await waitFor(() => { const c = coluna("2026-09-22").querySelector<HTMLElement>("[data-item='plano:bloco:g']"); expect(c).toBeTruthy(); return c!; });
+      expect(cartao.textContent).toContain("10:00");
+      fireEvent.keyDown(cartao.querySelector("button")!, { key: "ArrowRight" });
+      expect(atualizarTarefa).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("painel de tarefas sem prazo", () => {
+    const SEM_PRAZO = [t("s1", "Sem prazo alta", { due_date: null, prioridade: "alta", tags: ["casa"] }), t("s2", "Sem prazo baixa", { due_date: null, prioridade: "baixa" })];
+    const linhaPainel = (id: string) => document.querySelector<HTMLElement>(`[data-painel-tarefa="${id}"]`);
+
+    it("lista só as tarefas sem prazo nem bloco, com a mais prioritária primeiro", async () => {
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [...SEM_PRAZO, t("com", "Com prazo")] });
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      expect(linhaPainel("com")).toBeNull();
+      expect([...document.querySelectorAll("[data-painel-tarefa]")].map((l) => (l as HTMLElement).dataset.painelTarefa)).toEqual(["s1", "s2"]);
+    });
+
+    it("filtra por prioridade e tag; sem resultado, explica", async () => {
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: SEM_PRAZO });
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      fireEvent.change(screen.getByLabelText("Filtrar por prioridade"), { target: { value: "baixa" } });
+      expect(linhaPainel("s1")).toBeNull();
+      expect(linhaPainel("s2")).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("Filtrar por tag"), { target: { value: "casa" } });
+      expect(screen.getByText(/Nenhuma tarefa sem prazo com esses filtros/)).toBeTruthy();
+    });
+
+    it("vazio: diz que está tudo planejado", async () => {
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("com", "Com prazo")] });
+      expect(await screen.findByText(/Tudo planejado/)).toBeTruthy();
+    });
+
+    it("recolhe e reabre, lembrando a escolha", async () => {
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: SEM_PRAZO });
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Recolher painel de tarefas sem prazo" }));
+      expect(linhaPainel("s1")).toBeNull();
+      expect(localStorage.getItem("ecos:agenda:painel-tarefas")).toBe("fechado");
+      fireEvent.click(screen.getByRole("button", { name: "Abrir painel de tarefas sem prazo" }));
+      expect(linhaPainel("s1")).toBeTruthy();
+    });
+
+    it("arrastar do painel para um dia define o prazo e o dia recalcula a carga na hora", async () => {
+      atualizarTarefa.mockResolvedValue({ id: "s1" });
+      const arrastada = { id: "s1", titulo: "Sem prazo alta", duracaoMin: 120, prioridade: "alta" };
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("s1", "Sem prazo alta", { due_date: null, prioridade: "alta", duration_min: 120 })], capacidadeMin: 480 });
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      expect(carga("2026-09-25").textContent).toContain("0 min / 8 h");
+      const alvo = coluna("2026-09-25");
+      const original = document.elementsFromPoint;
+      document.elementsFromPoint = () => [alvo];
+      try {
+        emitir("mover", 10, 10, arrastada);
+        expect(alvo.className).toContain("ring-cyan");
+        emitir("soltar", 10, 10, arrastada);
+      } finally { document.elementsFromPoint = original; }
+      expect(cartoes("2026-09-25")).toHaveLength(1);
+      expect(carga("2026-09-25").textContent).toContain("2 h / 8 h");
+      expect(linhaPainel("s1")).toBeNull(); // saiu do painel
+      await waitFor(() => expect(atualizarTarefa).toHaveBeenCalledWith("s1", { due_date: "2026-09-25" }));
+    });
+
+    it("se o servidor recusar o prazo, a tarefa volta ao painel", async () => {
+      atualizarTarefa.mockRejectedValue(new ApiError("FORBIDDEN", "Sem permissão.", 403));
+      await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: SEM_PRAZO });
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      fireEvent.change(screen.getByLabelText("Mover Sem prazo alta para"), { target: { value: "2026-09-25" } });
+      expect(linhaPainel("s1")).toBeNull();
+      await screen.findByRole("alert");
+      await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
+      expect(cartoes("2026-09-25")).toHaveLength(0);
+    });
+  });
+});
+
+describe("prazo levado a um horário (visão de semana) vira bloco de tempo", () => {
+  beforeEach(() => simularLayout());
+  it("soltar a marca de prazo numa hora cria um bloco com a duração da tarefa, e a tarefa não é atualizada", async () => {
+    criarBloco.mockResolvedValue({ id: "novo" });
+    const prazo: TarefaResumo = { ...TAREFA_AGENDADA, id: "t2", titulo: "Entregar o relatório", scheduled_at: null, due_date: "2026-09-22", duration_min: 90, prioridade: "alta" };
+    await abrirAgenda({ tarefasDoServidor: [prazo], blocos: [] });
+    const marca = await waitFor(() => { const m = item("prazo:t2"); expect(m).toBeTruthy(); return m!; });
+    fireEvent.pointerDown(marca, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 250, clientY: 180 });
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: "mouse", clientX: 450, clientY: yDe(300) });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse", clientX: 450, clientY: yDe(300) });
+    await waitFor(() => expect(criarBloco).toHaveBeenCalledWith("t2", { tipo: "planejado", inicio_em: "2026-09-23T08:00:00.000Z", duracao_min: 90 }));
+    expect(atualizarTarefa).not.toHaveBeenCalled();
+    expect(item("prazo:t2")).toBeTruthy(); // o prazo continua onde estava
+  });
+});
+
+
+describe('faixa "O dia todo" na Agenda (semana)', () => {
+  const prazo = (id: string, titulo: string): TarefaResumo => ({ ...TAREFA_AGENDADA, id, titulo, scheduled_at: null, due_date: "2026-09-22", duration_min: 90, prioridade: "alta" });
+  beforeEach(() => { simularLayout(); localStorage.removeItem(CHAVE_FAIXA_DIA_TODO); });
+  const chipDoDia = () => waitFor(() => { const c = document.querySelector<HTMLElement>("[data-resumo-dia='2026-09-22']"); expect(c).toBeTruthy(); return c!; });
+
+  it("por padrão vem em Resumo e o estado escolhido fica guardado", async () => {
+    await abrirAgenda({ tarefasDoServidor: [prazo("p1", "Um"), prazo("p2", "Dois")], blocos: [] });
+    expect((await chipDoDia()).textContent).toBe("2 prazos · 3 h");
+    fireEvent.click(within(screen.getByRole("group", { name: "Faixa O dia todo" })).getByRole("button", { name: "Todos" }));
+    expect(item("prazo:p1")).toBeTruthy();
+    expect(localStorage.getItem(CHAVE_FAIXA_DIA_TODO)).toBe("todos");
+  });
+
+  it("o estado guardado vale ao abrir a Agenda de novo", async () => {
+    localStorage.setItem(CHAVE_FAIXA_DIA_TODO, "todos");
+    await abrirAgenda({ tarefasDoServidor: [prazo("p1", "Um")], blocos: [] });
+    await waitFor(() => expect(item("prazo:p1")).toBeTruthy());
+    expect(document.querySelector("[data-resumo-dia]")).toBeNull();
+  });
+
+  it("arrastar um prazo da lista do dia para um horário cria o bloco com a duração da tarefa (e não altera a tarefa)", async () => {
+    criarBloco.mockResolvedValue({ id: "novo" });
+    await abrirAgenda({ tarefasDoServidor: [prazo("p1", "Entregar relatório")], blocos: [] });
+    fireEvent.click(await chipDoDia());
+    const origem = within(document.querySelector<HTMLElement>("[data-lista-dia-todo]")!).getByRole("button", { name: /Entregar relatório/ });
+    fireEvent.pointerDown(origem, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 250, clientY: 180 });
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: "mouse", clientX: 450, clientY: yDe(300) });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse", clientX: 450, clientY: yDe(300) });
+    await waitFor(() => expect(criarBloco).toHaveBeenCalledWith("p1", { tipo: "planejado", inicio_em: "2026-09-23T08:00:00.000Z", duracao_min: 90 }));
+    expect(atualizarTarefa).not.toHaveBeenCalled();
   });
 });

@@ -110,6 +110,8 @@ export interface ItemAgenda extends Posicao {
   /** Cor livre (#RRGGBB) — quando existe, a grade a usa no lugar de `classe`. */
   corHex?: string;
   concluida: boolean;
+  /** A tarefa não tem `duration_min`: `duracaoMin` é só um valor de exibição e não deve entrar em somas de carga. */
+  semEstimativa?: boolean;
   /** Ainda sendo gravado no servidor (sem id definitivo): fica parado até confirmar. */
   salvando?: boolean;
 }
@@ -128,6 +130,8 @@ export function capacidadesDo(item: Pick<ItemAgenda, "tipo" | "salvando">): Capa
   if (item.salvando) return SEM_CAPACIDADES;
   if (item.tipo === "bloco") return { mover: true, redimensionar: true, diaInteiro: false, remover: true };
   if (item.tipo === "evento") return { mover: true, redimensionar: true, diaInteiro: true, remover: false };
+  // Prazo: arrastá-lo para um horário reserva tempo (cria um bloco); o prazo em si fica onde está. Não vai para "O dia todo" nem se redimensiona.
+  if (item.tipo === "prazo") return { mover: true, redimensionar: false, diaInteiro: false, remover: false };
   return SEM_CAPACIDADES;
 }
 
@@ -141,6 +145,7 @@ export function capacidadesDo(item: Pick<ItemAgenda, "tipo" | "salvando">): Capa
 export function itensDaTarefa(t: TarefaResumo, { mostrarPrazos }: { mostrarPrazos: boolean }): ItemAgenda[] {
   const base = { id: t.id, titulo: t.titulo, concluida: t.status === "concluida", classe: t.prioridade === "alta" ? "bg-error/15 text-error" : "bg-cyan/15 text-cyan" };
   const duracaoMin = t.duration_min && t.duration_min > 0 ? t.duration_min : DURACAO_SEM_DADO_MIN;
+  const marcaEstimativa = t.duration_min && t.duration_min > 0 ? {} : { semEstimativa: true };
   const itens: ItemAgenda[] = [];
   let diaAgendado: string | null = null;
   if (t.scheduled_at) {
@@ -149,7 +154,7 @@ export function itensDaTarefa(t: TarefaResumo, { mostrarPrazos }: { mostrarPrazo
     itens.push({ ...base, chave: `tarefa:${t.id}`, tipo: "tarefa", dia, inicioMin: minutos, duracaoMin, ...(mostrarPrazos && t.due_date === dia ? { comPrazo: true } : {}) });
   }
   if (mostrarPrazos && t.due_date && t.due_date !== diaAgendado) {
-    itens.push({ ...base, chave: `prazo:${t.id}`, tipo: "prazo", dia: t.due_date, inicioMin: null, duracaoMin, classe: "bg-warning/15 text-warning" });
+    itens.push({ ...base, chave: `prazo:${t.id}`, tipo: "prazo", dia: t.due_date, inicioMin: null, duracaoMin, classe: "bg-warning/15 text-warning", ...marcaEstimativa });
   }
   return itens;
 }

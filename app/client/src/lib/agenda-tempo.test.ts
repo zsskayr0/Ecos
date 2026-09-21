@@ -132,10 +132,10 @@ describe("tarefa -> itens da grade (agendamento × prazo)", () => {
     expect(itensDaTarefa(tarefa({ due_date: "2026-09-21", prioridade: "alta" }), com)[0].classe).toContain("warning");
   });
 
-  it("marca de prazo e agendamento não são movíveis: a Agenda nunca muda a data de uma tarefa", () => {
-    for (const i of itensDaTarefa(tarefa({ scheduled_at: "2026-09-21T13:00:00Z", due_date: "2026-09-25" }), com)) {
-      expect(capacidadesDo(i)).toEqual({ mover: false, redimensionar: false, diaInteiro: false, remover: false });
-    }
+  it("o agendamento não é movível (só o bloco de tempo é); a marca de prazo só pode ser levada a um horário, onde vira bloco", () => {
+    const [agendada, prazo] = itensDaTarefa(tarefa({ scheduled_at: "2026-09-21T13:00:00Z", due_date: "2026-09-25" }), com);
+    expect(capacidadesDo(agendada)).toEqual({ mover: false, redimensionar: false, diaInteiro: false, remover: false });
+    expect(capacidadesDo(prazo)).toEqual({ mover: true, redimensionar: false, diaInteiro: false, remover: false });
   });
 });
 

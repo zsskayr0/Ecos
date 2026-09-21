@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { EventoLocal } from "@/lib/eventos-locais";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -17,6 +17,7 @@ import { usePreferenciasCalendario } from "@/lib/preferencias-calendario";
 import { AlocarTempoDialog } from "./AlocarTempoDialog";
 import { useEdicaoOtimista } from "@/lib/agenda-otimista";
 import { GradeTempo, type NovaTarefaRapida } from "./GradeTempo";
+import { PlanejamentoQuinzenal } from "./PlanejamentoQuinzenal";
 import { EventoDialog } from "../Eventos/EventoDialog";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAppUI } from "@/lib/ui-context";
@@ -91,6 +92,19 @@ function lerEstadoInicialAgenda(): { modo: ModoAgenda; dia: Date } {
   }
 }
 
+/** O que a Quinzenal muda numa tarefa: o prazo (mover entre dias) e/ou o status (checkbox do card). */
+interface PayloadTarefa {
+  due_date?: string | null;
+  status?: "pendente" | "concluida";
+}
+
+function aplicarPayloadNaTarefa(t: TarefaResumo, p: PayloadTarefa): TarefaResumo {
+  const novo = { ...t };
+  if (p.due_date !== undefined) novo.due_date = p.due_date;
+  if (p.status) { novo.status = p.status; novo.concluida_em = p.status === "concluida" ? new Date().toISOString() : null; }
+  return novo;
+}
+
 interface Capacidade {
   disponivel_producao_min: number;
   consumido_tarefas_min: number;
@@ -153,6 +167,9 @@ export function AgendaScreen() {
   const [blocos, setBlocos] = useState<TarefaResumo[] | null>(null);
   const [itensDoPeriodo, setItensDoPeriodo] = useState<TarefaResumo[]>([]);
   const [concluidasDoPeriodo, setConcluidasDoPeriodo] = useState<TarefaResumo[]>([]);
+  /** Só na Quinzenal: pendentes sem prazo nem bloco (o painel lateral) e a capacidade de produção por dia da semana (0 = domingo). */
+  const [semDataLista, setSemDataLista] = useState<TarefaResumo[]>([]);
+  const [capacidadesSemana, setCapacidadesSemana] = useState<ReadonlyMap<number, number>>(new Map());
   /** Tempo alocado a tarefas no calendário (blocos). Não confundir com `blocos`, a lista de tarefas do dia do popup. */
   const [blocosDeTempo, setBlocosDeTempo] = useState<BlocoPlanejado[]>([]);
   const [alocarAberto, setAlocarAberto] = useState(false);
@@ -238,6 +255,37 @@ export function AgendaScreen() {
   }, [modo, dataPeriodo, versao, espaco]);
   const concluidasNoDia = concluidasPorDia(concluidasDoPeriodo);
 
+  // Quinzenal: o painel lateral lista as pendentes que ainda não têm prazo nem bloco (a listagem por data não as traz).
+  useEffect(() => {
+    if (modo !== "quinzenal") return;
+    let vivo = true;
+    tarefasApi.listar({ status: "pendente", espaco, limit: 500 }).then((r) => { if (vivo) setSemDataLista(r.items.filter((t) => !t.due_date && !t.scheduled_at)); }).catch(() => { if (vivo) setSemDataLista([]); });
+    return () => { vivo = false; };
+  }, [modo, versao, espaco]);
+
+  // Capacidade de produção só depende do dia da SEMANA (é a soma dos blocos da Rotina), então 7 consultas cobrem os 14 dias.
+  // Sem Rotina, ou num servidor que ainda não envia o total, o mapa fica vazio e a carga aparece sem o "/ capacidade".
+  const inicioQuinzena = limitesDoPeriodo("quinzenal", diaAtual).de;
+  useEffect(() => {
+    if (modo !== "quinzenal" || semRotina) { setCapacidadesSemana(new Map()); return; }
+    let vivo = true;
+    const [ano, mes, dia] = inicioQuinzena.split("-").map(Number);
+    const tz = -new Date(ano, mes - 1, dia, 12).getTimezoneOffset();
+    const amostra = Array.from({ length: 7 }, (_, i) => somarDiasISO(inicioQuinzena, i));
+    Promise.allSettled(amostra.map((d) => tarefasApi.capacidade(d, tz))).then((resultados) => {
+      if (!vivo) return;
+      const mapa = new Map<number, number>();
+      resultados.forEach((r, i) => { if (r.status === "fulfilled" && typeof r.value.disponivel_producao_total_min === "number") mapa.set(meioDiaLocal(amostra[i]).getDay(), r.value.disponivel_producao_total_min); });
+      setCapacidadesSemana(mapa);
+    });
+    return () => { vivo = false; };
+  }, [modo, inicioQuinzena, semRotina]);
+  const diasDaQuinzena = useMemo(() => Array.from({ length: 14 }, (_, i) => somarDiasISO(inicioQuinzena, i)), [inicioQuinzena]);
+  const tarefasDoPlano = useMemo(() => {
+    const ids = new Set(itensDoPeriodo.map((t) => t.id));
+    return [...itensDoPeriodo, ...semDataLista.filter((t) => !ids.has(t.id))];
+  }, [itensDoPeriodo, semDataLista]);
+
   // Blocos de tempo do período (só as visões de horário os desenham). Mesma margem de 1 dia: o corte de dia do servidor usa o fuso de um único dia.
   useEffect(() => {
     const tempo = modo === "dia" || modo === "tres_dias" || modo === "semana" || modo === "quinzenal";
@@ -278,6 +326,29 @@ export function AgendaScreen() {
     atrasoMs: 350,
   });
 
+  // Quinzenal: mover uma tarefa para um dia define o PRAZO (`due_date`) — nunca o bloco de tempo. Mesma regra otimista dos blocos:
+  // muda na hora, o PATCH vai depois e, se falhar, a tarefa volta ao último estado confirmado e a pessoa é avisada.
+  const tarefasDoPlanoRef = useRef(tarefasDoPlano);
+  tarefasDoPlanoRef.current = tarefasDoPlano;
+  const { editar: editarTarefa } = useEdicaoOtimista<TarefaResumo, PayloadTarefa>({
+    itens: tarefasDoPlano,
+    setItens: (atualizar) => {
+      const novas = atualizar(tarefasDoPlanoRef.current);
+      tarefasDoPlanoRef.current = novas;
+      // Quem ganha prazo sai do painel para o calendário (e vice-versa): as duas listas se separam pela presença de data.
+      setItensDoPeriodo(novas.filter((t) => t.due_date || t.scheduled_at));
+      setSemDataLista(novas.filter((t) => !t.due_date && !t.scheduled_at));
+    },
+    salvar: async (id, payload) => {
+      if (payload.due_date !== undefined) await tarefasApi.atualizar(id, { due_date: payload.due_date });
+      if (payload.status) await tarefasApi.atualizarStatus(id, payload.status);
+    },
+    aplicar: aplicarPayloadNaTarefa,
+    aoConfirmar: notificar,
+    aoFalhar: (e) => setAvisoMover(e instanceof ApiError ? `${e.message} A mudança foi desfeita.` : "Não foi possível salvar a mudança. Ela foi desfeita."),
+    atrasoMs: 350,
+  });
+
   function moverItem(item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") {
     if (item.tipo === "evento") {
       const evento = eventosLocais.find((e) => String(e.id) === item.id);
@@ -287,6 +358,13 @@ export function AgendaScreen() {
       moverEventoNoServidor(evento.servidorId, destino, evento.ocorrencia)
         .then(() => notificar())
         .catch((e) => setAvisoMover(e instanceof ApiError ? `${e.message} A mudança foi desfeita.` : "Não foi possível mover o evento. A mudança foi desfeita."));
+      return;
+    }
+    if (item.tipo === "prazo") {
+      // Prazo solto num horário vira bloco de tempo; o prazo continua onde estava. Solto fora de um horário, nada acontece.
+      if (destino.inicioMin === null) return;
+      const tarefa = itensDoPeriodo.find((t) => t.id === item.id);
+      void alocarTarefa({ id: item.id, titulo: item.titulo, duracaoMin: tarefa?.duration_min ?? null, prioridade: tarefa?.prioridade }, { ...destino, duracaoMin: duracaoParaAlocar(tarefa?.duration_min) });
       return;
     }
     if (item.tipo !== "bloco") return; // tarefa com data própria: a Agenda não a move
@@ -368,7 +446,21 @@ export function AgendaScreen() {
       {modo === "mes" && (
         <VisaoMes onAbrirItem={abrirItemAgenda} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} eventos={eventosLocais} concluidas={concluidasNoDia} onSelecionar={selecionarDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
       )}
-      {(modo === "tres_dias" || modo === "semana" || modo === "quinzenal") && (
+      {modo === "quinzenal" && (
+        <PlanejamentoQuinzenal
+          dias={diasDaQuinzena}
+          hoje={paraISO(hoje)}
+          rotulo={`${meioDiaLocal(inicioQuinzena).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${meioDiaLocal(diasDaQuinzena[13]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`}
+          acoes={<AcoesAgenda modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onAlocar={() => setAlocarAberto(true)} />}
+          tarefas={tarefasDoPlano}
+          capacidades={capacidadesSemana}
+          onAbrirTarefa={(t, e) => abrirDocumento(`/tarefa/${t.id}`, e.type === "click" ? (e as MouseEvent<HTMLElement>) : undefined)}
+          onConcluir={(t, concluida) => editarTarefa(t.id, { status: concluida ? "concluida" : "pendente" })}
+          onDefinirPrazo={(t, dia) => editarTarefa(t.id, { due_date: dia })}
+          onSelecionarDia={(dia, alvo) => selecionarDia(meioDiaLocal(dia), alvo)}
+        />
+      )}
+      {(modo === "tres_dias" || modo === "semana") && (
         <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />
       )}
       {modo === "dia" && <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />}
