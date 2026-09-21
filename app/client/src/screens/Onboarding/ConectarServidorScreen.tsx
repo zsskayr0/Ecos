@@ -15,7 +15,7 @@ const PROFUNDIDADE: Record<Passo, number> = { "boas-vindas": 0, local: 1, endere
 export function useFluxoConectar() {
   const [passo, setPassoBruto] = useState<Passo>("boas-vindas");
   const [direcao, setDirecao] = useState<"avancar" | "voltar">("avancar");
-  /** "Neste computador" reusa a tela de endereço, já preenchida e testando `127.0.0.1:7023` sozinha —
+  /** "Neste computador" reusa a tela de endereço, já preenchida e testando `127.0.0.1:4090` sozinha —
    * mesmo teste nos dois casos, uma coisa a menos pra digitar errado. */
   const [valorInicial, setValorInicial] = useState<string | null>(null);
   function ir(proximo: Passo) {
@@ -46,7 +46,7 @@ export function ConectarServidorScreen({ fluxo }: { fluxo: FluxoConectar }) {
       {passo === "local" && (
         <Local
           onEscolherLocal={() => {
-            setValorInicial("127.0.0.1:7023");
+            setValorInicial("127.0.0.1:4090");
             ir("endereco");
           }}
           onEscolherRede={() => {
@@ -92,7 +92,7 @@ function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolhe
           <OpcaoLocal
             Icon={Monitor}
             titulo="Neste computador"
-            desc="O ecos-app roda aqui mesmo, na porta 7023."
+            desc="O ecos-app roda aqui mesmo, na porta 4090."
             onClick={onEscolherLocal}
           />
         )}
