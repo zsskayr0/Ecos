@@ -153,7 +153,7 @@ function NoteDetailMobile() {
     <div className="ecos-detail-page min-w-0">
       <DetailHeader onBack={() => navigate(-1)} actions={<>
         {!editando && <button type="button" onClick={entrarEdicao} className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} />Editar</button>}
-        {editando && <button type="button" disabled={salvando || enviandoAnexo} onClick={() => setEditando(false)} className={`${DETAIL_ACTION} text-text-secondary`}>Cancelar</button>}
+        {editando && <button type="button" disabled={salvando || enviandoAnexo} onClick={salvar} className={`${DETAIL_ACTION} text-steel-300`}>Concluir</button>}
         <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
       </>} />
       <div className="ecos-detail-content">

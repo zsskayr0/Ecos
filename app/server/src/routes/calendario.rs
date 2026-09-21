@@ -245,17 +245,18 @@ pub async fn sincronizar(State(state): State<AppState>, Extension(usuario): Exte
 pub async fn desconectar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(provider): Path<String>) -> AppResult<Json<serde_json::Value>> {
     // Tarefas nunca são apagadas: o vínculo `evento_externo` delas só some no reindex, a partir do `.md`.
     let (usuario_id, prov) = (usuario.0.clone(), provider.clone());
-    let refresh: Option<Vec<u8>> = state
+    let conexao: Option<(Option<Vec<u8>>, Option<String>)> = state
         .db
         .with(move |conn| {
-            let r = conn.query_row("SELECT refresh_token_encrypted FROM config_calendario WHERE usuario_id = ?1 AND provider = ?2", params![usuario_id, prov], |r| r.get(0)).optional()?;
+            let r = conn.query_row("SELECT refresh_token_encrypted, calendar_id FROM config_calendario WHERE usuario_id = ?1 AND provider = ?2", params![usuario_id, prov], |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?, r.get::<_, Option<String>>(1)?))).optional()?;
             conn.execute("DELETE FROM config_calendario WHERE usuario_id = ?1 AND provider = ?2", params![usuario_id, prov])?;
-            Ok(r.flatten())
+            Ok(r)
         })
         .await?;
     if provider == "google" {
         // Os eventos ficam no Ecos, sem vínculo e privados; só a conexão some.
-        let soltos = sync::desvincular_eventos(&state).await.map_err(erro_de_sync)?;
+        let (refresh, calendar_id) = conexao.unwrap_or((None, None));
+        let soltos = sync::desvincular_eventos(&state, &usuario.0, calendar_id.as_deref()).await.map_err(erro_de_sync)?;
         tracing::info!(eventos_desvinculados = soltos, "Google Calendar desconectado");
         if let (Some(cfg), Some(blob)) = (state.config.google.as_ref(), refresh) {
             if let Ok(claro) = Cofre::carregar(&state.config.notes_root).and_then(|c| c.decifrar(&blob)) {

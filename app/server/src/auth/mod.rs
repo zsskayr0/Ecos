@@ -1,7 +1,7 @@
 //! Identidade local da instância (seção 5.1) — sem conta em nuvem, sem
 //! cadastro público. `POST /auth/registrar` só é aceito enquanto não existe
-//! nenhum usuário (primeiro boot); depois disso, novo usuário só entra por
-//! convite explícito de Equipe (seção 11.10).
+//! nenhum usuário (primeiro boot): esse usuário vira administrador. As demais contas são criadas por
+//! quem administra (`crate::admin`), com senha temporária e troca obrigatória no primeiro acesso.
 
 pub mod password;
 pub mod recovery;
@@ -75,23 +75,12 @@ pub struct RegistrarResposta {
 
 fn validar_registro(payload: &RegistrarPayload) -> AppResult<()> {
     let mut campos = Vec::new();
-    if payload.nome_usuario.trim().len() < 3 {
-        campos.push(CampoInvalido {
-            campo: "nome_usuario".into(),
-            motivo: "deve ter ao menos 3 caracteres".into(),
-        });
+    // Sem `trim`: o nome vira login e nome de pasta, então o que foi digitado tem de ser válido como está.
+    if let Err(motivo) = ecos_core::credenciais::validar_nome_usuario(&payload.nome_usuario) {
+        campos.push(CampoInvalido { campo: "nome_usuario".into(), motivo });
     }
-    if payload.senha.len() < 8 {
-        campos.push(CampoInvalido {
-            campo: "senha".into(),
-            motivo: "deve ter ao menos 8 caracteres".into(),
-        });
-    }
-    if payload.senha.chars().any(char::is_whitespace) {
-        campos.push(CampoInvalido {
-            campo: "senha".into(),
-            motivo: "não pode conter espaços".into(),
-        });
+    if let Err(motivo) = ecos_core::credenciais::validar_senha(&payload.senha, Some(&payload.nome_usuario)) {
+        campos.push(CampoInvalido { campo: "senha".into(), motivo });
     }
     if !payload.declara_idade_minima {
         campos.push(CampoInvalido {
@@ -121,7 +110,7 @@ pub async fn registrar(
     let ja_existe: i64 = state.db.with(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
     if ja_existe > 0 {
         return Err(AppError::new(ErrorCode::Conflict)
-            .with_message("Esta instância já tem um usuário registrado. Peça um convite de Equipe."));
+            .with_message("Esta instância já tem um usuário registrado. Peça à pessoa que administra para criar a sua conta."));
     }
 
     let usuario_id = new_id();
@@ -135,7 +124,7 @@ pub async fn registrar(
         .db
         .with(move |conn| {
             conn.execute(
-                "INSERT INTO usuario (id, nome_usuario, nome, senha_hash, recovery_key_hash) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO usuario (id, nome_usuario, nome, senha_hash, recovery_key_hash, papel) VALUES (?1, ?2, ?3, ?4, ?5, 'admin')",
                 rusqlite::params![usuario_id, nome_usuario, nome, senha_hash, recovery_key_hash],
             )?;
             conn.execute(
@@ -194,7 +183,7 @@ pub async fn login(State(state): State<AppState>, headers: HeaderMap, jar: Cooki
         .db
         .with(move |conn| {
             conn.query_row(
-                "SELECT id, senha_hash FROM usuario WHERE nome_usuario = ?1",
+                "SELECT id, senha_hash FROM usuario WHERE nome_usuario = ?1 COLLATE NOCASE",
                 [&nome_usuario],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -306,17 +295,10 @@ pub struct RecuperarSenhaPayload {
 }
 
 pub async fn recuperar_senha(State(state): State<AppState>, Json(payload): Json<RecuperarSenhaPayload>) -> AppResult<Json<serde_json::Value>> {
-    if payload.nova_senha.len() < 8 {
-        return Err(AppError::validation(vec![CampoInvalido {
-            campo: "nova_senha".into(),
-            motivo: "deve ter ao menos 8 caracteres".into(),
-        }]));
-    }
-    if payload.nova_senha.chars().any(char::is_whitespace) {
-        return Err(AppError::validation(vec![CampoInvalido {
-            campo: "nova_senha".into(),
-            motivo: "não pode conter espaços".into(),
-        }]));
+    // O nome de usuário só é conhecido depois de achar a conta pela recovery key: aqui vale a regra geral, e a
+    // checagem "não contém o usuário" é feita logo abaixo, com a conta em mãos.
+    if let Err(motivo) = ecos_core::credenciais::validar_senha(&payload.nova_senha, None) {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nova_senha".into(), motivo }]));
     }
     let frase_normalizada = recovery::normalizar(&payload.recovery_key);
 
@@ -344,27 +326,77 @@ pub async fn recuperar_senha(State(state): State<AppState>, Json(payload): Json<
         return Err(AppError::new(ErrorCode::InvalidCredentials).with_message("Recovery key inválida."));
     };
 
+    let id_consulta = usuario_id.clone();
+    let nome_usuario: String = state.db.with(move |conn| conn.query_row("SELECT nome_usuario FROM usuario WHERE id = ?1", [&id_consulta], |r| r.get(0))).await?;
+    if let Err(motivo) = ecos_core::credenciais::validar_senha(&payload.nova_senha, Some(&nome_usuario)) {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nova_senha".into(), motivo }]));
+    }
     let nova_senha_hash = password::hash(&payload.nova_senha)?;
+    // A pessoa acabou de escolher a senha: se a conta estava com senha temporária, a troca obrigatória está cumprida.
     state
         .db
-        .with(move |conn| conn.execute("UPDATE usuario SET senha_hash = ?1 WHERE id = ?2", rusqlite::params![nova_senha_hash, usuario_id]))
+        .with(move |conn| conn.execute("UPDATE usuario SET senha_hash = ?1, deve_trocar_senha = 0 WHERE id = ?2", rusqlite::params![nova_senha_hash, usuario_id]))
         .await?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TrocarSenhaPayload {
+    pub senha_atual: String,
+    pub nova_senha: String,
+}
+
+/// `POST /me/senha` — troca a própria senha. Exige a senha atual (uma sessão esquecida aberta não basta). Se a conta
+/// estava com senha temporária, cumpre a troca obrigatória e devolve uma recovery key nova, que só a pessoa vê (a que
+/// existia foi gerada às cegas na criação da conta). As outras sessões da pessoa são encerradas.
+pub async fn trocar_senha(State(state): State<AppState>, Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>, Json(payload): Json<TrocarSenhaPayload>) -> AppResult<Json<serde_json::Value>> {
+    let id = usuario.0.clone();
+    let linha: Option<(String, String, bool)> = state
+        .db
+        .with(move |conn| conn.query_row("SELECT nome_usuario, senha_hash, deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional())
+        .await?;
+    let (nome_usuario, senha_hash_atual, era_temporaria) = linha.ok_or(AppError::new(ErrorCode::NotFound))?;
+    if !password::verify(&payload.senha_atual, &senha_hash_atual) {
+        return Err(AppError::new(ErrorCode::InvalidCredentials).with_message("A senha atual não confere."));
+    }
+    if payload.nova_senha == payload.senha_atual {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nova_senha".into(), motivo: "deve ser diferente da senha atual".into() }]));
+    }
+    if let Err(motivo) = ecos_core::credenciais::validar_senha(&payload.nova_senha, Some(&nome_usuario)) {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nova_senha".into(), motivo }]));
+    }
+    let nova_hash = password::hash(&payload.nova_senha)?;
+    let nova_recovery = era_temporaria.then(recovery::gerar);
+    let nova_recovery_hash = nova_recovery.as_deref().map(|k| password::hash(&recovery::normalizar(k))).transpose()?;
+    let id = usuario.0.clone();
+    state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("UPDATE usuario SET senha_hash = ?1, deve_trocar_senha = 0 WHERE id = ?2", rusqlite::params![nova_hash, id])?;
+            if let Some(h) = nova_recovery_hash {
+                tx.execute("UPDATE usuario SET recovery_key_hash = ?1 WHERE id = ?2", rusqlite::params![h, id])?;
+            }
+            tx.commit()
+        })
+        .await?;
+    tracing::info!(usuario = %usuario.0, temporaria = era_temporaria, "senha trocada");
+    Ok(Json(serde_json::json!({ "ok": true, "recovery_key": nova_recovery })))
 }
 
 // --- Perfil (seção 11.2) ---------------------------------------------
 
 pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
     let usuario_id = usuario.0.clone();
-    let linha: Option<(String, Option<String>)> = state
+    let linha: Option<(String, Option<String>, String, bool)> = state
         .db
         .with({
             let usuario_id = usuario_id.clone();
-            move |conn| conn.query_row("SELECT nome_usuario, nome FROM usuario WHERE id = ?1", [&usuario_id], |r| Ok((r.get(0)?, r.get(1)?))).optional()
+            move |conn| conn.query_row("SELECT nome_usuario, nome, papel, deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&usuario_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional()
         })
         .await?;
-    let (nome_usuario, nome) = linha.ok_or(AppError::new(ErrorCode::NotFound))?;
+    let (nome_usuario, nome, papel, deve_trocar_senha) = linha.ok_or(AppError::new(ErrorCode::NotFound))?;
 
     let equipes: Vec<serde_json::Value> = state
         .db
@@ -395,6 +427,8 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
     Ok(Json(serde_json::json!({
         "id": usuario_id,
         "nome_usuario": nome_usuario,
+        "papel": papel,
+        "deve_trocar_senha": deve_trocar_senha,
         "termos_pendente": !termos_aceitos,
         "termos_versao": TERMOS_VERSAO,
         "nome": nome,
@@ -445,17 +479,14 @@ pub struct AtualizarPerfilPayload {
 }
 
 pub async fn atualizar_perfil(State(state): State<AppState>, Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>, Json(payload): Json<AtualizarPerfilPayload>) -> AppResult<Json<serde_json::Value>> {
-    if let Some(nome_usuario) = payload.nome_usuario {
-        if nome_usuario.trim().len() < 3 {
-            return Err(AppError::validation(vec![CampoInvalido { campo: "nome_usuario".into(), motivo: "deve ter ao menos 3 caracteres".into() }]));
+    // O nome de usuário é a identidade estável da pessoa (login e nome da pasta dela em disco): não muda depois do
+    // cadastro. Reenviar o mesmo valor é aceito (clientes antigos), qualquer outro é recusado.
+    if let Some(pedido) = payload.nome_usuario {
+        let id = usuario.0.clone();
+        let atual: Option<String> = state.db.with(move |conn| conn.query_row("SELECT nome_usuario FROM usuario WHERE id = ?1", [&id], |r| r.get(0)).optional()).await?;
+        if atual.as_deref() != Some(pedido.trim()) {
+            return Err(AppError::validation(vec![CampoInvalido { campo: "nome_usuario".into(), motivo: "o nome de usuário não pode ser alterado".into() }]));
         }
-        state
-            .db
-            .with({
-                let usuario_id = usuario.0.clone();
-                move |conn| conn.execute("UPDATE usuario SET nome_usuario = ?1 WHERE id = ?2", rusqlite::params![nome_usuario, usuario_id])
-            })
-            .await?;
     }
     if let Some(nome) = payload.nome {
         state
@@ -520,7 +551,7 @@ pub(crate) mod testes {
 
     #[tokio::test]
     async fn cadastro_sem_declarar_a_idade_e_recusado_e_nao_cria_conta() {
-        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123", "aceita_termos": true })).await;
+        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "Vq7-lampada-Pato-42", "aceita_termos": true })).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(total_usuarios(&state).await, 0);
         assert_eq!(contar(&state, "idade_minima", "18").await, 0);
@@ -528,7 +559,7 @@ pub(crate) mod testes {
 
     #[tokio::test]
     async fn cadastro_sem_aceitar_os_termos_e_recusado_e_nao_cria_conta() {
-        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true })).await;
+        let (status, state) = registrar_via_http(serde_json::json!({ "nome_usuario": "diogo", "senha": "Vq7-lampada-Pato-42", "declara_idade_minima": true })).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(total_usuarios(&state).await, 0);
         assert_eq!(contar(&state, "termos", TERMOS_VERSAO).await, 0);
@@ -537,13 +568,34 @@ pub(crate) mod testes {
     #[tokio::test]
     async fn cadastro_completo_grava_idade_e_termos_com_a_versao_vigente() {
         let (status, state) = registrar_via_http(serde_json::json!({
-            "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true, "aceita_termos": true
+            "nome_usuario": "diogo", "senha": "Vq7-lampada-Pato-42", "declara_idade_minima": true, "aceita_termos": true
         })).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(contar(&state, "idade_minima", "18").await, 1);
         assert_eq!(contar(&state, "termos", TERMOS_VERSAO).await, 1);
         let data: String = state.db.with(|c| c.query_row("SELECT aceito_em FROM consentimento WHERE tipo = 'termos'", [], |r| r.get(0))).await.unwrap();
         assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cadastro_recusa_usuario_e_senha_fora_da_politica_e_nao_cria_conta() {
+        let base = |usuario: &str, senha: &str| serde_json::json!({ "nome_usuario": usuario, "senha": senha, "declara_idade_minima": true, "aceita_termos": true });
+        let boa = "Vq7-lampada-Pato-42";
+        for (usuario, senha, campo) in [
+            ("joão", boa, "nome_usuario"),                     // acento
+            ("com espaço", boa, "nome_usuario"),               // espaço
+            ("../etc", boa, "nome_usuario"),                   // caminho
+            ("Admin", boa, "nome_usuario"),                    // reservado
+            ("ab", boa, "nome_usuario"),                       // curto
+            ("diogo", "curta-1A", "senha"),                    // menos de 12
+            ("diogo", "com espaco no meio 1A", "senha"),       // espaço na senha
+            ("diogo", "Senha@123456789", "senha"),             // senha comum
+            ("diogo", "xx-diogo-Pato-42-xx", "senha"),         // contém o usuário
+        ] {
+            let (status, state) = registrar_via_http(base(usuario, senha)).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{usuario:?} / {senha:?}");
+            assert_eq!(total_usuarios(&state).await, 0, "{campo}: não pode ter criado a conta");
+        }
     }
 
     #[tokio::test]

@@ -11,10 +11,14 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import type { Cargo } from "@/lib/types";
 import { definirAvatarEquipeLocal, useAvatarEquipe } from "@/lib/team-avatar";
 import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
+import { obterServidorBaseUrl } from "@/lib/server-config";
+import { QrConvite } from "./QrConvite";
 
 interface Membro {
   usuario_id: string;
   cargo: string;
+  /** Nome de exibição (ou o nome de usuário, se a pessoa não definiu um). */
+  nome?: string;
 }
 
 /**
@@ -167,13 +171,20 @@ export function TeamProfileScreen() {
       )}
 
       {convidarAberto && (
-        <div className="mb-6 flex items-center justify-between rounded-2xl border border-border bg-surface-1 px-4 py-3 ecos-fade-in">
-          <span className="font-mono-value text-sm text-text-primary">{codigoConvite ?? "Gerando..."}</span>
+        <div className="mb-6 rounded-2xl border border-border bg-surface-1 px-4 py-4 ecos-fade-in">
+          {codigoConvite ? (
+            <QrConvite codigo={codigoConvite} base={obterServidorBaseUrl() ?? window.location.origin} />
+          ) : (
+            <span className="font-mono-value text-sm text-text-primary">Gerando...</span>
+          )}
           {codigoConvite && (
-            <button onClick={() => navigator.clipboard?.writeText(codigoConvite)} className="flex items-center gap-1.5 text-xs font-medium text-steel-300">
-              <Copy size={13} />
-              Copiar
-            </button>
+            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+              <span className="font-mono-value text-sm text-text-primary">{codigoConvite}</span>
+              <button onClick={() => navigator.clipboard?.writeText(codigoConvite)} className="flex items-center gap-1.5 text-xs font-medium text-steel-300">
+                <Copy size={13} />
+                Copiar código
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -184,10 +195,10 @@ export function TeamProfileScreen() {
           const souEu = m.usuario_id === perfil?.id;
           return (
             <div key={m.usuario_id} className="flex items-center gap-3 rounded-2xl px-1 py-2.5">
-              <AvatarMembro usuarioId={m.usuario_id} nome={souEu ? nomeExibicao(perfil!) : m.usuario_id} versao={souEu ? perfil!.avatar_atualizado_em : null} />
+              <AvatarMembro usuarioId={m.usuario_id} nome={souEu ? nomeExibicao(perfil!) : m.nome || m.usuario_id} versao={souEu ? perfil!.avatar_atualizado_em : null} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium text-text-primary">
-                  {souEu ? nomeExibicao(perfil!) : <span className="font-mono-value text-sm">{m.usuario_id.slice(0, 10)}…</span>}
+                  {souEu ? nomeExibicao(perfil!) : m.nome || <span className="font-mono-value text-sm">{m.usuario_id.slice(0, 10)}…</span>}
                 </p>
                 {souEu && <p className="text-xs text-text-muted">Você</p>}
               </div>

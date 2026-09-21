@@ -157,12 +157,17 @@ export function AuthScreen() {
               <span className="text-sm font-semibold text-text-primary">Usuário</span>
               <input
                 value={nomeUsuario}
-                onChange={(e) => setNomeUsuario(e.target.value)}
+                onChange={(e) => setNomeUsuario(modo === "registro" ? e.target.value.replace(/[^A-Za-z0-9._-]/g, "") : e.target.value)}
                 className="ecos-input"
                 placeholder="Seu usuário"
                 autoComplete="username"
+                maxLength={32}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus={modo === "login"}
               />
+              {modo === "registro" && <span className="text-xs text-text-muted">De 3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o nome da sua pasta e não poderá ser alterado.</span>}
             </label>
             <label className="flex flex-col gap-2">
               <span className="text-sm font-semibold text-text-primary">Senha</span>
@@ -173,7 +178,7 @@ export function AuthScreen() {
                   onChange={(e) => setSenha(e.target.value.replace(/\s/g, ""))}
                   onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
                   className="ecos-input pr-12"
-                  placeholder="Sua senha (sem espaços)"
+                  placeholder={modo === "registro" ? "Mínimo 12 caracteres, sem espaços" : "Sua senha"}
                   autoComplete={modo === "login" ? "current-password" : "new-password"}
                 />
                 <button
@@ -185,7 +190,7 @@ export function AuthScreen() {
                   {mostrarSenha ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
                 </button>
               </div>
-              {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 8 caracteres.</span>}
+              {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 12 caracteres, sem espaços. Evite senhas comuns e o seu nome de usuário.</span>}
             </label>
 
             {modo === "registro" && (
@@ -216,7 +221,7 @@ export function AuthScreen() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
                   <span>
                     {erroLocal}
-                    {precisaConvite && " Peça um convite de Equipe pra alguém que já tem conta nesta instância."}
+                    {precisaConvite && " Peça à pessoa que administra o Ecos para criar a sua conta."}
                   </span>
                 </div>
               )
@@ -228,7 +233,7 @@ export function AuthScreen() {
                 carregando ||
                 bloqueadoAte !== null ||
                 !nomeUsuario.trim() ||
-                senha.length < (modo === "registro" ? 8 : 1) ||
+                senha.length < (modo === "registro" ? 12 : 1) ||
                 (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade || !aceitaTermos))
               }
               className="mt-1 rounded-2xl bg-text-primary py-3.5 text-center font-body text-[15px] font-semibold text-base transition-opacity disabled:opacity-40"
@@ -242,7 +247,7 @@ export function AuthScreen() {
   );
 }
 
-function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
+export function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
   const { recarregarPerfil } = useAuth();
   const [copiado, setCopiado] = useState(false);
   const [confirmado, setConfirmado] = useState(false);

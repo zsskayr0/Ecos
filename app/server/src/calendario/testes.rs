@@ -388,7 +388,7 @@ async fn incremental_atualiza_renomeia_remove_ignora_repetidos_e_resolve_conflit
     let mut titulos: Vec<&str> = lista.as_array().unwrap().iter().map(|x| x["titulo"].as_str().unwrap()).collect();
     titulos.sort();
     assert_eq!(titulos, ["Alfa v2", "Gama"]);
-    assert!(e.raiz.join("Pessoal/Eventos/Alfa v2.md").is_file() && !e.raiz.join("Pessoal/Eventos/Alfa.md").exists(), "o arquivo acompanha o título");
+    assert!(e.raiz.join("teste/Eventos/Alfa v2.md").is_file() && !e.raiz.join("teste/Eventos/Alfa.md").exists(), "o arquivo acompanha o título");
     let (_, lix) = api(&e, "GET", "/api/v1/lixeira", None).await;
     assert!(lix.as_array().unwrap().iter().any(|i| i["nome"] == "Beta" && i["tipo"] == "evento"), "apagado no Google vai para a lixeira: {lix}");
 
@@ -496,7 +496,7 @@ async fn desconectar_revoga_no_google_e_deixa_os_eventos_privados_e_sem_vinculo(
     assert_eq!(depois.len(), 2, "nenhum evento é apagado ao desconectar");
     assert!(depois.iter().all(|x| x["visibilidade"] == "privado" && x["origem_google"] == false && x["sync_pendente"] == false), "{depois:?}");
     assert!(depois.iter().any(|x| x["id"] == privado["id"]));
-    let arquivo = std::fs::read_to_string(e.raiz.join("Pessoal/Eventos/Do Google.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Do Google.md")).unwrap();
     assert!(!arquivo.contains("google:") && !arquivo.contains("g-a"), "{arquivo}");
 
     assert_eq!(e.mock.lock().unwrap().revogacoes.len(), 1);
@@ -592,7 +592,7 @@ async fn push_cria_no_google_com_fuso_categoria_e_id_do_ecos_e_grava_o_vinculo()
     // Vínculo gravado no .md: o evento agora é do Google e não está mais pendente.
     let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{}", timed["id"].as_str().unwrap()), None).await;
     assert_eq!((d["origem_google"].as_bool(), d["sync_pendente"].as_bool()), (Some(true), Some(false)));
-    let arquivo = std::fs::read_to_string(e.raiz.join("Pessoal/Eventos/Reunião.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Reunião.md")).unwrap();
     assert!(arquivo.contains("event_id: g-novo-") && arquivo.contains("etag:"), "{arquivo}");
 
     // O eco no pull seguinte (mesmo etag) não duplica nem é tratado como mudança.
@@ -637,7 +637,7 @@ async fn push_atualiza_com_if_match_adia_no_412_e_recria_no_404() {
     let r = sincronizar_ok(&e).await;
     assert_eq!((r["enviados_criados"].as_u64(), r["enviados_atualizados"].as_u64()), (Some(1), Some(0)), "{r}");
     assert_eq!(e.mock.lock().unwrap().insercoes.len(), 2);
-    let arquivo = std::fs::read_to_string(e.raiz.join("Pessoal/Eventos/Reunião v3.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Reunião v3.md")).unwrap();
     assert!(arquivo.contains("event_id: g-novo-"), "{arquivo}");
     let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id}"), None).await;
     assert_eq!(d["sync_pendente"], false);
@@ -959,5 +959,72 @@ async fn ao_desconectar_as_excecoes_perdem_o_vinculo_com_o_google() {
     assert_eq!((d["visibilidade"].as_str(), d["origem_google"].as_bool()), (Some("privado"), Some(false)));
     assert_eq!(d["excecoes"][0]["sync_pendente"], false, "nada fica esperando um Google que não está mais lá");
     assert_eq!(d["excecoes"][0]["titulo"], "Só esta", "mas a mudança local continua");
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+/// Segunda pessoa no mesmo servidor, já conectada ao próprio calendário.
+async fn segunda_pessoa(e: &Ambiente_) {
+    let cofre = Cofre::carregar(&e.raiz).unwrap();
+    let (a, r) = (cofre.cifrar(b"at-2").unwrap(), cofre.cifrar(b"rt-2").unwrap());
+    let expira = em_uma_hora();
+    e.state
+        .db
+        .with(move |c| {
+            c.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash) VALUES ('usuario-2', 'thaty', 'x', 'x')", [])?;
+            c.execute(
+                "INSERT INTO config_calendario (usuario_id, provider, access_token_encrypted, refresh_token_encrypted, calendar_id, conectado_em, email, fuso, access_expira_em) \
+                 VALUES ('usuario-2', 'google', ?1, ?2, 'ela@gmail.com', datetime('now'), 'ela@gmail.com', 'America/Sao_Paulo', ?3)",
+                rusqlite::params![a, r, expira],
+            )
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn duas_pessoas_no_mesmo_evento_do_google_cada_uma_com_o_seu_e_nada_de_uma_vai_para_a_agenda_da_outra() {
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await;
+    segunda_pessoa(&e).await;
+
+    // Os dois foram convidados para o mesmo evento: o Google devolve o MESMO id nos dois calendários.
+    let convite = || json!({ "items": [ev_hora("g-convite", "Reunião da família", "2026-09-25T13:00:00Z", "2026-09-25T14:00:00Z", "\"e1\"", "2026-09-20T10:00:00Z")], "nextSyncToken": "tok" });
+    e.mock.lock().unwrap().eventos.extend([(200, convite()), (200, convite())]);
+    let a = super::sync::sincronizar(&e.state, "usuario-teste").await.unwrap();
+    let b = super::sync::sincronizar(&e.state, "usuario-2").await.unwrap();
+    assert_eq!((a.criados, b.criados), (1, 1), "cada pessoa cria o seu (a segunda não atualiza o da primeira)");
+    assert!(std::fs::read_dir(e.raiz.join("teste/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
+    assert!(std::fs::read_dir(e.raiz.join("thaty/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
+    let donos: Vec<String> = e.state.db.with(|c| {
+        let mut s = c.prepare("SELECT criado_por FROM evento WHERE google_event_id = 'g-convite' ORDER BY criado_por")?;
+        let v = s.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(v)
+    }).await.unwrap();
+    assert_eq!(donos, vec!["usuario-2", "usuario-teste"]);
+
+    // Um evento novo da primeira pessoa fica pendente; a sincronização da segunda NÃO o manda para o calendário dela.
+    api(&e, "POST", "/api/v1/eventos", Some(evento_json("Só do primeiro", "2026-09-26T13:00:00Z", "2026-09-26T14:00:00Z", json!({})))).await;
+    let b = super::sync::sincronizar(&e.state, "usuario-2").await.unwrap();
+    assert_eq!(b.enviados_criados, 0, "o evento pendente é de outra pessoa");
+    assert!(e.mock.lock().unwrap().insercoes.is_empty());
+    let a = super::sync::sincronizar(&e.state, "usuario-teste").await.unwrap();
+    assert_eq!(a.enviados_criados, 1);
+    assert_eq!(e.mock.lock().unwrap().insercoes.len(), 1);
+
+    // Exclusão pedida no Ecos: só o calendário da dona da conexão a processa.
+    e.state.db.with(|c| c.execute("INSERT INTO evento_exclusao_google (calendar_id, google_event_id, criado_em) VALUES ('ela@gmail.com', 'g-dela', datetime('now'))", [])).await.unwrap();
+    let a = super::sync::sincronizar(&e.state, "usuario-teste").await.unwrap();
+    assert_eq!(a.removidos_no_google, 0);
+    assert!(e.mock.lock().unwrap().delecoes.is_empty(), "o token de uma pessoa nunca apaga no calendário da outra");
+    let b = super::sync::sincronizar(&e.state, "usuario-2").await.unwrap();
+    assert_eq!(b.removidos_no_google, 1);
+
+    // Desconectar a segunda pessoa não mexe nos eventos da primeira.
+    let vinculados_antes: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM evento WHERE criado_por = 'usuario-teste' AND google_event_id IS NOT NULL", [], |r| r.get(0))).await.unwrap();
+    super::sync::desvincular_eventos(&e.state, "usuario-2", Some("ela@gmail.com")).await.unwrap();
+    let vinculados_depois: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM evento WHERE criado_por = 'usuario-teste' AND google_event_id IS NOT NULL", [], |r| r.get(0))).await.unwrap();
+    assert_eq!((vinculados_antes, vinculados_depois), (2, 2));
+    let dela: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM evento WHERE criado_por = 'usuario-2' AND google_event_id IS NOT NULL", [], |r| r.get(0))).await.unwrap();
+    assert_eq!(dela, 0);
     let _ = std::fs::remove_dir_all(&e.raiz);
 }

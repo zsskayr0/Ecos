@@ -9,6 +9,10 @@ export interface Perfil {
   cofre_ativado: boolean;
   avatar_atualizado_em: number | null;
   equipes: { id: string; nome: string; cargo: string }[];
+  /** Quem administra a instância cria as contas das demais pessoas (aba Administração). */
+  papel: "admin" | "usuario";
+  /** Senha temporária: o app só deixa trocar a senha até que isso seja feito. */
+  deve_trocar_senha: boolean;
   /** Vigente diferente da aceita: o app mostra a tela de novo aceite (ver ReaceiteTermos). */
   termos_pendente?: boolean;
   termos_versao?: string;

@@ -78,7 +78,8 @@ pub struct ListarQuery {
 #[derive(Debug, Deserialize)]
 pub struct CriarTimeEntryPayload { pub tipo: String, pub inicio_em: chrono::DateTime<Utc>, pub duracao_min: i64, #[serde(default)] pub foco: String }
 
-pub async fn listar_time_entries(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
+pub async fn listar_time_entries(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    caminho_por_id(&state, &usuario.0, &id).await?;
     let itens = state.db.with(move |conn| {
         let mut stmt = conn.prepare("SELECT id,tipo,inicio_em,fim_em,duracao_min,foco,criado_em FROM tarefa_time_entry WHERE tarefa_id=? ORDER BY inicio_em DESC")?;
         let rows = stmt.query_map([id], |r| Ok(serde_json::json!({
@@ -100,8 +101,8 @@ fn duracao_de_tempo_valida(duracao_min: i64) -> AppResult<()> {
 
 /// Lê o `.md` da Tarefa, deixa `f` mexer no tempo registrado, grava e reindexa. O tempo mora no arquivo (fonte da
 /// verdade): se ficasse só no índice, o `reindexar_tudo` da próxima edição de qualquer item o apagaria.
-async fn editar_tempo<T>(state: &AppState, tarefa_id: &str, f: impl FnOnce(&mut Vec<TempoRegistrado>) -> AppResult<T>) -> AppResult<T> {
-    let caminho_relativo = caminho_por_id(state, tarefa_id).await?;
+async fn editar_tempo<T>(state: &AppState, usuario_id: &str, tarefa_id: &str, f: impl FnOnce(&mut Vec<TempoRegistrado>) -> AppResult<T>) -> AppResult<T> {
+    let caminho_relativo = caminho_por_id(state, usuario_id, tarefa_id).await?;
     let caminho = absoluto(state, &caminho_relativo);
     let bruto = std::fs::read_to_string(&caminho)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
@@ -112,7 +113,7 @@ async fn editar_tempo<T>(state: &AppState, tarefa_id: &str, f: impl FnOnce(&mut 
     Ok(resultado)
 }
 
-pub async fn criar_time_entry(State(state): State<AppState>, Path(tarefa_id): Path<String>, Json(payload): Json<CriarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn criar_time_entry(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(tarefa_id): Path<String>, Json(payload): Json<CriarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
     let tipo = match payload.tipo.as_str() {
         "planejado" => TipoTempo::Planejado,
         "real" => TipoTempo::Real,
@@ -121,7 +122,7 @@ pub async fn criar_time_entry(State(state): State<AppState>, Path(tarefa_id): Pa
     duracao_de_tempo_valida(payload.duracao_min)?;
     let id = new_id();
     let novo = TempoRegistrado { id: id.clone(), tipo, inicio_em: payload.inicio_em, duracao_min: payload.duracao_min, foco: payload.foco, criado_em: Utc::now() };
-    editar_tempo(&state, &tarefa_id, |tempo| { tempo.push(novo); Ok(()) }).await?;
+    editar_tempo(&state, &usuario.0, &tarefa_id, |tempo| { tempo.push(novo); Ok(()) }).await?;
     Ok(Json(serde_json::json!({ "id": id })))
 }
 
@@ -136,11 +137,11 @@ pub struct AtualizarTimeEntryPayload {
 }
 
 /// Move/redimensiona um bloco de tempo. Só mexe no bloco: a data da Tarefa (`scheduled_at`/`due_date`) nunca muda.
-pub async fn atualizar_time_entry(State(state): State<AppState>, Path((tarefa_id, entrada_id)): Path<(String, String)>, Json(payload): Json<AtualizarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar_time_entry(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path((tarefa_id, entrada_id)): Path<(String, String)>, Json(payload): Json<AtualizarTimeEntryPayload>) -> AppResult<Json<serde_json::Value>> {
     if let Some(d) = payload.duracao_min {
         duracao_de_tempo_valida(d)?;
     }
-    editar_tempo(&state, &tarefa_id, |tempo| {
+    editar_tempo(&state, &usuario.0, &tarefa_id, |tempo| {
         let entrada = tempo.iter_mut().find(|t| t.id == entrada_id).ok_or(AppError::new(ErrorCode::NotFound))?;
         if let Some(inicio) = payload.inicio_em {
             entrada.inicio_em = inicio;
@@ -157,8 +158,8 @@ pub async fn atualizar_time_entry(State(state): State<AppState>, Path((tarefa_id
     Ok(Json(serde_json::json!({ "id": entrada_id })))
 }
 
-pub async fn excluir_time_entry(State(state): State<AppState>, Path((tarefa_id, entrada_id)): Path<(String, String)>) -> AppResult<Json<serde_json::Value>> {
-    editar_tempo(&state, &tarefa_id, |tempo| {
+pub async fn excluir_time_entry(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path((tarefa_id, entrada_id)): Path<(String, String)>) -> AppResult<Json<serde_json::Value>> {
+    editar_tempo(&state, &usuario.0, &tarefa_id, |tempo| {
         let antes = tempo.len();
         tempo.retain(|t| t.id != entrada_id);
         if tempo.len() == antes { Err(AppError::new(ErrorCode::NotFound)) } else { Ok(()) }
@@ -179,17 +180,18 @@ pub struct BlocosQuery {
 
 /// Blocos de tempo (com o resumo da Tarefa dona) cujo início cai entre os dois dias, contados no fuso do cliente. É o
 /// que o calendário desenha; não depende da data da Tarefa.
-pub async fn listar_blocos(State(state): State<AppState>, Query(q): Query<BlocosQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
+pub async fn listar_blocos(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<BlocosQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
     let tz_mod = modificador_tz(q.tz);
     let tipo = if q.tipo.as_deref() == Some("real") { "real" } else { "planejado" };
     let (de, ate) = (q.data_de.to_string(), q.data_ate.to_string());
+    let visivel = crate::espacos::visivel_sql("t", &usuario.0);
     let blocos = state
         .db
         .with(move |conn| {
             let sql = format!(
                 "SELECT e.id, e.tarefa_id, e.tipo, e.inicio_em, e.duracao_min, e.foco, t.titulo, t.status, t.prioridade, t.duration_min \
                  FROM tarefa_time_entry e JOIN tarefa t ON t.id = e.tarefa_id \
-                 WHERE e.tipo = ?1 AND date(datetime(e.inicio_em, '{tz_mod}')) >= date(?2) AND date(datetime(e.inicio_em, '{tz_mod}')) <= date(?3) \
+                 WHERE e.tipo = ?1 AND date(datetime(e.inicio_em, '{tz_mod}')) >= date(?2) AND date(datetime(e.inicio_em, '{tz_mod}')) <= date(?3) AND {visivel} \
                  ORDER BY e.inicio_em, e.id"
             );
             let mut stmt = conn.prepare(&sql)?;
@@ -209,7 +211,8 @@ pub async fn listar_blocos(State(state): State<AppState>, Query(q): Query<Blocos
     Ok(Json(blocos))
 }
 
-pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
+pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
+    let visivel = crate::espacos::visivel_sql("t", &usuario.0);
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
     let tz_mod = modificador_tz(q.tz);
@@ -223,7 +226,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                  (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em \
                  FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
-            let mut condicoes = Vec::new();
+            let mut condicoes = vec![visivel.clone()];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(pasta) = &q.pasta {
@@ -343,7 +346,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
-    let raiz = crate::espacos::raiz(&state, &espaco.to_string(), "Tarefas").await?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Tarefas").await?;
     let dir = match pasta_relativa {
         Some(p) => raiz.join(p),
         None => raiz,
@@ -384,11 +388,12 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     })))
 }
 
-async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
+async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
+    let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
-        .with(move |conn| conn.query_row("SELECT caminho_arquivo FROM tarefa WHERE id = ?1", [&id_owned], |r| r.get(0)).optional())
+        .with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM tarefa WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
         .await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
@@ -396,8 +401,8 @@ async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
 /// GAP-11 fechada: antes não existia `GET /tarefas/:id`, só a varredura de
 /// `listar` no cliente. Mesma forma de `notas::obter` — lê o `.md` direto,
 /// devolve front-matter inteiro + corpo.
-pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let fm = doc.front_matter;
@@ -485,8 +490,8 @@ pub struct AtualizarTarefaPayload {
     pub subtarefas: Option<Vec<SubtarefaPayload>>,
 }
 
-pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo_atual = caminho_por_id(&state, &id).await?;
+pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
@@ -527,7 +532,10 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     }
 
     // Trocar de espaço move o arquivo para a árvore do novo espaço (a pasta antiga não existe lá).
-    let raiz_destino = crate::espacos::raiz(&state, &fm.espaco.to_string(), "Tarefas").await?;
+    if fm.espaco.to_string() != espaco_antes {
+        crate::espacos::exigir_acesso(&state, &usuario.0, &fm.espaco.to_string()).await?;
+    }
+    let raiz_destino = crate::espacos::raiz(&state, &crate::espacos::fisica(&fm.espaco.to_string(), &usuario.0), "Tarefas").await?;
     let dir_destino = match payload.pasta.as_deref() {
         Some(p) if !p.is_empty() => raiz_destino.join(p),
         Some(_) => raiz_destino.clone(),
@@ -555,7 +563,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         std::fs::remove_file(&caminho_absoluto_atual)?;
         // A biblioteca de mídia é por espaço: o que o corpo referencia vai junto para o novo espaço.
         if fm.espaco.to_string() != espaco_antes {
-            if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &espaco_antes, &fm.espaco.to_string()) {
+            if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &crate::espacos::fisica(&espaco_antes, &usuario.0), &crate::espacos::fisica(&fm.espaco.to_string(), &usuario.0)) {
                 tracing::warn!(error = %err, "não foi possível levar a mídia para o novo espaço");
             }
         }
@@ -584,7 +592,7 @@ pub struct StatusPayload {
     pub status: String,
 }
 
-pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<StatusPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar_status(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<StatusPayload>) -> AppResult<Json<serde_json::Value>> {
     let novo_status = match payload.status.as_str() {
         "pendente" => TarefaStatus::Pendente,
         "concluida" => TarefaStatus::Concluida,
@@ -595,7 +603,7 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
             }]))
         }
     };
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho_absoluto = absoluto(&state, &caminho_relativo);
     let bruto = std::fs::read_to_string(&caminho_absoluto)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
@@ -608,8 +616,8 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
     Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status, "concluida_em": fm.concluida_em })))
 }
 
-pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let dir_anexos = anexos_dir(&state, &id, &caminho_relativo);
@@ -625,10 +633,10 @@ pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> A
 /// anexada ao final, pra o cliente atualizar o editor sem um segundo round
 /// trip. O `.md` nunca sabe que a referência existe além disso: é texto
 /// comum, editável/removível como qualquer outra linha do corpo.
-pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     // A mídia vai para a biblioteca do espaço onde o item mora.
-    let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| "pessoal".to_string());
+    let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| crate::espacos::fisica("pessoal", &usuario.0));
     let midia = crate::routes::media::enviar_para_biblioteca(&state, &espaco, multipart).await?;
     let referencia_relativa = midia.caminho;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
@@ -656,9 +664,9 @@ pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>,
 /// da sessão já exigida por `rotas_protegidas` (seção 11.1).
 pub async fn obter_anexo(
     State(state): State<AppState>,
-    Path((id, nome_arquivo)): Path<(String, String)>,
+    Extension(usuario): Extension<UsuarioAutenticado>, Path((id, nome_arquivo)): Path<(String, String)>,
 ) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
     if !caminho.is_file() {
         return Err(AppError::new(ErrorCode::NotFound));
@@ -703,17 +711,20 @@ pub struct CapacidadeQuery {
 /// sobreposição minuto a minuto entre blocos/eventos/tarefas — suficiente
 /// pra dar o número consolidado que o front pede, mas não é uma agenda
 /// minuto-exata.
-pub async fn capacidade(State(state): State<AppState>, Query(q): Query<CapacidadeQuery>) -> AppResult<Json<serde_json::Value>> {
+pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<CapacidadeQuery>) -> AppResult<Json<serde_json::Value>> {
     let dia_iso = q.data.weekday().number_from_monday();
     let data_str = q.data.to_string();
     let tz_mod = modificador_tz(q.tz);
 
     let blocos: Vec<(String, String, String, String)> = state
         .db
-        .with(|conn| {
-            let mut stmt = conn.prepare("SELECT hora_inicio, hora_fim, dias_semana, classificacao FROM bloco_rotina")?;
-            let linhas = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
+        .with({
+            let usuario_id = usuario.0.clone();
+            move |conn| {
+            let mut stmt = conn.prepare("SELECT hora_inicio, hora_fim, dias_semana, classificacao FROM bloco_rotina WHERE usuario_id = ?1")?;
+            let linhas = stmt.query_map([&usuario_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
+            }
         })
         .await?;
 
@@ -749,6 +760,7 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
         })
         .await?;
 
+    let visivel = crate::espacos::visivel_sql("", &usuario.0);
     let consumido_tarefas_min: i64 = state
         .db
         .with({
@@ -757,7 +769,7 @@ pub async fn capacidade(State(state): State<AppState>, Query(q): Query<Capacidad
             move |conn| {
                 conn.query_row(
                     &format!("SELECT COALESCE(SUM(duration_min), 0) FROM tarefa \
-                     WHERE status = 'pendente' AND date(datetime(scheduled_at, '{tz_mod}')) = date(?1)"),
+                     WHERE status = 'pendente' AND {visivel} AND date(datetime(scheduled_at, '{tz_mod}')) = date(?1)"),
                     [&data_str],
                     |r| r.get(0),
                 )
@@ -887,7 +899,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(obter(&app, &token, &id).await["duration_min"], 90);
 
         // 6) Persistiu de verdade no arquivo `.md` (fonte da verdade), não só na memória/índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("Pessoal").join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
+        let arquivo = walkdir::WalkDir::new(raiz.join("teste").join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("duration_min: 90"), "front matter: {conteudo}");
         assert!(conteudo.contains("2026-09-25T02:30:00"), "front matter: {conteudo}");
@@ -964,7 +976,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(t["duration_min"], 45);
 
         // 9) Persistiu no `.md` (a fonte da verdade), não só no índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("Pessoal").join("Tarefas")).into_iter().filter_map(Result::ok)
+        let arquivo = walkdir::WalkDir::new(raiz.join("teste").join("Tarefas")).into_iter().filter_map(Result::ok)
             .find(|e| std::fs::read_to_string(e.path()).map_or(false, |c| c.contains("Escrever relatório"))).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("planejado") && conteudo.contains("duracao_min: 90"), "front matter: {conteudo}");

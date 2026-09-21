@@ -140,11 +140,8 @@ impl Config {
         let notes_root: PathBuf = std::env::var("ECOS_NOTES_PATH")
             .unwrap_or_else(|_| "./data/notes".to_string())
             .into();
-        // Layout por espaço: `<Pessoal|Equipe>/{Notas,Tarefas}` (ver `espacos.rs`).
-        // Um vault ainda no layout antigo (`Notas/`, `Tarefas/` na raiz) é migrado no boot.
-        std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Notas"))?;
-        std::fs::create_dir_all(notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas"))?;
-        std::fs::write(notes_root.join(crate::espacos::PESSOAL_DIR).join(crate::espacos::MARCADOR), "pessoal")?;
+        // Layout por espaço: `<login|Equipe>/{Notas,Tarefas}` (ver `espacos.rs`); cada pasta é criada
+        // no primeiro uso. Um vault no layout antigo (`Notas/`, `Tarefas/` ou `Pessoal/` na raiz) é migrado no boot.
         // A mídia é uma biblioteca por espaço (`<Espaço>/src/Media`), criada no primeiro envio.
         // Um `src/` na raiz é do layout antigo e vai para o Pessoal na migração (ver `espacos.rs`).
         std::fs::create_dir_all(notes_root.join(".ecos"))?;

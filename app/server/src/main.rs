@@ -3,6 +3,7 @@
 //! passa por aqui em modo local puro (seção 0.1) — isso é papel do cliente
 //! Tauri (fora de escopo deste binário).
 
+mod admin;
 mod auth;
 mod calendario;
 mod config;
@@ -35,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let db = IndexDb::open(&config.index_db_path)?;
 
     espacos::migrar_legado(&db, &config.notes_root).await?;
+    espacos::migrar_pessoal_por_usuario(&db, &config.notes_root).await?;
     tracing::info!(notes_root = %config.notes_root.display(), "reindexando na inicialização");
     let resultado = db::reindex::reindexar_tudo(&db, &config.notes_root).await?;
     tracing::info!(

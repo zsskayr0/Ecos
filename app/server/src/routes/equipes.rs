@@ -84,7 +84,11 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     Ok(Json(serde_json::json!({ "id": id })))
 }
 
-pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    // Quem não é da equipe (nem administra a instância) não sabe nem que ela existe.
+    if cargo_do_usuario(&state, &id, &usuario.0).await?.is_none() && !crate::admin::e_admin(&state, &usuario.0).await? {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
     let id2 = id.clone();
     let equipe: Option<(String, String)> = state
         .db
@@ -141,16 +145,16 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-/// Só quem é membro da Equipe vê quem participa dela, e só o necessário: o id de cada membro e o cargo.
+/// Só quem é membro da Equipe vê quem participa dela, e só o necessário: o id, o cargo e o nome de exibição (ou, sem ele, o nome de usuário).
 pub async fn listar_membros(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin", "membro"])?;
     let membros: Vec<serde_json::Value> = state
         .db
         .with(move |conn| {
-            let mut stmt = conn.prepare("SELECT usuario_id, cargo FROM membro_equipe WHERE equipe_id = ?1")?;
+            let mut stmt = conn.prepare("SELECT m.usuario_id, m.cargo, COALESCE(NULLIF(TRIM(u.nome), ''), u.nome_usuario) FROM membro_equipe m JOIN usuario u ON u.id = m.usuario_id WHERE m.equipe_id = ?1 ORDER BY u.nome_usuario COLLATE NOCASE")?;
             let linhas = stmt
                 .query_map([&id], |r| {
-                    Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "cargo": r.get::<_, String>(1)? }))
+                    Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "cargo": r.get::<_, String>(1)?, "nome": r.get::<_, String>(2)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -173,6 +177,10 @@ pub async fn trocar_cargo(
     exigir_cargo(&cargo_do_usuario(&state, &equipe_id, &usuario.0).await?, &["dono", "admin"])?;
     if !["dono", "admin", "membro"].contains(&payload.cargo.as_str()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "cargo".into(), motivo: "inválido".into() }]));
+    }
+    // Só quem é dono passa a propriedade (um cargo "admin" da equipe não se promove a dono).
+    if payload.cargo == "dono" && cargo_do_usuario(&state, &equipe_id, &usuario.0).await?.as_deref() != Some("dono") {
+        return Err(AppError::new(ErrorCode::Forbidden));
     }
     state
         .db
@@ -221,7 +229,11 @@ fn gerar_codigo_convite() -> String {
     (0..8).map(|_| rng.sample(rand::distributions::Alphanumeric) as char).collect::<String>().to_uppercase()
 }
 
-pub async fn criar_convite(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+pub async fn criar_convite(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    // Dono e admin da equipe (ou quem administra a instância) geram convites; o convite vira o QR code da equipe.
+    if !crate::admin::e_admin(&state, &usuario.0).await? {
+        exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    }
     let convite_id = new_id();
     let codigo = gerar_codigo_convite();
     let expira_em = (Utc::now() + Duration::days(7)).to_rfc3339();
@@ -243,19 +255,21 @@ pub async fn criar_convite(State(state): State<AppState>, Path(id): Path<String>
 }
 
 pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(codigo): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let convite: Option<(String, String, String)> = state
+    let codigo = codigo.trim().to_uppercase();
+    let convite: Option<(String, String, String, String)> = state
         .db
         .with(move |conn| {
             conn.query_row(
-                "SELECT id, equipe_id, estado FROM convite_equipe WHERE codigo = ?1",
+                "SELECT id, equipe_id, estado, expira_em FROM convite_equipe WHERE codigo = ?1",
                 [&codigo],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()
         })
         .await?;
-    let (convite_id, equipe_id, estado) = convite.ok_or(AppError::new(ErrorCode::NotFound))?;
-    if estado != "pendente" {
+    let (convite_id, equipe_id, estado, expira_em) = convite.ok_or(AppError::new(ErrorCode::NotFound))?;
+    let vencido = chrono::DateTime::parse_from_rfc3339(&expira_em).map(|d| d < Utc::now()).unwrap_or(true);
+    if estado != "pendente" || vencido {
         return Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado ou expirou."));
     }
 

@@ -265,9 +265,24 @@ struct TransacaoResumo {
     criado_em: DateTime<Utc>,
 }
 
+/// Transações no Feed: cada pessoa tem o próprio Cofre, então o ranking lê o de cada uma. Quem está com o Cofre
+/// bloqueado (ou sem Cofre) simplesmente não tem cards de transação até desbloquear.
 async fn recalcular_transacoes(state: &AppState) -> anyhow::Result<()> {
-    let url = format!("{}/vault/transacoes?limit=200", state.config.vault_internal_url);
-    let resposta: ListaTransacoesResposta = state.http.get(url).send().await?.error_for_status()?.json().await?;
+    let usuarios: Vec<String> = state
+        .db
+        .with(|conn| {
+            let mut stmt = conn.prepare("SELECT id FROM usuario")?;
+            let ids = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await?;
+    let mut lidas: Vec<(String, TransacaoResumo)> = Vec::new();
+    for usuario in usuarios {
+        let resposta = crate::routes::vault_proxy::requisicao_interna(state, reqwest::Method::GET, "/vault/transacoes?limit=200", &usuario).await.send().await;
+        let Ok(resposta) = resposta.and_then(|r| r.error_for_status()) else { continue };
+        let Ok(lista) = resposta.json::<ListaTransacoesResposta>().await else { continue };
+        lidas.extend(lista.items.into_iter().map(|t| (usuario.clone(), t)));
+    }
     let agora = Utc::now();
 
     state
@@ -275,12 +290,12 @@ async fn recalcular_transacoes(state: &AppState) -> anyhow::Result<()> {
         .with(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute("DELETE FROM feed_item WHERE tipo = 'transacao'", [])?;
-            for item in &resposta.items {
+            for (usuario_id, item) in &lidas {
                 let score = ecos_core::ranking::boost_transacao(item.criado_em, agora);
                 tx.execute(
-                    "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em) \
-                     VALUES (?1, 'transacao', NULL, ?2, NULL, ?3, ?4)",
-                    params![item.id, score, item.espaco, item.criado_em.to_rfc3339()],
+                    "INSERT INTO feed_item (id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em, usuario_id) \
+                     VALUES (?1, 'transacao', NULL, ?2, NULL, ?3, ?4, ?5)",
+                    params![item.id, score, item.espaco, item.criado_em.to_rfc3339(), usuario_id],
                 )?;
             }
             tx.commit()

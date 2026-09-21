@@ -74,7 +74,7 @@ export function TaskFoldersRootScreen() {
             Nenhuma tarefa criada ainda.
           </p>
         ) : (
-          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada modo={modo} itens={tarefas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada pesquisavel placeholderBusca="Pesquisar em todas as tarefas…" modo={modo} itens={tarefas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

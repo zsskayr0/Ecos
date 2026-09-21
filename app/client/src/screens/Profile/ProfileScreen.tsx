@@ -27,12 +27,9 @@ export function ProfileScreen() {
   const [ocupado, setOcupado] = useState(false);
   const [dialogoEquipe, setDialogoEquipe] = useState<{ tipo: "editar" | "excluir"; id: string; nome: string } | null>(null);
   const [metricas, setMetricas] = useState<{ notas: number; tarefas: number; palavras: number; caracteres: number; primeiraNota: string | null }>({ notas: 0, tarefas: 0, palavras: 0, caracteres: 0, primeiraNota: null });
-  const [nomeUsuario, setNomeUsuario] = useState(perfil?.nome_usuario ?? "");
-  const [salvandoNome, setSalvandoNome] = useState(false);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const { url: urlFoto } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
-  useEffect(() => { if (perfil) setNomeUsuario(perfil.nome_usuario); }, [perfil]);
   useEffect(() => { let vivo = true; Promise.all([notas.listar({ limit: 500 }), tarefas.listar({ limit: 500 })]).then(([paginaNotas, paginaTarefas]) => { if (!vivo) return; const texto = paginaNotas.items.map((nota) => `${nota.titulo} ${nota.corpo}`).join(" "); const primeira = paginaNotas.items.map((nota) => nota.criado_em).sort()[0] ?? null; setMetricas({ notas: paginaNotas.items.length, tarefas: paginaTarefas.items.length, palavras: texto.trim() ? texto.trim().split(/\s+/).length : 0, caracteres: texto.length, primeiraNota: primeira }); }).catch(() => undefined); return () => { vivo = false; }; }, []);
   async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); } finally { setOcupado(false); } }
   async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); } finally { setOcupado(false); } }
@@ -52,18 +49,6 @@ export function ProfileScreen() {
       setMensagemPerfil({ tipo: "erro", texto: e instanceof Error ? e.message : "Não foi possível guardar a imagem." });
     } finally { setSalvandoFoto(false); }
   }
-  async function salvarNomeUsuario() {
-    if (!perfil || salvandoNome || nomeUsuario.trim().length < 3 || nomeUsuario.trim() === perfil.nome_usuario) return;
-    setSalvandoNome(true); setMensagemPerfil(null);
-    try {
-      await auth.atualizarPerfil({ nome_usuario: nomeUsuario.trim() });
-      await recarregarPerfil();
-      setMensagemPerfil({ tipo: "sucesso", texto: "Nome de usuário atualizado." });
-    } catch (e) {
-      setMensagemPerfil({ tipo: "erro", texto: e instanceof ApiError ? e.message : "Não foi possível alterar o nome de usuário." });
-    } finally { setSalvandoNome(false); }
-  }
-
   if (!perfil) return null;
 
   return (

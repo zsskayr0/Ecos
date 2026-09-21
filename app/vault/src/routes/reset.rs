@@ -11,8 +11,10 @@ use chrono::Utc;
 use ecos_core::ErrorCode;
 use serde::Deserialize;
 
+use crate::db::meta::VaultMeta;
 use crate::error::{AppError, AppResult};
 use crate::jobs::backup::nome_arquivo_backup;
+use crate::routes::ativacao::usuario;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +27,9 @@ pub async fn reset(State(state): State<AppState>, Json(payload): Json<ConfirmarP
         return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
     }
 
-    let backup_antes = state.config.backups_dir.join(format!("pre-reset-{}", nome_arquivo_backup(Utc::now())));
+    let pasta = state.config.backups_de(&usuario()?);
+    std::fs::create_dir_all(&pasta)?;
+    let backup_antes = pasta.join(format!("pre-reset-{}", nome_arquivo_backup(Utc::now())));
     state
         .db
         .snapshot_para(&backup_antes)
@@ -44,4 +48,28 @@ pub async fn reset(State(state): State<AppState>, Json(payload): Json<ConfirmarP
         .await?;
 
     Ok(Json(serde_json::json!({ "ok": true, "backup_de_seguranca": backup_antes.file_name().map(|n| n.to_string_lossy().to_string()) })))
+}
+
+/// `POST /vault/excluir` — usado na exclusão da conta: apaga o Cofre **desta pessoa** por inteiro (banco, salt e
+/// backups; sem cópia "pre-reset"). Sem Cofre ativado não há o que apagar; com Cofre trancado, recusa (423): a pessoa
+/// precisa desbloquear para provar que pode. Nunca toca no Cofre de outra pessoa.
+pub async fn excluir_cofre(State(state): State<AppState>, Json(payload): Json<ConfirmarPayload>) -> AppResult<Json<serde_json::Value>> {
+    if payload.confirm != "APAGAR TUDO" {
+        return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
+    }
+    let uid = usuario()?;
+    if VaultMeta::carregar(&state.config.meta_de(&uid))?.is_none() {
+        return Ok(Json(serde_json::json!({ "ok": true, "existia": false })));
+    }
+    if !state.db.esta_destrancado() {
+        return Err(AppError::new(ErrorCode::VaultLocked));
+    }
+    state.db.trancar();
+    for pasta in [state.config.dir_do_usuario(&uid), state.config.backups_de(&uid)] {
+        if pasta.exists() {
+            std::fs::remove_dir_all(&pasta)?;
+        }
+    }
+    tracing::info!(usuario = %uid, "cofre excluído junto com a conta");
+    Ok(Json(serde_json::json!({ "ok": true, "existia": true })))
 }

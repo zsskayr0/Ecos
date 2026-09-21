@@ -250,7 +250,7 @@ async fn executar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str) -> R<R
     }
 
     // Só depois do pull: o que o Google tem de mais novo já foi aplicado e a pendência local que sobrou é a que vale.
-    enviar(state, cfg, &access, &calendar_id, &fuso, &mut resumo).await?;
+    enviar(state, cfg, usuario_id, &access, &calendar_id, &fuso, &mut resumo).await?;
     Ok(resumo)
 }
 
@@ -340,19 +340,21 @@ struct Local {
     pendente: bool,
 }
 
-async fn achar_local(state: &AppState, google_id: &str, ecos_id: Option<&str>) -> R<Option<Local>> {
-    let (g, e) = (google_id.to_string(), ecos_id.map(str::to_string));
+/// Só procura entre os eventos pessoais de `usuario_id`: duas pessoas convidadas para o mesmo evento recebem o mesmo
+/// `event_id` do Google, e cada uma precisa do seu próprio arquivo (não pode atualizar o da outra).
+async fn achar_local(state: &AppState, usuario_id: &str, google_id: &str, ecos_id: Option<&str>) -> R<Option<Local>> {
+    let (g, e, u) = (google_id.to_string(), ecos_id.map(str::to_string), usuario_id.to_string());
     Ok(state
         .db
         .with(move |conn| {
             let colunas = "caminho_arquivo, titulo, google_etag, sync_pendente";
             let mapear = |r: &rusqlite::Row<'_>| Ok(Local { caminho: r.get(0)?, titulo: r.get(1)?, etag: r.get(2)?, pendente: r.get(3)? });
-            if let Some(l) = conn.query_row(&format!("SELECT {colunas} FROM evento WHERE google_event_id = ?1"), [&g], mapear).optional()? {
+            if let Some(l) = conn.query_row(&format!("SELECT {colunas} FROM evento WHERE google_event_id = ?1 AND espaco = 'pessoal' AND criado_por = ?2"), [&g, &u], mapear).optional()? {
                 return Ok(Some(l));
             }
             // Evento nascido no Ecos cujo vínculo com o Google ainda não foi gravado (ou foi perdido ao desconectar).
             match e {
-                Some(ecos) => conn.query_row(&format!("SELECT {colunas} FROM evento WHERE id = ?1 AND google_event_id IS NULL"), [&ecos], mapear).optional(),
+                Some(ecos) => conn.query_row(&format!("SELECT {colunas} FROM evento WHERE id = ?1 AND google_event_id IS NULL AND espaco = 'pessoal' AND criado_por = ?2"), [&ecos, &u], mapear).optional(),
                 None => Ok(None),
             }
         })
@@ -361,7 +363,7 @@ async fn achar_local(state: &AppState, google_id: &str, ecos_id: Option<&str>) -
 
 async fn aplicar(state: &AppState, usuario_id: &str, eventos: &[EventoGoogle], fuso: &str, calendar_id: &str) -> R<ResumoSync> {
     let mut resumo = ResumoSync::default();
-    let dir = crate::espacos::raiz(state, "pessoal", eventos_fs::DIR).await?;
+    let dir = crate::espacos::raiz(state, &crate::espacos::fisica("pessoal", usuario_id), eventos_fs::DIR).await?;
     let categorias = eventos_fs::ler_categorias(&dir);
 
     // Se o mesmo evento aparece mais de uma vez no lote, vale a última versão.
@@ -382,7 +384,7 @@ async fn aplicar(state: &AppState, usuario_id: &str, eventos: &[EventoGoogle], f
         }
         let conv = if ev.cancelado() { None } else { converter(ev, fuso) };
         let ecos_id = ev.extended_properties.as_ref().and_then(|e| e.private.get("ecos_id")).map(String::as_str);
-        let local = achar_local(state, &ev.id, ecos_id).await?;
+        let local = achar_local(state, usuario_id, &ev.id, ecos_id).await?;
 
         if ev.cancelado() {
             if let Some(l) = local {
@@ -485,7 +487,7 @@ async fn aplicar(state: &AppState, usuario_id: &str, eventos: &[EventoGoogle], f
     // Segunda passada: as séries (e o índice delas) já existem, então dá para pendurar as exceções nelas.
     let mut mudou_excecoes = false;
     for ev in excecoes {
-        mudou_excecoes |= aplicar_excecao(state, ev, fuso, calendar_id, &mut resumo).await?;
+        mudou_excecoes |= aplicar_excecao(state, usuario_id, ev, fuso, calendar_id, &mut resumo).await?;
     }
     if mudou_excecoes {
         reindexar_tudo(&state.db, &state.config.notes_root).await?;
@@ -505,9 +507,9 @@ fn original_da(ev: &EventoGoogle, fuso_calendario: &str) -> Option<DateTime<Utc>
 
 /// Uma ocorrência remarcada, editada ou cancelada no Google entra na série (`excecoes:` do `.md`), só com o que mudou.
 /// Mesmo critério de conflito das outras: edição local pendente e mais nova que a do Google é mantida.
-async fn aplicar_excecao(state: &AppState, ev: &EventoGoogle, fuso: &str, calendar_id: &str, resumo: &mut ResumoSync) -> R<bool> {
+async fn aplicar_excecao(state: &AppState, usuario_id: &str, ev: &EventoGoogle, fuso: &str, calendar_id: &str, resumo: &mut ResumoSync) -> R<bool> {
     let Some(mestre_id) = ev.recurring_event_id.as_deref() else { return Ok(false) };
-    let (Some(local), Some(original)) = (achar_local(state, mestre_id, None).await?, original_da(ev, fuso)) else {
+    let (Some(local), Some(original)) = (achar_local(state, usuario_id, mestre_id, None).await?, original_da(ev, fuso)) else {
         resumo.excecoes_ignoradas += 1;
         return Ok(false);
     };
@@ -774,13 +776,14 @@ async fn enviar_excecoes(state: &AppState, cfg: &GoogleConfig, access: &str, cal
     Ok(())
 }
 
-async fn enviar(state: &AppState, cfg: &GoogleConfig, access: &str, calendar_id: &str, fuso: &str, resumo: &mut ResumoSync) -> R<()> {
-    // 1) Exclusões pedidas no Ecos.
+async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: &str, calendar_id: &str, fuso: &str, resumo: &mut ResumoSync) -> R<()> {
+    // 1) Exclusões pedidas no Ecos — só as do calendário desta conexão (a fila é de todos; o token é de uma pessoa só).
+    let cal_atual = calendar_id.to_string();
     let exclusoes: Vec<(String, String)> = state
         .db
-        .with(|conn| {
-            let mut stmt = conn.prepare("SELECT calendar_id, google_event_id FROM evento_exclusao_google ORDER BY criado_em")?;
-            let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+        .with(move |conn| {
+            let mut stmt = conn.prepare("SELECT calendar_id, google_event_id FROM evento_exclusao_google WHERE calendar_id = ?1 ORDER BY criado_em")?;
+            let v = stmt.query_map([&cal_atual], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(v)
         })
         .await?;
@@ -801,14 +804,16 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, access: &str, calendar_id:
     }
 
     // 2) Eventos criados/editados no Ecos (ou tornados privados) que ainda não foram ao Google.
+    // Só os eventos pessoais desta pessoa: nunca os de outra pessoa nem os de equipe vão para este calendário.
+    let dono = usuario_id.to_string();
     let arquivos: Vec<String> = state
         .db
-        .with(|conn| {
+        .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT caminho_arquivo FROM evento WHERE (sync_pendente = 1 AND visibilidade = 'google') OR (visibilidade = 'google' AND excecoes_pendentes > 0) \
-                 OR (visibilidade = 'privado' AND google_event_id IS NOT NULL) ORDER BY atualizado_em",
+                "SELECT caminho_arquivo FROM evento WHERE espaco = 'pessoal' AND criado_por = ?1 AND ((sync_pendente = 1 AND visibilidade = 'google') OR (visibilidade = 'google' AND excecoes_pendentes > 0) \
+                 OR (visibilidade = 'privado' AND google_event_id IS NOT NULL)) ORDER BY atualizado_em",
             )?;
-            let v = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            let v = stmt.query_map([&dono], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             Ok(v)
         })
         .await?;
@@ -861,15 +866,17 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, access: &str, calendar_id:
 
 /// Envia logo (em ~1,5 s) em vez de esperar o próximo ciclo. Várias edições seguidas viram um só envio.
 pub fn agendar_envio(state: &AppState, usuario_id: &str) {
-    static AGENDADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static AGENDADOS: std::sync::Mutex<Option<std::collections::HashSet<String>>> = std::sync::Mutex::new(None);
     let Some(cfg) = &state.config.google else { return };
-    if !cfg.envio_imediato || AGENDADO.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if !cfg.envio_imediato || !AGENDADOS.lock().unwrap().get_or_insert_with(Default::default).insert(usuario_id.to_string()) {
         return;
     }
     let (state, usuario) = (state.clone(), usuario_id.to_string());
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        AGENDADO.store(false, std::sync::atomic::Ordering::SeqCst); // edições feitas durante este envio agendam o seguinte
+        if let Some(agendados) = AGENDADOS.lock().unwrap().as_mut() {
+            agendados.remove(&usuario); // edições feitas durante este envio agendam o seguinte
+        }
         match sincronizar(&state, &usuario).await {
             Ok(_) | Err(SyncErro::NaoConectado) | Err(SyncErro::Desligado) => {}
             Err(e) => tracing::warn!(error = %e, "envio imediato ao Google falhou; o próximo ciclo tenta de novo"),
@@ -878,14 +885,19 @@ pub fn agendar_envio(state: &AppState, usuario_id: &str) {
 }
 
 /// Ao desconectar: os eventos ficam no Ecos, sem vínculo e privados (nada fica esperando um Google que não está mais lá).
-pub async fn desvincular_eventos(state: &AppState) -> R<usize> {
-    // Sem conexão não há para quem enviar: os pedidos de exclusão pendentes perdem o sentido.
-    state.db.with(|conn| conn.execute("DELETE FROM evento_exclusao_google", [])).await?;
+pub async fn desvincular_eventos(state: &AppState, usuario_id: &str, calendar_id: Option<&str>) -> R<usize> {
+    // Sem conexão não há para quem enviar: os pedidos de exclusão pendentes deste calendário perdem o sentido
+    // (os dos calendários de outras pessoas seguem na fila).
+    if let Some(cal) = calendar_id {
+        let cal = cal.to_string();
+        state.db.with(move |conn| conn.execute("DELETE FROM evento_exclusao_google WHERE calendar_id = ?1", [&cal])).await?;
+    }
+    let dono = usuario_id.to_string();
     let caminhos: Vec<String> = state
         .db
-        .with(|conn| {
-            let mut stmt = conn.prepare("SELECT caminho_arquivo FROM evento WHERE google_event_id IS NOT NULL OR visibilidade = 'google'")?;
-            let v = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+        .with(move |conn| {
+            let mut stmt = conn.prepare("SELECT caminho_arquivo FROM evento WHERE espaco = 'pessoal' AND criado_por = ?1 AND (google_event_id IS NOT NULL OR visibilidade = 'google')")?;
+            let v = stmt.query_map([&dono], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             Ok(v)
         })
         .await?;

@@ -1,3 +1,5 @@
+import { AdministracaoScreen } from "@/screens/Settings/AdministracaoScreen";
+import { EntrarEquipeScreen } from "@/screens/Team/EntrarEquipeScreen";
 import { Navigate, Route } from "react-router-dom";
 
 import { FeedScreen } from "@/screens/Feed/FeedScreen";
@@ -105,7 +107,11 @@ export const screenRoutes = (
       <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
       <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
       <Route path="notificacoes" element={<NotificationsScreen />} />
+      <Route path="administracao" element={<AdministracaoScreen />} />
     </Route>
+
+    {/* Destino do QR code de convite de equipe: entra na equipe e abre a página dela. */}
+    <Route path="/entrar/:codigo" element={<EntrarEquipeScreen />} />
 
     <Route path="/ajuda" element={<HelpScreen />} />
 

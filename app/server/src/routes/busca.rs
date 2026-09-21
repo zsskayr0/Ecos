@@ -2,10 +2,11 @@
 //! tipo.
 
 use axum::extract::{Query, State};
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 
 use crate::error::AppResult;
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -16,7 +17,9 @@ pub struct BuscaQuery {
     pub espaco: Option<String>,
 }
 
-pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) -> AppResult<Json<serde_json::Value>> {
+pub async fn buscar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<BuscaQuery>) -> AppResult<Json<serde_json::Value>> {
+    let visivel_nota = crate::espacos::visivel_sql("n", &usuario.0);
+    let visivel_tarefa = crate::espacos::visivel_sql("t", &usuario.0);
     let termo = format!("{}*", q.q.replace('"', "\"\""));
     let incluir_notas = q.tipo.as_deref().map(|t| t == "nota").unwrap_or(true);
     let incluir_tarefas = q.tipo.as_deref().map(|t| t == "tarefa").unwrap_or(true);
@@ -27,12 +30,12 @@ pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) 
         state
             .db
             .with(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare(&format!(
                     "SELECT n.id, n.titulo, n.espaco, snippet(nota_fts, 2, '[', ']', '…', 12) \
                      FROM nota_fts JOIN nota n ON n.id = nota_fts.id \
-                     WHERE nota_fts MATCH ?1 AND (?2 IS NULL OR n.espaco = ?2) \
+                     WHERE nota_fts MATCH ?1 AND (?2 IS NULL OR n.espaco = ?2) AND {visivel_nota} \
                      ORDER BY rank LIMIT 30",
-                )?;
+                ))?;
                 let linhas = stmt
                     .query_map(rusqlite::params![termo, espaco], |r| {
                         Ok(serde_json::json!({
@@ -54,12 +57,12 @@ pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) 
         state
             .db
             .with(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare(&format!(
                     "SELECT t.id, t.titulo, t.espaco, t.status FROM tarefa_fts \
                      JOIN tarefa t ON t.id = tarefa_fts.id \
-                     WHERE tarefa_fts MATCH ?1 AND (?2 IS NULL OR t.espaco = ?2) \
+                     WHERE tarefa_fts MATCH ?1 AND (?2 IS NULL OR t.espaco = ?2) AND {visivel_tarefa} \
                      ORDER BY rank LIMIT 30",
-                )?;
+                ))?;
                 let linhas = stmt
                     .query_map(rusqlite::params![termo, espaco], |r| {
                         Ok(serde_json::json!({

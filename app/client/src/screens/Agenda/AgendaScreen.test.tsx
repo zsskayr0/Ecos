@@ -416,6 +416,48 @@ describe("alocar tempo por diálogo (sem arrastar)", () => {
   });
 });
 
+describe("visão mensal: eventos e tarefas juntos", () => {
+  const celula = (dia: string) => waitFor(() => { const c = document.querySelector<HTMLElement>(`[data-dia-mes='${dia}']`); expect(c).toBeTruthy(); return c!; });
+  const chips = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("button[title]")].map((b) => b.getAttribute("title"));
+
+  it("mostra os eventos do dia antes das tarefas, com horário e na cor do evento", async () => {
+    await abrirAgenda({ modo: "mes", blocos: [], eventos: [
+      ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z", { cor: "#22AA55" }),
+      ev("d1", "Feriado", "2026-09-22T03:00:00Z", "2026-09-23T03:00:00Z", { dia_inteiro: true }),
+    ] });
+    const c = await celula("2026-09-22");
+    await waitFor(() => expect(chips(c)).toEqual(["Feriado", "Almoço", "Reunião de time"])); // dia inteiro, horário, e só então a tarefa
+    const almoco = c.querySelector<HTMLElement>("[data-evento][title='Almoço']")!;
+    expect(almoco.textContent).toContain("13:00");
+    expect(almoco.style.boxShadow.toLowerCase()).toContain("#22aa55"); // a faixa lateral na cor do evento
+  });
+
+  it("série aparece em cada dia em que ocorre (não só na data original)", async () => {
+    await abrirAgenda({ modo: "mes", tarefasDoServidor: [], blocos: [], eventos: [ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU" })] });
+    for (const dia of ["2026-09-01", "2026-09-08", "2026-09-15", "2026-09-22", "2026-09-29"]) {
+      const c = await celula(dia);
+      await waitFor(() => expect(chips(c), dia).toEqual(["Alinhamento"]));
+    }
+    expect(chips(await celula("2026-09-23"))).toEqual([]);
+  });
+
+  it("com mais de 3 itens mostra 2 e resume o resto", async () => {
+    await abrirAgenda({ modo: "mes", blocos: [], eventos: ["A", "B", "C", "D"].map((t, i) => ev(`e${i}`, `Evento ${t}`, `2026-09-22T${14 + i}:00:00Z`, `2026-09-22T${15 + i}:00:00Z`)) });
+    const c = await celula("2026-09-22");
+    await waitFor(() => expect(chips(c)).toEqual(["Evento A", "Evento B"]));
+    expect(c.textContent).toContain("+3 itens"); // 2 eventos escondidos + a tarefa
+  });
+
+  it("clicar no evento do mês abre o editor dele", async () => {
+    await abrirAgenda({ modo: "mes", blocos: [], tarefasDoServidor: [], eventos: [ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z")] });
+    vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "" });
+    const c = await celula("2026-09-22");
+    fireEvent.click(await waitFor(() => { const b = c.querySelector<HTMLElement>("[data-evento]"); expect(b).toBeTruthy(); return b!; }));
+    await waitFor(() => expect(eventosApi.obter).toHaveBeenCalledWith("e1"));
+    expect(await screen.findByLabelText("Título")).toBeTruthy();
+  });
+});
+
 describe("o painel do dia lista os eventos (não só as tarefas)", () => {
   const eventosDoDia = () => [
     ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z", { local: "Sala 2" }),

@@ -36,6 +36,8 @@ pub enum ErrorCode {
     RateLimited,
     InvalidCredentials,
     ConfirmationPhraseRequired,
+    /// Conta criada pela administração (ou com a senha redefinida): só a troca de senha é permitida até ser feita.
+    PasswordChangeRequired,
     NotImplemented,
     InternalError,
 }
@@ -66,6 +68,7 @@ impl ErrorCode {
             ErrorCode::RateLimited => "Muitas tentativas em pouco tempo. Aguarde antes de tentar novamente.",
             ErrorCode::InvalidCredentials => "Usuário ou senha inválidos.",
             ErrorCode::ConfirmationPhraseRequired => "Esta ação exige a frase de confirmação exata.",
+            ErrorCode::PasswordChangeRequired => "Você precisa trocar a senha temporária antes de continuar.",
             ErrorCode::NotImplemented => "Esta funcionalidade ainda não está disponível nesta instância.",
             ErrorCode::InternalError => "Erro interno. Nenhum dado foi alterado.",
         }
@@ -82,7 +85,7 @@ impl ErrorCode {
             | ErrorCode::AccountNotFound
             | ErrorCode::RecurringTransactionNotFound => 404,
             ErrorCode::VaultLocked | ErrorCode::Unauthorized | ErrorCode::InvalidCredentials => 401,
-            ErrorCode::Forbidden => 403,
+            ErrorCode::Forbidden | ErrorCode::PasswordChangeRequired => 403,
             ErrorCode::Conflict => 409,
             ErrorCode::RateLimited => 429,
             ErrorCode::ValidationError

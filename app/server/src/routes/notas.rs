@@ -56,7 +56,8 @@ pub struct ListarQuery {
     pub limit: Option<i64>,
 }
 
-pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<NotaResumo>>> {
+pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<NotaResumo>>> {
+    let visivel = crate::espacos::visivel_sql("n", &usuario.0);
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
@@ -69,7 +70,7 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                  n.criado_por, u.nome_usuario, COALESCE(nf.corpo, '') \
                  FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por LEFT JOIN nota_fts nf ON nf.id = n.id",
             );
-            let mut condicoes: Vec<String> = Vec::new();
+            let mut condicoes: Vec<String> = vec![visivel.clone()];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(tag) = &q.tag {
@@ -207,7 +208,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
-    let raiz = crate::espacos::raiz(&state, &espaco.to_string(), "Notas").await?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Notas").await?;
     let dir = match pasta_relativa {
         Some(p) => raiz.join(p),
         None => raiz,
@@ -263,7 +265,7 @@ pub struct ImportarNotaPayload {
 
 /// Importa um `.md` de fora (arrastado para a aba Notas): mesma "adoção" do arquivo solto na pasta —
 /// completa o front-matter que faltar e nunca mexe no corpo.
-pub async fn importar(State(state): State<AppState>, Json(payload): Json<ImportarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn importar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ImportarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
     if let Some(p) = pasta_relativa {
         if p.contains("..") || p.starts_with('/') || p.starts_with('\\') ||p.contains(':') {
@@ -282,7 +284,8 @@ pub async fn importar(State(state): State<AppState>, Json(payload): Json<Importa
 
     let espaco = payload.espaco.as_deref().unwrap_or("pessoal");
     espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
-    let raiz = crate::espacos::raiz(&state, espaco, "Notas").await?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, espaco).await?;
+    let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(espaco, &usuario.0), "Notas").await?;
     let dir = match pasta_relativa {
         Some(p) => raiz.join(p),
         None => raiz,
@@ -290,6 +293,7 @@ pub async fn importar(State(state): State<AppState>, Json(payload): Json<Importa
     std::fs::create_dir_all(&dir)?;
     let mut doc = doc;
     doc.front_matter.espaco = espaco.parse().unwrap_or(doc.front_matter.espaco);
+    doc.front_matter.criado_por = Some(usuario.0.clone());
     let conteudo = frontmatter::serialize(&doc.front_matter, &doc.body)?;
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(nome), "md");
     std::fs::write(&caminho_absoluto, conteudo)?;
@@ -302,17 +306,18 @@ pub async fn importar(State(state): State<AppState>, Json(payload): Json<Importa
     })))
 }
 
-async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
+async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
+    let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
-        .with(move |conn| conn.query_row("SELECT caminho_arquivo FROM nota WHERE id = ?1", [&id_owned], |r| r.get(0)).optional())
+        .with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM nota WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
         .await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
-pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     Ok(Json(serde_json::json!({
@@ -346,8 +351,8 @@ pub struct AtualizarNotaPayload {
     pub marcar_revisado: bool,
 }
 
-pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo_atual = caminho_por_id(&state, &id).await?;
+pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
@@ -374,7 +379,10 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 
     // `pasta` ausente = não mexe; `pasta: ""` explícito = mover pra raiz;
     // `pasta: "X"` = mover pra `Notas/X`.
-    let raiz_destino = crate::espacos::raiz(&state, &fm.espaco.to_string(), "Notas").await?;
+    if fm.espaco.to_string() != espaco_antes {
+        crate::espacos::exigir_acesso(&state, &usuario.0, &fm.espaco.to_string()).await?;
+    }
+    let raiz_destino = crate::espacos::raiz(&state, &crate::espacos::fisica(&fm.espaco.to_string(), &usuario.0), "Notas").await?;
     let dir_destino = match payload.pasta.as_deref() {
         Some(p) if !p.is_empty() => raiz_destino.join(p),
         Some(_) => raiz_destino.clone(),
@@ -406,7 +414,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         std::fs::remove_file(&caminho_absoluto_atual)?;
         // A biblioteca de mídia é por espaço: o que o corpo referencia vai junto para o novo espaço.
         if fm.espaco.to_string() != espaco_antes {
-            if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &espaco_antes, &fm.espaco.to_string()) {
+            if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &crate::espacos::fisica(&espaco_antes, &usuario.0), &crate::espacos::fisica(&fm.espaco.to_string(), &usuario.0)) {
                 tracing::warn!(error = %err, "não foi possível levar a mídia para o novo espaço");
             }
         }
@@ -421,8 +429,8 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
 /// local, já que só existe uma cópia física do arquivo por instância; a
 /// distinção importa pro sync entre dispositivos de Equipe (seção 6), fora
 /// de escopo do reindex síncrono, por isso não é lida aqui.
-pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     crate::routes::lixeira::mover(&state, &caminho_relativo, "nota", &doc.front_matter.titulo, &anexos_dir(&state, &id, &caminho_relativo))?;
@@ -430,14 +438,17 @@ pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> A
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-pub async fn links(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    caminho_por_id(&state, &usuario.0, &id).await?;
+    let visivel = crate::espacos::visivel_sql("n", &usuario.0);
+    let visivel_saida = visivel.clone();
     let id_entrada = id.clone();
     let id_saida = id.clone();
     let entrada: Vec<(String, String)> = state
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_origem WHERE l.nota_id_destino = ?1",
+                &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_origem WHERE l.nota_id_destino = ?1 AND {visivel}"),
             )?;
             let linhas = stmt.query_map([&id_entrada], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -447,7 +458,7 @@ pub async fn links(State(state): State<AppState>, Path(id): Path<String>) -> App
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_destino WHERE l.nota_id_origem = ?1",
+                &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_destino WHERE l.nota_id_origem = ?1 AND {visivel_saida}"),
             )?;
             let linhas = stmt.query_map([&id_saida], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -469,8 +480,8 @@ fn anexos_dir(state: &AppState, nota_id: &str, caminho_relativo: &str) -> PathBu
 }
 
 /// `pagina.json` de uma Nota em Modo Página (seção 1.3-B).
-pub async fn obter_pagina(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn obter_pagina(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho_json = anexos_dir(&state, &id, &caminho_relativo).join("pagina.json");
     if !caminho_json.exists() {
         return Ok(Json(serde_json::json!({ "caixas_texto": [], "tracos": [] })));
@@ -488,8 +499,8 @@ pub async fn obter_pagina(State(state): State<AppState>, Path(id): Path<String>)
 /// Grava o canvas (seção 1.3-B). A regeneração fiel de `pagina.svg` exige um
 /// renderizador de canvas — isso é o editor do cliente Tauri (fora de
 /// escopo deste binário, seção 10.1); o servidor só persiste o dado vivo.
-pub async fn atualizar_pagina(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<serde_json::Value>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn atualizar_pagina(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<serde_json::Value>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let dir = anexos_dir(&state, &id, &caminho_relativo);
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("pagina.json"), serde_json::to_string_pretty(&payload).unwrap_or_default())?;
@@ -501,10 +512,10 @@ pub async fn atualizar_pagina(State(state): State<AppState>, Path(id): Path<Stri
 /// Upload real (`multipart/form-data`, campo `arquivo`) — grava em
 /// `src/Media/AAAA-MM/` e devolve o corpo já com a referência Markdown anexada
 /// ao final, pro cliente atualizar o editor sem um segundo round trip.
-pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     // A mídia vai para a biblioteca do espaço onde o item mora.
-    let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| "pessoal".to_string());
+    let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| crate::espacos::fisica("pessoal", &usuario.0));
     let midia = crate::routes::media::enviar_para_biblioteca(&state, &espaco, multipart).await?;
     let referencia_relativa = midia.caminho;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
@@ -531,8 +542,8 @@ pub async fn enviar_anexo(State(state): State<AppState>, Path(id): Path<String>,
 
 /// Serve o próprio arquivo (download/preview) — sem autenticação extra além
 /// da sessão já exigida por `rotas_protegidas` (seção 11.1).
-pub async fn obter_anexo(State(state): State<AppState>, Path((id, nome_arquivo)): Path<(String, String)>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
-    let caminho_relativo = caminho_por_id(&state, &id).await?;
+pub async fn obter_anexo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path((id, nome_arquivo)): Path<(String, String)>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
     if !caminho.is_file() {
         return Err(AppError::new(ErrorCode::NotFound));

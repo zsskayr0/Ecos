@@ -72,20 +72,21 @@ fn deduplicar(ids: Vec<String>) -> Vec<String> {
 }
 
 /// Rejeita ids de tarefa/nota que não existem (o reindex descartaria em silêncio; aqui o cliente recebe o erro).
-async fn validar_vinculos(state: &AppState, tarefas: &[String], notas: &[String]) -> AppResult<()> {
+async fn validar_vinculos(state: &AppState, usuario_id: &str, tarefas: &[String], notas: &[String]) -> AppResult<()> {
     let (t, n) = (tarefas.to_vec(), notas.to_vec());
+    let (visivel_t, visivel_n) = (crate::espacos::visivel_sql("", usuario_id), crate::espacos::visivel_sql("", usuario_id));
     let (faltam_t, faltam_n) = state
         .db
         .with(move |conn| {
             let mut ft = Vec::new();
             for id in &t {
-                if !conn.query_row("SELECT EXISTS(SELECT 1 FROM tarefa WHERE id = ?1)", [id], |r| r.get::<_, bool>(0))? {
+                if !conn.query_row(&format!("SELECT EXISTS(SELECT 1 FROM tarefa WHERE id = ?1 AND {visivel_t})"), [id], |r| r.get::<_, bool>(0))? {
                     ft.push(id.clone());
                 }
             }
             let mut fnota = Vec::new();
             for id in &n {
-                if !conn.query_row("SELECT EXISTS(SELECT 1 FROM nota WHERE id = ?1)", [id], |r| r.get::<_, bool>(0))? {
+                if !conn.query_row(&format!("SELECT EXISTS(SELECT 1 FROM nota WHERE id = ?1 AND {visivel_n})"), [id], |r| r.get::<_, bool>(0))? {
                     fnota.push(id.clone());
                 }
             }
@@ -110,9 +111,10 @@ fn garantir_categoria(dir_eventos: &std::path::Path, categoria_id: &str) -> AppR
     }
 }
 
-async fn caminho_por_id(state: &AppState, id: &str) -> AppResult<String> {
+async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
-    let caminho: Option<String> = state.db.with(move |conn| conn.query_row("SELECT caminho_arquivo FROM evento WHERE id = ?1", [&id], |r| r.get(0)).optional()).await?;
+    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let caminho: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
@@ -157,8 +159,8 @@ fn linha_json(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     }))
 }
 
-async fn detalhe(state: &AppState, id: &str) -> AppResult<serde_json::Value> {
-    let caminho_relativo = caminho_por_id(state, id).await?;
+async fn detalhe(state: &AppState, usuario_id: &str, id: &str) -> AppResult<serde_json::Value> {
+    let caminho_relativo = caminho_por_id(state, usuario_id, id).await?;
     let corpo = frontmatter::parse::<EventoFrontMatter>(&std::fs::read_to_string(absoluto(state, &caminho_relativo))?)?.body;
     let id = id.to_string();
     let linha = state
@@ -189,13 +191,14 @@ pub struct ListarQuery {
 
 /// Eventos que se sobrepõem a `[de, ate)`. Séries (com `rrule`) vêm uma vez, como mestre — a expansão de ocorrências
 /// fica a cargo de quem consome.
-pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
+pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
     let limite = q.limit.unwrap_or(LIMITE_PADRAO).clamp(1, LIMITE_MAXIMO);
+    let visivel = crate::espacos::visivel_sql("e", &usuario.0);
     let linhas = state
         .db
         .with(move |conn| {
             let mut sql = String::from(SELECT_EVENTO);
-            let mut condicoes: Vec<String> = Vec::new();
+            let mut condicoes: Vec<String> = vec![visivel];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
             match (q.de, q.ate) {
                 (Some(de), Some(ate)) => {
@@ -249,8 +252,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
     Ok(Json(linhas))
 }
 
-pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(detalhe(&state, &id).await?))
+pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    Ok(Json(detalhe(&state, &usuario.0, &id).await?))
 }
 
 #[derive(Debug, Deserialize)]
@@ -293,7 +296,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .unwrap_or("pessoal")
         .parse()
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
-    let dir = crate::espacos::raiz(&state, &espaco.to_string(), eventos_fs::DIR).await?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    let dir = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), eventos_fs::DIR).await?;
     let cor = vazio_para_none(payload.cor);
     if cor.as_deref().is_some_and(|c| !cor_valida(c)) {
         return Err(invalido("cor", "esperado '#RRGGBB'"));
@@ -303,7 +307,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         garantir_categoria(&dir, c)?;
     }
     let (tarefas, notas) = (deduplicar(payload.tarefas), deduplicar(payload.notas));
-    validar_vinculos(&state, &tarefas, &notas).await?;
+    validar_vinculos(&state, &usuario.0, &tarefas, &notas).await?;
 
     let agora = Utc::now();
     let fm = EventoFrontMatter {
@@ -336,13 +340,13 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     if fm.visibilidade == EventoVisibilidade::Google {
         crate::calendario::sync::agendar_envio(&state, &usuario.0);
     }
-    Ok(Json(detalhe(&state, &fm.id).await?))
+    Ok(Json(detalhe(&state, &usuario.0, &fm.id).await?))
 }
 
 /// Lê o `.md`, deixa `f` alterar o front-matter/corpo (devolvendo se a mudança interessa ao Google), grava e reindexa.
 /// Trocar o título renomeia o arquivo.
-async fn editar_evento(state: &AppState, id: &str, f: impl FnOnce(&mut EventoFrontMatter, &mut String) -> AppResult<bool>) -> AppResult<()> {
-    let relativo = caminho_por_id(state, id).await?;
+async fn editar_evento(state: &AppState, usuario_id: &str, id: &str, f: impl FnOnce(&mut EventoFrontMatter, &mut String) -> AppResult<bool>) -> AppResult<()> {
+    let relativo = caminho_por_id(state, usuario_id, id).await?;
     let atual = absoluto(state, &relativo);
     let doc = frontmatter::parse::<EventoFrontMatter>(&std::fs::read_to_string(&atual)?)?;
     let (mut fm, mut corpo) = (doc.front_matter, doc.body);
@@ -402,8 +406,8 @@ pub struct AtualizarEventoPayload {
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(p): Json<AtualizarEventoPayload>) -> AppResult<Json<serde_json::Value>> {
     if let Some(Some(c)) = &p.categoria_id {
-        let espaco = espaco_do_evento(&state, &id).await?;
-        let dir = crate::espacos::raiz(&state, &espaco, eventos_fs::DIR).await?;
+        let espaco = espaco_do_evento(&state, &usuario.0, &id).await?;
+        let dir = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco, &usuario.0), eventos_fs::DIR).await?;
         garantir_categoria(&dir, c)?;
     }
     if let Some(Some(c)) = &p.cor {
@@ -412,9 +416,9 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         }
     }
     if p.tarefas.is_some() || p.notas.is_some() {
-        validar_vinculos(&state, p.tarefas.as_deref().unwrap_or(&[]), p.notas.as_deref().unwrap_or(&[])).await?;
+        validar_vinculos(&state, &usuario.0, p.tarefas.as_deref().unwrap_or(&[]), p.notas.as_deref().unwrap_or(&[])).await?;
     }
-    editar_evento(&state, &id, |fm, corpo| {
+    editar_evento(&state, &usuario.0, &id, |fm, corpo| {
         // Recorrência é do Google: aqui não se cria nem muda regra, e uma série vinda de lá não se reescreve (só se
         // muda ou cancela uma ocorrência: `/eventos/:id/ocorrencias`). Categoria e vínculos continuam livres.
         if p.rrule.is_some() {
@@ -478,7 +482,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         Ok(afeta_google)
     })
     .await?;
-    let resultado = detalhe(&state, &id).await?;
+    let resultado = detalhe(&state, &usuario.0, &id).await?;
     // Evento que está no Google (ou acabou de ser marcado para ir): o envio não espera o próximo ciclo. Tornar privado
     // também conta, porque é o que apaga o evento lá.
     if resultado["visibilidade"] == "google" || resultado["origem_google"] == true {
@@ -487,9 +491,10 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     Ok(Json(resultado))
 }
 
-async fn espaco_do_evento(state: &AppState, id: &str) -> AppResult<String> {
+async fn espaco_do_evento(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
-    let espaco: Option<String> = state.db.with(move |conn| conn.query_row("SELECT espaco FROM evento WHERE id = ?1", [&id], |r| r.get(0)).optional()).await?;
+    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let espaco: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT espaco FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     espaco.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
@@ -502,20 +507,20 @@ pub struct VinculosPayload {
 }
 
 /// Substitui os vínculos do evento. Vínculos são só do Ecos: não marcam o evento para sincronizar.
-pub async fn definir_vinculos(State(state): State<AppState>, Path(id): Path<String>, Json(p): Json<VinculosPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn definir_vinculos(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(p): Json<VinculosPayload>) -> AppResult<Json<serde_json::Value>> {
     let (tarefas, notas) = (deduplicar(p.tarefas), deduplicar(p.notas));
-    validar_vinculos(&state, &tarefas, &notas).await?;
-    editar_evento(&state, &id, |fm, _| {
+    validar_vinculos(&state, &usuario.0, &tarefas, &notas).await?;
+    editar_evento(&state, &usuario.0, &id, |fm, _| {
         fm.tarefas = tarefas;
         fm.notas = notas;
         Ok(false)
     })
     .await?;
-    Ok(Json(detalhe(&state, &id).await?))
+    Ok(Json(detalhe(&state, &usuario.0, &id).await?))
 }
 
 pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let relativo = caminho_por_id(&state, &id).await?;
+    let relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let doc = frontmatter::parse::<EventoFrontMatter>(&std::fs::read_to_string(absoluto(&state, &relativo))?)?;
     if doc.front_matter.rrule.is_some() && doc.front_matter.google.event_id.is_some() {
         return Err(AppError::new(ErrorCode::Conflict).with_message("Uma série só se apaga no Google Calendar. Aqui você pode cancelar uma ocorrência."));
@@ -540,11 +545,12 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-async fn eventos_vinculados(state: &AppState, tabela: &'static str, coluna: &'static str, id: String) -> AppResult<Vec<serde_json::Value>> {
+async fn eventos_vinculados(state: &AppState, usuario_id: &str, tabela: &'static str, coluna: &'static str, id: String) -> AppResult<Vec<serde_json::Value>> {
+    let visivel = crate::espacos::visivel_sql("e", usuario_id);
     let linhas = state
         .db
         .with(move |conn| {
-            let sql = format!("{SELECT_EVENTO} WHERE e.id IN (SELECT evento_id FROM {tabela} WHERE {coluna} = ?1) ORDER BY e.inicio DESC");
+            let sql = format!("{SELECT_EVENTO} WHERE e.id IN (SELECT evento_id FROM {tabela} WHERE {coluna} = ?1) AND {visivel} ORDER BY e.inicio DESC");
             let mut stmt = conn.prepare(&sql)?;
             let linhas = stmt.query_map([&id], linha_json)?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -618,7 +624,7 @@ pub async fn atualizar_ocorrencia(State(state): State<AppState>, Extension(usuar
     if p.local.as_ref().and_then(|l| l.as_deref()).is_some_and(|l| l.chars().count() > 300) {
         return Err(invalido("local", "máximo de 300 caracteres"));
     }
-    editar_evento(&state, &id, |fm, _| {
+    editar_evento(&state, &usuario.0, &id, |fm, _| {
         exigir_serie(fm, p.original)?;
         let duracao = fm.fim - fm.inicio;
         let no_google = fm.visibilidade == EventoVisibilidade::Google;
@@ -650,7 +656,7 @@ pub async fn atualizar_ocorrencia(State(state): State<AppState>, Extension(usuar
         Ok(false)
     })
     .await?;
-    let resultado = detalhe(&state, &id).await?;
+    let resultado = detalhe(&state, &usuario.0, &id).await?;
     if resultado["visibilidade"] == "google" {
         crate::calendario::sync::agendar_envio(&state, &usuario.0);
     }
@@ -659,7 +665,7 @@ pub async fn atualizar_ocorrencia(State(state): State<AppState>, Extension(usuar
 
 /// Cancela só uma ocorrência: some da série (no Google, a instância é cancelada).
 pub async fn cancelar_ocorrencia(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Query(q): Query<CancelarOcorrenciaQuery>) -> AppResult<Json<serde_json::Value>> {
-    editar_evento(&state, &id, |fm, _| {
+    editar_evento(&state, &usuario.0, &id, |fm, _| {
         exigir_serie(fm, q.original)?;
         let no_google = fm.visibilidade == EventoVisibilidade::Google;
         let exc = excecao_de(fm, q.original);
@@ -670,7 +676,7 @@ pub async fn cancelar_ocorrencia(State(state): State<AppState>, Extension(usuari
         Ok(false)
     })
     .await?;
-    let resultado = detalhe(&state, &id).await?;
+    let resultado = detalhe(&state, &usuario.0, &id).await?;
     if resultado["visibilidade"] == "google" {
         crate::calendario::sync::agendar_envio(&state, &usuario.0);
     }
@@ -678,13 +684,13 @@ pub async fn cancelar_ocorrencia(State(state): State<AppState>, Extension(usuari
 }
 
 /// Backlinks: eventos vinculados a uma Tarefa.
-pub async fn da_tarefa(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(eventos_vinculados(&state, "evento_tarefa", "tarefa_id", id).await?))
+pub async fn da_tarefa(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    Ok(Json(eventos_vinculados(&state, &usuario.0, "evento_tarefa", "tarefa_id", id).await?))
 }
 
 /// Backlinks: eventos vinculados a uma Nota.
-pub async fn da_nota(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(eventos_vinculados(&state, "evento_nota", "nota_id", id).await?))
+pub async fn da_nota(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    Ok(Json(eventos_vinculados(&state, &usuario.0, "evento_nota", "nota_id", id).await?))
 }
 
 // ---------------------------------------------------------------------
@@ -702,15 +708,16 @@ pub struct TempoQuery {
 
 /// Minutos por categoria entre `de` e `ate` (eventos cortados nas bordas do intervalo). Dia inteiro não conta como
 /// tempo gasto. Séries (`rrule`) ainda não são expandidas: ficam de fora e vêm contadas em `recorrentes_ignorados`.
-pub async fn tempo(State(state): State<AppState>, Query(q): Query<TempoQuery>) -> AppResult<Json<serde_json::Value>> {
+pub async fn tempo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<TempoQuery>) -> AppResult<Json<serde_json::Value>> {
     if q.ate <= q.de {
         return Err(invalido("ate", "deve ser depois de 'de'"));
     }
+    let visivel = crate::espacos::visivel_sql("e", &usuario.0);
     let resultado = state
         .db
         .with(move |conn| {
             let (de, ate) = (q.de.to_rfc3339(), q.ate.to_rfc3339());
-            let mut filtro = String::new();
+            let mut filtro = format!(" AND {visivel}");
             let mut extras: Vec<String> = Vec::new();
             if let Some(espaco) = q.espaco {
                 filtro.push_str(" AND e.espaco = ?");
@@ -764,18 +771,20 @@ pub struct CategoriasQuery {
     pub espaco: Option<String>,
 }
 
-pub async fn listar_categorias(State(state): State<AppState>, Query(q): Query<CategoriasQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
+pub async fn listar_categorias(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<CategoriasQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
+    let visivel = crate::espacos::visivel_chave_sql("c", &usuario.0);
+    let filtro = q.espaco.as_deref().filter(|e| !e.is_empty()).map(|e| crate::espacos::fisica(e, &usuario.0));
     let linhas = state
         .db
         .with(move |conn| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare(&format!(
                 "SELECT c.id, c.espaco, c.nome, c.cor, c.icone, (SELECT COUNT(*) FROM evento e WHERE e.categoria_id = c.id) \
-                 FROM categoria_evento c WHERE (?1 IS NULL OR c.espaco = ?1) ORDER BY c.nome COLLATE NOCASE",
-            )?;
+                 FROM categoria_evento c WHERE (?1 IS NULL OR c.espaco = ?1) AND {visivel} ORDER BY c.nome COLLATE NOCASE",
+            ))?;
             let linhas = stmt
-                .query_map([&q.espaco], |r| {
+                .query_map([&filtro], |r| {
                     Ok(serde_json::json!({
-                        "id": r.get::<_, String>(0)?, "espaco": r.get::<_, String>(1)?, "nome": r.get::<_, String>(2)?,
+                        "id": r.get::<_, String>(0)?, "espaco": crate::espacos::logica(&r.get::<_, String>(1)?), "nome": r.get::<_, String>(2)?,
                         "cor": r.get::<_, String>(3)?, "icone": r.get::<_, Option<String>>(4)?, "eventos": r.get::<_, i64>(5)?,
                     }))
                 })?
@@ -807,10 +816,11 @@ pub struct CriarCategoriaPayload {
     pub espaco: Option<String>,
 }
 
-pub async fn criar_categoria(State(state): State<AppState>, Json(p): Json<CriarCategoriaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn criar_categoria(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(p): Json<CriarCategoriaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar_categoria(&p.nome, &p.cor)?;
     let espaco: Espaco = p.espaco.as_deref().unwrap_or("pessoal").parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
-    let dir = crate::espacos::raiz(&state, &espaco.to_string(), eventos_fs::DIR).await?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    let dir = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), eventos_fs::DIR).await?;
     let mut categorias = eventos_fs::ler_categorias(&dir);
     let nome = p.nome.trim().to_string();
     if categorias.iter().any(|c| c.nome.eq_ignore_ascii_case(&nome)) {
@@ -823,9 +833,10 @@ pub async fn criar_categoria(State(state): State<AppState>, Json(p): Json<CriarC
     Ok(Json(serde_json::json!({ "id": nova.id, "espaco": espaco.to_string(), "nome": nova.nome, "cor": nova.cor, "icone": nova.icone })))
 }
 
-async fn espaco_da_categoria(state: &AppState, id: &str) -> AppResult<String> {
+async fn espaco_da_categoria(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
-    let espaco: Option<String> = state.db.with(move |conn| conn.query_row("SELECT espaco FROM categoria_evento WHERE id = ?1", [&id], |r| r.get(0)).optional()).await?;
+    let visivel = crate::espacos::visivel_chave_sql("", usuario_id);
+    let espaco: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT espaco FROM categoria_evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     espaco.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
@@ -839,8 +850,8 @@ pub struct AtualizarCategoriaPayload {
     pub icone: Option<Option<String>>,
 }
 
-pub async fn atualizar_categoria(State(state): State<AppState>, Path(id): Path<String>, Json(p): Json<AtualizarCategoriaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let espaco = espaco_da_categoria(&state, &id).await?;
+pub async fn atualizar_categoria(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(p): Json<AtualizarCategoriaPayload>) -> AppResult<Json<serde_json::Value>> {
+    let espaco = espaco_da_categoria(&state, &usuario.0, &id).await?;
     let dir = crate::espacos::raiz(&state, &espaco, eventos_fs::DIR).await?;
     let mut categorias = eventos_fs::ler_categorias(&dir);
     let pos = categorias.iter().position(|c| c.id == id).ok_or(AppError::new(ErrorCode::NotFound))?;
@@ -861,12 +872,12 @@ pub async fn atualizar_categoria(State(state): State<AppState>, Path(id): Path<S
     categorias[pos] = c.clone();
     eventos_fs::escrever_categorias(&dir, &categorias)?;
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
-    Ok(Json(serde_json::json!({ "id": c.id, "espaco": espaco, "nome": c.nome, "cor": c.cor, "icone": c.icone })))
+    Ok(Json(serde_json::json!({ "id": c.id, "espaco": crate::espacos::logica(&espaco), "nome": c.nome, "cor": c.cor, "icone": c.icone })))
 }
 
 /// Remove a categoria; os eventos que a usavam voltam a "sem categoria" (o `.md` de cada um é reescrito).
-pub async fn excluir_categoria(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let espaco = espaco_da_categoria(&state, &id).await?;
+pub async fn excluir_categoria(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let espaco = espaco_da_categoria(&state, &usuario.0, &id).await?;
     let dir = crate::espacos::raiz(&state, &espaco, eventos_fs::DIR).await?;
     let mut categorias = eventos_fs::ler_categorias(&dir);
     categorias.retain(|c| c.id != id);
@@ -879,7 +890,7 @@ pub async fn excluir_categoria(State(state): State<AppState>, Path(id): Path<Str
         }).await?
     };
     for evento_id in &afetados {
-        editar_evento(&state, evento_id, |fm, _| {
+        editar_evento(&state, &usuario.0, evento_id, |fm, _| {
             fm.categoria_id = None;
             Ok(true)
         })

@@ -11,6 +11,7 @@ use axum_extra::extract::cookie::CookieJar;
 use ecos_core::ErrorCode;
 
 use crate::auth::session;
+use rusqlite::OptionalExtension;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -52,9 +53,20 @@ pub async fn exigir_sessao(
 
     // O access token é stateless (15 min): sem isto, uma conta excluída continuaria entrando até ele expirar.
     let sub = claims.sub.clone();
-    let existe = state.db.with(move |conn| conn.query_row("SELECT 1 FROM usuario WHERE id = ?1", [&sub], |_| Ok(())).map(|_| true).or_else(|e| if matches!(e, rusqlite::Error::QueryReturnedNoRows) { Ok(false) } else { Err(e) })).await.unwrap_or(false);
-    if !existe {
+    let linha: Option<bool> = state.db.with(move |conn| conn.query_row("SELECT deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&sub], |r| r.get(0)).optional()).await.unwrap_or(None);
+    let Some(deve_trocar_senha) = linha else {
         return Err(AppError::new(ErrorCode::Unauthorized));
+    };
+    // Conta com senha temporária: nada funciona até a troca (nem ler dados, nem chamar o Cofre); o app precisa só do perfil
+    // (para saber que tem de trocar) e da própria troca.
+    if deve_trocar_senha {
+        // O guard roda dentro do roteador aninhado em `/api/v1`, que tira o prefixo do caminho: aceita com e sem.
+        let caminho = req.uri().path();
+        let caminho = caminho.strip_prefix("/api/v1").unwrap_or(caminho);
+        let liberado = matches!((req.method(), caminho), (&axum::http::Method::GET, "/me") | (&axum::http::Method::POST, "/me/senha"));
+        if !liberado {
+            return Err(AppError::new(ErrorCode::PasswordChangeRequired));
+        }
     }
 
     req.extensions_mut().insert(UsuarioAutenticado(claims.sub));

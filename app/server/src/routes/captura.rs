@@ -40,10 +40,8 @@ pub async fn capturar(
             if !state.config.vault_enabled {
                 return Err(AppError::new(ErrorCode::VaultDisabled));
             }
-            let url = format!("{}/vault/transacoes", state.config.vault_internal_url);
-            let resposta = state
-                .http
-                .post(url)
+            let resposta = crate::routes::vault_proxy::requisicao_interna(&state, reqwest::Method::POST, "/vault/transacoes", &usuario.0)
+                .await
                 .json(&payload.campos)
                 .send()
                 .await

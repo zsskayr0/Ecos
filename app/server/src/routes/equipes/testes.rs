@@ -8,7 +8,7 @@ use crate::auth::session;
 use crate::auth::testes::{chamar, novo_estado, SEGREDO};
 
 #[tokio::test]
-async fn membros_da_equipe_so_para_membros_e_so_com_id_e_cargo() {
+async fn membros_da_equipe_so_para_membros_e_so_com_id_cargo_e_nome() {
     let state = novo_estado();
     state.db.with(|c| {
         for u in ["u1", "u2"] {
@@ -30,7 +30,7 @@ async fn membros_da_equipe_so_para_membros_e_so_com_id_e_cargo() {
     for m in membros {
         let mut campos: Vec<&str> = m.as_object().unwrap().keys().map(String::as_str).collect();
         campos.sort();
-        assert_eq!(campos, ["cargo", "usuario_id"]);
+        assert_eq!(campos, ["cargo", "nome", "usuario_id"], "nada além disso (nunca hash, recovery key, sessão)");
     }
 }
 
@@ -38,10 +38,10 @@ async fn membros_da_equipe_so_para_membros_e_so_com_id_e_cargo() {
 async fn nenhuma_resposta_expoe_hash_de_senha_recovery_key_hash_ou_sessao() {
     let state = novo_estado();
     let (status, cadastro) = chamar(&state, "POST", "/api/v1/auth/registrar", None, json!({
-        "nome_usuario": "diogo", "senha": "senha-forte-123", "declara_idade_minima": true, "aceita_termos": true
+        "nome_usuario": "diogo", "senha": "Vq7-lampada-Pato-42", "declara_idade_minima": true, "aceita_termos": true
     })).await;
     assert_eq!(status, StatusCode::OK);
-    let (status, login) = chamar(&state, "POST", "/api/v1/auth/login", None, json!({ "usuario": "diogo", "senha": "senha-forte-123" })).await;
+    let (status, login) = chamar(&state, "POST", "/api/v1/auth/login", None, json!({ "usuario": "diogo", "senha": "Vq7-lampada-Pato-42" })).await;
     assert_eq!(status, StatusCode::OK);
     let usuario_id = cadastro["usuario_id"].as_str().unwrap().to_string();
     let token = session::emitir_access_token(&usuario_id, SEGREDO).unwrap();

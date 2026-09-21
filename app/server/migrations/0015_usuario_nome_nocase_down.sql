@@ -1,0 +1,1 @@
+DROP INDEX idx_usuario_nome_usuario_nocase;

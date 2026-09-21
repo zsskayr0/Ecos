@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use crate::crypto;
 use crate::db::meta::VaultMeta;
+use crate::db::usuario_atual;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -21,9 +22,14 @@ pub struct SenhaPayload {
     pub senha: String,
 }
 
+/// Usuário do escopo atual (o middleware garante que existe; sem ele, nada é acessível).
+pub(crate) fn usuario() -> AppResult<String> {
+    usuario_atual().ok_or(AppError::new(ErrorCode::Unauthorized))
+}
+
 fn validar_senha(senha: &str) -> AppResult<()> {
-    if senha.len() < 8 {
-        return Err(AppError::new(ErrorCode::ValidationError).with_message("A senha do Cofre deve ter ao menos 8 caracteres."));
+    if let Err(motivo) = ecos_core::credenciais::validar_senha(senha, None) {
+        return Err(AppError::new(ErrorCode::ValidationError).with_message(format!("A senha do Cofre {motivo}.")));
     }
     Ok(())
 }
@@ -33,16 +39,17 @@ fn validar_senha(senha: &str) -> AppResult<()> {
 /// ativação anterior nesta instância.
 pub async fn ativar(State(state): State<AppState>, Json(payload): Json<SenhaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar_senha(&payload.senha)?;
-    if VaultMeta::carregar(&state.config.meta_path)?.is_some() {
-        return Err(AppError::new(ErrorCode::Conflict).with_message("O Cofre desta instância já foi ativado."));
+    let uid = usuario()?;
+    if VaultMeta::carregar(&state.config.meta_de(&uid))?.is_some() {
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Você já ativou o seu Cofre."));
     }
 
     let salt = crypto::gerar_salt();
     let chave = crypto::derivar_chave(&payload.senha, &salt);
-    state.db.destrancar(&state.config.db_path, &crypto::para_hex(&chave))?;
+    state.db.destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave))?;
 
     let meta = VaultMeta { salt_hex: crypto::para_hex(&salt) };
-    meta.salvar(&state.config.meta_path)?;
+    meta.salvar(&state.config.meta_de(&uid))?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -52,13 +59,14 @@ pub async fn ativar(State(state): State<AppState>, Json(payload): Json<SenhaPayl
 /// conexão aberta enquanto o serviço roda; reiniciar o container exige
 /// desbloquear de novo).
 pub async fn desbloquear(State(state): State<AppState>, Json(payload): Json<SenhaPayload>) -> AppResult<Json<serde_json::Value>> {
-    let meta = VaultMeta::carregar(&state.config.meta_path)?.ok_or(AppError::new(ErrorCode::NotFound).with_message("Cofre ainda não foi ativado nesta instância."))?;
+    let uid = usuario()?;
+    let meta = VaultMeta::carregar(&state.config.meta_de(&uid))?.ok_or(AppError::new(ErrorCode::NotFound).with_message("Você ainda não ativou o seu Cofre."))?;
     let salt = crypto::de_hex(&meta.salt_hex).ok_or(AppError::new(ErrorCode::InternalError))?;
     let chave = crypto::derivar_chave(&payload.senha, &salt);
 
     state
         .db
-        .destrancar(&state.config.db_path, &crypto::para_hex(&chave))
+        .destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave))
         .map_err(|_| AppError::new(ErrorCode::InvalidCredentials).with_message("Senha do Cofre incorreta."))?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -72,7 +80,7 @@ pub async fn bloquear(State(state): State<AppState>) -> AppResult<Json<serde_jso
 /// `GET /vault/config` (seção 11.14) — `cofre_ativado` + saldo consolidado
 /// por Conta (só quando destrancado; bloqueado, devolve só o status).
 pub async fn config(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
-    let ativado = VaultMeta::carregar(&state.config.meta_path)?.is_some();
+    let ativado = VaultMeta::carregar(&state.config.meta_de(&usuario()?))?.is_some();
     let destrancado = state.db.esta_destrancado();
 
     if !destrancado {

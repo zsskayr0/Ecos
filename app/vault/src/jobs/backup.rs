@@ -15,21 +15,27 @@ pub fn iniciar(state: AppState) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
-            if let Err(err) = executar(&state).await {
-                tracing::error!(error = %err, "backup diário do Cofre falhou");
+            // Um cofre por pessoa: só os que estão abertos agora (a chave só existe em memória).
+            for usuario in state.db.usuarios_destrancados() {
+                let resultado = crate::db::USUARIO.scope(usuario.clone(), executar(&state, &usuario)).await;
+                if let Err(err) = resultado {
+                    tracing::error!(error = %err, usuario = %usuario, "backup diário do Cofre falhou");
+                }
             }
         }
     });
 }
 
-async fn executar(state: &AppState) -> anyhow::Result<()> {
+async fn executar(state: &AppState, usuario: &str) -> anyhow::Result<()> {
     if !state.db.esta_destrancado() {
         tracing::warn!("Cofre bloqueado — backup diário adiado até o próximo desbloqueio");
         return Ok(());
     }
-    let destino = state.config.backups_dir.join(nome_arquivo_backup(Utc::now()));
+    let pasta = state.config.backups_de(usuario);
+    std::fs::create_dir_all(&pasta)?;
+    let destino = pasta.join(nome_arquivo_backup(Utc::now()));
     state.db.snapshot_para(&destino).await?;
-    podar_antigos(&state.config.backups_dir)?;
+    podar_antigos(&pasta)?;
     Ok(())
 }
 

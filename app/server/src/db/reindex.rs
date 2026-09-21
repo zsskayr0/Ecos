@@ -344,22 +344,33 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     let mut pastas_notas: Vec<(String, String)> = Vec::new();
     let mut pastas_tarefas: Vec<(String, String)> = Vec::new();
     // O espaço de um item é o do diretório onde ele mora (o front-matter acompanha).
+    // Em espaço pessoal, o dono é quem dá nome à pasta (marcador `pessoal:<id>`): o `criado_por` acompanha.
     for (espaco, dir) in crate::espacos::listar(&notes_root) {
-        let Ok(valor) = espaco.parse::<ecos_core::types::Espaco>() else { continue };
+        let Ok(valor) = crate::espacos::logica(&espaco).parse::<ecos_core::types::Espaco>() else { continue };
+        let dono = crate::espacos::dono(&espaco).map(str::to_string);
         let notas_dir = dir.join("Notas");
         let tarefas_dir = dir.join("Tarefas");
         let mut n = coletar_notas(&notes_root, &notas_dir, &mut erros, &mut adiados);
-        n.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        n.iter_mut().for_each(|x| {
+            x.front_matter.espaco = valor.clone();
+            if dono.is_some() { x.front_matter.criado_por = dono.clone(); }
+        });
         notas.extend(n);
         let mut t = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
-        t.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        t.iter_mut().for_each(|x| {
+            x.front_matter.espaco = valor.clone();
+            if dono.is_some() { x.front_matter.criado_por = dono.clone(); }
+        });
         tarefas.extend(t);
         let eventos_dir = dir.join(crate::eventos_fs::DIR);
         let mut ev = coletar_eventos(&notes_root, &eventos_dir, &mut erros);
-        ev.iter_mut().for_each(|x| x.front_matter.espaco = valor.clone());
+        ev.iter_mut().for_each(|x| {
+            x.front_matter.espaco = valor.clone();
+            if dono.is_some() { x.front_matter.criado_por = dono.clone(); }
+        });
         eventos.extend(ev);
         categorias.extend(crate::eventos_fs::ler_categorias(&eventos_dir).into_iter().map(|c| (espaco.clone(), c)));
-        documentos.extend(coletar_documentos(&notes_root, &notas_dir, &mut erros));
+        documentos.extend(coletar_documentos(&notes_root, &notas_dir, &mut erros).into_iter().map(|d| (espaco.clone(), d)));
         pastas_notas.extend(enumerar_pastas(&notas_dir).into_iter().map(|p| (espaco.clone(), p)));
         pastas_tarefas.extend(enumerar_pastas(&tarefas_dir).into_iter().map(|p| (espaco.clone(), p)));
     }
@@ -442,18 +453,19 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             )?;
 
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("nota", fm.espaco.to_string(), pasta.clone())).or_insert(0) += 1;
+                let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
+                *contagem_pastas.entry(("nota", chave, pasta.clone())).or_insert(0) += 1;
             }
         }
 
-        for item in &documentos {
+        for (espaco, item) in &documentos {
             tx.execute(
                 "INSERT INTO documento_cache (caminho, nome, tipo, tamanho_bytes, hash_conteudo, pasta, espaco) \
-                 VALUES (?1, ?2, 'pdf', ?3, ?4, ?5, 'pessoal')",
-                params![item.caminho_relativo, item.nome, item.tamanho_bytes, item.hash_conteudo, item.pasta_id],
+                 VALUES (?1, ?2, 'pdf', ?3, ?4, ?5, ?6)",
+                params![item.caminho_relativo, item.nome, item.tamanho_bytes, item.hash_conteudo, item.pasta_id, espaco],
             )?;
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("nota", "pessoal".into(), pasta.clone())).or_insert(0) += 1;
+                *contagem_pastas.entry(("nota", espaco.clone(), pasta.clone())).or_insert(0) += 1;
             }
         }
 
@@ -500,7 +512,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
 
             if let Some(pasta) = &item.pasta_id {
-                *contagem_pastas.entry(("tarefa", fm.espaco.to_string(), pasta.clone())).or_insert(0) += 1;
+                let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
+                *contagem_pastas.entry(("tarefa", chave, pasta.clone())).or_insert(0) += 1;
             }
         }
 
@@ -590,6 +603,7 @@ mod testes_concluida_em {
         let raiz = std::env::temp_dir().join(format!("ecos-reindex-concluida-{}", ecos_core::new_id()));
         std::fs::create_dir_all(raiz.join("Pessoal").join("Tarefas")).unwrap();
         std::fs::create_dir_all(raiz.join("Pessoal").join("Notas")).unwrap();
+        std::fs::write(raiz.join("Pessoal").join(".espaco"), "pessoal").unwrap();
         let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Pessoal").join("Tarefas").join(nome), conteudo).unwrap();
         escreve("a.md", tarefa("a", "concluida", "atualizado_em: 2026-09-19T12:00:00Z\nconcluida_em: 2026-09-19T10:00:00Z\n"));
         escreve("b.md", tarefa("b", "concluida", "atualizado_em: 2026-09-10T08:00:00Z\n"));

@@ -67,7 +67,7 @@ async fn crud_categoria_validacoes_e_privado_por_padrao() {
     assert_eq!(e["sync_pendente"], false, "evento privado nunca fica pendente de envio ao Google");
     assert_eq!(e["categoria"]["nome"], "Reunião");
     assert_eq!(e["descricao"], "pauta");
-    assert!(raiz.join("Pessoal/Eventos/Daily.md").is_file(), "fonte da verdade é o .md");
+    assert!(raiz.join("teste/Eventos/Daily.md").is_file(), "fonte da verdade é o .md");
 
     // fim antes do início e categoria inexistente => 422
     let (status, _) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("Ruim", "2026-09-21T14:00:00Z", "2026-09-21T13:00:00Z", serde_json::json!({})))).await;
@@ -101,7 +101,7 @@ async fn listar_por_intervalo_patch_e_indice_reconstruivel_a_partir_dos_arquivos
     assert_eq!(status, StatusCode::OK, "{p}");
     assert_eq!(p["titulo"], "A2");
     assert_eq!(p["fim"], "2026-09-21T14:00:00+00:00");
-    assert!(raiz.join("Pessoal/Eventos/A2.md").is_file() && !raiz.join("Pessoal/Eventos/A.md").exists());
+    assert!(raiz.join("teste/Eventos/A2.md").is_file() && !raiz.join("teste/Eventos/A.md").exists());
 
     // marcar como google levanta sync_pendente
     let (_, g) = chamar(&app, "PATCH", &format!("/api/v1/eventos/{a_id}"), &token, Some(serde_json::json!({ "visibilidade": "google" }))).await;
@@ -146,7 +146,7 @@ async fn vinculos_com_tarefa_e_nota_backlinks_e_orfaos_descartados() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // vínculo vai no .md (fonte da verdade), não só no índice
-    let arquivo = std::fs::read_to_string(raiz.join("Pessoal/Eventos/Reunião.md")).unwrap();
+    let arquivo = std::fs::read_to_string(raiz.join("teste/Eventos/Reunião.md")).unwrap();
     assert!(arquivo.contains(&tid));
 
     // apagar a tarefa: o vínculo some do índice sem erro
@@ -165,7 +165,7 @@ async fn vinculo_nao_marca_evento_para_o_google() {
     let (_, e) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("G", "2026-09-21T13:00:00Z", "2026-09-21T14:00:00Z", serde_json::json!({ "visibilidade": "google" })))).await;
     assert_eq!(e["sync_pendente"], true);
     // simula o job de sync já ter enviado: zera o flag direto no arquivo
-    let caminho = raiz.join("Pessoal/Eventos/G.md");
+    let caminho = raiz.join("teste/Eventos/G.md");
     let texto = std::fs::read_to_string(&caminho).unwrap().replace("sync_pendente: true\n", "");
     std::fs::write(&caminho, texto).unwrap();
     crate::db::reindex::reindexar_tudo(&state.db, &state.config.notes_root).await.unwrap();
@@ -216,7 +216,7 @@ async fn cor_propria_do_evento_e_so_do_ecos_valida_e_pode_ser_limpa() {
     let (status, e) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("Colorido", "2026-09-21T13:00:00Z", "2026-09-21T14:00:00Z", serde_json::json!({ "cor": "#123ABC", "visibilidade": "google" })))).await;
     assert_eq!(status, StatusCode::OK, "{e}");
     assert_eq!(e["cor"], "#123ABC");
-    let arquivo = std::fs::read_to_string(raiz.join("Pessoal/Eventos/Colorido.md")).unwrap();
+    let arquivo = std::fs::read_to_string(raiz.join("teste/Eventos/Colorido.md")).unwrap();
     assert!(arquivo.contains("cor: '#123ABC'") || arquivo.contains("cor: \"#123ABC\"") || arquivo.contains("cor: #123ABC"), "{arquivo}");
 
     // Inválida: recusada na criação e na edição.

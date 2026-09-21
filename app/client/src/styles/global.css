@@ -323,3 +323,24 @@ body {
 
 /* Configurações no desktop: a navegação é a barra lateral, então o "voltar" das telas some. */
 .config-desktop [data-voltar] { display: none; }
+
+
+/* Busca expansível (BarraFiltros): a lupa vira uma barra de pesquisa. Largura e opacidades com curvas de mola suave. */
+.ecos-busca { position: relative; display: flex; align-items: center; box-sizing: border-box; height: 2.25rem; width: 2.25rem; flex-shrink: 0; overflow: hidden; border-radius: 0.5rem; transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, border-color 220ms ease, box-shadow 280ms ease; }
+.ecos-busca[data-aberta="true"] { width: min(18rem, calc(100vw - 4rem)); }
+.ecos-busca-lupa { position: relative; display: flex; height: 100%; width: calc(2.25rem - 2px); flex-shrink: 0; align-items: center; justify-content: center; }
+.ecos-busca-icone { transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1), color 200ms ease; }
+.ecos-busca[data-aberta="false"]:hover .ecos-busca-icone { transform: rotate(-14deg) scale(1.18); }
+.ecos-busca[data-aberta="true"] .ecos-busca-icone { transform: none; }
+/* Ao passar o mouse, uma onda sai da lupa (uma vez), como um "ping" de busca. */
+.ecos-busca-lupa::after { content: ""; position: absolute; inset: 0.45rem; border-radius: 9999px; border: 1.5px solid currentColor; opacity: 0; pointer-events: none; }
+.ecos-busca[data-aberta="false"]:hover .ecos-busca-lupa::after { animation: ecos-busca-onda 760ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+@keyframes ecos-busca-onda { 0% { opacity: 0.6; transform: scale(0.65); } 100% { opacity: 0; transform: scale(1.75); } }
+.ecos-busca-campo { min-width: 0; flex: 1; opacity: 0; transform: translateX(-10px); transition: opacity 200ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ecos-busca[data-aberta="true"] .ecos-busca-campo { opacity: 1; transform: none; transition-delay: 120ms; }
+.ecos-busca-limpar { flex-shrink: 0; opacity: 0; transform: scale(0.4) rotate(-90deg); pointer-events: none; transition: opacity 160ms ease, transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ecos-busca-limpar[data-visivel="true"] { opacity: 1; transform: none; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-busca, .ecos-busca-icone, .ecos-busca-campo, .ecos-busca-limpar { transition: none; }
+  .ecos-busca-lupa::after { animation: none !important; }
+}

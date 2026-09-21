@@ -2,10 +2,11 @@
 //! ranking (seção 4), nunca recalcula por request.
 
 use axum::extract::{Query, State};
-use axum::Json;
+use axum::{Extension, Json};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -26,7 +27,15 @@ struct LinhaFeed {
     atualizado_em: String,
 }
 
-pub async fn obter(State(state): State<AppState>, Query(q): Query<FeedQuery>) -> Result<Json<Pagina<serde_json::Value>>, crate::error::AppError> {
+pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<FeedQuery>) -> Result<Json<Pagina<serde_json::Value>>, crate::error::AppError> {
+    // O `feed_item` é global (o job de ranking olha tudo): cada card só sai para quem enxerga o item de origem.
+    // Transação vem do Cofre da própria pessoa (`usuario_id` do item é quem o ranking leu).
+    let visivel = format!(
+        "((tipo = 'transacao' AND usuario_id = '{}') OR (tipo = 'nota' AND id IN (SELECT n.id FROM nota n WHERE {})) OR (tipo = 'tarefa_encaixada' AND id IN (SELECT t.id FROM tarefa t WHERE {})))",
+        usuario.0.replace('\'', "''"),
+        crate::espacos::visivel_sql("n", &usuario.0),
+        crate::espacos::visivel_sql("t", &usuario.0),
+    );
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
@@ -34,7 +43,7 @@ pub async fn obter(State(state): State<AppState>, Query(q): Query<FeedQuery>) ->
         .db
         .with(move |conn| {
             let mut sql = String::from("SELECT id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em FROM feed_item");
-            let mut condicoes = Vec::new();
+            let mut condicoes = vec![visivel];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(espaco) = &q.espaco {
@@ -78,7 +87,7 @@ pub async fn obter(State(state): State<AppState>, Query(q): Query<FeedQuery>) ->
 
     let mut items = Vec::with_capacity(visiveis.len());
     for linha in visiveis {
-        items.push(montar_card(&state, linha).await?);
+        items.push(montar_card(&state, &usuario.0, linha).await?);
     }
 
     let next_cursor = if tem_mais {
@@ -90,7 +99,7 @@ pub async fn obter(State(state): State<AppState>, Query(q): Query<FeedQuery>) ->
     Ok(Json(Pagina { items, next_cursor }))
 }
 
-async fn montar_card(state: &AppState, linha: &LinhaFeed) -> Result<serde_json::Value, crate::error::AppError> {
+async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed) -> Result<serde_json::Value, crate::error::AppError> {
     let dado_bruto: Option<serde_json::Value> = linha.dado_bruto.as_deref().and_then(|s| serde_json::from_str(s).ok());
 
     match linha.tipo.as_str() {
@@ -150,8 +159,8 @@ async fn montar_card(state: &AppState, linha: &LinhaFeed) -> Result<serde_json::
             if !state.config.vault_enabled {
                 return Ok(serde_json::json!({ "id": linha.id, "tipo": "transacao", "espaco": linha.espaco, "atualizado_em": linha.atualizado_em }));
             }
-            let url = format!("{}/vault/transacoes/{}", state.config.vault_internal_url, linha.id);
-            match state.http.get(url).send().await.ok().filter(|r| r.status().is_success()) {
+            let caminho = format!("/vault/transacoes/{}", linha.id);
+            match crate::routes::vault_proxy::requisicao_interna(state, reqwest::Method::GET, &caminho, usuario_id).await.send().await.ok().filter(|r| r.status().is_success()) {
                 Some(resposta) => {
                     let transacao: serde_json::Value = resposta.json().await.unwrap_or(serde_json::json!({}));
                     Ok(serde_json::json!({

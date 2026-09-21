@@ -16,7 +16,7 @@ function preencher() {
   fireEvent.change(screen.getByPlaceholderText("Seu nome"), { target: { value: "Diogo" } });
   fireEvent.change(screen.getByPlaceholderText("Sobrenome"), { target: { value: "Roque" } });
   fireEvent.change(screen.getByPlaceholderText("Seu usuário"), { target: { value: "diogo" } });
-  fireEvent.change(screen.getByPlaceholderText("Sua senha (sem espaços)"), { target: { value: "senha-forte-123" } });
+  fireEvent.change(screen.getByPlaceholderText("Mínimo 12 caracteres, sem espaços"), { target: { value: "Vq7-lampada-Pato-42" } });
 }
 
 describe("cadastro: declaração de idade mínima", () => {
@@ -33,6 +33,6 @@ describe("cadastro: declaração de idade mínima", () => {
     fireEvent.click(termos);
     expect(botao.disabled).toBe(false);
     fireEvent.click(botao);
-    await waitFor(() => expect(registrar).toHaveBeenCalledWith("diogo", "senha-forte-123", "Diogo Roque", true, true));
+    await waitFor(() => expect(registrar).toHaveBeenCalledWith("diogo", "Vq7-lampada-Pato-42", "Diogo Roque", true, true));
   });
 });

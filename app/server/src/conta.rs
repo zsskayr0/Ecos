@@ -51,7 +51,7 @@ struct DadosExportacao {
 fn coletar_arquivos(state: &AppState, dados: &DadosExportacao, usuario_id: &str) -> Vec<(String, PathBuf)> {
     let raiz = &state.config.notes_root;
     let mut arquivos = Vec::new();
-    let pessoal = raiz.join(crate::espacos::PESSOAL_DIR);
+    let Some(pessoal) = crate::espacos::dir_existente(raiz, &crate::espacos::fisica("pessoal", usuario_id)) else { return arquivos };
     for e in walkdir::WalkDir::new(&pessoal).follow_links(false).into_iter().filter_map(Result::ok) {
         if !e.file_type().is_file() || e.file_name() == crate::espacos::MARCADOR { continue; }
         if let Ok(rel) = e.path().strip_prefix(raiz) {
@@ -171,15 +171,15 @@ fn anonimizar_front_matter(raiz: &Path, caminhos: &[String], usuario_id: &str, a
 }
 
 /// Lixeira de documentos e de mídia: apaga o que pertence ao Pessoal ou a equipes removidas.
-fn limpar_lixeira(state: &AppState, espacos_removidos: &[(String, PathBuf)], avisos: &mut Vec<String>) {
+fn limpar_lixeira(state: &AppState, chave_pessoal: &str, dir_pessoal: Option<&Path>, espacos_removidos: &[(String, PathBuf)], avisos: &mut Vec<String>) {
     let raiz = state.config.notes_root.join(".ecos").join("lixeira");
-    let topo_removido = |topo: &str| matches!(topo, "Pessoal" | "Notas" | "Tarefas" | "Eventos") || espacos_removidos.iter().any(|(_, d)| d.file_name().is_some_and(|n| n.to_string_lossy() == topo));
+    let topo_removido = |topo: &str| dir_pessoal.into_iter().chain(espacos_removidos.iter().map(|(_, d)| d.as_path())).any(|d| d.file_name().is_some_and(|n| n.to_string_lossy() == topo));
     if let Ok(entradas) = std::fs::read_dir(raiz.join("documentos")) {
         for e in entradas.flatten() {
             let original = std::fs::read(e.path().join("registro.json")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
                 .and_then(|v| v["item"]["caminho_original"].as_str().map(str::to_string));
-            let topo = original.as_deref().and_then(|o| o.split('/').next()).unwrap_or("Pessoal");
-            if topo_removido(topo) { remover(&e.path(), avisos); }
+            let topo = original.as_deref().and_then(|o| o.split('/').next()).unwrap_or("");
+            if !topo.is_empty() && topo_removido(topo) { remover(&e.path(), avisos); }
         }
     }
     let media = raiz.join("media");
@@ -188,8 +188,8 @@ fn limpar_lixeira(state: &AppState, espacos_removidos: &[(String, PathBuf)], avi
             if !e.path().is_dir() { continue; }
             let id = e.file_name().to_string_lossy().to_string();
             let marcador = media.join(format!("{id}.espaco"));
-            let espaco = std::fs::read_to_string(&marcador).ok().map(|s| s.trim().to_string()).unwrap_or_else(|| "pessoal".into());
-            if espaco == "pessoal" || espacos_removidos.iter().any(|(e, _)| *e == espaco) {
+            let espaco = std::fs::read_to_string(&marcador).ok().map(|s| s.trim().to_string()).unwrap_or_default();
+            if espaco == chave_pessoal || espacos_removidos.iter().any(|(e, _)| *e == espaco) {
                 remover(&e.path(), avisos);
                 remover(&marcador, avisos);
             }
@@ -219,7 +219,8 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
 
     // O Cofre primeiro: se ele não puder ser apagado, nada mais é tocado e a pessoa pode tentar de novo.
     if state.config.vault_enabled {
-        let resp = state.http.post(format!("{}/vault/reset", state.config.vault_internal_url)).json(&serde_json::json!({ "confirm": FRASE_RESET_COFRE })).send().await;
+        // Só o Cofre desta pessoa (um por usuário): o dos outros não é tocado.
+        let resp = crate::routes::vault_proxy::requisicao_interna(&state, reqwest::Method::POST, "/vault/excluir", &id).await.json(&serde_json::json!({ "confirm": FRASE_RESET_COFRE })).send().await;
         if !matches!(&resp, Ok(r) if r.status().is_success()) {
             tracing::error!(resposta = ?resp.map(|r| r.status()), "exclusão de conta: reset do Cofre falhou");
             return Err(AppError::new(ErrorCode::InternalError).with_message("Não foi possível apagar o Cofre agora. Nenhum dado foi removido — desbloqueie o Cofre e tente de novo."));
@@ -248,11 +249,13 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
     } }).await?;
 
     let mut avisos = Vec::new();
-    remover(&state.config.notes_root.join(crate::espacos::PESSOAL_DIR), &mut avisos);
+    let chave_pessoal = crate::espacos::fisica("pessoal", &id);
+    let dir_pessoal = crate::espacos::dir_existente(&state.config.notes_root, &chave_pessoal);
+    if let Some(dir) = &dir_pessoal { remover(dir, &mut avisos); }
     for (_, dir) in &espacos_removidos { remover(dir, &mut avisos); }
     crate::routes::avatar::remover_todos(&state, &id);
     anonimizar_front_matter(&state.config.notes_root, &autorais, &id, &mut avisos);
-    limpar_lixeira(&state, &espacos_removidos, &mut avisos);
+    limpar_lixeira(&state, &chave_pessoal, dir_pessoal.as_deref(), &espacos_removidos, &mut avisos);
     if let Err(e) = crate::db::reindex::reindexar_tudo(&state.db, &state.config.notes_root).await {
         tracing::error!(error = %e, "reindex após exclusão de conta falhou");
         avisos.push("O índice de busca será refeito no próximo início do servidor.".into());
@@ -389,9 +392,9 @@ mod tests {
         let itens = ler_zip(&zip);
         let nomes: Vec<&str> = itens.iter().map(|(n, _)| n.as_str()).collect();
         assert!(nomes.contains(&"manifesto.json") && nomes.contains(&"LEIA-ME.txt"));
-        assert!(nomes.iter().any(|n| n.starts_with("Pessoal/Notas/") && n.ends_with(".md")), "notas: {nomes:?}");
-        assert!(nomes.iter().any(|n| n.starts_with("Pessoal/Tarefas/") && n.ends_with(".md")), "tarefas: {nomes:?}");
-        assert!(itens.iter().any(|(n, d)| n.starts_with("Pessoal/src/Media/") && d.as_slice() == &[7u8; 5000][..]), "anexo íntegro: {nomes:?}");
+        assert!(nomes.iter().any(|n| n.starts_with("ana/Notas/") && n.ends_with(".md")), "notas: {nomes:?}");
+        assert!(nomes.iter().any(|n| n.starts_with("ana/Tarefas/") && n.ends_with(".md")), "tarefas: {nomes:?}");
+        assert!(itens.iter().any(|(n, d)| n.starts_with("ana/src/Media/") && d.as_slice() == &[7u8; 5000][..]), "anexo íntegro: {nomes:?}");
         assert!(nomes.contains(&"perfil/avatar.png"));
         assert!(nomes.iter().any(|n| n.ends_with("da-ana.md")), "item que ela criou na equipe: {nomes:?}");
         assert!(!nomes.iter().any(|n| n.ends_with("da-bia.md") || n.ends_with("so-da-a.md")), "não vaza item de outra pessoa: {nomes:?}");
@@ -405,13 +408,13 @@ mod tests {
         assert_eq!(sessoes, 1);
         let errada = app.clone().call(json("DELETE", "/api/v1/me", r#"{"confirm":"excluir conta"}"#)).await.unwrap();
         assert!(errada.status().is_client_error());
-        assert!(temp.join("Pessoal").exists(), "frase errada não apaga nada");
+        assert!(temp.join("ana").exists(), "frase errada não apaga nada");
 
         // Dono de equipe com outras pessoas é barrado (aqui a Ana vira dona da Equipe B, que tem a Bia).
         state.db.with(|c| c.execute("UPDATE membro_equipe SET cargo = 'dono' WHERE equipe_id = 'EQB' AND usuario_id = 'u1'", [])).await.unwrap();
         let barrada = app.clone().call(json("DELETE", "/api/v1/me", r#"{"confirm":"EXCLUIR CONTA"}"#)).await.unwrap();
         assert_eq!(barrada.status(), StatusCode::CONFLICT);
-        assert!(temp.join("Pessoal").exists());
+        assert!(temp.join("ana").exists());
         state.db.with(|c| c.execute("UPDATE membro_equipe SET cargo = 'membro' WHERE equipe_id = 'EQB' AND usuario_id = 'u1'", [])).await.unwrap();
 
         let del = app.clone().call(json("DELETE", "/api/v1/me", r#"{"confirm":"EXCLUIR CONTA"}"#)).await.unwrap();
@@ -438,7 +441,7 @@ mod tests {
         assert_eq!(autor, None, "item na equipe que continua fica, sem autoria");
 
         // Arquivos.
-        assert!(!temp.join("Pessoal").exists(), "espaço Pessoal apagado");
+        assert!(!temp.join("ana").exists(), "pasta pessoal apagada");
         assert!(!dir_a.exists(), "equipe em que era a única pessoa apagada");
         assert!(!avatar_dir.join("u1.png").exists(), "avatar apagado");
         assert!(dir_b.join("Notas/da-bia.md").exists() && dir_b.join("Notas/da-ana.md").exists(), "equipe que continua preserva o histórico");

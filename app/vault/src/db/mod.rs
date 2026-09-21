@@ -1,14 +1,31 @@
-//! Vault (`ecos-vault.db`) — schema da seção 1.3-A. Uma conexão protegida
-//! por mutex, trancável: sem a chave (senha do Cofre), `with` nunca chega a
-//! tentar consultar nada (seção 5.3 — sessão do Cofre mantém a chave só em
-//! memória do processo, descartada ao expirar/bloquear).
+//! Vault (`ecos-vault.db`) — schema da seção 1.3-A. **Um cofre por pessoa**: cada usuário tem o próprio
+//! arquivo, o próprio salt e a própria senha; o processo guarda uma conexão aberta por usuário destrancado.
+//! Quem é o usuário vem do `ecos-app` (cabeçalho interno) e chega aqui por `USUARIO`, um task-local definido
+//! pelo middleware: sem ele, `with` nunca consulta nada (falha fechada). Sem a chave (senha do Cofre) o
+//! usuário fica bloqueado (seção 5.3 — a chave só existe em memória do processo, descartada ao bloquear).
 
 pub mod meta;
 
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+
+tokio::task_local! {
+    /// Id do usuário da requisição em curso (ou do cofre que um job está percorrendo).
+    pub static USUARIO: String;
+}
+
+/// Usuário do escopo atual; `None` fora de um `USUARIO.scope(..)`.
+pub fn usuario_atual() -> Option<String> {
+    USUARIO.try_with(|u| u.clone()).ok()
+}
+
+/// Id de usuário aceito como nome de pasta: só `[A-Za-z0-9_-]`, até 64 caracteres.
+pub fn id_de_usuario_valido(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![M::up(include_str!("../../migrations/0001_init_up.sql"))
@@ -24,24 +41,35 @@ pub enum VaultDbError {
 }
 
 #[derive(Clone)]
-pub struct VaultDb(Arc<Mutex<Option<Connection>>>);
+pub struct VaultDb(Arc<Mutex<HashMap<String, Connection>>>);
 
 impl VaultDb {
+    /// Nenhum cofre aberto: todos os usuários começam bloqueados.
     pub fn trancado() -> Self {
-        Self(Arc::new(Mutex::new(None)))
+        Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
+    /// O cofre do usuário do escopo atual está aberto?
     pub fn esta_destrancado(&self) -> bool {
-        self.0.lock().expect("mutex do vault nunca deve ser envenenado").is_some()
+        usuario_atual().is_some_and(|u| self.0.lock().expect("mutex do vault nunca deve ser envenenado").contains_key(&u))
     }
 
+    /// Usuários com o cofre aberto agora (para os jobs).
+    pub fn usuarios_destrancados(&self) -> Vec<String> {
+        self.0.lock().expect("mutex do vault nunca deve ser envenenado").keys().cloned().collect()
+    }
+
+    /// Bloqueia só o cofre do usuário atual.
     pub fn trancar(&self) {
-        *self.0.lock().expect("mutex do vault nunca deve ser envenenado") = None;
+        if let Some(u) = usuario_atual() {
+            self.0.lock().expect("mutex do vault nunca deve ser envenenado").remove(&u);
+        }
     }
 
-    /// Abre (ou cria) o arquivo do Vault com a chave derivada e aplica
+    /// Abre (ou cria) o arquivo do Vault do usuário atual com a chave derivada e aplica
     /// migrations. Chamado tanto na ativação quanto em todo desbloqueio.
     pub fn destrancar(&self, caminho: &Path, chave_hex: &str) -> anyhow::Result<()> {
+        let usuario = usuario_atual().ok_or_else(|| anyhow::anyhow!("sem usuário no escopo"))?;
         if let Some(pai) = caminho.parent() {
             std::fs::create_dir_all(pai)?;
         }
@@ -63,7 +91,7 @@ impl VaultDb {
             .map_err(|_| anyhow::anyhow!("chave incorreta ou arquivo do Vault corrompido"))?;
 
         migrations().to_latest(&mut conn)?;
-        *self.0.lock().expect("mutex do vault nunca deve ser envenenado") = Some(conn);
+        self.0.lock().expect("mutex do vault nunca deve ser envenenado").insert(usuario, conn);
         Ok(())
     }
 
@@ -73,9 +101,10 @@ impl VaultDb {
         T: Send + 'static,
     {
         let conn_arc = self.0.clone();
+        let usuario = usuario_atual();
         tokio::task::spawn_blocking(move || {
             let guard = conn_arc.lock().expect("mutex do vault nunca deve ser envenenado");
-            match guard.as_ref() {
+            match usuario.as_ref().and_then(|u| guard.get(u)) {
                 Some(conn) => f(conn).map_err(VaultDbError::Sql),
                 None => Err(VaultDbError::Bloqueado),
             }

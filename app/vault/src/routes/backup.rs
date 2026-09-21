@@ -11,6 +11,7 @@ use ecos_core::ErrorCode;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::backup::nome_arquivo_backup;
+use crate::routes::ativacao::usuario;
 use crate::state::AppState;
 
 pub async fn config() -> Json<serde_json::Value> {
@@ -30,7 +31,7 @@ pub async fn atualizar_config() -> Json<serde_json::Value> {
 
 pub async fn historico(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
     let mut arquivos = Vec::new();
-    if let Ok(entradas) = std::fs::read_dir(&state.config.backups_dir) {
+    if let Ok(entradas) = std::fs::read_dir(state.config.backups_de(&usuario()?)) {
         for entrada in entradas.flatten() {
             if let Ok(metadados) = entrada.metadata() {
                 if metadados.is_file() {
@@ -46,7 +47,9 @@ pub async fn historico(State(state): State<AppState>) -> AppResult<Json<serde_js
 }
 
 pub async fn exportar(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
-    let destino = state.config.backups_dir.join(nome_arquivo_backup(Utc::now()));
+    let pasta = state.config.backups_de(&usuario()?);
+    std::fs::create_dir_all(&pasta)?;
+    let destino = pasta.join(nome_arquivo_backup(Utc::now()));
     state
         .db
         .snapshot_para(&destino)

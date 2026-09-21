@@ -2,6 +2,7 @@ import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, Chev
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { MenuMultiplo, type OpcaoMultipla } from "@/components/common/MenuMultiplo";
 import { corDaEquipe } from "@/lib/team-color";
+import { BuscaExpansivel } from "./BuscaExpansivel";
 import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
@@ -28,6 +29,9 @@ interface Props {
   visiveis: number;
   total: number;
   temTarefas: boolean;
+  /** Mostra a lupa ao lado de "Ordenar": a busca vale só para esta lista, junto com os filtros dela. */
+  pesquisavel?: boolean;
+  placeholderBusca?: string;
 }
 
 const chip = (ativo: boolean) =>
@@ -37,7 +41,7 @@ const corDo = <T extends string>(opcoes: OpcaoMenu<T>[], valor: T, ativo: boolea
 const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} className={`transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} />;
 
 /** Filtrar por status, prioridade e equipe, e ordenar — chips que abrem menus do próprio app. */
-export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas }: Props) {
+export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas, pesquisavel = false, placeholderBusca }: Props) {
   const padrao = estadoInicial(temTarefas);
   const equipes: OpcaoMenu<string>[] = [
     { valor: "todas", rotulo: "Todas as equipes", icone: Users }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta, icone: User },
@@ -95,6 +99,7 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
       <MenuSuspenso ariaLabel="Ordenar" alinhar="dir" valor={estado.ordem} opcoes={ORDENS} onChange={(ordem) => set({ ordem, ordemDirecao: direcaoPadrao(ordem) })}
         classeGatilho={chip(estado.ordem !== "relevancia")} corAtiva={estado.ordem !== "relevancia" ? TOM.violeta : null}
         gatilho={({ aberto, atual }) => <><ArrowUpDown size={14} className={`transition-transform duration-200 ${estado.ordem !== "relevancia" && estado.ordemDirecao === -1 ? "rotate-180" : ""}`} /><span>{estado.ordem === "relevancia" ? "Ordenar" : atual?.rotulo}</span><Seta aberto={aberto} /></>} />
+      {pesquisavel && <BuscaExpansivel valor={estado.busca} onChange={(busca) => set({ busca })} placeholder={placeholderBusca ?? "Pesquisar nesta lista…"} />}
       {alterado && (
         <button type="button" onClick={() => onChange({ ...padrao })}
           className="flex h-9 items-center gap-1 rounded-lg px-2 text-xs text-text-muted transition-colors hover:text-text-primary">

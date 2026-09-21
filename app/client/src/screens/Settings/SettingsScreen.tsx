@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Users } from "lucide-react";
-import { GRUPOS } from "./ConfiguracoesLayout";
+import { useGrupos } from "./ConfiguracoesLayout";
 
 /**
  * Índice das configurações, só nas telas pequenas (no desktop a barra lateral faz este papel).
@@ -8,12 +8,13 @@ import { GRUPOS } from "./ConfiguracoesLayout";
  */
 export function SettingsScreen() {
   const navigate = useNavigate();
+  const grupos = useGrupos();
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <h1 className="mb-5 font-display text-xl text-text-primary">Configurações</h1>
 
-      {GRUPOS.map((grupo) => (
+      {grupos.map((grupo) => (
         <div key={grupo.titulo} className="mb-6">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{grupo.titulo}</p>
           <div className="flex flex-col overflow-hidden rounded-2xl bg-surface-1">

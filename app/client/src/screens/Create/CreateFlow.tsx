@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { notas, tarefas, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
+import { avisar } from "@/lib/toast";
 import { hojeISO } from "@/lib/format";
 import { taskTags } from "@/lib/task-fields";
 import { pastaDoCaminho, type PastaContexto } from "@/lib/pasta-contexto";
@@ -86,9 +87,11 @@ export const DRAFT_VAZIO: CapturaDraft = {
 };
 
 const CHAVE_RASCUNHO = "ecos.capture-draft.v1";
-function lerRascunho(): CapturaDraft {
-  try { return { ...DRAFT_VAZIO, ...JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? "null") }; }
-  catch { return DRAFT_VAZIO; }
+
+/** Título mínimo para o autosave criar a Nota/Tarefa: digitar "R" e parar não pode virar item no servidor. */
+export const MIN_CARACTERES_CRIACAO = 3;
+export function temConteudoMinimo(texto: string): boolean {
+  return texto.trim().length >= MIN_CARACTERES_CRIACAO;
 }
 
 /** Keep the explicitly selected date and local time together on the wire. */
@@ -134,7 +137,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
-  const [draft, setDraft] = useState<CapturaDraft>(lerRascunho);
+  const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
@@ -144,13 +147,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   const sessaoCaptura = useRef(0);
 
   useEffect(() => { onTitleChange?.(draft.texto.trim()); }, [draft.texto, onTitleChange]);
-  // Item já criado no servidor não é "rascunho": guardá-lo faz a próxima captura reabrir (e duplicar) a tarefa/nota anterior.
-  useEffect(() => {
-    try {
-      if (itemCriado) localStorage.removeItem(CHAVE_RASCUNHO);
-      else localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(draft));
-    } catch { /* cache indisponível */ }
-  }, [draft, itemCriado]);
+  // Rascunho de versões antigas: já não é reaberto (toda captura começa em branco), então some.
+  useEffect(() => { try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ } }, []);
 
   // Dentro de uma pasta, a Tarefa/Nota nova já nasce nela — uma vez por captura, para não brigar com a escolha da pessoa.
   const contexto = pastaContexto !== undefined ? pastaContexto : pastaDoCaminho(location.pathname);
@@ -184,10 +182,10 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   }
 
   // A captura pode ser encerrada por fora (botão voltar, Esc, fechar a janela) sem passar por `fecharTudo`.
-  // Se já existe um item criado, a próxima captura não pode herdar o rascunho nem o id dele: senão o novo texto
-  // sobrescreve a tarefa/nota anterior. Sem item criado, o rascunho digitado continua guardado (contingência).
+  // Criar é sempre criar: a próxima captura não herda texto nem id da anterior (senão sobrescreveria a nota/tarefa antiga).
   useEffect(() => {
-    if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null)) return;
+    if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null && draft === DRAFT_VAZIO)) return;
+    if (itemCriado) avisar(itemCriado.tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
     padraoAplicado.current = { nota: false, tarefa: false };
     sessaoCaptura.current += 1;
     setDraft(DRAFT_VAZIO);
@@ -195,20 +193,20 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     ultimoEnvio.current = null;
     setErro(null);
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
-  }, [capturaAberta, itemCriado]);
+  }, [capturaAberta, itemCriado, draft]);
 
-  const salvar = useCallback(async () => {
+  const salvar = useCallback(async (): Promise<boolean> => {
     const tipo = capturaAberta as TipoCaptura;
     setErro(null);
     if (!draft.texto.trim()) {
       setErro("Preenche o campo principal antes de salvar.");
-      return;
+      return false;
     }
     if (tipo === "transacao" && draft.valorCentavos <= 0) {
       setErro("O valor da transação deve ser maior que zero.");
-      return;
+      return false;
     }
-    if (envioEmCurso.current) return;
+    if (envioEmCurso.current) return false;
     envioEmCurso.current = true;
     setSalvando(true);
     const sessao = sessaoCaptura.current;
@@ -247,32 +245,59 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
         }
       }
       notificar();
-      if (sessao !== sessaoCaptura.current) return;
+      if (sessao !== sessaoCaptura.current) return true;
       ultimoEnvio.current = JSON.stringify({ tipo, draft });
       if (tipo === "nota" || tipo === "tarefa") {
         try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
-        return;
+        return true;
       }
       fecharTudo();
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
+      return true;
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível salvar. O ecos-app está rodando?");
+      return false;
     } finally {
       envioEmCurso.current = false;
       setSalvando(false);
     }
   }, [capturaAberta, draft, espacoAtivo, fecharTudo, itemCriado, location.pathname, navigate, notificar]);
 
-  // A primeira pausa após digitar cria o item; as pausas seguintes o atualizam.
+  // Fechar pelo X: com conteúdo mínimo, grava o que falta e avisa onde ficou; abaixo disso, descarta sem criar nada.
+  // Se a gravação falhar, a captura continua aberta (com o erro na tela) em vez de perder o texto.
+  async function encerrar() {
+    const tipo = capturaAberta;
+    if ((tipo === "nota" || tipo === "tarefa") && (itemCriado || temConteudoMinimo(draft.texto))) {
+      const emDia = ultimoEnvio.current === JSON.stringify({ tipo, draft });
+      if (!emDia && !(await salvar())) return;
+      avisar(tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
+    }
+    fecharTudo();
+  }
+
+  // No desktop o X da janela desmonta este componente (e monta outro do zero): sem passar por `encerrar`, o aviso
+  // e a gravação do que ainda estava no intervalo dos 600 ms teriam de acontecer aqui.
+  const aoDesmontar = useRef<() => void>(() => {});
+  aoDesmontar.current = () => {
+    const tipo = capturaAberta;
+    if (tipo !== "nota" && tipo !== "tarefa") return;
+    if (!itemCriado && !temConteudoMinimo(draft.texto)) return;
+    if (ultimoEnvio.current !== JSON.stringify({ tipo, draft })) void salvar();
+    avisar(tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
+  };
+  useEffect(() => () => aoDesmontar.current(), []);
+
+  // O item só nasce depois que o título passa do mínimo (uma vez criado, as pausas seguintes o atualizam).
   // O rascunho local é escrito imediatamente, portanto fechar a janela não perde texto.
   useEffect(() => {
     if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
     if (!draft.texto.trim()) return;
+    if (!itemCriado && !temConteudoMinimo(draft.texto)) return;
     const chave = JSON.stringify({ tipo: capturaAberta, draft });
     if (ultimoEnvio.current === chave || salvando) return;
     const timer = window.setTimeout(() => { void salvar(); }, 600);
     return () => window.clearTimeout(timer);
-  }, [capturaAberta, draft, salvar, salvando]);
+  }, [capturaAberta, draft, itemCriado, salvar, salvando]);
 
   if (!capturaAberta) return null;
 
@@ -281,7 +306,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   }
 
   return (
-    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={fecharTudo} erro={erro} embedded={embedded}>
+    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded}>
       {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}

@@ -9,11 +9,13 @@ import { DesktopShell } from "@/desktop/DesktopShell";
 import { screenRoutes } from "@/routes/screen-routes";
 import { AuthScreen } from "@/screens/Auth/AuthScreen";
 import { ReaceiteTermos } from "@/components/legal/ReaceiteTermos";
+import { TrocaSenhaObrigatoriaScreen } from "@/screens/Auth/TrocaSenhaObrigatoriaScreen";
 import { OnboardingScreen } from "@/screens/Onboarding/OnboardingScreen";
 import { ConectarServidorScreen, useFluxoConectar } from "@/screens/Onboarding/ConectarServidorScreen";
 import { CarregandoScreen } from "@/screens/Onboarding/CarregandoScreen";
 import { PalcoIntro } from "@/components/layout/PalcoIntro";
 import { ReceptorCompartilhamento } from "@/components/layout/ReceptorCompartilhamento";
+import { ToastHost } from "@/lib/toast";
 import { ArrasteTarefaProvider } from "@/lib/arraste-tarefa";
 import { precisaConfigurarServidor } from "@/lib/server-config";
 
@@ -41,7 +43,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // would just be a network error. User feedback: "deixa configurável no
   // próprio app" (`server-config.ts`).
   const semServidor = precisaConfigurarServidor();
-  if (!semServidor && status === "autenticado") return perfil?.termos_pendente ? <ReaceiteTermos /> : <>{children}</>;
+  if (!semServidor && status === "autenticado") {
+    // Conta criada pela administração: antes de tudo, trocar a senha temporária (o servidor também recusa o resto até lá).
+    if (perfil?.deve_trocar_senha) return <PalcoIntro etapa="trocar-senha"><TrocaSenhaObrigatoriaScreen /></PalcoIntro>;
+    return perfil?.termos_pendente ? <ReaceiteTermos /> : <>{children}</>;
+  }
 
   if (abertura || (!semServidor && status === "carregando")) {
     return (
@@ -103,6 +109,7 @@ export default function App() {
             <AuthGate>
               <Shell />
               <ReceptorCompartilhamento />
+              <ToastHost />
             </AuthGate>
           </ArrasteTarefaProvider>
         </AppUIProvider>

@@ -17,9 +17,9 @@ const INTERVALO: Duration = Duration::from_secs(15 * 60);
 pub fn iniciar(state: AppState) {
     tokio::spawn(async move {
         loop {
-            if state.db.esta_destrancado() {
-                if let Err(err) = executar(&state).await {
-                    tracing::error!(error = %err, "job de materialização de recorrências falhou");
+            for usuario in state.db.usuarios_destrancados() {
+                if let Err(err) = crate::db::USUARIO.scope(usuario.clone(), executar(&state)).await {
+                    tracing::error!(error = %err, usuario = %usuario, "job de materialização de recorrências falhou");
                 }
             }
             tokio::time::sleep(INTERVALO).await;

@@ -236,9 +236,25 @@ export const auth = {
     await post<void>("/auth/logout");
   },
   perfil: () =>
-    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[]; termos_pendente: boolean; termos_versao: string }>("/me"),
+    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
   aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
+  /** Troca a própria senha. Com senha temporária (conta criada pela administração) devolve uma recovery key nova, que só aparece uma vez. */
+  trocarSenha: (senha_atual: string, nova_senha: string) => post<{ ok: true; recovery_key: string | null }>("/me/senha", { senha_atual, nova_senha }),
+};
+
+/** Administração da instância (só quem administra; para as demais pessoas as rotas respondem 404). */
+export interface UsuarioAdmin { id: string; nome_usuario: string; nome: string | null; papel: "admin" | "usuario"; criado_em: string; deve_trocar_senha: boolean }
+export interface EquipeAdmin { id: string; nome: string; membros: { usuario_id: string; nome_usuario: string; nome: string | null; cargo: string }[] }
+export const admin = {
+  listarUsuarios: () => get<UsuarioAdmin[]>("/admin/usuarios"),
+  criarUsuario: (nome_usuario: string, nome: string | undefined, papel: "admin" | "usuario") =>
+    post<{ id: string; nome_usuario: string; papel: string; senha_temporaria: string }>("/admin/usuarios", { nome_usuario, nome, papel }),
+  redefinirSenha: (id: string) => post<{ id: string; senha_temporaria: string }>(`/admin/usuarios/${id}/redefinir-senha`),
+  listarEquipes: () => get<EquipeAdmin[]>("/admin/equipes"),
+  adicionarMembro: (equipeId: string, usuarioId: string, cargo: "membro" | "admin" = "membro") =>
+    post<{ ok: true }>(`/admin/equipes/${equipeId}/membros`, { usuario_id: usuarioId, cargo }),
+  removerMembro: (equipeId: string, usuarioId: string) => del<{ ok: true }>(`/admin/equipes/${equipeId}/membros/${usuarioId}`),
 };
 
 /** Conta e dados (LGPD): exportar o `.zip` com tudo e excluir a conta. `EXCLUIR CONTA` é a frase que o servidor exige. */
@@ -717,7 +733,7 @@ export const equipes = {
   atualizar: (id: string, nome: string) => patch<{ ok: true }>(`/equipes/${id}`, { nome }),
   // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
   excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
-  listarMembros: (id: string) => get<{ usuario_id: string; cargo: string }[]>(`/equipes/${id}/membros`),
+  listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; nome?: string }[]>(`/equipes/${id}/membros`),
   trocarCargo: (id: string, usuarioId: string, cargo: "dono" | "admin" | "membro") =>
     patch<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`, { cargo }),
   removerMembro: (id: string, usuarioId: string) => del<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`),

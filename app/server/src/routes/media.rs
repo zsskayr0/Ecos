@@ -5,13 +5,14 @@
 //! procura o arquivo nos espaços (`espacos::achar_midia`), então trocar uma nota de equipe não quebra o link.
 
 use axum::extract::{Multipart, Path, Query, State};
-use axum::Json;
+use axum::{Extension, Json};
 use chrono::{Datelike, Utc};
 use ecos_core::{naming, new_id, ErrorCode};
 use serde::Serialize;
 use std::path::{Component, Path as FsPath, PathBuf};
 
 use crate::error::{AppError, AppResult, CampoInvalido};
+use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::anexos_comuns::{mime_por_extensao, TAMANHO_MAXIMO_BYTES};
 use crate::state::AppState;
 
@@ -52,6 +53,7 @@ fn nome_humano_com_id(nome: &str) -> String {
 #[derive(Serialize)]
 pub struct MidiaResumo { pub caminho: String, pub nome: String, pub tamanho_bytes: u64, pub mime: String, pub enviado_em: String, pub espaco: String }
 
+/// `espaco` é a chave física (`pessoal:<id>` ou `equipe:<id>`); o cliente recebe o espaço lógico.
 pub async fn enviar_para_biblioteca(state: &AppState, espaco: &str, mut multipart: Multipart) -> AppResult<MidiaResumo> {
     let campo = multipart.next_field().await.map_err(|_| AppError::new(ErrorCode::ValidationError).with_message("O envio do arquivo está incompleto ou inválido. Selecione o arquivo novamente."))?
         .ok_or_else(|| AppError::new(ErrorCode::ValidationError).with_message("Nenhum arquivo foi enviado. Escolha um arquivo para anexar."))?;
@@ -71,20 +73,23 @@ pub async fn enviar_para_biblioteca(state: &AppState, espaco: &str, mut multipar
         AppError::new(ErrorCode::InternalError).with_message("Não foi possível guardar o arquivo no servidor. Verifique o espaço disponível e a permissão da pasta de mídia.")
     })?;
     let caminho = format!("src/Media/{pasta}/{nome}");
-    Ok(MidiaResumo { caminho, nome: naming::sanitizar_nome_arquivo(&original), tamanho_bytes: bytes.len() as u64, mime: mime_por_extensao(&original).to_string(), enviado_em: agora.to_rfc3339(), espaco: espaco.to_string() })
+    Ok(MidiaResumo { caminho, nome: naming::sanitizar_nome_arquivo(&original), tamanho_bytes: bytes.len() as u64, mime: mime_por_extensao(&original).to_string(), enviado_em: agora.to_rfc3339(), espaco: crate::espacos::logica(espaco).to_string() })
 }
 
-pub async fn enviar(State(state): State<AppState>, Query(q): Query<EspacoQuery>, multipart: Multipart) -> AppResult<Json<MidiaResumo>> {
+pub async fn enviar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<EspacoQuery>, multipart: Multipart) -> AppResult<Json<MidiaResumo>> {
     let espaco = espaco_valido(q.espaco.as_deref())?;
-    Ok(Json(enviar_para_biblioteca(&state, &espaco, multipart).await?))
+    crate::espacos::exigir_acesso(&state, &usuario.0, &espaco).await?;
+    Ok(Json(enviar_para_biblioteca(&state, &crate::espacos::fisica(&espaco, &usuario.0), multipart).await?))
 }
 
 /// Lista a mídia de um espaço (`?espaco=`) ou de todos. `caminho` é o mesmo que vai no Markdown (`src/Media/...`).
-pub async fn listar(State(state): State<AppState>, Query(q): Query<EspacoQuery>) -> AppResult<Json<Vec<MidiaResumo>>> {
+pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<EspacoQuery>) -> AppResult<Json<Vec<MidiaResumo>>> {
     let filtro = q.espaco.as_deref().map(|e| espaco_valido(Some(e))).transpose()?;
+    let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
     let mut itens = Vec::new();
     for (espaco, dir) in crate::espacos::listar(&state.config.notes_root) {
-        if filtro.as_deref().is_some_and(|f| f != espaco) { continue; }
+        if !permitidos.contains(&espaco) { continue; }
+        if filtro.as_deref().is_some_and(|f| f != crate::espacos::logica(&espaco)) { continue; }
         let raiz = dir.join(crate::espacos::MIDIA_DIR);
         if !raiz.exists() { continue; }
         for entry in walkdir::WalkDir::new(&raiz).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
@@ -94,23 +99,25 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<EspacoQuery>)
             let tamanho_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
             let enviado_em = metadata.and_then(|m| m.modified().ok()).map(chrono::DateTime::<Utc>::from).unwrap_or_else(Utc::now).to_rfc3339();
             let caminho = format!("{}{}", crate::espacos::PREFIXO_MIDIA, rel.to_string_lossy().replace('\\', "/"));
-            itens.push(MidiaResumo { caminho, mime: mime_por_extensao(&nome).to_string(), nome: nome_legivel(&nome), tamanho_bytes, enviado_em, espaco: espaco.clone() });
+            itens.push(MidiaResumo { caminho, mime: mime_por_extensao(&nome).to_string(), nome: nome_legivel(&nome), tamanho_bytes, enviado_em, espaco: crate::espacos::logica(&espaco).to_string() });
         }
     }
     itens.sort_by(|a, b| b.enviado_em.cmp(&a.enviado_em));
     Ok(Json(itens))
 }
 
-pub async fn obter_arquivo(State(state): State<AppState>, Path(caminho): Path<String>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
-    let Some((_, arquivo)) = crate::espacos::achar_midia(&state.config.notes_root, caminho.trim_start_matches('/')) else { return Err(AppError::new(ErrorCode::NotFound)); };
+pub async fn obter_arquivo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(caminho): Path<String>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
+    let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
+    let Some((_, arquivo)) = crate::espacos::achar_midia(&state.config.notes_root, caminho.trim_start_matches('/'), &permitidos) else { return Err(AppError::new(ErrorCode::NotFound)); };
     let nome = arquivo.file_name().and_then(|n| n.to_str()).unwrap_or("");
     Ok(([(axum::http::header::CONTENT_TYPE, mime_por_extensao(nome).to_string())], std::fs::read(arquivo)?))
 }
 
 /// Retira o ativo da biblioteca preservando uma cópia recuperável. Não
 /// reescreve as Notas/Tarefas que o referenciam: seus Markdown são do usuário.
-pub async fn excluir(State(state): State<AppState>, Path(caminho): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let (espaco, arquivo) = crate::espacos::achar_midia(&state.config.notes_root, caminho.trim_start_matches('/')).ok_or(AppError::new(ErrorCode::NotFound))?;
+pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(caminho): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
+    let (espaco, arquivo) = crate::espacos::achar_midia(&state.config.notes_root, caminho.trim_start_matches('/'), &permitidos).ok_or(AppError::new(ErrorCode::NotFound))?;
     let media_root = raiz(&state, &espaco).await?;
     let canonical_root = std::fs::canonicalize(&media_root)?;
     let canonical_file = std::fs::canonicalize(&arquivo)?;
@@ -139,7 +146,8 @@ pub struct ItemLixeira {
     pub excluido_em: String,
 }
 
-pub async fn listar_lixeira(State(state): State<AppState>) -> AppResult<Json<Vec<ItemLixeira>>> {
+pub async fn listar_lixeira(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, ) -> AppResult<Json<Vec<ItemLixeira>>> {
+    let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
     let root = raiz_lixeira(&state);
     let mut itens = Vec::new();
     for entry in walkdir::WalkDir::new(&root).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
@@ -148,20 +156,23 @@ pub async fn listar_lixeira(State(state): State<AppState>) -> AppResult<Json<Vec
         let Some(Component::Normal(id)) = partes.next() else { continue };
         let id = id.to_string_lossy().to_string();
         if ulid::Ulid::from_string(&id).is_err() { continue; }
+        // Só a mídia de espaços que a pessoa enxerga (item sem marcador de origem não aparece para ninguém).
+        if !std::fs::read_to_string(marcador_lixeira(&state, &id)).is_ok_and(|e| permitidos.iter().any(|p| p == e.trim())) { continue; }
         let caminho = partes.as_path().to_string_lossy().replace('\\', "/");
         let nome = entry.file_name().to_string_lossy();
         let excluido = std::fs::metadata(root.join(&id))?.modified()?;
         let excluido: chrono::DateTime<Utc> = excluido.into();
         itens.push(ItemLixeira { tipo: "media".into(), id, nome: nome_legivel(&nome), caminho_original: format!("src/Media/{caminho}"), tamanho_bytes: entry.metadata().map_err(std::io::Error::from)?.len(), mime: mime_por_extensao(&nome).to_string(), excluido_em: excluido.to_rfc3339() });
     }
-    itens.extend(super::lixeira::listar(&state)?);
+    itens.extend(super::lixeira::listar(&state, &permitidos)?);
     itens.sort_by(|a, b| b.excluido_em.cmp(&a.excluido_em));
     Ok(Json(itens))
 }
 
-pub async fn restaurar(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+pub async fn restaurar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
     if id.starts_with("documento-") {
-        super::lixeira::restaurar(&state, &id).await?;
+        super::lixeira::restaurar(&state, &id, &permitidos).await?;
         return Ok(Json(serde_json::json!({ "ok": true, "message": "Item restaurado." })));
     }
     if ulid::Ulid::from_string(&id).is_err() { return Err(AppError::new(ErrorCode::NotFound)); }
@@ -171,8 +182,8 @@ pub async fn restaurar(State(state): State<AppState>, Path(id): Path<String>) ->
     let canonical_root = std::fs::canonicalize(&root)?;
     if !std::fs::canonicalize(item.path())?.starts_with(canonical_root) { return Err(AppError::new(ErrorCode::Forbidden)); }
     let relativo = item.path().strip_prefix(&dir).unwrap().to_string_lossy().replace('\\', "/");
-    // Volta para o espaço de onde saiu (itens antigos, sem marcador, eram do Pessoal).
-    let espaco = std::fs::read_to_string(marcador_lixeira(&state, &id)).ok().map(|e| e.trim().to_string()).filter(|e| espaco_valido(Some(e)).is_ok()).unwrap_or_else(|| "pessoal".to_string());
+    // Volta para o espaço de onde saiu; sem marcador ou de um espaço que a pessoa não enxerga, o item não existe para ela.
+    let espaco = std::fs::read_to_string(marcador_lixeira(&state, &id)).ok().map(|e| e.trim().to_string()).filter(|e| permitidos.contains(e)).ok_or(AppError::new(ErrorCode::NotFound))?;
     let raiz_media = raiz(&state, &espaco).await?;
     let destino = caminho_seguro(&raiz_media, &relativo).ok_or(AppError::new(ErrorCode::NotFound))?;
     if destino.exists() { return Err(AppError::new(ErrorCode::Conflict).with_message("Já existe um arquivo no caminho original. Resolva o conflito antes de restaurar.")); }
@@ -213,6 +224,8 @@ mod tests {
         };
         state.db.with(|conn| {
             conn.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash) VALUES ('usuario-teste', 'teste', 'efemero', 'efemero')", [])?;
+            conn.execute("INSERT INTO equipe (id, nome) VALUES ('EQ1', 'Time A')", [])?;
+            conn.execute("INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES ('EQ1', 'usuario-teste', 'dono')", [])?;
             Ok(())
         }).await.unwrap();
         let app = crate::routes::montar(state);
@@ -232,7 +245,7 @@ mod tests {
         let caminho = item["caminho"].as_str().unwrap();
         assert_eq!(item["nome"], "Relatorio legivel.pdf");
         assert!(caminho.starts_with("src/Media/"));
-        assert_eq!(std::fs::read(temp.join("Pessoal").join(caminho)).unwrap(), data);
+        assert_eq!(std::fs::read(temp.join("teste").join(caminho)).unwrap(), data);
         let uri = format!("/api/v1/media/arquivo/{}", caminho.trim_start_matches("src/Media/").replace(' ', "%20"));
         let preview = app.clone().call(Request::get(uri).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(preview.status(), StatusCode::OK);
@@ -241,7 +254,7 @@ mod tests {
         let delete_uri = format!("/api/v1/media/arquivo/{}", caminho.trim_start_matches("src/Media/").replace(' ', "%20"));
         let excluded = app.clone().call(Request::delete(delete_uri).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(excluded.status(), StatusCode::OK);
-        assert!(!temp.join("Pessoal").join(caminho).exists());
+        assert!(!temp.join("teste").join(caminho).exists());
         let recuperavel = walkdir::WalkDir::new(temp.join(".ecos/lixeira/media")).into_iter().filter_map(Result::ok).find(|e| e.file_type().is_file()).unwrap();
         assert_eq!(std::fs::read(recuperavel.path()).unwrap(), data);
         let trash = app.clone().call(Request::get("/api/v1/lixeira").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
@@ -251,7 +264,7 @@ mod tests {
         let trash_id = trash[0]["id"].as_str().unwrap();
         let restored = app.clone().call(Request::post(format!("/api/v1/lixeira/{trash_id}/restaurar")).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(restored.status(), StatusCode::OK);
-        assert_eq!(std::fs::read(temp.join("Pessoal").join(caminho)).unwrap(), data);
+        assert_eq!(std::fs::read(temp.join("teste").join(caminho)).unwrap(), data);
         let empty_trash = app.clone().call(Request::get("/api/v1/lixeira").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         let empty_trash: serde_json::Value = serde_json::from_slice(&to_bytes(empty_trash.into_body(), 8192).await.unwrap()).unwrap();
         assert_eq!(empty_trash, serde_json::json!([]));
@@ -271,8 +284,8 @@ mod tests {
         let da_equipe: serde_json::Value = serde_json::from_slice(&to_bytes(da_equipe.into_body(), 8192).await.unwrap()).unwrap();
         let rel_equipe = da_equipe["caminho"].as_str().unwrap().trim_start_matches("src/Media/").to_string();
         assert_eq!(da_equipe["espaco"], "equipe:EQ1");
-        assert_eq!(crate::espacos::achar_midia(&temp, &rel_equipe).unwrap().0, "equipe:EQ1");
-        assert!(!temp.join("Pessoal").join("src").join("Media").join(&rel_equipe).exists(), "não vaza para o Pessoal");
+        assert_eq!(crate::espacos::achar_midia(&temp, &rel_equipe, &["equipe:EQ1".to_string()]).unwrap().0, "equipe:EQ1");
+        assert!(!temp.join("teste").join("src").join("Media").join(&rel_equipe).exists(), "não vaza para a pasta pessoal");
         let (_, so_equipe) = obter_json("/api/v1/media?espaco=equipe:EQ1".into()).await;
         assert_eq!(so_equipe.as_array().unwrap().len(), 1);
         let (_, so_pessoal) = obter_json("/api/v1/media?espaco=pessoal".into()).await;
@@ -284,12 +297,12 @@ mod tests {
         assert_eq!(st_arquivo, StatusCode::OK);
         let apagada = app.clone().call(Request::delete(format!("/api/v1/media/arquivo/{}", rel_equipe.replace(' ', "%20"))).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(apagada.status(), StatusCode::OK);
-        assert!(crate::espacos::achar_midia(&temp, &rel_equipe).is_none());
+        assert!(crate::espacos::achar_midia(&temp, &rel_equipe, &["equipe:EQ1".to_string()]).is_none());
         let (_, lixeira_equipe) = obter_json("/api/v1/lixeira".into()).await;
         let id_equipe = lixeira_equipe.as_array().unwrap().iter().find(|i| i["tipo"] == "media").unwrap()["id"].as_str().unwrap().to_string();
         let restaurada = app.clone().call(Request::post(format!("/api/v1/lixeira/{id_equipe}/restaurar")).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(restaurada.status(), StatusCode::OK);
-        assert_eq!(crate::espacos::achar_midia(&temp, &rel_equipe).unwrap().0, "equipe:EQ1", "volta para o espaço de onde saiu");
+        assert_eq!(crate::espacos::achar_midia(&temp, &rel_equipe, &["equipe:EQ1".to_string()]).unwrap().0, "equipe:EQ1", "volta para o espaço de onde saiu");
         assert!(!temp.join(".ecos/lixeira/media").join(format!("{id_equipe}.espaco")).exists(), "marcador removido");
         for (rota, tipo, arvore) in [("notas", "nota", "Notas"), ("tarefas", "tarefa", "Tarefas")] {
             let created = app.clone().call(Request::post(format!("/api/v1/{rota}"))
@@ -299,7 +312,7 @@ mod tests {
             assert_eq!(created.status(), StatusCode::OK);
             let created: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 8192).await.unwrap()).unwrap();
             let entity_id = created["id"].as_str().unwrap();
-            let path = walkdir::WalkDir::new(temp.join("Pessoal").join(arvore)).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md")).unwrap().path().to_path_buf();
+            let path = walkdir::WalkDir::new(temp.join("teste").join(arvore)).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md")).unwrap().path().to_path_buf();
             let original = std::fs::read(&path).unwrap();
             let attachments = path.parent().unwrap().join("_anexos").join(entity_id);
             std::fs::create_dir_all(&attachments).unwrap();

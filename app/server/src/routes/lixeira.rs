@@ -42,23 +42,28 @@ pub fn mover(s: &AppState, rel: &str, tipo: &str, titulo: &str, anexos: &Path) -
     }
     Ok(())
 }
-pub fn listar(s: &AppState) -> AppResult<Vec<super::media::ItemLixeira>> {
+/// O item da lixeira pertence a um espaço que a pessoa enxerga? (o caminho original começa pela pasta do espaço)
+fn permitido(s: &AppState, caminho_original: &str, permitidos: &[String]) -> bool {
+    crate::espacos::espaco_do_caminho(&s.config.notes_root, caminho_original).is_some_and(|e| permitidos.contains(&e))
+}
+pub fn listar(s: &AppState, permitidos: &[String]) -> AppResult<Vec<super::media::ItemLixeira>> {
     if !root(s).exists() { return Ok(Vec::new()); }
     let mut itens = Vec::new();
     for entry in std::fs::read_dir(root(s))? {
         let dir = entry?.path();
         if !dir.join("conteudo.md").is_file() { continue; }
         let r: Registro = serde_json::from_slice(&std::fs::read(dir.join("registro.json"))?).map_err(|_| AppError::new(ErrorCode::InternalError))?;
-        itens.push(r.item);
+        if permitido(s, &r.item.caminho_original, permitidos) { itens.push(r.item); }
     }
     Ok(itens)
 }
-pub async fn restaurar(s: &AppState, id: &str) -> AppResult<()> {
+pub async fn restaurar(s: &AppState, id: &str, permitidos: &[String]) -> AppResult<()> {
     if id.strip_prefix("documento-").and_then(|id| ulid::Ulid::from_string(id).ok()).is_none() { return Err(AppError::new(ErrorCode::NotFound)); }
     let dir = root(s).join(id);
     if !dir.join("conteudo.md").is_file() { return Err(AppError::new(ErrorCode::NotFound)); }
     validar(s, &dir)?;
     let r: Registro = serde_json::from_slice(&std::fs::read(dir.join("registro.json"))?).map_err(|_| AppError::new(ErrorCode::InternalError))?;
+    if !permitido(s, &r.item.caminho_original, permitidos) { return Err(AppError::new(ErrorCode::NotFound)); }
     let destino = seguro(s, &r.item.caminho_original, &r.item.tipo)?;
     let anexos = r.anexos.as_deref().map(|rel| seguro(s, rel, &r.item.tipo)).transpose()?;
     if destino.exists() || anexos.as_ref().is_some_and(|p| p.exists()) { return Err(AppError::new(ErrorCode::Conflict).with_message("Já existe um item no caminho original. Resolva o conflito antes de restaurar.")); }

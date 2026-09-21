@@ -11,6 +11,10 @@ pub mod equipes;
 pub mod eventos;
 #[cfg(test)]
 mod eventos_testes;
+#[cfg(test)]
+mod isolamento_testes;
+#[cfg(test)]
+mod admin_testes;
 pub mod feed;
 pub mod health;
 pub mod media;
@@ -62,7 +66,13 @@ fn rotas_oauth_publicas() -> Router<AppState> {
 fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
+        .route("/me/senha", post(crate::auth::trocar_senha))
         .route("/me/aceites/termos", post(crate::auth::aceitar_termos))
+        .route("/admin/usuarios", get(crate::admin::listar).post(crate::admin::criar))
+        .route("/admin/usuarios/:id/redefinir-senha", post(crate::admin::redefinir_senha))
+        .route("/admin/equipes", get(crate::admin::listar_equipes))
+        .route("/admin/equipes/:id/membros", post(crate::admin::adicionar_membro))
+        .route("/admin/equipes/:id/membros/:usuario_id", delete(crate::admin::remover_membro))
         .route("/me/export", get(crate::conta::exportar))
         .route("/me/avatar", get(avatar::obter_meu).put(avatar::enviar).delete(avatar::remover).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
         .route("/usuarios/:id/avatar", get(avatar::obter_de_usuario))

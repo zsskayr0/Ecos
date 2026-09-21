@@ -31,6 +31,10 @@ interface Props {
   tipoPastas?: "nota" | "tarefa" | "ambos";
   /** Checkbox de seleção e ações em lote. O Feed desliga. */
   selecionavel?: boolean;
+  /** Lupa ao lado de "Ordenar" (vira barra de pesquisa). A busca vale só para esta lista e fica junto dos filtros dela. */
+  pesquisavel?: boolean;
+  /** Texto do campo de busca, ex.: "Pesquisar em Trabalho…". */
+  placeholderBusca?: string;
 }
 
 function lerFiltros(chave: string): EstadoFiltros | null {
@@ -41,7 +45,7 @@ function lerFiltros(chave: string): EstadoFiltros | null {
 }
 
 /** Uma lista de notas e/ou tarefas em qualquer das visualizações: feed (cards), lista compacta, tabela ou grade. */
-export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true }: Props) {
+export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true, pesquisavel = false, placeholderBusca }: Props) {
   const chaveDosFiltros = chaveFiltros ?? chave;
   const desktop = useIsDesktop();
   const efetivo = modoEfetivo(modo, desktop);
@@ -202,8 +206,8 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     return [...porChave.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
   }, [itens]);
   const cabecalhoFiltros = <>
-    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} />
-    {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">Nenhum item corresponde aos filtros.</p>}
+    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} pesquisavel={pesquisavel} placeholderBusca={placeholderBusca} />
+    {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">{estadoFiltros.busca.trim() ? `Nada encontrado para “${estadoFiltros.busca.trim()}”.` : "Nenhum item corresponde aos filtros."}</p>}
   </>;
 
   const colunaDaOrdem: Record<Ordem, string | null> = { relevancia: null, edicao: "editada", criacao: "criada", titulo: "titulo", prioridade: "prioridade", agenda: "prazo", status: "status", duracao: "duracao", pasta: "pasta", equipe: "equipe", tags: "tags", dono: "dono" };

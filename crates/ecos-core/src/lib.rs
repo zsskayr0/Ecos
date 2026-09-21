@@ -7,6 +7,7 @@
 //! Ver `ecos-arquitetura-tecnica.md`, seção 10.1.
 
 pub mod adotar;
+pub mod credenciais;
 pub mod errors;
 pub mod frontmatter;
 pub mod ids;

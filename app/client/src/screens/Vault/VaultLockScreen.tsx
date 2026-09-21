@@ -49,7 +49,7 @@ export function VaultLockScreen({
         </p>
         <p className="mt-1 text-sm text-text-muted">
           {primeiraVez
-            ? "Essa senha é exclusiva do Cofre, separada da sua senha de login. Guarde-a — sem ela, não há como recuperar os dados."
+            ? "Essa senha é exclusiva do Cofre, separada da sua senha de login. Mínimo de 12 caracteres, sem espaços. Guarde-a — sem ela, não há como recuperar os dados."
             : "Confirme sua identidade para acessar dados financeiros."}
         </p>
       </div>
@@ -82,7 +82,7 @@ export function VaultLockScreen({
 
         <button
           type="submit"
-          disabled={carregando || senha.length < 8}
+          disabled={carregando || senha.length < (primeiraVez ? 12 : 1)}
           className="rounded-2xl bg-violet py-3.5 text-center font-body text-[15px] font-semibold text-black disabled:opacity-40"
         >
           {carregando ? "Um momento..." : primeiraVez ? "Ativar Cofre" : "Desbloquear"}
