@@ -69,17 +69,29 @@ async function renovarSessaoNativa(): Promise<boolean> {
   finally { renovacaoNativa = null; }
 }
 
+const ESPERA_RETRY_RENOVACAO_MS = [300, 1000];
+
+/** Uma falha isolada de rede/timeout na renovação nativa não pode deslogar quem
+ * ainda tem um refresh token válido guardado — por isso tenta mais duas vezes
+ * (com um pequeno intervalo) antes de desistir e limpar o access token. */
 async function executarRenovacaoNativa(): Promise<boolean> {
   if (!estaNoTauri()) return false;
   const servidor = obterServidorBaseUrl();
   if (!servidor) return false;
-  try {
-    const accessToken = await comandoAuthNativo<string>("renovar_sessao_desktop", { servidor });
-    definirAccessToken(accessToken);
-    return true;
-  } catch {
-    definirAccessToken(null);
-    return false;
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      const accessToken = await comandoAuthNativo<string>("renovar_sessao_desktop", { servidor });
+      definirAccessToken(accessToken);
+      return true;
+    } catch (erro) {
+      // Refresh token inválido/expirado (401 do servidor) é definitivo: tentar de novo não muda o resultado.
+      const status = erro instanceof ApiError ? erro.status : undefined;
+      if (status === 401 || tentativa >= ESPERA_RETRY_RENOVACAO_MS.length) {
+        definirAccessToken(null);
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, ESPERA_RETRY_RENOVACAO_MS[tentativa]));
+    }
   }
 }
 

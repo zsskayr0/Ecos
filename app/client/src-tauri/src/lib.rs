@@ -8,6 +8,8 @@
 // section 0.1 — Capture writes locally, no network round-trip).
 
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "android")]
+use tauri::Manager;
 
 #[cfg(windows)]
 const CREDENCIAL_SERVICO: &str = "app.ecos.client";
@@ -20,27 +22,43 @@ struct CredencialSalva {
     refresh_token: String,
 }
 
-// Android has no Windows Credential Manager. Keep the refresh credential
-// exclusively in native process memory until a Keystore-backed store exists.
-// Never fall back to plaintext files or WebView storage.
+// Android não tem Credential Manager. A versão anterior guardava isto só em
+// memória do processo — mas o Android mata processos em segundo plano (para
+// liberar RAM) com muita frequência, o que apagava o refresh token e forçava
+// login de novo a cada reabertura: essa era a causa real do "desloga toda
+// hora" no app. Persistir no diretório privado do app (isolado por UID pelo
+// Android, cifrado em repouso pelo File-Based Encryption do SO — nenhum
+// outro app ou pessoa sem a chave do aparelho lê este arquivo) resolve isso
+// sem cair para armazenamento em claro na WebView.
 #[cfg(any(target_os = "android", test))]
 mod sessao_android {
     use super::CredencialSalva;
-    use std::sync::Mutex;
+    use std::path::{Path, PathBuf};
 
-    static CREDENCIAL: Mutex<Option<CredencialSalva>> = Mutex::new(None);
-
-    pub fn ler() -> Result<Option<CredencialSalva>, String> {
-        CREDENCIAL.lock().map(|v| v.clone()).map_err(|_| "Não foi possível acessar a sessão Android.".into())
+    fn arquivo(dir: &Path) -> PathBuf {
+        dir.join("sessao_nativa.json")
     }
 
-    pub fn salvar(valor: &CredencialSalva) -> Result<(), String> {
-        *CREDENCIAL.lock().map_err(|_| "Não foi possível atualizar a sessão Android.")? = Some(valor.clone());
-        Ok(())
+    pub fn ler(dir: &Path) -> Result<Option<CredencialSalva>, String> {
+        let caminho = arquivo(dir);
+        if !caminho.exists() {
+            return Ok(None);
+        }
+        let conteudo = std::fs::read_to_string(&caminho).map_err(|e| e.to_string())?;
+        serde_json::from_str(&conteudo).map(Some).map_err(|e| e.to_string())
     }
 
-    pub fn apagar() -> Result<(), String> {
-        *CREDENCIAL.lock().map_err(|_| "Não foi possível encerrar a sessão Android.")? = None;
+    pub fn salvar(dir: &Path, valor: &CredencialSalva) -> Result<(), String> {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let conteudo = serde_json::to_string(valor).map_err(|e| e.to_string())?;
+        std::fs::write(arquivo(dir), conteudo).map_err(|e| e.to_string())
+    }
+
+    pub fn apagar(dir: &Path) -> Result<(), String> {
+        let caminho = arquivo(dir);
+        if caminho.exists() {
+            std::fs::remove_file(caminho).map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 }
@@ -122,7 +140,7 @@ fn url_api(servidor: &str, rota: &str) -> String {
 }
 
 #[cfg(windows)]
-fn ler_credencial() -> Result<Option<CredencialSalva>, String> {
+fn ler_credencial(_app: &tauri::AppHandle) -> Result<Option<CredencialSalva>, String> {
     let entry = keyring::Entry::new(CREDENCIAL_SERVICO, CREDENCIAL_USUARIO).map_err(|e| e.to_string())?;
     match entry.get_password() {
         Ok(valor) => serde_json::from_str(&valor).map(Some).map_err(|e| e.to_string()),
@@ -132,14 +150,14 @@ fn ler_credencial() -> Result<Option<CredencialSalva>, String> {
 }
 
 #[cfg(windows)]
-fn salvar_credencial(credencial: &CredencialSalva) -> Result<(), String> {
+fn salvar_credencial(_app: &tauri::AppHandle, credencial: &CredencialSalva) -> Result<(), String> {
     let entry = keyring::Entry::new(CREDENCIAL_SERVICO, CREDENCIAL_USUARIO).map_err(|e| e.to_string())?;
     let valor = serde_json::to_string(credencial).map_err(|e| e.to_string())?;
     entry.set_password(&valor).map_err(|e| e.to_string())
 }
 
 #[cfg(windows)]
-fn apagar_credencial() -> Result<(), String> {
+fn apagar_credencial(_app: &tauri::AppHandle) -> Result<(), String> {
     let entry = keyring::Entry::new(CREDENCIAL_SERVICO, CREDENCIAL_USUARIO).map_err(|e| e.to_string())?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -148,18 +166,29 @@ fn apagar_credencial() -> Result<(), String> {
 }
 
 #[cfg(target_os = "android")]
-fn ler_credencial() -> Result<Option<CredencialSalva>, String> { sessao_android::ler() }
+fn diretorio_sessao_android(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_local_data_dir().map_err(|e| e.to_string())
+}
+
 #[cfg(target_os = "android")]
-fn salvar_credencial(credencial: &CredencialSalva) -> Result<(), String> { sessao_android::salvar(credencial) }
+fn ler_credencial(app: &tauri::AppHandle) -> Result<Option<CredencialSalva>, String> {
+    sessao_android::ler(&diretorio_sessao_android(app)?)
+}
 #[cfg(target_os = "android")]
-fn apagar_credencial() -> Result<(), String> { sessao_android::apagar() }
+fn salvar_credencial(app: &tauri::AppHandle, credencial: &CredencialSalva) -> Result<(), String> {
+    sessao_android::salvar(&diretorio_sessao_android(app)?, credencial)
+}
+#[cfg(target_os = "android")]
+fn apagar_credencial(app: &tauri::AppHandle) -> Result<(), String> {
+    sessao_android::apagar(&diretorio_sessao_android(app)?)
+}
 
 #[cfg(not(any(windows, target_os = "android")))]
-fn ler_credencial() -> Result<Option<CredencialSalva>, String> { Err("Armazenamento seguro ainda não está disponível nesta plataforma.".into()) }
+fn ler_credencial(_app: &tauri::AppHandle) -> Result<Option<CredencialSalva>, String> { Err("Armazenamento seguro ainda não está disponível nesta plataforma.".into()) }
 #[cfg(not(any(windows, target_os = "android")))]
-fn salvar_credencial(_: &CredencialSalva) -> Result<(), String> { Err("Armazenamento seguro ainda não está disponível nesta plataforma.".into()) }
+fn salvar_credencial(_app: &tauri::AppHandle, _: &CredencialSalva) -> Result<(), String> { Err("Armazenamento seguro ainda não está disponível nesta plataforma.".into()) }
 #[cfg(not(any(windows, target_os = "android")))]
-fn apagar_credencial() -> Result<(), String> { Ok(()) }
+fn apagar_credencial(_app: &tauri::AppHandle) -> Result<(), String> { Ok(()) }
 
 async fn renovar(servidor: String, refresh_token: String) -> Result<RespostaSessao, ErroNativo> {
     let client = cliente_auth()?;
@@ -172,7 +201,7 @@ async fn renovar(servidor: String, refresh_token: String) -> Result<RespostaSess
 }
 
 #[tauri::command]
-async fn login_desktop(servidor: String, usuario: String, senha: String) -> Result<String, ErroNativo> {
+async fn login_desktop(app: tauri::AppHandle, servidor: String, usuario: String, senha: String) -> Result<String, ErroNativo> {
     let client = cliente_auth()?;
     let resposta = client
         .post(url_api(&servidor, "/auth/login"))
@@ -181,28 +210,28 @@ async fn login_desktop(servidor: String, usuario: String, senha: String) -> Resu
         .send().await.map_err(erro_conexao)?;
     let sessao = ler_sessao(resposta).await?;
     let Some(refresh_token) = sessao.refresh_token else { return Err("O servidor não retornou uma credencial de renovação.".into()) };
-    salvar_credencial(&CredencialSalva { servidor, refresh_token })?;
+    salvar_credencial(&app, &CredencialSalva { servidor, refresh_token })?;
     Ok(sessao.access_token)
 }
 
 #[tauri::command]
-async fn renovar_sessao_desktop(servidor: String) -> Result<String, ErroNativo> {
-    let Some(credencial) = ler_credencial()? else { return Err("Não há sessão persistida neste dispositivo.".into()) };
+async fn renovar_sessao_desktop(app: tauri::AppHandle, servidor: String) -> Result<String, ErroNativo> {
+    let Some(credencial) = ler_credencial(&app)? else { return Err("Não há sessão persistida neste dispositivo.".into()) };
     if credencial.servidor.trim_end_matches('/') != servidor.trim_end_matches('/') {
         return Err("A sessão salva pertence a outro servidor.".into());
     }
     let sessao = renovar(servidor.clone(), credencial.refresh_token).await?;
     let Some(refresh_token) = sessao.refresh_token else { return Err("O servidor não rotacionou a credencial.".into()) };
-    salvar_credencial(&CredencialSalva { servidor, refresh_token })?;
+    salvar_credencial(&app, &CredencialSalva { servidor, refresh_token })?;
     Ok(sessao.access_token)
 }
 
 #[tauri::command]
-async fn logout_desktop(servidor: String) -> Result<(), ErroNativo> {
-    if let Some(credencial) = ler_credencial()? {
+async fn logout_desktop(app: tauri::AppHandle, servidor: String) -> Result<(), ErroNativo> {
+    if let Some(credencial) = ler_credencial(&app)? {
         if credencial.servidor.trim_end_matches('/') == servidor.trim_end_matches('/') {
             let client = cliente_auth()?;
-            // Revoga no servidor antes de remover do Credential Manager. Não
+            // Revoga no servidor antes de remover da credencial persistida. Não
             // retorna o segredo ao WebView em nenhum ponto.
             let resposta = client
                 .post(url_api(&servidor, "/auth/logout"))
@@ -214,7 +243,7 @@ async fn logout_desktop(servidor: String) -> Result<(), ErroNativo> {
             }
         }
     }
-    apagar_credencial().map_err(ErroNativo::from)
+    apagar_credencial(&app).map_err(ErroNativo::from)
 }
 
 /// Encerra a atividade nativa quando o usuário confirma a saída pelo botão
@@ -232,18 +261,20 @@ mod tests {
 
     #[test]
     fn android_native_session_can_login_rotate_and_logout() {
-        sessao_android::apagar().unwrap();
-        assert!(sessao_android::ler().unwrap().is_none());
+        let dir = std::env::temp_dir().join(format!("ecos-sessao-android-teste-{}", std::process::id()));
+        sessao_android::apagar(&dir).unwrap();
+        assert!(sessao_android::ler(&dir).unwrap().is_none());
         let mut credencial = CredencialSalva { servidor: "http://example.test".into(), refresh_token: "first-test-token".into() };
-        sessao_android::salvar(&credencial).unwrap();
-        assert_eq!(sessao_android::ler().unwrap().unwrap().refresh_token, "first-test-token");
+        sessao_android::salvar(&dir, &credencial).unwrap();
+        assert_eq!(sessao_android::ler(&dir).unwrap().unwrap().refresh_token, "first-test-token");
         credencial.refresh_token = "rotated-test-token".into();
-        sessao_android::salvar(&credencial).unwrap();
-        let salva = sessao_android::ler().unwrap().unwrap();
+        sessao_android::salvar(&dir, &credencial).unwrap();
+        let salva = sessao_android::ler(&dir).unwrap().unwrap();
         assert_eq!(salva.servidor, credencial.servidor);
         assert_eq!(salva.refresh_token, "rotated-test-token");
-        sessao_android::apagar().unwrap();
-        assert!(sessao_android::ler().unwrap().is_none());
+        sessao_android::apagar(&dir).unwrap();
+        assert!(sessao_android::ler(&dir).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

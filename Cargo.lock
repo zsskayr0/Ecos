@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-app"
-version = "0.5.2-alpha"
+version = "0.5.3-alpha"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-core"
-version = "0.5.2-alpha"
+version = "0.5.3-alpha"
 dependencies = [
  "chrono",
  "regex",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "ecos-vault-db"
-version = "0.5.2-alpha"
+version = "0.5.3-alpha"
 dependencies = [
  "anyhow",
  "argon2",

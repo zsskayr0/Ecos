@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 pub const NOME_COOKIE_SESSAO: &str = "ecos_sessao";
 pub const NOME_COOKIE_REFRESH: &str = "ecos_refresh";
 
-const DURACAO_ACCESS_TOKEN_MIN: i64 = 15;
+const DURACAO_ACCESS_TOKEN_MIN: i64 = 120;
 pub const DURACAO_REFRESH_DIAS: i64 = 30;
 
 #[derive(Debug, Serialize, Deserialize)]

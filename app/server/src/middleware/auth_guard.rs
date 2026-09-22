@@ -53,7 +53,17 @@ pub async fn exigir_sessao(
 
     // O access token é stateless (15 min): sem isto, uma conta excluída continuaria entrando até ele expirar.
     let sub = claims.sub.clone();
-    let linha: Option<bool> = state.db.with(move |conn| conn.query_row("SELECT deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&sub], |r| r.get(0)).optional()).await.unwrap_or(None);
+    // Distinguir "usuário não existe" (sessão realmente inválida, 401) de uma falha
+    // transitória do banco (lock/timeout do SQLite): um soluço de banco não pode
+    // deslogar quem tem um token válido — isso derrubava a sessão sem motivo real.
+    let linha: Option<bool> = match state
+        .db
+        .with(move |conn| conn.query_row("SELECT deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&sub], |r| r.get(0)).optional())
+        .await
+    {
+        Ok(linha) => linha,
+        Err(_) => return Err(AppError::new(ErrorCode::InternalError)),
+    };
     let Some(deve_trocar_senha) = linha else {
         return Err(AppError::new(ErrorCode::Unauthorized));
     };
