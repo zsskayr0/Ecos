@@ -1,5 +1,6 @@
+import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Folder, Plus, X } from "lucide-react";
+import { ChevronDown, Folder, Plus, X } from "lucide-react";
 import { ApiError, notas, pastas } from "@/lib/api";
 import { useIsMobile } from "@/lib/use-viewport";
 
@@ -35,11 +36,11 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
   const raiz = useRef<HTMLDivElement>(null);
 
   const carregarPastas = () =>
-    pastas.listar({ tipo: "nota", espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
 
   useEffect(() => {
     let vivo = true;
-    pastas.listar({ tipo: "nota", espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
     notas
       .listar({ limit: 100 })
       .then((r) => {
@@ -77,7 +78,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
     setCriando(true);
     setErroPasta(null);
     try {
-      const { caminho } = await pastas.criar({ tipo: "nota", nome, espaco });
+      const { caminho } = await pastas.criar({ tipo: "nota", nome, espaco, pasta_pai: pasta || undefined });
       await carregarPastas();
       onPasta(caminho);
       setNovaPasta("");
@@ -89,22 +90,6 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
     }
   }
 
-  const opcao = (caminho: string, nome: string) => {
-    const selecionada = (pasta ?? "") === caminho;
-    return (
-      <button
-        key={caminho || "raiz"}
-        type="button"
-        role="option"
-        aria-selected={selecionada}
-        onClick={() => { onPasta(caminho || null); setMenuAberto(false); }}
-        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-text-primary hover:bg-surface-3"
-      >
-        <span className="min-w-0 flex-1 truncate">{nome}</span>
-        {selecionada && <Check size={14} className="shrink-0 text-steel-300" />}
-      </button>
-    );
-  };
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="Pasta e tags">
@@ -112,7 +97,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
         <button
           type="button"
           disabled={disabled}
-          aria-haspopup="listbox"
+          aria-haspopup="menu"
           aria-expanded={menuAberto}
           onClick={() => setMenuAberto((v) => !v)}
           className="flex h-9 max-w-[16rem] items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary hover:border-steel-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-50"
@@ -126,10 +111,10 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
           {mobile && <button type="button" aria-label="Fechar seleção de pasta" onClick={() => setMenuAberto(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
           <div className={`ecos-fade-in border border-border bg-surface-2 shadow-nav ${mobile ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70vh,34rem)] overflow-y-auto rounded-2xl p-2" : "absolute left-0 top-full z-30 mt-1 w-64 rounded-xl p-1"}`}>
             {mobile && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta nota será organizada.</p></div><button type="button" onClick={() => setMenuAberto(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3" aria-label="Fechar"><X size={17} /></button></div>}
-            <div role="listbox" aria-label="Pasta da nota" className="max-h-56 overflow-y-auto">
-              {opcao("", "Sem pasta")}
-              {pastasLista.map((p) => opcao(p.caminho, p.nome))}
+            <div role="menu" aria-label="Pasta da nota" className="max-h-56 overflow-y-auto">
+              <ArvorePastas opcoes={[{ valor: "", rotulo: "Sem pasta" }, ...pastasLista.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(pasta && !pastasLista.some((p) => p.caminho === pasta) ? [{ valor: pasta, rotulo: pasta, pasta: true }] : [])]} valores={[pasta ?? ""]} onSelect={(valor) => { onPasta(valor || null); setMenuAberto(false); }} />
             </div>
+            {pasta && <p className="px-2 pt-2 text-xs text-text-muted break-words">Criar dentro de {pasta.split("/").join(" / ")}</p>}
             <form
               className="mt-1 flex items-center gap-1 border-t border-border pt-1.5"
               onSubmit={(e) => { e.preventDefault(); void criarPasta(); }}
@@ -137,7 +122,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
               <input
                 value={novaPasta}
                 onChange={(e) => setNovaPasta(e.target.value)}
-                placeholder="Nova pasta"
+                placeholder={pasta ? "Nova subpasta" : "Nova pasta"}
                 aria-label="Nome da nova pasta"
                 className="h-8 min-w-0 flex-1 rounded-lg bg-surface-1 px-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:ring-1 focus:ring-steel-400"
               />

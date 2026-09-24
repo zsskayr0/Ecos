@@ -178,3 +178,14 @@ describe("Alocar tempo por diálogo", () => {
     expect(screen.getByText(/Carregando tarefas/)).toBeTruthy();
   });
 });
+
+
+it("mantém subpastas homônimas separadas no filtro da agenda", async () => {
+  listar.mockResolvedValue({ items: [tarefa("a", "Escrever relatório", 45, "Trabalho/Projeto"), tarefa("b", "Planejar reforma", 60, "Casa/Projeto")], next_cursor: null } as never);
+  await abrir();
+  fireEvent.click(screen.getByRole("button", { name: "Filtrar por pasta" }));
+  fireEvent.click(screen.getByRole("button", { name: "Expandir Trabalho" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Projeto" }));
+  expect(screen.getByRole("option", { name: "Escrever relatório" })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: "Planejar reforma" })).toBeNull();
+});

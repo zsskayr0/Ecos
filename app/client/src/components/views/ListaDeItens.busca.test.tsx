@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/use-viewport", () => ({ useIsDesktop: () => true, useIsMobile: () => false }));
+
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
   return { ...original, pastas: { ...original.pastas, listar: vi.fn() }, equipes: { ...original.equipes, listarMinhas: vi.fn() } };
@@ -77,7 +79,9 @@ describe("lupa de pesquisa na lista de tarefas", () => {
     montar({ pesquisavel: true });
     fireEvent.change(await abrirBusca(), { target: { value: "pao" } });
     await waitFor(() => expect(titulosNaTela()).toEqual(["Comprar pão"]));
-    fireEvent.click(screen.getByRole("button", { name: /^Limpar$/ }));
+    const limpar = screen.getByRole("button", { name: /^Limpar$/ });
+    limpar.focus(); // fireEvent não transfere o foco como um clique real.
+    fireEvent.click(limpar);
     await waitFor(() => expect(titulosNaTela()).toHaveLength(4));
     expect(screen.getByRole("search").getAttribute("data-aberta")).toBe("false");
   });
@@ -100,4 +104,15 @@ describe("lupa de pesquisa na lista de tarefas", () => {
     expect(screen.getByRole("search").getAttribute("data-aberta")).toBe("true");
     expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("pao");
   });
+});
+
+
+it("carrega a hierarquia completa e expande o seletor de pastas sem alterar o filtro", async () => {
+  vi.mocked(pastas.listar).mockResolvedValue({ subpastas: [{ caminho: "Trabalho", nome: "Trabalho" }, { caminho: "Trabalho/Projeto", nome: "Projeto" }] } as never);
+  montar();
+  await waitFor(() => expect(pastas.listar).toHaveBeenCalledWith({ tipo: "tarefa", recursivo: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Filtrar por pasta" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Expandir Trabalho" }));
+  expect(screen.getByRole("menuitemcheckbox", { name: "Projeto" })).toBeTruthy();
+  expect(titulosNaTela()).toHaveLength(4);
 });

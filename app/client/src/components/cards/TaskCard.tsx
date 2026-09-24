@@ -1,3 +1,4 @@
+import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, Circle, Flag, FlagTriangleRight, Flame, FolderInput, ListChecks, SquareArrowOutUpRight } from "lucide-react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -88,7 +89,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
             <BotaoAcao titulo="Mover para pasta" onClick={() => setMenu((m) => m === "pasta" ? null : "pasta")} ativo={menu === "pasta"}><FolderInput size={15} /></BotaoAcao>
             <MenuAcao aberto={menu !== null} onFechar={() => setMenu(null)}>
               {menu === "prioridade" && (["alta", "media", "baixa"] as const).map((p) => <ItemMenu key={p} onClick={() => void mudarPrioridade(p)} ativo={prioridade === p}><FlagTriangleRight size={14} className="mr-2 text-text-muted" />{ROTULO_PRIORIDADE[p]}</ItemMenu>)}
-              {menu === "pasta" && <><ItemMenu onClick={() => void mover(null)} ativo={!pasta}>Sem pasta</ItemMenu>{pastas.map((p) => <ItemMenu key={p.caminho} onClick={() => void mover(p.caminho)} ativo={pasta === p.caminho}>{p.nome}</ItemMenu>)}</>}
+              {menu === "pasta" && <><ItemMenu onClick={() => void mover(null)} ativo={!pasta}>Sem pasta</ItemMenu><ArvorePastas opcoes={pastas.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[pasta ?? ""]} onSelect={(p) => void mover(p)} /></>}
             </MenuAcao>
             <BotaoAcao titulo="Abrir tarefa" onClick={() => abrirDocumento(`/tarefa/${tarefa.id}`)}><SquareArrowOutUpRight size={15} /></BotaoAcao>
           </div>

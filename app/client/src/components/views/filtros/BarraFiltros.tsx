@@ -49,7 +49,7 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
   ];
   const opcoesPasta: OpcaoMultipla[] = [
     { valor: "", rotulo: "Sem pasta", icone: Folder, cor: TOM.alerta },
-    ...contexto.pastas.map((p) => ({ valor: p.caminho, rotulo: p.caminho.replace(/\//g, " / "), icone: FolderOpen, cor: TOM.aco })),
+    ...contexto.pastas.map((p) => ({ valor: p.caminho, pasta: true, rotulo: p.caminho.replace(/\//g, " / "), icone: FolderOpen, cor: TOM.aco })),
   ];
   const opcoesTag: OpcaoMultipla[] = contexto.tags.map((tag) => ({ valor: tag, rotulo: tag, icone: Tag, cor: TOM.violeta }));
   const opcoesDono: OpcaoMultipla[] = contexto.donos.map((dono) => ({ valor: dono.valor, rotulo: dono.nome, icone: User, cor: TOM.ciano }));
@@ -84,7 +84,7 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
           classeGatilho={chip(estado.donos.length > 0)} corAtiva={estado.donos.length ? TOM.ciano : null}
           gatilho={({ aberto }) => <><User size={14} /><span className="max-w-[10rem] truncate">{estado.donos.length ? rotuloDonos : "Proprietário"}</span><Seta aberto={aberto} /></>} />
       )}
-      <MenuMultiplo ariaLabel="Filtrar por pasta" valores={estado.pastas} opcoes={opcoesPasta} onChange={(pastas) => set({ pastas })}
+      <MenuMultiplo arvore ariaLabel="Filtrar por pasta" valores={estado.pastas} opcoes={opcoesPasta} onChange={(pastas) => set({ pastas })}
         todas={{ rotulo: "Todas as pastas", icone: ListChecks }}
         pesquisavel placeholderBusca="Pesquisar pastas…"
         classeGatilho={chip(estado.pastas.length > 0)} corAtiva={estado.pastas.length ? TOM.aco : null}

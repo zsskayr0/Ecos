@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
+import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
 /**
  * Notas — root-level folder grid (section 3.2), reading the real
@@ -66,7 +67,7 @@ export function NotesRootScreen() {
         chave="notas"
         corIcone="text-steel-300"
         pastas={subpastas ?? []}
-        aoAbrir={(p) => navigate(`/notas/pasta/${encodeURIComponent(p.caminho)}`)}
+        aoAbrir={(p) => navigate(`/notas/pasta/${caminhoPastaNaRota(p.caminho)}`)}
         aoCriar={() => navigate("/notas/pasta/nova")}
       />
 

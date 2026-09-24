@@ -362,7 +362,7 @@ export const notas = {
 // --- Folders (section 11.5) -------------------------------------------------
 
 export const pastas = {
-  listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string } = {}) =>
+  listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
     get<{ subpastas: { caminho: string; nome: string; contagem_itens: number }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
   criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
   renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string }) => patch<{ ok: true }>("/pastas", payload),

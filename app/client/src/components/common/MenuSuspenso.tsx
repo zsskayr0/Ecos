@@ -1,3 +1,4 @@
+import { ArvorePastas } from "./ArvorePastas";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, type LucideIcon } from "lucide-react";
 import "./menu-suspenso.css";
@@ -14,6 +15,7 @@ export const TOM = {
 
 export interface OpcaoMenu<T extends string> {
   valor: T;
+  pasta?: boolean;
   rotulo: string;
   /** Cor da opção: bolinha, destaque deslizante e, quando é o filtro atual, o gatilho. */
   cor?: string;
@@ -37,10 +39,11 @@ interface Props<T extends string> {
   /** Pinta o botão com esta cor (o filtro está ativo). `null`/ausente = visual neutro. */
   corAtiva?: string | null;
   larguraMenu?: string;
+  arvore?: boolean;
 }
 
 /** Menu suspenso do Ecos, no lugar do `<select>` nativo. Anima entrada e saída, fecha com Esc/clique fora e navega por setas. */
-export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]" }: Props<T>) {
+export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false }: Props<T>) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
@@ -93,7 +96,8 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       </button>
       {montado && (
         <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto}
-          className={`ecos-menu absolute z-40 mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
+          className={`ecos-menu absolute z-40 mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
+          {arvore ? <ArvorePastas opcoes={opcoes} valores={[valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
           <span aria-hidden className="pointer-events-none absolute left-1 right-1 top-1 rounded-lg border transition-[transform,background-color,border-color] duration-100 motion-reduce:transition-none"
             style={{ height: ALTURA_ITEM, transform: `translateY(${destaque * ALTURA_ITEM}px)`, borderColor: misturar(opcoes[destaque]?.cor ?? TOM.aco, 65), backgroundColor: misturar(opcoes[destaque]?.cor ?? TOM.aco, 16) }} />
           {opcoes.map((o, i) => {
@@ -110,6 +114,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
               </button>
             );
           })}
+          </>}
         </div>
       )}
     </div>

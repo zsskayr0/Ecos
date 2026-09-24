@@ -344,3 +344,13 @@ body {
   .ecos-busca, .ecos-busca-icone, .ecos-busca-campo, .ecos-busca-limpar { transition: none; }
   .ecos-busca-lupa::after { animation: none !important; }
 }
+
+/* Expansão discreta da hierarquia, respeitando movimento reduzido. */
+@keyframes ecos-subpastas-entrada {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ecos-subpastas { animation: ecos-subpastas-entrada 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-subpastas { animation: none; }
+}

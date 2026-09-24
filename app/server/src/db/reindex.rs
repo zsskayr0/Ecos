@@ -14,6 +14,49 @@ use std::collections::HashMap;
 use std::path::Path;
 use walkdir::WalkDir;
 
+/// Converte contagens diretas em totais recursivos. Um item em
+/// `Dev/Apps/Ecos` soma 1 em `Dev/Apps/Ecos`, `Dev/Apps` e `Dev`.
+fn acumular_contagens_pastas(contagens: &mut HashMap<(&'static str, String, String), i64>) {
+    let diretas: Vec<_> = contagens
+        .iter()
+        .map(|((tipo, espaco, caminho), contagem)| (*tipo, espaco.clone(), caminho.clone(), *contagem))
+        .collect();
+    for (tipo, espaco, caminho, contagem) in diretas {
+        if contagem == 0 {
+            continue;
+        }
+        let mut descendente = caminho.as_str();
+        while let Some((pai, _)) = descendente.rsplit_once('/') {
+            *contagens.entry((tipo, espaco.clone(), pai.to_string())).or_insert(0) += contagem;
+            descendente = pai;
+        }
+    }
+}
+
+#[cfg(test)]
+mod testes_contagem_pastas {
+    use super::*;
+
+    #[test]
+    fn soma_itens_de_todos_os_descendentes_sem_misturar_tipo_ou_espaco() {
+        let mut contagens = HashMap::from([
+            (("tarefa", "pessoal:u1".into(), "Dev".into()), 2),
+            (("tarefa", "pessoal:u1".into(), "Dev/Apps".into()), 3),
+            (("tarefa", "pessoal:u1".into(), "Dev/Apps/Ecos".into()), 5),
+            (("nota", "pessoal:u1".into(), "Dev".into()), 7),
+            (("tarefa", "equipe:e1".into(), "Dev".into()), 11),
+        ]);
+
+        acumular_contagens_pastas(&mut contagens);
+
+        assert_eq!(contagens.get(&("tarefa", "pessoal:u1".into(), "Dev".into())), Some(&10));
+        assert_eq!(contagens.get(&("tarefa", "pessoal:u1".into(), "Dev/Apps".into())), Some(&8));
+        assert_eq!(contagens.get(&("tarefa", "pessoal:u1".into(), "Dev/Apps/Ecos".into())), Some(&5));
+        assert_eq!(contagens.get(&("nota", "pessoal:u1".into(), "Dev".into())), Some(&7));
+        assert_eq!(contagens.get(&("tarefa", "equipe:e1".into(), "Dev".into())), Some(&11));
+    }
+}
+
 fn nota_modo_str(modo: NotaModo) -> &'static str {
     match modo {
         NotaModo::Texto => "texto",
@@ -402,7 +445,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tx.execute("DELETE FROM nota_fts", [])?;
         tx.execute("DELETE FROM tarefa_fts", [])?;
 
-        // (tipo, espaço, caminho) -> contagem de itens diretos.
+        // (tipo, espaço, caminho) -> contagem direta durante a leitura;
+        // antes de persistir ela vira o total da pasta e de toda a subárvore.
         let mut contagem_pastas: HashMap<(&'static str, String, String), i64> = HashMap::new();
         for (espaco, pasta) in &pastas_notas {
             contagem_pastas.entry(("nota", espaco.clone(), pasta.clone())).or_insert(0);
@@ -566,6 +610,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             }
         }
 
+        acumular_contagens_pastas(&mut contagem_pastas);
         for ((tipo, espaco, caminho), contagem) in contagem_pastas {
             let nome = caminho.rsplit('/').next().unwrap_or(&caminho).to_string();
             tx.execute(

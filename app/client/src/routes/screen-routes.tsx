@@ -56,7 +56,7 @@ export const screenRoutes = (
 
     <Route path="/notas" element={<NotesRootScreen />} />
     <Route path="/notas/pasta/nova" element={<FolderCreateScreen />} />
-    <Route path="/notas/pasta/:pastaId" element={<FolderScreen />} />
+    <Route path="/notas/pasta/*" element={<FolderScreen />} />
     <Route path="/notas/nota/:id" element={<NoteDetailScreen />} />
 
     <Route path="/busca" element={<SearchScreen />} />
@@ -71,7 +71,7 @@ export const screenRoutes = (
         folder screens. */}
     <Route path="/tarefas" element={<TaskFoldersRootScreen />} />
     <Route path="/tarefas/pasta/nova" element={<TaskFolderCreateScreen />} />
-    <Route path="/tarefas/pasta/:pastaId" element={<TaskFolderScreen />} />
+    <Route path="/tarefas/pasta/*" element={<TaskFolderScreen />} />
     <Route path="/media" element={<MediaScreen />} />
     <Route path="/media/ver" element={<FileViewerScreen />} />
     <Route path="/lixeira" element={<TrashScreen />} />

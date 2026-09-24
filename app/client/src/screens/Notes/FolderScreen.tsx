@@ -13,11 +13,11 @@ import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
+import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
 /** Inside a folder — compact subfolders at the top, notes below with the same card as the Feed (section 3.2). */
 export function FolderScreen() {
-  const { pastaId } = useParams();
-  const caminho = decodeURIComponent(pastaId ?? "");
+  const { "*": caminho = "" } = useParams();
   const nomeExibicao = caminho.split("/").pop() ?? caminho;
   const definirTituloJanela = useContext(TituloJanelaContext);
   const navigate = useNavigate();
@@ -50,7 +50,7 @@ export function FolderScreen() {
     return () => {
       vivo = false;
     };
-  }, [caminho, versao]);
+  }, [caminho, versao, espaco]);
 
   return (
     <SoltarMarkdown pasta={caminho} className="min-h-full px-4 pt-1">
@@ -70,17 +70,18 @@ export function FolderScreen() {
         </div>
       )}
 
-      {subpastas.length > 0 && (
-        <div className="mb-4">
+      <div className="mb-4">
           <PastasGrade
             chave="notas"
             titulo="Subpastas"
+            rotuloCriar="Nova subpasta"
+            espaco={espaco}
+            aoCriar={() => navigate(`/notas/pasta/nova?pai=${encodeURIComponent(caminho)}`)}
             corIcone="text-steel-300"
             pastas={subpastas}
-            aoAbrir={(p) => navigate(`/notas/pasta/${encodeURIComponent(p.caminho)}`)}
+            aoAbrir={(p) => navigate(`/notas/pasta/${caminhoPastaNaRota(p.caminho)}`)}
           />
-        </div>
-      )}
+      </div>
 
       <div>
         {notas === null ? (

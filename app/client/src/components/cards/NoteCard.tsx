@@ -1,3 +1,4 @@
+import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Nota } from "@/lib/types";
 import { MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format";
@@ -65,7 +66,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
           <BotaoAcao titulo="Mover para pasta" onClick={() => setMenuPasta((v) => !v)} ativo={menuPasta}><FolderInput size={15} /></BotaoAcao>
           <MenuAcao aberto={menuPasta} onFechar={() => setMenuPasta(false)}>
             <ItemMenu onClick={() => void mover(null)} ativo={!pasta}>Sem pasta</ItemMenu>
-            {pastas.map((p) => <ItemMenu key={p.caminho} onClick={() => void mover(p.caminho)} ativo={pasta === p.caminho}>{p.nome}</ItemMenu>)}
+            <ArvorePastas opcoes={pastas.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[pasta ?? ""]} onSelect={(p) => void mover(p)} />
           </MenuAcao>
           <BotaoAcao titulo="Abrir nota" onClick={() => abrirDocumento(`/notas/nota/${nota.id}`)}><SquareArrowOutUpRight size={15} /></BotaoAcao>
         </div>

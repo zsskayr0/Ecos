@@ -22,6 +22,8 @@ async fn raiz_da_arvore(state: &AppState, usuario_id: &str, tipo: &str, espaco: 
 
 #[derive(Debug, Deserialize)]
 pub struct ListarQuery {
+    #[serde(default)]
+    pub recursivo: bool,
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     #[serde(default)]
@@ -36,6 +38,7 @@ fn tipo_padrao() -> String {
 
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let tipo = q.tipo.clone();
+    let recursivo = q.recursivo;
     let pasta_pai = q.pasta_pai.clone().unwrap_or_default();
     // Sem `espaco` = tudo o que a pessoa enxerga; com `espaco`, o lógico vira a chave física (pessoal -> pessoal:<id>).
     let espaco = q.espaco.clone().filter(|e| !e.is_empty()).map(|e| crate::espacos::fisica(&e, &usuario.0));
@@ -61,7 +64,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                 };
                 let linhas = bruto.into_iter().filter(|(caminho, _, _)| {
                     let pai_de_caminho = caminho.rsplit_once('/').map(|(pai, _)| pai).unwrap_or("");
-                    pai_de_caminho == pasta_pai
+                    pai_de_caminho == pasta_pai || (recursivo && (pasta_pai.is_empty() || caminho.starts_with(&format!("{pasta_pai}/"))))
                 }).collect();
                 Ok(linhas)
             }

@@ -10,6 +10,7 @@ import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
+import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
 /**
  * Tarefas — root-level folder grid, same shape as `NotesRootScreen` (section
@@ -61,7 +62,7 @@ export function TaskFoldersRootScreen() {
         chave="tarefas"
         corIcone="text-cyan"
         pastas={subpastas ?? []}
-        aoAbrir={(p) => navigate(`/tarefas/pasta/${encodeURIComponent(p.caminho)}`)}
+        aoAbrir={(p) => navigate(`/tarefas/pasta/${caminhoPastaNaRota(p.caminho)}`)}
         aoCriar={() => navigate("/tarefas/pasta/nova")}
       />
 

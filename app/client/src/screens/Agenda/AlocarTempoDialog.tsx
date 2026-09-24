@@ -38,7 +38,7 @@ const FILTROS_PRIORIDADE: { valor: FiltroPrioridade; rotulo: string }[] = [
   { valor: "todas", rotulo: "Todas" }, { valor: "alta", rotulo: "Alta" }, { valor: "media", rotulo: "Média" }, { valor: "baixa", rotulo: "Baixa" },
 ];
 
-const nomeDaPasta = (t: TarefaResumo) => t.pasta?.split("/").filter(Boolean).pop() ?? SEM_PASTA;
+const nomeDaPasta = (t: TarefaResumo) => t.pasta || SEM_PASTA;
 const prazoCurto = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 
 /** Hoje, no horário atual arredondado PARA CIMA ao encaixe (nunca vai para o dia seguinte). */
@@ -81,7 +81,7 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
   const tarefa = lista?.find((t) => t.id === tarefaId) ?? null;
   const opcoesPasta = useMemo<OpcaoMenu<string>[]>(() => {
     const nomes = [...new Set((lista ?? []).map(nomeDaPasta))].sort((a, b) => (a === SEM_PASTA ? 1 : b === SEM_PASTA ? -1 : a.localeCompare(b, "pt-BR")));
-    return [{ valor: "todas", rotulo: "Todas as pastas" }, ...nomes.map((n) => ({ valor: n, rotulo: n }))];
+    return [{ valor: "todas", rotulo: "Todas as pastas" }, ...nomes.map((n) => ({ valor: n, rotulo: n, pasta: n !== SEM_PASTA }))];
   }, [lista]);
 
   const filtradas = useMemo(() => {
@@ -204,7 +204,7 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
                     ))}
                   </span>
                   <span className="flex shrink-0 items-center justify-end gap-1.5">
-                    <MenuSuspenso ariaLabel="Filtrar por pasta" valor={pastaFiltro} opcoes={opcoesPasta} onChange={setPastaFiltro} alinhar="dir" corAtiva={pastaFiltro !== "todas" ? "rgb(var(--ecos-cyan-rgb))" : null}
+                    <MenuSuspenso arvore ariaLabel="Filtrar por pasta" valor={pastaFiltro} opcoes={opcoesPasta} onChange={setPastaFiltro} alinhar="dir" corAtiva={pastaFiltro !== "todas" ? "rgb(var(--ecos-cyan-rgb))" : null}
                       classeGatilho="flex h-7 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs text-text-secondary transition-all hover:bg-surface-3 active:scale-95"
                       gatilho={({ atual }) => <><Folder size={12} /><span className="max-w-[7rem] truncate">{atual?.rotulo ?? "Pasta"}</span></>} />
                     <MenuSuspenso ariaLabel="Ordenar tarefas" valor={ordem} opcoes={ORDENS} onChange={setOrdem} alinhar="dir"

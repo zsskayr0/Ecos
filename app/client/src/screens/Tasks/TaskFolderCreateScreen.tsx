@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { pastas, ApiError } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
+import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
 /** `POST /api/v1/pastas` with `tipo: "tarefa"` — same mechanism as `FolderCreateScreen` (Notas). */
 export function TaskFolderCreateScreen() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const pai = params.get("pai") ?? "";
   const { notificar } = useRefreshBus();
   const espaco = useEspacoFiltro();
   const [nome, setNome] = useState("");
@@ -19,9 +22,9 @@ export function TaskFolderCreateScreen() {
     setSalvando(true);
     setErro(null);
     try {
-      await pastas.criar({ tipo: "tarefa", nome: nome.trim(), espaco });
+      await pastas.criar({ tipo: "tarefa", nome: nome.trim(), espaco, pasta_pai: pai || undefined });
       notificar();
-      navigate("/tarefas");
+      navigate(pai ? `/tarefas/pasta/${caminhoPastaNaRota(pai)}` : "/tarefas");
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
     } finally {
@@ -36,7 +39,9 @@ export function TaskFolderCreateScreen() {
         Cancelar
       </button>
 
-      <h1 className="mb-6 font-display text-2xl text-text-primary">Nova pasta de Tarefas</h1>
+      <h1 className="mb-6 font-display text-2xl text-text-primary">{pai ? "Nova subpasta de tarefas" : "Nova pasta de tarefas"}</h1>
+
+      {pai && <p className="mb-4 break-words text-sm text-text-secondary">Dentro de {pai.split("/").join(" / ")}</p>}
 
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Nome</span>

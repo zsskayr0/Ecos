@@ -17,7 +17,7 @@ const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda",
  * have their own dedicated back header, by design). User feedback: "na
  * seção tarefas, a foto de perfil e as notificação não devem sumir" — the
  * bug pre-dated Tarefas, `/notas/pasta/:id` already lost it too. */
-const REGEX_PASTA_COM_TOPBAR = /^\/(notas|tarefas)\/pasta\/(?!nova$)[^/]+$/;
+const REGEX_PASTA_COM_TOPBAR = /^\/(notas|tarefas)\/pasta\/(?!nova(?:[/?#]|$)).+$/;
 
 function temTopbar(pathname: string): boolean {
   return ROTAS_BASE_COM_TOPBAR.includes(pathname) || REGEX_PASTA_COM_TOPBAR.test(pathname);

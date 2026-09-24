@@ -12,11 +12,11 @@ import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
+import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
 /** Inside a Tarefa folder — same shape as `FolderScreen` (Notas, section 3.2), reusing the Feed's own `TaskCard`. */
 export function TaskFolderScreen() {
-  const { pastaId } = useParams();
-  const caminho = decodeURIComponent(pastaId ?? "");
+  const { "*": caminho = "" } = useParams();
   const nomeExibicao = caminho.split("/").pop() ?? caminho;
   const definirTituloJanela = useContext(TituloJanelaContext);
   const navigate = useNavigate();
@@ -51,7 +51,7 @@ export function TaskFolderScreen() {
     return () => {
       vivo = false;
     };
-  }, [caminho, versao]);
+  }, [caminho, versao, espaco]);
 
   return (
     <div className="px-4 pt-1">
@@ -70,17 +70,18 @@ export function TaskFolderScreen() {
         </div>
       )}
 
-      {subpastas.length > 0 && (
-        <div className="mb-4">
+      <div className="mb-4">
           <PastasGrade
             chave="tarefas"
             titulo="Subpastas"
+            rotuloCriar="Nova subpasta"
+            espaco={espaco}
+            aoCriar={() => navigate(`/tarefas/pasta/nova?pai=${encodeURIComponent(caminho)}`)}
             corIcone="text-cyan"
             pastas={subpastas}
-            aoAbrir={(p) => navigate(`/tarefas/pasta/${encodeURIComponent(p.caminho)}`)}
+            aoAbrir={(p) => navigate(`/tarefas/pasta/${caminhoPastaNaRota(p.caminho)}`)}
           />
-        </div>
-      )}
+      </div>
 
       <div>
         {itens === null ? (

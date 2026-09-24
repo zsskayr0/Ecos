@@ -10,6 +10,7 @@ import { corDaEquipe } from "@/lib/team-color";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { Toggle } from "@/components/common/Toggle";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { avisar } from "@/lib/toast";
 
 type Tipo = "nota" | "tarefa";
 
@@ -49,7 +50,7 @@ export function OrganizationScreen() {
     setCriando(true); setErro(null);
     try {
       await pastas.criar({ tipo, espaco, pasta_pai: pastaAtual, nome: nome.trim() });
-      setNome(""); setNovaAberta(false); notificar();
+      setNome(""); setNovaAberta(false); notificar(); avisar(pastaAtual ? "Subpasta criada com sucesso." : "Pasta criada com sucesso.", "sucesso");
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
     } finally { setCriando(false); }
@@ -101,7 +102,7 @@ export function OrganizationScreen() {
           <PastasGrade chave={tipo === "nota" ? "notas" : "tarefas"} titulo={titulo} corIcone={tipo === "nota" ? "text-steel-300" : "text-cyan"} espaco={espaco} pastas={lista} itens={itens} visualizacao="explorador"
             aoAbrir={(p) => setPastaAtual(p.caminho)}
             aoAbrirItem={abrirItem}
-            aoCriar={() => setNovaAberta(true)} />
+            aoCriar={() => setNovaAberta(true)} rotuloCriar={pastaAtual ? "Nova subpasta" : "Nova pasta"} />
         </div>
         {atualizando && <div aria-hidden className="absolute inset-x-0 top-7 h-px overflow-hidden bg-border"><span className="block h-full w-1/3 animate-pulse bg-cyan" /></div>}
       </div>
@@ -134,7 +135,7 @@ export function OrganizationScreen() {
       </div>
     </section>
 
-    {novaAberta && <div role="dialog" aria-modal="true" aria-labelledby="nova-pasta-titulo" className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"><div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav"><div className="mb-4 flex items-center justify-between"><h2 id="nova-pasta-titulo" className="font-semibold text-text-primary">Nova pasta de {tipo === "nota" ? "notas" : "tarefas"}</h2><button type="button" onClick={() => setNovaAberta(false)} aria-label="Fechar" className="text-text-muted"><X size={18} /></button></div><p className="mb-3 text-sm text-text-secondary">Ela será criada em {rotuloEspaco}.</p><input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void criar()} placeholder="Nome da pasta" className="ecos-input w-full !rounded-lg" /><button type="button" disabled={!nome.trim() || criando} onClick={() => void criar()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-white disabled:opacity-40"><FolderPlus size={16} />Criar pasta</button></div></div>}
+    {novaAberta && <div role="dialog" aria-modal="true" aria-labelledby="nova-pasta-titulo" className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"><div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav"><div className="mb-4 flex items-center justify-between"><h2 id="nova-pasta-titulo" className="font-semibold text-text-primary">{pastaAtual ? "Nova subpasta" : `Nova pasta de ${tipo === "nota" ? "notas" : "tarefas"}`}</h2><button type="button" onClick={() => setNovaAberta(false)} aria-label="Fechar" className="text-text-muted"><X size={18} /></button></div><p className="mb-3 break-words text-sm text-text-secondary">{pastaAtual ? <>Dentro de <span className="font-medium text-text-primary">{pastaAtual.split("/").join(" / ")}</span></> : <>Ela será criada em {rotuloEspaco}.</>}</p><input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void criar()} placeholder={pastaAtual ? "Nome da subpasta" : "Nome da pasta"} className="ecos-input w-full !rounded-lg" /><button type="button" disabled={!nome.trim() || criando} onClick={() => void criar()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-white disabled:opacity-40"><FolderPlus size={16} />{pastaAtual ? "Criar subpasta" : "Criar pasta"}</button></div></div>}
   </div>;
 }
 
