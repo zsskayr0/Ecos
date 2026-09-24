@@ -24,6 +24,9 @@
   --ecos-surface-1-rgb: 13 13 13;
   --ecos-surface-2: #161616;
   --ecos-surface-2-rgb: 22 22 22;
+  /* UI-2: avisos elevados usam surface-2 com shadow-nav. */
+  --ecos-surface-raised: var(--ecos-surface-2);
+  --ecos-surface-raised-rgb: var(--ecos-surface-2-rgb);
   --ecos-surface-3: #1f1f1f;
   --ecos-surface-3-rgb: 31 31 31;
   --ecos-border: #2a2a2a;
@@ -45,6 +48,8 @@ html[data-theme="light"] {
   --ecos-surface-1-rgb: 246 249 253;
   --ecos-surface-2: #e2eaf5;
   --ecos-surface-2-rgb: 226 234 245;
+  --ecos-surface-raised: var(--ecos-surface-2);
+  --ecos-surface-raised-rgb: var(--ecos-surface-2-rgb);
   --ecos-surface-3: #d3deed;
   --ecos-surface-3-rgb: 211 222 237;
   --ecos-border: #b8c8dd;

@@ -29,6 +29,7 @@ module.exports = {
         "surface-1": withOpacity("--ecos-surface-1-rgb"),
         "surface-2": withOpacity("--ecos-surface-2-rgb"),
         "surface-3": withOpacity("--ecos-surface-3-rgb"),
+        surface: { raised: withOpacity("--ecos-surface-raised-rgb") },
         border: withOpacity("--ecos-border-rgb"),
         "text-primary": withOpacity("--ecos-text-primary-rgb"),
         "text-secondary": withOpacity("--ecos-text-secondary-rgb"),

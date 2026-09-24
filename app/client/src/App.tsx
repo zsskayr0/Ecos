@@ -18,6 +18,7 @@ import { ReceptorCompartilhamento } from "@/components/layout/ReceptorCompartilh
 import { ToastHost } from "@/lib/toast";
 import { ArrasteTarefaProvider } from "@/lib/arraste-tarefa";
 import { precisaConfigurarServidor } from "@/lib/server-config";
+import { OfflineStatus } from "@/components/common/OfflineStatus";
 
 /** Tempo mínimo da abertura (ms): sem isso, num servidor rápido a marca piscaria e sumiria antes de dar pra ver. */
 const ABERTURA_MINIMA_MS = 900;
@@ -111,6 +112,7 @@ export default function App() {
               <ReceptorCompartilhamento />
               <ToastHost />
             </AuthGate>
+            <OfflineStatus />
           </ArrasteTarefaProvider>
         </AppUIProvider>
       </RefreshProvider>

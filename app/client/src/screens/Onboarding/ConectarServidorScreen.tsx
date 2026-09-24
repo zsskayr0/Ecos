@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, Monitor, Wifi, HelpCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { definirServidorBaseUrl } from "@/lib/server-config";
 import { ehAndroid } from "@/lib/platform";
-import { auth, ApiError } from "@/lib/api";
+import { auth } from "@/lib/api";
 
 export type Passo = "boas-vindas" | "local" | "endereco" | "ajuda" | "sucesso";
 
@@ -172,12 +172,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
     setResultado(null);
     definirServidorBaseUrl(candidato);
     try {
-      // A 401 aqui já prova que o `ecos-app` respondeu — isso é o que
-      // importa nesse teste, não se a sessão em si é válida.
-      await auth.perfil().catch((e) => {
-        if (e instanceof ApiError) return;
-        throw e;
-      });
+      await auth.testarConexao();
       setResultado("ok");
       window.location.reload();
     } catch {

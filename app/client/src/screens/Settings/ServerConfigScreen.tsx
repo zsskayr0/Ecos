@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { obterServidorBaseUrl, definirServidorBaseUrl, estaNoTauri } from "@/lib/server-config";
-import { ApiError, auth } from "@/lib/api";
+import { auth } from "@/lib/api";
 import { SincronizacaoBackup } from "./SincronizacaoBackup";
 
 /**
@@ -16,7 +16,9 @@ import { SincronizacaoBackup } from "./SincronizacaoBackup";
  */
 export function ServerConfigScreen() {
   const navigate = useNavigate();
-  const [url, setUrl] = useState(obterServidorBaseUrl() ?? "");
+  const enderecoInicial = obterServidorBaseUrl();
+  const [url, setUrl] = useState(enderecoInicial ?? "");
+  const [enderecoPersonalizado, setEnderecoPersonalizado] = useState(Boolean(enderecoInicial));
   const [testando, setTestando] = useState(false);
   const [resultado, setResultado] = useState<"ok" | "erro" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -25,18 +27,17 @@ export function ServerConfigScreen() {
     setTestando(true);
     setErro(null);
     setResultado(null);
+    const anterior = obterServidorBaseUrl();
     definirServidorBaseUrl(url.trim() || null);
     try {
-      // `/me` exige sessão — um 401 já prova que o servidor respondeu
-      // (é isso que importa aqui), só um erro de rede/CORS é falha real.
-      await auth.perfil().catch((e) => {
-        if (e instanceof ApiError) return;
-        throw e;
-      });
+      await auth.testarConexao();
       setResultado("ok");
+      setEnderecoPersonalizado(Boolean(url.trim()));
     } catch {
+      definirServidorBaseUrl(anterior);
       setResultado("erro");
-      setErro("Não consegui falar com esse endereço. Confira se o ecos-app está rodando e acessível dessa rede.");
+      setErro("Não consegui falar com esse endereço. O servidor anterior foi mantido; corrija o endereço e tente novamente.");
+      setEnderecoPersonalizado(Boolean(anterior));
     } finally {
       setTestando(false);
     }
@@ -75,34 +76,35 @@ export function ServerConfigScreen() {
           disabled={testando || (!url.trim() && estaNoTauri())}
           className="flex h-[42px] shrink-0 items-center justify-center rounded-2xl bg-surface-2 px-6 text-sm font-semibold text-text-primary hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface-2"
         >
-          {testando ? "Testando..." : "Salvar"}
+          {testando ? "Testando..." : "Testar e salvar"}
         </button>
       </div>
 
       {resultado === "ok" && (
-        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-success/40 bg-success/10 p-3 text-sm text-success">
+        <div role="status" className="mt-4 flex items-start gap-2 rounded-2xl border border-success/40 bg-success/10 p-3 text-sm text-success">
           <CheckCircle2 size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
           Conectado. Endereço salvo.
         </div>
       )}
       {resultado === "erro" && erro && (
-        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+        <div role="alert" className="mt-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
           {erro}
         </div>
       )}
 
 
-      {url && (
+      {enderecoPersonalizado && (
         <button
           onClick={() => {
             definirServidorBaseUrl(null);
             setUrl("");
             setResultado(null);
+            setEnderecoPersonalizado(false);
           }}
           className="mt-3 rounded-2xl bg-surface-2 px-6 py-3 text-sm font-semibold text-text-primary hover:bg-surface-3"
         >
-          Voltar pro padrão
+          Voltar ao padrão
         </button>
       )}
 

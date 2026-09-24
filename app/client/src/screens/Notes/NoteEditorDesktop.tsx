@@ -199,7 +199,7 @@ export function NoteEditorDesktop() {
 
           <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
 
-          <CorpoEditor tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={14} layout="document" placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." />
+          <CorpoEditor tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={14} layout="document" placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview />
 
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
             <span>Editada <TempoEdicao iso={nota.atualizado_em} /></span>

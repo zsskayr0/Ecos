@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, auth } from "./api";
+import { ApiError, auth, prepararConteudoOffline } from "./api";
 import { limparConteudoLocal } from "./dados-locais";
+import { limparDadosOffline } from "./offline-store";
 
 export interface Perfil {
   id: string;
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);
+      void prepararConteudoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
       // Uma perda temporária de rede não deve apagar uma sessão válida nem
       // mandar a pessoa de volta ao login. Apenas 401 significa credencial
@@ -94,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);
+      void prepararConteudoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível entrar.");
       throw e;
@@ -127,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("deslogado");
       gravarSessaoAtiva(false);
       limparConteudoLocal(); // rascunhos, buscas e abas abertas não ficam no aparelho
+      void limparDadosOffline(); // cache e alterações pendentes pertencem à conta que saiu
     }
   }, []);
 

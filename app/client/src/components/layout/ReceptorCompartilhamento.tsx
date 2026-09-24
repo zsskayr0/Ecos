@@ -46,8 +46,8 @@ export function ReceptorCompartilhamento() {
   return (
     <div
       role={erro ? "alert" : "status"}
-      className={`fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[120] mx-auto flex w-fit max-w-full items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-nav ${
-        erro ? "border-error/40 bg-error/10 text-error" : "border-steel-500/30 bg-surface-raised text-text-primary"
+      className={`fixed inset-x-4 bottom-[calc(var(--ecos-safe-bottom)+5.5rem)] z-[120] mx-auto flex w-fit max-w-full items-center gap-2 rounded-xl border bg-surface-raised px-4 py-3 text-sm font-medium shadow-nav ${
+        erro ? "border-error/40 text-error" : "border-steel-500/30 text-text-primary"
       }`}
     >
       {erro ? <AlertTriangle size={16} className="shrink-0" /> : <ImagePlus size={16} className="shrink-0 text-steel-300" />}

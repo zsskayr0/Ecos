@@ -129,7 +129,7 @@ export function TaskDetailScreen() {
     try {
       const criada = await tarefas.criar({ ...payload(value), titulo: `${value.titulo} (cópia)` });
       notificar();
-      navigate(`/tarefas/${criada.id}`);
+      navigate(`/tarefa/${criada.id}`);
     } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a tarefa."); }
   }
 
@@ -150,5 +150,8 @@ export function TaskDetailScreen() {
   // Sem cabeçalho no desktop: a barra do editor gruda rente ao topo, sem fresta por onde o texto rolando aparece.
   if (desktop) return <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>{conteudo}</div>;
 
-  return <div className="ecos-detail-page min-w-0"><DetailHeader onBack={() => navigate(-1)} actions={tarefa && <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>} />{conteudo}</div>;
+  return <div className="ecos-detail-page min-w-0"><DetailHeader onBack={() => navigate(-1)} actions={tarefa && <>
+    <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar tarefa" className={`${DETAIL_ACTION} text-text-secondary`}><Copy size={18} />Duplicar</button>
+    <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
+  </>} />{conteudo}</div>;
 }

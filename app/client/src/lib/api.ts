@@ -11,6 +11,17 @@
 import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
 import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  concluirMutacaoPendente,
+  enfileirarMutacao,
+  guardarRespostaOffline,
+  listarMutacoesPendentes,
+  marcarServidorDisponivel,
+  marcarSincronizacao,
+  obterRespostaOffline,
+  registrarErroMutacao,
+  substituirIdTemporario,
+} from "./offline-store";
 
 const BASE = apiBase;
 
@@ -125,7 +136,40 @@ async function executarRenovacaoWeb(): Promise<boolean> {
 /** Rotas que criam ou encerram a sessão: um 401 delas é resposta, não sessão vencida. */
 const ROTAS_SEM_RENOVACAO = ["/auth/login", "/auth/registrar", "/auth/refresh", "/auth/logout", "/auth/recuperar-senha", "/auth/status"];
 
-async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): Promise<T> {
+function podeUsarCacheOffline(path: string): boolean {
+  return !path.startsWith("/auth/") && !path.startsWith("/vault/") && path !== "/me/export";
+}
+
+function podeEnfileirarOffline(path: string, init?: RequestInit): init is RequestInit & { method: "POST" | "PUT" | "PATCH" | "DELETE"; body?: string } {
+  const metodo = init?.method;
+  if (!metodo || !["POST", "PUT", "PATCH", "DELETE"].includes(metodo) || init?.body instanceof FormData || (init?.body && typeof init.body !== "string")) return false;
+  return [
+    /^\/notas(?:\/|$)/,
+    /^\/tarefas(?:\/|$)/,
+    /^\/eventos(?:\/|$)/,
+    /^\/pastas(?:\?|$)/,
+    /^\/rotina\/blocos(?:\/|$)/,
+    /^\/captura$/,
+  ].some((padrao) => padrao.test(path)) && !path.includes("/anexos");
+}
+
+async function respostaSemServidor<T>(path: string, init?: RequestInit): Promise<T> {
+  const metodo = init?.method ?? "GET";
+  if (metodo === "GET" && podeUsarCacheOffline(path)) {
+    const cache = await obterRespostaOffline<T>(path);
+    if (cache !== undefined) {
+      marcarServidorDisponivel(false);
+      return cache;
+    }
+  }
+  if (podeEnfileirarOffline(path, init)) {
+    return await enfileirarMutacao(init.method, path, typeof init.body === "string" ? init.body : null) as T;
+  }
+  marcarServidorDisponivel(false);
+  throw new ApiError("CONEXAO_INDISPONIVEL", "Este conteúdo ainda não está disponível offline. Conecte-se uma vez para salvá-lo neste dispositivo.", 0);
+}
+
+async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, sincronizando = false): Promise<T> {
   const accessToken = obterAccessToken();
   let resp: Response;
   try {
@@ -142,8 +186,13 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
     },
     });
   } catch {
+    if (!sincronizando) return respostaSemServidor<T>(path, init);
+    marcarServidorDisponivel(false);
     throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
   }
+
+  if (resp.status < 500) marcarServidorDisponivel(true);
+  else if (!sincronizando) return respostaSemServidor<T>(path, init);
 
   if (resp.status === 204) return undefined as T;
 
@@ -153,7 +202,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
 
   if (resp.status === 401 && !tentouRenovar && !ROTAS_SEM_RENOVACAO.some((r) => path.startsWith(r))) {
     const renovou = estaNoTauri() ? await renovarSessaoNativa() : await renovarSessaoWeb();
-    if (renovou) return req<T>(path, init, true);
+    if (renovou) return req<T>(path, init, true, sincronizando);
   }
 
   if (!resp.ok) {
@@ -171,7 +220,52 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false): 
   if (!ehJson) {
     throw new ApiError("RESPOSTA_INESPERADA", "O servidor respondeu, mas não como a API do Ecos esperava — confira o endereço em Configurações → Servidor.", resp.status);
   }
+  if (!sincronizando && (init?.method ?? "GET") === "GET" && podeUsarCacheOffline(path)) await guardarRespostaOffline(path, body);
   return body as T;
+}
+
+let sincronizacaoEmCurso: Promise<number> | null = null;
+
+/** Envia em ordem tudo que foi salvo localmente. Uma falha mantém o item na fila para nova tentativa. */
+export async function sincronizarPendenciasOffline(): Promise<number> {
+  if (sincronizacaoEmCurso) return sincronizacaoEmCurso;
+  sincronizacaoEmCurso = (async () => {
+    const fila = await listarMutacoesPendentes();
+    if (!fila.length) { marcarSincronizacao(false); return 0; }
+    marcarSincronizacao(true);
+    let enviadas = 0;
+    const idsResolvidos = new Map<string, string>();
+    for (const original of fila) {
+      const trocarIds = (valor: string) => {
+        let resultado = valor;
+        idsResolvidos.forEach((real, temporario) => { resultado = resultado.split(temporario).join(real); });
+        return resultado;
+      };
+      const item = { ...original, caminho: trocarIds(original.caminho), corpo: original.corpo ? trocarIds(original.corpo) : null };
+      try {
+        const resposta = await req<Record<string, unknown>>(item.caminho, {
+          method: item.metodo,
+          body: item.corpo ?? undefined,
+        }, false, true);
+        const idReal = typeof resposta?.id === "string" ? resposta.id : undefined;
+        if (item.tempId && idReal) {
+          idsResolvidos.set(item.tempId, idReal);
+          await substituirIdTemporario(item.tempId, idReal);
+        }
+        await concluirMutacaoPendente(original.id);
+        enviadas += 1;
+      } catch (erro) {
+        const mensagem = erro instanceof ApiError ? erro.message : "Não foi possível sincronizar esta alteração.";
+        await registrarErroMutacao(original.id, mensagem);
+        marcarSincronizacao(false, mensagem);
+        return enviadas;
+      }
+    }
+    marcarServidorDisponivel(true);
+    marcarSincronizacao(false);
+    return enviadas;
+  })().finally(() => { sincronizacaoEmCurso = null; });
+  return sincronizacaoEmCurso;
 }
 
 /** Variante autenticada para conteúdo binário, usada pela foto de perfil. */
@@ -222,6 +316,20 @@ export interface Pagina<T> {
 
 export const auth = {
   status: () => get<{ instancia_vazia: boolean; versao: string; idade_minima: number; termos_versao: string }>("/auth/status"),
+  /** Teste deliberadamente sem cache: qualquer sucesso aqui veio do endereço que acabou de ser digitado. */
+  testarConexao: async () => {
+    let resp: Response;
+    try {
+      resp = await fetch(`${BASE()}/auth/status`, { credentials: "include" });
+    } catch {
+      throw new ApiError("CONEXAO_INDISPONIVEL", "Não consegui falar com esse endereço.", 0);
+    }
+    const contentType = resp.headers.get("content-type") ?? "";
+    const body = contentType.includes("application/json") ? await resp.json().catch(() => null) : null;
+    if (!resp.ok || !body || typeof body.versao !== "string" || typeof body.instancia_vazia !== "boolean") {
+      throw new ApiError("SERVIDOR_INVALIDO", "Não consegui falar com esse endereço.", resp.status);
+    }
+  },
   registrar: (nome_usuario: string, senha: string, nome: string | undefined, declara_idade_minima: boolean, aceita_termos: boolean) =>
     post<{ usuario_id: string; recovery_key: string }>("/auth/registrar", { nome_usuario, senha, nome, declara_idade_minima, aceita_termos }),
   login: async (usuario: string, senha: string) => {
@@ -753,6 +861,41 @@ export const equipes = {
   criarConvite: (id: string) => post<{ id: string; codigo: string; expira_em: string }>(`/equipes/${id}/convites`),
   aceitarConvite: (codigo: string) => post<{ ok: true }>(`/convites/${codigo}/aceitar`),
 };
+
+let preparacaoOffline: Promise<void> | null = null;
+
+/** Atualiza silenciosamente o conjunto que permite navegar e trabalhar quando o servidor ficar inacessível. */
+export function prepararConteudoOffline(espacos: string[]): Promise<void> {
+  if (preparacaoOffline) return preparacaoOffline;
+  preparacaoOffline = (async () => {
+    const carregarPaginas = async <T>(listar: (cursor?: string) => Promise<Pagina<T>>) => {
+      let cursor: string | undefined;
+      for (let pagina = 0; pagina < 20; pagina += 1) {
+        const resposta = await listar(cursor);
+        if (!resposta.next_cursor) break;
+        cursor = resposta.next_cursor;
+      }
+    };
+    const hoje = new Date();
+    const inicio = new Date(hoje); inicio.setDate(inicio.getDate() - 90);
+    const fim = new Date(hoje); fim.setDate(fim.getDate() + 180);
+    const data = (valor: Date) => valor.toISOString().slice(0, 10);
+    const tarefasPreparacao: Promise<unknown>[] = espacos.flatMap((espaco) => [
+      carregarPaginas((cursor) => notas.listar({ espaco, cursor, limit: 200 })),
+      carregarPaginas((cursor) => tarefas.listar({ espaco, cursor, limit: 200 })),
+      pastas.listar({ tipo: "nota", espaco, recursivo: true }),
+      pastas.listar({ tipo: "tarefa", espaco, recursivo: true }),
+      eventos.listar({ de: inicio.toISOString(), ate: fim.toISOString(), espaco, limit: 500 }),
+    ]);
+    tarefasPreparacao.push(
+      rotina.listar(),
+      equipes.listarMinhas(),
+      agenda.blocos({ data_de: data(inicio), data_ate: data(fim), tz: -hoje.getTimezoneOffset() }),
+    );
+    await Promise.allSettled(tarefasPreparacao);
+  })().finally(() => { preparacaoOffline = null; });
+  return preparacaoOffline;
+}
 
 // --- Notifications (section 11.11) -----------------------------------------
 

@@ -93,7 +93,7 @@ export function AppShell() {
         <div
           aria-live="polite"
           role="status"
-          className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[100] mx-auto w-fit rounded-xl border border-steel-500/30 bg-surface-raised px-4 py-3 text-sm font-medium text-text-primary shadow-nav"
+          className="fixed inset-x-4 bottom-[calc(var(--ecos-safe-bottom)+5.5rem)] z-[100] mx-auto w-fit rounded-xl border border-steel-500/30 bg-surface-raised px-4 py-3 text-sm font-medium text-text-primary shadow-nav"
         >
           Volte novamente para sair do app.
         </div>

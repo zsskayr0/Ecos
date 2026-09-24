@@ -1,0 +1,16 @@
+{
+  "src/lib/markdown-mini.tsx:ecos-markdown": 1,
+  "src/screens/Settings/AdministracaoScreen.tsx:bg-steel-600": 1,
+  "src/screens/Agenda/GradeTempo.tsx:bg-current/0": 1,
+  "src/screens/Agenda/GradeTempo.tsx:hover:bg-current/25": 1,
+  "src/screens/Agenda/GradeTempo.tsx:[@media(pointer:coarse)]:bg-current/20": 1,
+  "src/screens/Agenda/GradeTempo.tsx:bg-steel-600": 1,
+  "src/screens/Team/TeamsScreen.tsx:bg-steel-600": 3,
+  "src/screens/Profile/ProfileScreen.tsx:bg-steel-600": 1,
+  "src/screens/Profile/RotinaScreen.tsx:animate-in": 1,
+  "src/screens/Profile/RotinaScreen.tsx:fade-in": 1,
+  "src/screens/Profile/RotinaScreen.tsx:zoom-in-95": 1,
+  "src/screens/Profile/RotinaScreen.tsx:ecos-scrollbar": 2,
+  "src/screens/Profile/EditarPerfilScreen.tsx:bg-steel-600": 1,
+  "src/screens/Onboarding/ConectarServidorScreen.tsx:hover:bg-steel-600": 1
+}
