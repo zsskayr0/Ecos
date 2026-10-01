@@ -44,5 +44,11 @@ pub fn cors_mesma_origem() -> CorsLayer {
         .allow_origin(AllowOrigin::list(origens_tauri))
         .allow_credentials(true)
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::PUT, Method::DELETE])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+            // O cliente envia o espaço (pessoal/equipe) em toda chamada do Cofre; sem isto o preflight
+            // cross-origin do Tauri falhava e o app tratava o Cofre como "offline".
+            axum::http::HeaderName::from_static("x-ecos-espaco"),
+        ])
 }
