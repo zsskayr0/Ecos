@@ -32,6 +32,8 @@ export type EventoLocal = {
   /** Início ORIGINAL (ISO) desta ocorrência, se o item vem de uma série: é o que identifica a ocorrência no servidor. */
   ocorrencia?: string;
   visibilidade?: "privado" | "google";
+  /** Item que vem de uma transação do Cofre (dia inteiro, só leitura): abrir leva ao lançamento. */
+  transacaoId?: string;
 };
 
 // Estado compartilhado entre a Agenda e a tela Hoje: um evento criado/movido num lado aparece imediatamente no outro.

@@ -40,14 +40,17 @@ interface Props<T extends string> {
   corAtiva?: string | null;
   larguraMenu?: string;
   arvore?: boolean;
+  /** Mantém o menu dentro da janela, sem recorte por painéis com rolagem. */
+  fixo?: boolean;
 }
 
 /** Menu suspenso do Ecos, no lugar do `<select>` nativo. Anima entrada e saída, fecha com Esc/clique fora e navega por setas. */
-export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false }: Props<T>) {
+export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false }: Props<T>) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
   const [montado, setMontado] = useState(false);
+  const [posicao, setPosicao] = useState<CSSProperties>();
   const indiceAtual = Math.max(0, opcoes.findIndex((o) => o.valor === valor));
   // O destaque desliza entre as opções (como o seletor de prioridade) e muda de cor conforme a opção sob o cursor.
   const [destaque, setDestaque] = useState(indiceAtual);
@@ -57,7 +60,36 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
     setAberto(false);
     window.setTimeout(() => setMontado(false), 110);
   }, []);
-  const abrir = () => { setMontado(true); setAberto(true); };
+  const abrir = () => {
+    if (fixo) {
+      const r = raiz.current!.getBoundingClientRect();
+      const abaixo = window.innerHeight - r.bottom - 14;
+      const acima = r.top - 14;
+      const subir = abaixo < Math.min(288, opcoes.length * ALTURA_ITEM + 10) && acima > abaixo;
+      const largura = Math.min(Math.max(r.width, 176), window.innerWidth - 16);
+      setPosicao({
+        position: "fixed", marginTop: 0, width: largura, minWidth: 0,
+        left: Math.max(8, Math.min(alinhar === "dir" ? r.right - largura : r.left, window.innerWidth - largura - 8)),
+        right: "auto", top: subir ? "auto" : r.bottom + 6,
+        bottom: subir ? window.innerHeight - r.top + 6 : "auto",
+        maxHeight: Math.max(0, Math.min(288, subir ? acima : abaixo)),
+      });
+    }
+    setMontado(true); setAberto(true);
+  };
+
+  useEffect(() => {
+    if (!aberto || !fixo) return;
+    const aoRolar = (e: Event) => {
+      if (!(e.target instanceof Node) || !raiz.current?.contains(e.target)) fechar();
+    };
+    window.addEventListener("resize", fechar);
+    document.addEventListener("scroll", aoRolar, true);
+    return () => {
+      window.removeEventListener("resize", fechar);
+      document.removeEventListener("scroll", aoRolar, true);
+    };
+  }, [aberto, fixo, fechar]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -95,7 +127,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
         {gatilho({ aberto, atual })}
       </button>
       {montado && (
-        <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto}
+        <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto} style={fixo ? posicao : undefined}
           className={`ecos-menu absolute z-40 mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
           {arvore ? <ArvorePastas opcoes={opcoes} valores={[valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
           <span aria-hidden className="pointer-events-none absolute left-1 right-1 top-1 rounded-lg border transition-[transform,background-color,border-color] duration-100 motion-reduce:transition-none"

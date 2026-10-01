@@ -1,3 +1,4 @@
+import { definirEspacoDoCofre } from "./api";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 export type TipoCaptura = "nota" | "tarefa" | "transacao";
@@ -9,7 +10,12 @@ interface AppUIState {
 
   /** null = no create popup/form open; string = the type being edited. */
   capturaAberta: TipoCaptura | "escolha" | null;
-  abrirCaptura: (inicial: TipoCaptura | "escolha") => void;
+  abrirCaptura: (inicial: TipoCaptura | "escolha", data?: string | null) => void;
+  /** Data (AAAA-MM-DD) com que a próxima Transação nasce — ex.: o dia aberto no calendário do Cofre. */
+  dataCaptura: string | null;
+  /** Dia em foco no calendário do Cofre; o botão de criar usa como data padrão. */
+  diaCofre: string | null;
+  setDiaCofre: (dia: string | null) => void;
   trocarTipoCaptura: (tipo: TipoCaptura) => void;
   fecharCaptura: () => void;
   /** Linhas Markdown de anexos (ex.: imagens compartilhadas) à espera de entrar no corpo da captura aberta. */
@@ -31,11 +37,13 @@ const AppUIContext = createContext<AppUIState | null>(null);
 export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
+  const [dataCaptura, setDataCaptura] = useState<string | null>(null);
+  const [diaCofre, setDiaCofre] = useState<string | null>(null);
   const [anexosDeCaptura, setAnexosDeCaptura] = useState<string[]>([]);
   const [filtroEquipeId, setFiltroEquipeId] = useState<string | null>(null);
-  const [espacoAtivo, setEspacoAtivoState] = useState(() => { try { return localStorage.getItem("ecos:espaco-ativo") ?? "pessoal"; } catch { return "pessoal"; } });
+  const [espacoAtivo, setEspacoAtivoState] = useState(() => { let e = "pessoal"; try { e = localStorage.getItem("ecos:espaco-ativo") ?? "pessoal"; } catch { /* cache indisponível */ } definirEspacoDoCofre(e); return e; });
   const [intercalarEquipes, setIntercalarEquipesState] = useState(() => { try { return localStorage.getItem("ecos:intercalar-equipes") === "true"; } catch { return false; } });
-  const setEspacoAtivo = (espaco: string) => { setEspacoAtivoState(espaco); try { localStorage.setItem("ecos:espaco-ativo", espaco); } catch {} };
+  const setEspacoAtivo = (espaco: string) => { definirEspacoDoCofre(espaco); setEspacoAtivoState(espaco); try { localStorage.setItem("ecos:espaco-ativo", espaco); } catch {} };
   const setIntercalarEquipes = (ativo: boolean) => { setIntercalarEquipesState(ativo); try { localStorage.setItem("ecos:intercalar-equipes", String(ativo)); } catch {} };
 
   const value = useMemo<AppUIState>(
@@ -45,7 +53,10 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       fecharDrawer: () => setDrawerAberto(false),
 
       capturaAberta,
-      abrirCaptura: (inicial) => setCapturaAberta(inicial),
+      abrirCaptura: (inicial, data = null) => { setDataCaptura(data); setCapturaAberta(inicial); },
+      dataCaptura,
+      diaCofre,
+      setDiaCofre,
       trocarTipoCaptura: (tipo) => setCapturaAberta(tipo),
       fecharCaptura: () => setCapturaAberta(null),
       anexosDeCaptura,
@@ -59,7 +70,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       intercalarEquipes,
       setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
+    [drawerAberto, capturaAberta, dataCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;

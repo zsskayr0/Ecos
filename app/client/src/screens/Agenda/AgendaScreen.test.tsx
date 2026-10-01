@@ -790,7 +790,8 @@ describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", ()
       await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA, capacidadeMin: 480 });
       await waitFor(() => expect(carga("2026-09-21").textContent).toContain("10,5 h / 8 h"));
       await abrirCartao("Revisar contrato");
-      fireEvent.change(screen.getByLabelText("Mover Revisar contrato para"), { target: { value: "2026-09-24" } });
+      fireEvent.click(screen.getByRole("button", { name: "Mover Revisar contrato para" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "qui., 24/09" }));
       expect(cartoes("2026-09-21")).toHaveLength(1);
       expect(cartoes("2026-09-24")[0]).toContain("Revisar contrato");
       expect(carga("2026-09-21").textContent).toContain("5 h / 8 h");
@@ -804,7 +805,8 @@ describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", ()
       await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: PESADA });
       await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
       await abrirCartao("Revisar contrato");
-      fireEvent.change(screen.getByLabelText("Mover Revisar contrato para"), { target: { value: "2026-09-24" } });
+      fireEvent.click(screen.getByRole("button", { name: "Mover Revisar contrato para" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "qui., 24/09" }));
       expect(cartoes("2026-09-24")).toHaveLength(1);
       expect((await screen.findByRole("alert")).textContent).toMatch(/Sem permissão.*desfeita/);
       await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
@@ -890,7 +892,8 @@ describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", ()
       atualizarTarefa.mockRejectedValue(new ApiError("FORBIDDEN", "Sem permissão.", 403));
       await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: SEM_PRAZO });
       await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
-      fireEvent.change(screen.getByLabelText("Mover Sem prazo alta para"), { target: { value: "2026-09-25" } });
+      fireEvent.click(screen.getByRole("button", { name: "Mover Sem prazo alta para" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "sex., 25/09" }));
       expect(linhaPainel("s1")).toBeNull();
       await screen.findByRole("alert");
       await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());

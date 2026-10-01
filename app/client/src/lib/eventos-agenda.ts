@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { eventos as eventosApi, type Evento, type ExcecaoEvento } from "@/lib/api";
+import { eventos as eventosApi, vault, type Evento, type ExcecaoEvento, type TransacaoApi } from "@/lib/api";
+import { formatMoeda } from "@/lib/format";
 import { dataLocalISO, instanteLocalISO, type Posicao } from "@/lib/agenda-tempo";
 import type { EventoLocal } from "@/lib/eventos-locais";
 import { expandir, lerExdates, lerRrule } from "@/lib/recorrencia";
@@ -156,28 +157,61 @@ function comProvisorio(e: Evento, p: Provisorio | undefined): Evento {
  * recarrega depois de qualquer criação/edição. `mover` atualiza na hora e desfaz se o servidor recusar; com `ocorrencia`
  * (início original) mexe só naquela ocorrência de uma série.
  */
-export function useEventosDoPeriodo(de: string, ate: string, versao: number) {
+/** Transação do Cofre como item de dia inteiro: verde = entrada, vermelho = saída. */
+export function transacaoParaItem(t: TransacaoApi): EventoLocal {
+  const sinal = t.tipo === "entrada" ? "+" : "−";
+  return {
+    id: `transacao:${t.id}`, transacaoId: t.id, inicio: t.data, minutos: null, duracaoMin: 60, cor: "", movivel: false,
+    corHex: t.tipo === "entrada" ? "#22c55e" : "#ef4444",
+    titulo: `${sinal}${formatMoeda(t.valor_centavos)} ${t.descricao}${t.status === "pendente" ? " (pendente)" : ""}`,
+  };
+}
+
+export function useEventosDoPeriodo(de: string, ate: string, versao: number, espaco?: string, incluirTransacoes = false) {
   const [brutos, setBrutos] = useState<Evento[]>([]);
+  const [transacoes, setTransacoes] = useState<TransacaoApi[]>([]);
+  const comTransacoes = incluirTransacoes;
+  // O Cofre é por equipe: cada espaço mostra as transações do seu próprio Cofre (sem filtro = o pessoal).
+  const espacoDoCofre = espaco ?? "pessoal";
+
+  // Transações do Cofre no mesmo calendário. Cofre desligado/trancado = sem transações, sem erro na Agenda.
+  useEffect(() => {
+    if (!comTransacoes) { setTransacoes([]); return; }
+    let vivo = true;
+    (async () => {
+      const todas: TransacaoApi[] = [];
+      let cursor: string | undefined;
+      for (let pagina = 0; pagina < 5; pagina += 1) {
+        const r = await vault.transacoes.listar({ data_de: de, data_ate: ate, limit: 200, cursor }, espacoDoCofre);
+        todas.push(...r.items);
+        if (!r.next_cursor) break;
+        cursor = r.next_cursor;
+      }
+      return todas;
+    })().then((l) => { if (vivo) setTransacoes(l); }).catch(() => { if (vivo) setTransacoes([]); });
+    return () => { vivo = false; };
+  }, [de, ate, versao, comTransacoes, espacoDoCofre]);
   const [provisorio, setProvisorio] = useState<Record<string, Provisorio>>({});
 
   useEffect(() => {
     let vivo = true;
     const janela = janelaDosDias(de, ate);
     eventosApi
-      .listar({ de: janela.de.toISOString(), ate: janela.ate.toISOString(), limit: 2000 })
+      .listar({ de: janela.de.toISOString(), ate: janela.ate.toISOString(), espaco, limit: 2000 })
       .then((lista) => { if (vivo) { setBrutos(lista); setProvisorio({}); } })
       .catch(() => { if (vivo) setBrutos([]); });
     return () => { vivo = false; };
-  }, [de, ate, versao]);
+  }, [de, ate, versao, espaco]);
 
   const eventos = useMemo(() => {
     const janela = janelaDosDias(de, ate);
-    return brutos.flatMap((e) => {
+    const doCofre = transacoes.map(transacaoParaItem);
+    return [...doCofre, ...brutos.flatMap((e) => {
       const provisorios = Object.entries(provisorio).filter(([chave]) => chave === e.id || chave.startsWith(`${e.id}|`));
       const atual = provisorios.reduce((acc, [, p]) => comProvisorio(acc, p), e);
       return eventoParaItens(atual, janela.de, janela.ate);
-    });
-  }, [brutos, provisorio, de, ate]);
+    })];
+  }, [brutos, transacoes, provisorio, de, ate]);
 
   const mover = useCallback(async (servidorId: string, destino: Posicao, ocorrencia?: string) => {
     const evento = brutos.find((e) => e.id === servidorId);

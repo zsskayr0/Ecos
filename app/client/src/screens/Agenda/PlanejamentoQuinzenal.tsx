@@ -7,6 +7,7 @@ import {
   type EntradaPlano, type FiltroPlano,
 } from "@/lib/agenda-planejamento";
 import { useIsDesktop } from "@/lib/use-viewport";
+import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { useArrasteTarefa, useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
 
 const CHAVE_PAINEL = "ecos:agenda:painel-tarefas";
@@ -42,15 +43,17 @@ function IconePrioridade({ prioridade, size = 13 }: { prioridade: PrioridadeTare
 /** "Mover para…": a alternativa ao arrasto, por teclado e toque. */
 function MoverPara({ dias, titulo, aoEscolher, classe = "" }: { dias: string[]; titulo: string; aoEscolher: (dia: string) => void; classe?: string }) {
   return (
-    <select
-      value=""
-      aria-label={`Mover ${titulo} para`}
-      onChange={(e) => { if (e.target.value) aoEscolher(e.target.value); }}
-      className={`rounded border border-border bg-surface-1 px-1.5 py-1 text-xs text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${classe}`}
-    >
-      <option value="">Mover para…</option>
-      {dias.map((d) => <option key={d} value={d}>{rotuloCurtoDoDia(d)}</option>)}
-    </select>
+    <div className={classe} onPointerDown={(e) => e.stopPropagation()}>
+      <MenuSuspenso
+        fixo
+        valor=""
+        ariaLabel={`Mover ${titulo} para`}
+        opcoes={dias.map((d) => ({ valor: d, rotulo: rotuloCurtoDoDia(d) }))}
+        onChange={aoEscolher}
+        classeGatilho="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan"
+        gatilho={({ aberto }) => <><span>Mover para…</span><ChevronDown size={14} aria-hidden className={`shrink-0 transition-transform duration-200 ${aberto ? "rotate-180" : ""}`} /></>}
+      />
+    </div>
   );
 }
 
@@ -207,7 +210,7 @@ function PainelSemData({ aberto, aoAlternar, tarefas, todas, dias, acoes, filtro
   const { aoPressionarTarefa } = useArrasteTarefa();
   const filtrando = Boolean(filtro.prioridade || filtro.tag);
   return (
-    <aside aria-label="Tarefas sem prazo" className={`flex min-h-0 shrink-0 flex-col border-t border-border bg-surface-1 lg:border-l lg:border-t-0 ${aberto ? "max-h-64 lg:max-h-none lg:w-72" : ""}`}>
+    <aside aria-label="Tarefas sem prazo" className={`flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-border bg-surface-1 transition-[width,max-height] duration-300 ease-out motion-reduce:transition-none lg:border-l lg:border-t-0 ${aberto ? "max-h-64 lg:max-h-none lg:w-72" : "max-h-12 lg:max-h-none lg:w-14"}`}>
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <h2 className={`text-sm font-semibold text-text-primary ${aberto ? "" : "lg:sr-only"}`}>Sem prazo <span className="font-normal text-text-muted">({todas})</span></h2>
         <button type="button" onClick={aoAlternar} aria-expanded={aberto} aria-label={aberto ? "Recolher painel de tarefas sem prazo" : "Abrir painel de tarefas sem prazo"} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan">
@@ -215,7 +218,7 @@ function PainelSemData({ aberto, aoAlternar, tarefas, todas, dias, acoes, filtro
         </button>
       </div>
       {aberto && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="min-h-0 w-full flex-1 overflow-y-auto px-2 pb-2 lg:w-72">
           <p className="px-1 pb-2 text-xs text-text-muted">Arraste para um dia para definir o prazo, ou use “Mover para…”.</p>
           {tarefas.length === 0 ? (
             <p className="px-1 py-4 text-center text-xs text-text-muted">{filtrando ? "Nenhuma tarefa sem prazo com esses filtros." : "Nenhuma tarefa sem prazo. Tudo planejado!"}</p>
@@ -343,7 +346,7 @@ export function PlanejamentoQuinzenal({ dias, hoje, rotulo, acoes, tarefas, capa
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div data-testid="planejamento-rolagem" className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
+        <div data-testid="planejamento-rolagem" className="min-h-0 min-w-0 flex-1 space-y-2 overflow-auto p-2">
           {semanas.map((semana, i) => (
             <div key={semana[0]} style={{ "--colunas": semanaTemplate } as CSSProperties} className="grid grid-cols-1 gap-1.5 md:grid-cols-4 lg:[grid-template-columns:var(--colunas)]" data-semana={i + 1}>
               {semana.map((dia) => {

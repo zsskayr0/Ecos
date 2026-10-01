@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarCheck2, CalendarClock, Check, CheckCircle2, Cloc
 import { agenda as agendaApi, rotina as rotinaApi, tarefas, ApiError, type BlocoPlanejado, type TarefaResumo } from "@/lib/api";
 import { dataLocalISO, diaEMinutosLocais, duracaoParaAlocar, instanteLocalISO, rotuloHorario, somarDiasISO } from "@/lib/agenda-tempo";
 import { montarPlanejamento, proximoHorarioLivre, type ItemDoDia } from "@/lib/planejamento-dia";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -33,7 +34,7 @@ export function TodayScreen() {
   const [reagendando, setReagendando] = useState<string | null>(null);
   const [eventoEmEdicao, setEventoEmEdicao] = useState<{ id: string; ocorrencia?: string } | null>(null);
   const hoje = dataLocalISO(new Date());
-  const { eventos } = useEventosDoPeriodo(hoje, hoje, versao);
+  const { eventos } = useEventosDoPeriodo(hoje, hoje, versao, useEspacoFiltro());
 
   useEffect(() => {
     let ativo = true;

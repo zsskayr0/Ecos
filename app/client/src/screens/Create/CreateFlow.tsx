@@ -133,7 +133,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   /** No desktop as rotas das abas não são a do app: o shell diz em que pasta a pessoa está (`null` = em nenhuma). No mobile vem da rota. */
   pastaContexto?: PastaContexto | null;
 }) {
-  const { capturaAberta, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
+  const { capturaAberta, dataCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -161,6 +161,11 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
     const pasta = contexto.pasta;
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
   }, [capturaAberta, contexto?.tipo, contexto?.pasta]);
+
+  // Transação aberta a partir de um dia do calendário nasce naquele dia.
+  useEffect(() => {
+    if (capturaAberta === "transacao" && dataCaptura) setDraft((d) => ({ ...d, dataTransacao: dataCaptura }));
+  }, [capturaAberta, dataCaptura]);
 
   // Anexos que chegam de fora (imagens compartilhadas com o app) entram no corpo da nota/tarefa aberta.
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { EquipeSelector } from "@/components/editor/EquipeSelector";
 import { AlertTriangle, CalendarPlus, Clock, Cloud, Link2, Lock, MapPin, Save, Sun, Tag, Trash2, X, AlignLeft, ChevronDown, Repeat } from "lucide-react";
 import { DatePicker } from "@/components/common/DatePicker";
 import { TimePicker } from "@/components/common/TimePicker";
@@ -84,6 +85,10 @@ interface Props {
   onSalvar: (dados: DadosEvento) => Promise<void> | void;
   onExcluir?: () => Promise<void> | void;
   onGerenciarCategorias?: () => void;
+  /** Equipe (espaço) do evento. Sem `onEspaco`, o seletor não aparece; `espacoFixo` = só mostra (evento já existente). */
+  espaco?: string;
+  onEspaco?: (espaco: string) => void;
+  espacoFixo?: boolean;
 }
 
 const isoDoDia = (d: Date) => `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
@@ -168,7 +173,7 @@ const chip = (ligado: boolean) => `${CHIP} ${ligado ? "bg-cyan text-black" : "bg
  * séries vêm do Google), cor, categoria, onde o evento fica (só no Ecos ou no Google Calendar), local, descrição e vínculos
  * com Tarefas e Notas — com prévia ao vivo e aviso de choque de horário.
  */
-export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin = 15, onFechar, onSalvar, onExcluir, onGerenciarCategorias }: Props) {
+export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin = 15, onFechar, onSalvar, onExcluir, onGerenciarCategorias, espaco, onEspaco, espacoFixo }: Props) {
   const edicao = !!evento;
   const modo: ModoEditor = evento?.modo ?? "evento";
   const emOcorrencia = modo === "ocorrencia";
@@ -361,6 +366,12 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
               <SeletorCor valor={cor} onChange={setCorPropria} />
               {corPropria && corDaCategoria && <button type="button" onClick={() => setCorPropria(null)} className="mt-2 text-[11px] text-text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-text-primary">Voltar à cor da categoria</button>}
             </Secao>
+          )}
+
+          {onEspaco && espaco && (
+            <div className="ecos-cascata relative" style={{ ["--i" as string]: 4, zIndex: 16 }}>
+              <EquipeSelector espaco={espaco} disabled={espacoFixo} onChange={(e) => { if (e !== espaco) { setCategoriaId(null); onEspaco(e); } }} />
+            </div>
           )}
 
           {!emOcorrencia && (

@@ -1,3 +1,4 @@
+import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, RelatorioImportacao } from "@/screens/Vault/types";
 /**
  * Real HTTP client against `ecos-app` (and, via its proxy, `ecos-vault-db`).
  * Contract matches the code in `app/server/src/routes/*` and
@@ -24,6 +25,22 @@ import {
 } from "./offline-store";
 
 const BASE = apiBase;
+let geracaoCofre = 0;
+/** Espaço (`pessoal` / `equipe:<id>`) cujo Cofre as chamadas `/vault/*` usam; o servidor confere se a pessoa é membro. */
+let espacoDoCofre = "pessoal";
+export function definirEspacoDoCofre(espaco: string) { espacoDoCofre = espaco || "pessoal"; }
+const canalCofre = typeof window.BroadcastChannel === "function" ? new BroadcastChannel("ecos-cofre-bloqueio") : null;
+let recebendoBloqueio = false;
+window.addEventListener("ecos:cofre-bloqueado", () => {
+  geracaoCofre++;
+  if (!recebendoBloqueio) canalCofre?.postMessage("bloqueado");
+});
+if (canalCofre) canalCofre.onmessage = (event) => {
+  if (event.data !== "bloqueado") return;
+  recebendoBloqueio = true;
+  window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
+  recebendoBloqueio = false;
+};
 
 function mensagemHttp(status: number): string {
   switch (status) {
@@ -170,18 +187,21 @@ async function respostaSemServidor<T>(path: string, init?: RequestInit): Promise
 }
 
 async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, sincronizando = false): Promise<T> {
+  const geracao = geracaoCofre;
   const accessToken = obterAccessToken();
   let resp: Response;
   try {
     resp = await fetch(`${BASE()}${path}`, {
     ...init,
     credentials: "include",
+    cache: path.startsWith("/vault/") ? "no-store" : init?.cache,
     headers: {
       ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       // Fallback pro cliente Tauri (cookie cross-origin não sobrevive —
       // ver server-config.ts). No navegador não existe token guardado,
       // então isto não muda nada ali; o cookie same-origin já resolve.
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(path.startsWith("/vault/") ? { "x-ecos-espaco": espacoDoCofre } : {}),
       ...init?.headers,
     },
     });
@@ -191,6 +211,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
     throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
   }
 
+  if (path.startsWith("/vault/") && path !== "/vault/bloquear" && geracao !== geracaoCofre) throw new ApiError("VAULT_LOCKED", "Cofre bloqueado. Abra novamente para continuar.", 423);
   if (resp.status < 500) marcarServidorDisponivel(true);
   else if (!sincronizando) return respostaSemServidor<T>(path, init);
 
@@ -199,6 +220,12 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
   const contentType = resp.headers.get("content-type") ?? "";
   const ehJson = contentType.includes("application/json");
   const body = ehJson ? await resp.json().catch(() => null) : null;
+  if (path.startsWith("/vault/") && path !== "/vault/bloquear" && geracao !== geracaoCofre) throw new ApiError("VAULT_LOCKED", "Cofre bloqueado.", 401);
+  if (path.startsWith("/vault/") && body?.error === "VAULT_LOCKED") {
+    window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
+    throw new ApiError("VAULT_LOCKED", "O Cofre está bloqueado. Desbloqueie para continuar.", resp.status);
+  }
+
 
   if (resp.status === 401 && !tentouRenovar && !ROTAS_SEM_RENOVACAO.some((r) => path.startsWith(r))) {
     const renovou = estaNoTauri() ? await renovarSessaoNativa() : await renovarSessaoWeb();
@@ -206,6 +233,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
   }
 
   if (!resp.ok) {
+    if (path.startsWith("/vault/") && resp.status === 423) window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
     const code = body?.error ?? "UNKNOWN";
     const message = body?.message ?? mensagemHttp(resp.status);
     throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos);
@@ -918,6 +946,9 @@ export const notificacoes = {
 // --- Vault / Cofre (section 11.14, via /vault/* proxy) ---------------------
 
 export interface TransacaoApi {
+  conciliada?: boolean;
+  data_ocorrencia?: string | null;
+  transacao_recorrente_id?: string | null;
   id: string;
   tipo: "entrada" | "saida";
   valor_centavos: number;
@@ -973,7 +1004,7 @@ export const vault = {
   resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
-  bloquear: () => post<{ ok: true }>("/vault/bloquear"),
+  bloquear: () => { window.dispatchEvent(new Event("ecos:cofre-bloqueado")); return post<{ ok: true }>("/vault/bloquear"); },
   config: () => get<{ cofre_ativado: boolean; destrancado: boolean; saldos_por_conta: { conta_id: string; nome: string; saldo_centavos: number }[] }>("/vault/config"),
 
   contas: {
@@ -992,8 +1023,9 @@ export const vault = {
       post<{ id: string; nome: string; novo: boolean }>("/vault/beneficiarios", payload),
   },
   transacoes: {
-    listar: (params: { conta_id?: string; categoria_id?: string; status?: string; data_de?: string; data_ate?: string; cursor?: string; limit?: number } = {}) =>
-      get<{ items: TransacaoApi[]; next_cursor: string | null }>(`/vault/transacoes${qs(params)}`),
+    /** `espaco` força o Cofre de outro espaço só nesta chamada (ex.: a Agenda filtrada por equipe). */
+    listar: (params: { conta_id?: string; categoria_id?: string; tipo?: string; forma_pagamento?: string; sem_categoria?: boolean; sem_pagamento?: boolean; status?: string; data_de?: string; data_ate?: string; cursor?: string; limit?: number } = {}, espaco?: string) =>
+      req<{ items: TransacaoApi[]; next_cursor: string | null }>(`/vault/transacoes${qs(params)}`, espaco ? { headers: { "x-ecos-espaco": espaco } } : undefined),
     obter: (id: string) => get<TransacaoApi>(`/vault/transacoes/${id}`),
     criar: (payload: {
       tipo: "entrada" | "saida";
@@ -1011,5 +1043,24 @@ export const vault = {
     atualizar: (id: string, payload: Partial<TransacaoApi> & { tipo: string; valor_centavos: number; data: string; descricao: string }) =>
       patch<TransacaoApi>(`/vault/transacoes/${id}`, payload),
     excluir: (id: string) => del<{ ok: true }>(`/vault/transacoes/${id}`),
+  },
+};
+
+export const financeiro = {
+  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean}>>("/vault/recorrencias"),
+  criarRecorrencia: (p: {descricao: string; tipo: string; valor_centavos: number; frequencia: string; intervalo: number; data_inicio: string; tipo_recorrencia: string; total_parcelas?: number}) => post<{id: string}>("/vault/recorrencias",p),
+  excluirRecorrencia: (id: string) => del<{ok: boolean}>(`/vault/recorrencias/${id}`),
+  painel: (p: Periodo) => get<Painel>(`/vault/painel${qs({...p})}`),
+  ocorrencias: (p: Periodo) => get<Ocorrencia[]>(`/vault/fluxo/ocorrencias${qs({...p})}`),
+  concluir: (id: string, data_ocorrencia: string, data: string) => post<{transacao_id: string}>(`/vault/recorrencias/${id}/concluir`, {data_ocorrencia, data}),
+  reagendar: (id: string, data: string) => patch<{ok: boolean}>(`/vault/transacoes/${id}/data`, {data}),
+  lote: (ids: string[], acao: "conciliar" | "desconciliar" | "excluir" | "efetivar") => post<{aplicadas: number; erros: {linha: number; erro: string}[]}>("/vault/financeiro/lote", {ids, acao}),
+  importar: (linhas: LinhaImportacao[], dry_run: boolean) => post<RelatorioImportacao>("/vault/financeiro/importar", {linhas, dry_run}),
+  exportar: (p: Periodo) => get<{csv: string}>(`/vault/financeiro/exportar${qs({...p})}`),
+  pendencias: {
+    listar: () => get<Pendencia[]>("/vault/pendencias"),
+    criar: (p: Omit<Pendencia,"id">) => post<{id: string}>("/vault/pendencias",p),
+    excluir: (id: string) => del<{ok: boolean}>(`/vault/pendencias/${id}`),
+    converter: (id: string,data: string) => post<{transacao_id: string}>(`/vault/pendencias/${id}/converter`,{data}),
   },
 };

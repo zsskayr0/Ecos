@@ -114,6 +114,8 @@ export interface ItemAgenda extends Posicao {
   semEstimativa?: boolean;
   /** Ainda sendo gravado no servidor (sem id definitivo): fica parado até confirmar. */
   salvando?: boolean;
+  /** Item que é uma transação do Cofre (conta à parte no resumo do dia). */
+  transacao?: boolean;
 }
 
 export interface CapacidadesItem {

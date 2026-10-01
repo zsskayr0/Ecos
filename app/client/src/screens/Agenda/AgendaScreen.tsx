@@ -43,7 +43,7 @@ function lerEncaixe(): number {
 }
 
 function itemDoEvento(e: EventoLocal): ItemAgenda {
-  return { chave: `evento:${e.id}`, tipo: "evento", id: String(e.id), titulo: e.titulo, dia: e.inicio, inicioMin: e.minutos, duracaoMin: e.duracaoMin, classe: e.corHex ? "" : e.cor, corHex: e.corHex, concluida: false };
+  return { chave: `evento:${e.id}`, tipo: "evento", id: String(e.id), titulo: e.titulo, dia: e.inicio, inicioMin: e.minutos, duracaoMin: e.duracaoMin, classe: e.corHex ? "" : e.cor, corHex: e.corHex, concluida: false, transacao: !!e.transacaoId };
 }
 
 /** A Agenda mostra tanto blocos com hora quanto tarefas que só possuem data/prazo. */
@@ -182,17 +182,19 @@ export function AgendaScreen() {
   const [tarefasAbertas, setTarefasAbertas] = useState(false);
   const [ancoraPopup, setAncoraPopup] = useState<AncoraPopup | null>(null);
   const [criadorEventoAberto, setCriadorEventoAberto] = useState(false);
+  const espaco = useEspacoFiltro();
   // Eventos vêm do servidor (os mesmos da aba Eventos, inclusive os do Google), com séries expandidas por dia.
   const periodoDosEventos = limitesDoPeriodo(modo, diaAtual);
-  const { eventos: eventosLocais, mover: moverEventoNoServidor } = useEventosDoPeriodo(periodoDosEventos.de, periodoDosEventos.ate, versao);
+  const { eventos: eventosLocais, mover: moverEventoNoServidor } = useEventosDoPeriodo(periodoDosEventos.de, periodoDosEventos.ate, versao, espaco, true);
   /** Evento aberto para edição (id no servidor); `ocorrencia` = só aquela ocorrência de uma série. */
   const [eventoEmEdicao, setEventoEmEdicao] = useState<{ id: string; ocorrencia?: string } | null>(null);
   const [categoriasEvento, setCategoriasEvento] = useState<CategoriaEvento[]>([]);
-  useEffect(() => { eventosApi.categorias.listar().then(setCategoriasEvento).catch(() => setCategoriasEvento([])); }, [versao]);
+  useEffect(() => { eventosApi.categorias.listar({ espaco }).then(setCategoriasEvento).catch(() => setCategoriasEvento([])); }, [versao, espaco]);
   const abrirItemAgenda = (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
     if (item.tipo === "tarefa" || item.tipo === "prazo") abrirDocumento(`/tarefa/${item.id}`, e.type === "click" ? (e as MouseEvent<HTMLElement>) : undefined);
     else if (item.tipo === "evento") {
       const evento = eventosLocais.find((ev) => String(ev.id) === item.id);
+      if (evento?.transacaoId) { abrirDocumento(`/cofre/transacao/${evento.transacaoId}`); return; }
       setEventoEmEdicao(evento?.servidorId ? { id: evento.servidorId, ocorrencia: evento.ocorrencia } : null);
     }
   };
@@ -207,7 +209,6 @@ export function AgendaScreen() {
     } catch { /* cache indisponível */ }
   }, [modo, diaAtual]);
 
-  const espaco = useEspacoFiltro();
   useEffect(() => {
     let vivo = true;
     setErro(null);
@@ -467,7 +468,7 @@ export function AgendaScreen() {
       {(modo === "seis_meses" || modo === "anual") && <VisaoPeriodos modo={modo} diaAtual={diaAtual} hoje={hoje} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...eventosLocais.map(itemDoEvento)]} concluidas={concluidasNoDia} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onSelecionar={selecionarDia} onAbrirMes={(mes) => { setDiaAtual(mes); setModo("mes"); }} />}
       </div>
 
-      {tarefasAbertas && <PopupTarefas sheet={!desktop} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(diaFoco))} onAbrirEvento={(ev) => { setTarefasAbertas(false); setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
+      {tarefasAbertas && <PopupTarefas sheet={!desktop} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(diaFoco))} onAbrirEvento={(ev) => { setTarefasAbertas(false); if (ev.transacaoId) { abrirDocumento(`/cofre/transacao/${ev.transacaoId}`); return; } setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
       {avisoMover && (
         <div role="alert" className="ecos-fade-in absolute left-1/2 top-3 z-40 flex max-w-[90%] -translate-x-1/2 items-start gap-2 rounded-xl border border-error/40 bg-base px-4 py-3 text-sm text-error shadow-nav">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />

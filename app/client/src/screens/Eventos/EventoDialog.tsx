@@ -1,3 +1,5 @@
+import { useAppUI } from "@/lib/ui-context";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useEffect, useState } from "react";
 import { ApiError, eventos, type AtualizarEventoPayload, type AtualizarOcorrenciaPayload, type CategoriaEvento, type Evento } from "@/lib/api";
 import { dataLocalISO, instanteLocalISO } from "@/lib/agenda-tempo";
@@ -76,9 +78,22 @@ export function EventoDialog({ aberto, eventoId, ocorrencia, categorias, diaInic
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [cats, setCats] = useState(categorias);
+  const { espacoAtivo } = useAppUI();
+  const filtro = useEspacoFiltro();
+  /** Equipe de um evento NOVO: a que está em foco no app, mudável no editor. Evento existente mantém a sua. */
+  const [espacoNovo, setEspacoNovo] = useState(filtro ?? espacoAtivo);
+  const espaco = detalhe?.espaco ?? espacoNovo;
   const [gerenciando, setGerenciando] = useState(false);
 
+  useEffect(() => { if (aberto) setEspacoNovo(filtro ?? espacoAtivo); }, [aberto, filtro, espacoAtivo]);
   useEffect(() => setCats(categorias), [categorias]);
+  // As categorias são por equipe: ao escolher/abrir outra equipe, a lista acompanha.
+  useEffect(() => {
+    if (!aberto || (eventoId && !detalhe)) return;
+    let ativo = true;
+    eventos.categorias.listar({ espaco }).then((l) => { if (ativo) setCats(l); }).catch(() => undefined);
+    return () => { ativo = false; };
+  }, [aberto, eventoId, detalhe, espaco]);
   useEffect(() => {
     setDetalhe(null);
     setErroCarga(null);
@@ -102,7 +117,7 @@ export function EventoDialog({ aberto, eventoId, ocorrencia, categorias, diaInic
       const j = janelaDe(d);
       await eventos.criar({
         titulo: d.titulo, ...j, dia_inteiro: d.minutos === null, local: d.local ?? null, descricao: d.descricao ?? "",
-        categoria_id: d.categoriaId, cor: d.cor, visibilidade: d.privado ? "privado" : "google",
+        categoria_id: d.categoriaId, cor: d.cor, visibilidade: d.privado ? "privado" : "google", espaco,
         tarefas: d.tarefas.map((t) => t.id), notas: d.notas.map((n) => n.id),
       });
       onSalvo();
@@ -164,12 +179,16 @@ export function EventoDialog({ aberto, eventoId, ocorrencia, categorias, diaInic
         onSalvar={salvar}
         onExcluir={editavel ? excluir : undefined}
         onGerenciarCategorias={() => setGerenciando(true)}
+        espaco={espaco}
+        onEspaco={setEspacoNovo}
+        espacoFixo={!!detalhe}
       />
       <CategoriasDialog
         aberto={gerenciando}
         categorias={cats}
+        espaco={espaco}
         onFechar={() => setGerenciando(false)}
-        onAlterado={() => { eventos.categorias.listar().then(setCats).catch(() => undefined); onCategoriasAlteradas?.(); }}
+        onAlterado={() => { eventos.categorias.listar({ espaco }).then(setCats).catch(() => undefined); onCategoriasAlteradas?.(); }}
       />
     </>
   );

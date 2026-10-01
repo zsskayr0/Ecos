@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { agruparPorDia, deslocarAncora, formatarDuracao, intervaloDoPeriodo, type Periodo } from "@/lib/eventos";
 import { CategoriasDialog } from "./CategoriasDialog";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { EventoDialog } from "./EventoDialog";
 import { TempoPorCategoria } from "./TempoPorCategoria";
 
@@ -31,6 +32,7 @@ function horarioDoEvento(e: Evento): string {
 /** Aba de Eventos: agenda por período (semana/mês), tempo gasto por categoria e categorias. Eventos privados ficam só no Ecos. */
 export function EventosScreen() {
   const { versao, notificar } = useRefreshBus();
+  const espaco = useEspacoFiltro();
   const navigate = useNavigate();
   const [aba, setAba] = useState<Aba>("lista");
   const [periodo, setPeriodo] = useState<Periodo>("semana");
@@ -48,17 +50,17 @@ export function EventosScreen() {
   const ateIso = ate.toISOString();
 
   useEffect(() => {
-    eventos.categorias.listar().then(setCategorias).catch(() => setCategorias([]));
-  }, [versao, recarga]);
+    eventos.categorias.listar({ espaco }).then(setCategorias).catch(() => setCategorias([]));
+  }, [versao, recarga, espaco]);
 
   useEffect(() => {
     let ativo = true;
     setLista(null);
-    eventos.listar({ de: deIso, ate: ateIso, categoria: filtroCategoria || undefined })
+    eventos.listar({ de: deIso, ate: ateIso, categoria: filtroCategoria || undefined, espaco })
       .then((itens) => { if (ativo) { setLista(itens); setErro(null); } })
       .catch((e) => { if (ativo) { setLista([]); setErro(e instanceof ApiError ? e.message : "Não foi possível carregar os eventos. Tente novamente."); } });
     return () => { ativo = false; };
-  }, [deIso, ateIso, filtroCategoria, versao, recarga]);
+  }, [deIso, ateIso, filtroCategoria, versao, recarga, espaco]);
 
   const aoAlterar = useCallback(() => { setRecarga((n) => n + 1); notificar(); }, [notificar]);
   const grupos = useMemo(() => agruparPorDia(lista ?? []), [lista]);
@@ -104,7 +106,7 @@ export function EventosScreen() {
       {erro && <p role="alert" className="mb-4 text-sm text-error">{erro}</p>}
 
       {aba === "tempo"
-        ? <TempoPorCategoria de={de} ate={ate} versao={versao + recarga} onEscolherCategoria={(id) => { setFiltroCategoria(id ?? "sem"); setAba("lista"); }} />
+        ? <TempoPorCategoria de={de} ate={ate} versao={versao + recarga} espaco={espaco} onEscolherCategoria={(id) => { setFiltroCategoria(id ?? "sem"); setAba("lista"); }} />
         : lista === null
           ? <p className="py-10 text-center text-sm text-text-muted">Carregando eventos...</p>
           : grupos.length === 0 && !erro

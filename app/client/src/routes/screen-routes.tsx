@@ -15,8 +15,7 @@ import { TaskDetailScreen } from "@/screens/Agenda/TaskDetailScreen";
 import { TaskFoldersRootScreen } from "@/screens/Tasks/TaskFoldersRootScreen";
 import { TaskFolderScreen } from "@/screens/Tasks/TaskFolderScreen";
 import { TaskFolderCreateScreen } from "@/screens/Tasks/TaskFolderCreateScreen";
-import { VaultScreen } from "@/screens/Vault/VaultScreen";
-import { TransactionDetailScreen } from "@/screens/Vault/TransactionDetailScreen";
+import { VaultEntry, VaultTransacaoEntry } from "@/screens/Vault/VaultScreen";
 import { TeamProfileScreen } from "@/screens/Team/TeamProfileScreen";
 import { TeamCreateJoinScreen } from "@/screens/Team/TeamCreateJoinScreen";
 import { TeamsScreen } from "@/screens/Team/TeamsScreen";
@@ -76,8 +75,9 @@ export const screenRoutes = (
     <Route path="/media/ver" element={<FileViewerScreen />} />
     <Route path="/lixeira" element={<TrashScreen />} />
 
-    <Route path="/cofre" element={<VaultScreen />} />
-    <Route path="/cofre/transacao/:id" element={<TransactionDetailScreen />} />
+    <Route path="/cofre" element={<VaultEntry />} />
+    <Route path="/cofre/transacao/:id" element={<VaultTransacaoEntry />} />
+    <Route path="/cofre/*" element={<VaultEntry />} />
 
     <Route path="/equipe/nova" element={<TeamCreateJoinScreen />} />
     <Route path="/equipes" element={<TeamsScreen />} />

@@ -14,6 +14,8 @@ pub mod pendencias;
 pub mod recorrencias;
 pub mod reset;
 pub mod transacoes;
+pub mod financeiro;
+pub mod fluxo;
 
 use crate::db::{id_de_usuario_valido, USUARIO};
 use crate::error::AppError;
@@ -41,7 +43,11 @@ async fn escopo_de_usuario(State(state): State<AppState>, req: Request, next: Ne
             return AppError::new(ErrorCode::InternalError).into_response();
         }
     }
-    USUARIO.scope(usuario, next.run(req)).await
+    let inicio = std::time::Instant::now();
+    let mut response = USUARIO.scope(usuario, next.run(req)).await;
+    tracing::info!(status = response.status().as_u16(), duracao_ms = inicio.elapsed().as_millis() as u64, "requisição do cofre concluída");
+    response.headers_mut().insert(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store, private"));
+    response
 }
 
 pub fn montar(state: AppState) -> Router {
@@ -55,6 +61,13 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/categorias", get(categorias::listar).post(categorias::criar))
         .route("/vault/categorias/:id", patch(categorias::atualizar).delete(categorias::excluir))
         .route("/vault/beneficiarios", get(beneficiarios::listar).post(beneficiarios::criar_ou_encontrar))
+        .route("/vault/painel", get(financeiro::painel))
+        .route("/vault/financeiro/importar", post(financeiro::importar))
+        .route("/vault/financeiro/exportar", get(financeiro::exportar))
+        .route("/vault/financeiro/lote", post(financeiro::lote))
+        .route("/vault/fluxo/ocorrencias", get(fluxo::listar))
+        .route("/vault/recorrencias/:id/concluir", post(fluxo::concluir))
+        .route("/vault/transacoes/:id/data", patch(fluxo::reagendar))
         .route("/vault/transacoes", get(transacoes::listar).post(transacoes::criar))
         .route("/vault/transacoes/excluir-em-lote", post(transacoes::excluir_em_lote))
         .route("/vault/transacoes/captura-foto", post(transacoes::captura_foto))

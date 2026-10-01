@@ -10,7 +10,7 @@ const ITENS: { tipo: TipoCaptura; rotulo: string; Icone: typeof StickyNote }[] =
 
 /** Botão "Criar" do desktop: abre um menu junto ao próprio botão (o popup central de escolha é coisa do mobile). */
 export function MenuCriar() {
-  const { abrirCaptura } = useAppUI();
+  const { abrirCaptura, diaCofre } = useAppUI();
   const [aberto, setAberto] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
 
@@ -69,7 +69,7 @@ export function MenuCriar() {
               role="menuitem"
               onClick={() => {
                 setAberto(false);
-                abrirCaptura(tipo);
+                abrirCaptura(tipo, tipo === "transacao" ? diaCofre : null);
               }}
               className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-text-primary hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none"
             >

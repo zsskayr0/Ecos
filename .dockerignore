@@ -5,4 +5,10 @@ app/client/dist/
 app/client/vite.config.js
 app/client/vite.config.d.ts
 app/client/src-tauri/target/
+app/client/src-tauri/gen/android/.gradle/
+app/client/src-tauri/gen/android/build/
+app/client/src-tauri/gen/android/app/build/
+app/client/qa/
+app/client/vite-*.log
+qa-artifacts/
 .git/

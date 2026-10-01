@@ -92,11 +92,13 @@ const posDoItem = (i: Posicao): Posicao => ({ dia: i.dia, inicioMin: i.inicioMin
 /** "8 prazos · 10,5 h": o que o dia guarda na faixa. As horas somam só o que tem estimativa. */
 export function resumoDoDia(itens: ItemAgenda[]): { rotulo: string } {
   const prazos = itens.filter((i) => i.tipo === "prazo");
-  const outros = itens.length - prazos.length;
+  const transacoes = itens.filter((i) => i.transacao);
+  const outros = itens.length - prazos.length - transacoes.length;
   const minutos = prazos.reduce((soma, i) => soma + (i.semEstimativa ? 0 : i.duracaoMin), 0);
   const partes = [
     prazos.length > 0 ? `${prazos.length} ${prazos.length === 1 ? "prazo" : "prazos"}` : null,
     outros > 0 ? `${outros} ${outros === 1 ? "evento" : "eventos"}` : null,
+    transacoes.length > 0 ? `${transacoes.length} ${transacoes.length === 1 ? "transação" : "transações"}` : null,
     minutos > 0 ? formatarHoras(minutos) : null,
   ].filter(Boolean);
   return { rotulo: partes.join(" · ") };

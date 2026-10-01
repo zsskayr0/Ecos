@@ -13,8 +13,9 @@ export function Chip({ children, selected, onClick, icon, accentColor }: ChipPro
   return (
     <button
       type="button"
+      data-selected={selected ? "true" : undefined}
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-1.5 ecos-chip rounded-xl border px-3.5 py-2 text-sm font-medium ${
         selected
           ? "border-steel-400 bg-steel-700/30 text-text-primary"
           : "border-border bg-surface-2 text-text-secondary hover:border-steel-500/60"

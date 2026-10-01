@@ -93,40 +93,18 @@ pub struct ConverterPayload {
 }
 
 pub async fn converter(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<ConverterPayload>) -> AppResult<Json<serde_json::Value>> {
-    let pendencia: Option<(String, String, i64, Option<String>, Option<String>, Option<String>, String)> = state
-        .db
-        .with({
-            let id = id.clone();
-            move |conn| {
-                conn.query_row(
-                    "SELECT tipo, descricao, valor_centavos, categoria_id, beneficiario_id, observacoes, espaco FROM pendencia_avulsa WHERE id = ?1",
-                    [&id],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
-                )
-                .optional()
-            }
-        })
-        .await?;
-    let (tipo, descricao, valor_centavos, categoria_id, beneficiario_id, observacoes, espaco) = pendencia.ok_or(AppError::new(ErrorCode::NotFound))?;
-
-    let transacao_id = new_id();
-    state
-        .db
-        .with({
-            let transacao_id = transacao_id.clone();
-            let id = id.clone();
-            move |conn| {
-                let tx = conn.unchecked_transaction()?;
-                tx.execute(
-                    "INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, categoria_id, beneficiario_id, observacoes, origem, espaco, criado_por) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'manual', ?9, 'usuario_local')",
-                    rusqlite::params![transacao_id, tipo, valor_centavos, payload.data.to_string(), descricao, categoria_id, beneficiario_id, observacoes, espaco],
-                )?;
-                tx.execute("DELETE FROM pendencia_avulsa WHERE id = ?1", [&id])?;
-                tx.commit()
-            }
-        })
-        .await?;
-
-    Ok(Json(serde_json::json!({ "transacao_id": transacao_id })))
+    let result = state.db.with(move |c| {
+        let tx = c.unchecked_transaction()?;
+        let existente: Option<String> = tx.query_row("SELECT transacao_id FROM pendencia_convertida WHERE pendencia_id=?1", [&id], |r| r.get(0)).optional()?;
+        if existente.is_some() { return Ok(existente); }
+        let transacao_id = new_id();
+        let n = tx.execute("INSERT INTO transacao (id,tipo,valor_centavos,data,descricao,categoria_id,beneficiario_id,observacoes,espaco,criado_por,conciliada) SELECT ?1,tipo,valor_centavos,?2,descricao,categoria_id,beneficiario_id,observacoes,espaco,'usuario_local',1 FROM pendencia_avulsa WHERE id=?3", rusqlite::params![transacao_id,payload.data.to_string(),id])?;
+        if n == 0 { return Ok(None); }
+        tx.execute("DELETE FROM pendencia_avulsa WHERE id=?1", [&id])?;
+        tx.execute("INSERT INTO pendencia_convertida VALUES(?1,?2)", [&id,&transacao_id])?;
+        tx.commit()?;
+        Ok(Some(transacao_id))
+    }).await?;
+    let id = result.ok_or(AppError::new(ErrorCode::NotFound))?;
+    Ok(Json(serde_json::json!({"transacao_id":id})))
 }

@@ -8,6 +8,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 import { ApiError, eventos, type Evento } from "@/lib/api";
 import { EventoDialog } from "./EventoDialog";
+import { AppUIProvider } from "@/lib/ui-context";
+import { RefreshProvider } from "@/lib/refresh-bus";
 
 const ORIGINAL = "2026-09-22T13:00:00.000Z"; // terça 10:00 em Brasília
 const CATEGORIAS = [{ id: "c1", espaco: "pessoal", nome: "Trabalho", cor: "#E11D48", icone: null }];
@@ -23,7 +25,7 @@ const onFechar = vi.fn();
 const onSalvo = vi.fn();
 function abrir(evento: Evento | null, ocorrencia?: string) {
   if (evento) vi.mocked(eventos.obter).mockResolvedValue(evento);
-  render(<EventoDialog aberto eventoId={evento?.id ?? null} ocorrencia={ocorrencia ?? null} categorias={CATEGORIAS} diaInicial={new Date(2026, 8, 23)} onFechar={onFechar} onSalvo={onSalvo} />);
+  render(<RefreshProvider><AppUIProvider><EventoDialog aberto eventoId={evento?.id ?? null} ocorrencia={ocorrencia ?? null} categorias={CATEGORIAS} diaInicial={new Date(2026, 8, 23)} onFechar={onFechar} onSalvo={onSalvo} /></AppUIProvider></RefreshProvider>);
 }
 const titulo = () => screen.findByLabelText("Título") as Promise<HTMLInputElement>;
 const salvar = (nome: RegExp | string = /Salvar|Criar/) => fireEvent.click(screen.getByRole("button", { name: nome }));

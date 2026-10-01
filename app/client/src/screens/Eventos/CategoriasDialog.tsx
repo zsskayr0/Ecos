@@ -6,6 +6,8 @@ import { PALETAS_CORES } from "@/components/common/PaletaCores";
 interface Props {
   aberto: boolean;
   categorias: CategoriaEvento[];
+  /** Equipe (espaço) em que as categorias novas nascem. */
+  espaco?: string;
   onFechar: () => void;
   /** Depois de criar, renomear, recolorir ou excluir: quem chamou recarrega listas e tempo. */
   onAlterado: () => void;
@@ -14,7 +16,7 @@ interface Props {
 const CORES_SUGERIDAS = PALETAS_CORES[0].cores;
 
 /** Gerencia as categorias de evento (nome + cor). Excluir devolve os eventos dela para "Sem categoria". */
-export function CategoriasDialog({ aberto, categorias, onFechar, onAlterado }: Props) {
+export function CategoriasDialog({ aberto, categorias, espaco, onFechar, onAlterado }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [nome, setNome] = useState("");
   const [cor, setCor] = useState<string>(CORES_SUGERIDAS[1]);
@@ -37,7 +39,7 @@ export function CategoriasDialog({ aberto, categorias, onFechar, onAlterado }: P
   }
 
   const criar = () => executar(async () => {
-    await eventos.categorias.criar({ nome: nome.trim(), cor });
+    await eventos.categorias.criar({ nome: nome.trim(), cor, espaco });
     setNome("");
   });
 

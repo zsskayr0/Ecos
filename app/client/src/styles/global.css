@@ -6,6 +6,7 @@
 @import "@fontsource/jetbrains-mono/700.css";
 
 @import "./tokens.css";
+@import "./cofre.css";
 
 @tailwind base;
 @tailwind components;
@@ -353,4 +354,94 @@ body {
 .ecos-subpastas { animation: ecos-subpastas-entrada 160ms ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .ecos-subpastas { animation: none; }
+}
+
+/* Botão de criar (Fab): entra com mola, pulsa um anel discreto e gira o "+" ao pressionar/focar. */
+@keyframes ecos-fab-entra { from { transform: scale(.4) translateY(16px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes ecos-fab-anel { 0% { box-shadow: 0 0 0 0 rgb(139 92 246 / .45); } 70%,100% { box-shadow: 0 0 0 16px rgb(139 92 246 / 0); } }
+.ecos-fab { animation: ecos-fab-entra .45s cubic-bezier(.34,1.56,.64,1) both, ecos-fab-anel 2.6s ease-out 1s 2; transition: transform .18s ease, filter .18s ease; }
+.ecos-fab:hover { transform: scale(1.06); filter: brightness(1.08); }
+.ecos-fab:active { transform: scale(.92); }
+.ecos-fab .ecos-fab-icone { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
+.ecos-fab:hover .ecos-fab-icone, .ecos-fab:focus-visible .ecos-fab-icone { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .ecos-fab, .ecos-fab .ecos-fab-icone { animation: none !important; transition: none !important; } }
+
+/* ── Captura: slide de tipo e formulário de Transação ──────────────────────
+   Curvas com leve "mola" (overshoot) no toque, sempre curtas (< 350 ms). */
+.ecos-slide-indicador {
+  position: absolute; top: 0; bottom: 0; left: 0; border-radius: 9999px;
+  background: rgb(var(--slide-rgb) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--slide-rgb) / 0.5);
+  transition: transform 340ms cubic-bezier(0.34, 1.32, 0.64, 1), background-color 260ms ease, box-shadow 260ms ease;
+}
+.ecos-slide-trilho { touch-action: pan-y; user-select: none; }
+.ecos-slide-botao { transition: color 220ms ease, transform 160ms ease; }
+.ecos-slide-botao:active { transform: scale(0.94); }
+.ecos-slide-botao[data-ativo="false"] { color: var(--ecos-text-muted); }
+.ecos-slide-botao[data-ativo="false"]:hover { color: var(--ecos-text-primary); }
+
+@keyframes ecos-tipo-entra { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: none; } }
+.ecos-tipo-entra { animation: ecos-tipo-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+
+@keyframes ecos-secao-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ecos-secao-entra { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) 360ms both; }
+.ecos-tx-col > * { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+.ecos-tx-col > *:nth-child(2) { animation-delay: 45ms; } .ecos-tx-col > *:nth-child(3) { animation-delay: 90ms; }
+.ecos-tx-col > *:nth-child(4) { animation-delay: 135ms; } .ecos-tx-col > *:nth-child(5) { animation-delay: 180ms; }
+.ecos-tx-col > *:nth-child(n+6) { animation-delay: 225ms; }
+
+/* Layout: uma coluna no celular (colunas "somem" com display: contents); duas no PC. */
+.ecos-tx { container-type: inline-size; }
+.ecos-tx-grade { display: flex; flex-direction: column; gap: 1.25rem; }
+.ecos-tx-col { display: contents; }
+.ecos-tx-topo { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+.ecos-tx-toggle-teclado { display: none; }
+.ecos-valor { transition: color 300ms ease; }
+@container (min-width: 720px) {
+  .ecos-tx-grade { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
+  .ecos-tx-col { display: flex; flex-direction: column; gap: 1.25rem; }
+  .ecos-tx-topo { flex-direction: row; justify-content: space-between; align-items: center; }
+  .ecos-valor { text-align: left; font-size: 3rem; }
+  .ecos-tx-toggle-teclado {
+    display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.625rem 0.875rem; border-radius: 0.875rem;
+    background: var(--ecos-surface-2); color: var(--ecos-text-secondary); font-size: 0.875rem; font-weight: 500;
+    transition: background-color 180ms ease, color 180ms ease, transform 140ms ease;
+  }
+  .ecos-tx-toggle-teclado:hover { color: var(--ecos-text-primary); background: var(--ecos-surface-3); }
+  .ecos-tx-toggle-teclado:active { transform: scale(0.985); }
+  .ecos-tx-toggle-teclado span { flex: 1; text-align: left; }
+  .ecos-tx-seta { transition: transform 300ms cubic-bezier(0.34, 1.32, 0.64, 1); }
+  .ecos-tx-toggle-teclado[aria-expanded="true"] .ecos-tx-seta { transform: rotate(180deg); }
+  .ecos-tx-toggle-teclado[aria-expanded="true"] { color: rgb(var(--ecos-violet-rgb)); box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.4); }
+  .ecos-tx-teclado { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 340ms cubic-bezier(0.2, 0.7, 0.25, 1), opacity 240ms ease; }
+  .ecos-tx-teclado[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
+  .ecos-tx-teclado-miolo { min-height: 0; overflow: hidden; }
+  .ecos-tx-teclado[data-aberto="false"] .ecos-tx-teclado-miolo { visibility: hidden; transition: visibility 0s 340ms; }
+}
+
+.ecos-tecla { transition: background-color 150ms ease, transform 120ms ease, box-shadow 150ms ease; }
+.ecos-tecla:hover { box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.35); }
+.ecos-tecla:active { transform: scale(0.92); background-color: rgb(var(--ecos-violet-rgb) / 0.2); }
+
+.ecos-chip { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 140ms ease, box-shadow 200ms ease; }
+.ecos-chip:hover { transform: translateY(-1px); }
+.ecos-chip:active { transform: scale(0.95); }
+@keyframes ecos-chip-pop { 0% { transform: scale(0.94); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.ecos-chip[data-selected="true"] { animation: ecos-chip-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes ecos-chip-entra { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+.ecos-chips > * { animation: ecos-chip-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+.ecos-chips > *:nth-child(2) { animation-delay: 30ms; } .ecos-chips > *:nth-child(3) { animation-delay: 60ms; }
+.ecos-chips > *:nth-child(4) { animation-delay: 90ms; } .ecos-chips > *:nth-child(5) { animation-delay: 120ms; }
+.ecos-chips > *:nth-child(6) { animation-delay: 150ms; } .ecos-chips > *:nth-child(n+7) { animation-delay: 180ms; }
+
+.ecos-campo { transition: box-shadow 200ms ease, background-color 200ms ease; }
+.ecos-campo:focus { box-shadow: 0 0 0 2px rgb(var(--ecos-violet-rgb) / 0.55); }
+
+.ecos-salvar { transition: transform 160ms ease, box-shadow 220ms ease, opacity 200ms ease, filter 200ms ease ; }
+.ecos-salvar:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.08); }
+.ecos-salvar:not(:disabled):active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ecos-slide-indicador, .ecos-slide-botao, .ecos-tipo-entra, .ecos-secao-entra, .ecos-tx-col > *, .ecos-valor, .ecos-tx-seta,
+  .ecos-tx-teclado, .ecos-tx-toggle-teclado, .ecos-tecla, .ecos-chip, .ecos-chips > *, .ecos-campo, .ecos-salvar { animation: none !important; transition: none !important; }
 }

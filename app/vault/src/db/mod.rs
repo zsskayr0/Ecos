@@ -29,7 +29,9 @@ pub fn id_de_usuario_valido(id: &str) -> bool {
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![M::up(include_str!("../../migrations/0001_init_up.sql"))
-        .down(include_str!("../../migrations/0001_init_down.sql"))])
+        .down(include_str!("../../migrations/0001_init_down.sql")),
+        M::up(include_str!("../../migrations/0002_financeiro.sql")),
+        M::up(include_str!("../../migrations/0003_categorias_nexus.sql"))])
 }
 
 #[derive(Debug, thiserror::Error)]

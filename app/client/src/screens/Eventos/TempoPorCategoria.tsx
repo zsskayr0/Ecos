@@ -7,6 +7,8 @@ import { formatarDuracao, larguraRelativa } from "@/lib/eventos";
 const COR_SEM_CATEGORIA = "#64748B";
 
 interface Props {
+  /** Equipe (espaço) a somar; sem ela, todas as visíveis. */
+  espaco?: string;
   de: Date;
   ate: Date;
   /** Muda quando algo foi criado/editado, para recarregar. */
@@ -15,7 +17,7 @@ interface Props {
 }
 
 /** Quanto tempo foi para cada categoria no período (eventos com hora; dia inteiro não conta). */
-export function TempoPorCategoria({ de, ate, versao, onEscolherCategoria }: Props) {
+export function TempoPorCategoria({ de, ate, versao, espaco, onEscolherCategoria }: Props) {
   const [dados, setDados] = useState<Tempo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const deIso = de.toISOString();
@@ -24,10 +26,10 @@ export function TempoPorCategoria({ de, ate, versao, onEscolherCategoria }: Prop
   useEffect(() => {
     let ativo = true;
     setDados(null);
-    eventos.tempo({ de: deIso, ate: ateIso }).then((d) => { if (ativo) { setDados(d); setErro(null); } })
+    eventos.tempo({ de: deIso, ate: ateIso, espaco }).then((d) => { if (ativo) { setDados(d); setErro(null); } })
       .catch((e) => { if (ativo) setErro(e instanceof ApiError ? e.message : "Não foi possível calcular o tempo. Tente novamente."); });
     return () => { ativo = false; };
-  }, [deIso, ateIso, versao]);
+  }, [deIso, ateIso, versao, espaco]);
 
   if (erro) return <p role="alert" className="text-sm text-error">{erro}</p>;
   if (!dados) return <p className="py-10 text-center text-sm text-text-muted">Calculando...</p>;

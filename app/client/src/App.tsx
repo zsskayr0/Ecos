@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { VaultScreen } from "@/screens/Vault/VaultScreen";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -86,6 +87,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
  */
 function Shell() {
   const desktop = useIsDesktop();
+  const desktopRef = useRef(desktop);
+  desktopRef.current = desktop;
+  const [cofre, setCofre] = useState(() => window.location.pathname.startsWith("/cofre"));
+  useEffect(() => {
+    const abrir = (event: Event) => { if (desktopRef.current) return; const path=(event as CustomEvent<string>).detail; window.history.pushState(null,"",path?.startsWith("/cofre")?path:"/cofre"); setCofre(true); };
+    const navegar = () => setCofre(window.location.pathname.startsWith("/cofre"));
+    window.addEventListener("ecos:abrir-cofre", abrir);
+    window.addEventListener("popstate", navegar);
+    return () => { window.removeEventListener("ecos:abrir-cofre", abrir); window.removeEventListener("popstate", navegar); };
+  }, []);
+  if (cofre && !desktop) return <BrowserRouter><Routes><Route path="/cofre/transacao/:id" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /><Route path="*" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /></Routes></BrowserRouter>;
   if (desktop) return <DesktopShell />;
 
   return (

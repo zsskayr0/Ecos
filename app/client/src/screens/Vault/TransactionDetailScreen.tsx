@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useContext, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { ChevronLeft, Trash2, AlertTriangle, Receipt } from "lucide-react";
 import {
@@ -13,10 +13,12 @@ import {
   type FormaPagamento,
 } from "@/lib/api";
 import { Chip } from "@/components/common/Chip";
+import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { DatePicker } from "@/components/common/DatePicker";
 import { formatMoeda, hojeISO } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { FecharDocumentoContext } from "@/lib/documento-popup";
 
 const LABEL_FORMA_PAGAMENTO: Record<FormaPagamento, string> = {
   pix: "Pix",
@@ -36,8 +38,14 @@ const LABEL_FORMA_PAGAMENTO: Record<FormaPagamento, string> = {
  * humor, straight to the point.
  */
 export function TransactionDetailScreen() {
-  const { id } = useParams();
+  const params = useParams();
+  const location = useLocation();
+  // Na aba do desktop a tela vive dentro de `/cofre/*` (sem `:id` na rota): o id vem do próprio caminho.
+  const id = params.id ?? (location.pathname.split("/")[2] === "transacao" ? location.pathname.split("/")[3] : undefined);
   const navigate = useNavigate();
+  // Janela flutuante/aba do desktop: voltar = fechar. Sem shell desktop (mobile), volta no histórico.
+  const fecharDocumento = useContext(FecharDocumentoContext);
+  const voltar = () => (fecharDocumento ? fecharDocumento() : navigate(-1));
   const { notificar } = useRefreshBus();
   const [tx, setTx] = useState<TransacaoApi | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
@@ -56,12 +64,26 @@ export function TransactionDetailScreen() {
   const [data, setData] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
+  // Retrato por padrão; se a janela ficar mais larga que alta, os campos se repartem em duas colunas.
+  const raiz = useRef<HTMLDivElement>(null);
+  const [largo, setLargo] = useState(false);
+  useEffect(() => {
+    const pai = raiz.current?.parentElement;
+    if (!pai || typeof ResizeObserver === "undefined") return;
+    const medir = () => setLargo(pai.clientWidth > pai.clientHeight);
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(pai);
+    return () => obs.disconnect();
+  }, [naoEncontrada, tx === null]);
   const [confirmandoDelete, setConfirmandoDelete] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) { setNaoEncontrada(true); return; }
+    setNaoEncontrada(false);
+    setTx(null);
     Promise.all([
       vault.transacoes.obter(id),
       vault.categorias.listar().catch(() => []),
@@ -112,6 +134,7 @@ export function TransactionDetailScreen() {
       });
       setTx(atualizada);
       notificar();
+      voltar();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível salvar.");
     } finally {
@@ -133,7 +156,7 @@ export function TransactionDetailScreen() {
     try {
       await vault.transacoes.excluir(id);
       notificar();
-      navigate(-1);
+      voltar();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");
       setSalvando(false);
@@ -143,7 +166,7 @@ export function TransactionDetailScreen() {
   if (naoEncontrada) {
     return (
       <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
+        <button onClick={() => voltar()} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
         <EmptyState icon={Receipt} title="Essa transação sumiu." subtitle="Pode ter sido apagada." />
@@ -154,7 +177,7 @@ export function TransactionDetailScreen() {
   if (!tx) {
     return (
       <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
+        <button onClick={() => voltar()} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
         <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
@@ -165,9 +188,9 @@ export function TransactionDetailScreen() {
   const categoriasVisiveis = categorias.filter((c) => c.tipo === "ambos" || c.tipo === tipo);
 
   return (
-    <div className="px-4 pt-1 pb-nav-safe">
+    <div ref={raiz} className="px-4 pt-1 pb-nav-safe">
       <div className="mb-4 flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-text-muted">
+        <button onClick={() => voltar()} className="flex items-center gap-1 text-sm text-text-muted">
           <ChevronLeft size={18} />
           Voltar
         </button>
@@ -201,20 +224,15 @@ export function TransactionDetailScreen() {
         </div>
       )}
 
-      <div className="mb-6 flex rounded-pill bg-surface-2 p-1 self-center w-fit mx-auto">
-        <button
-          onClick={() => setTipo("saida")}
-          className={`rounded-pill px-4 py-1.5 text-sm font-medium ${tipo === "saida" ? "bg-error/20 text-error" : "text-text-muted"}`}
-        >
-          Saída
-        </button>
-        <button
-          onClick={() => setTipo("entrada")}
-          className={`rounded-pill px-4 py-1.5 text-sm font-medium ${tipo === "entrada" ? "bg-success/20 text-success" : "text-text-muted"}`}
-        >
-          Entrada
-        </button>
-      </div>
+      <div className={largo ? "grid grid-cols-2 items-start gap-x-8" : ""}>
+      <div className={largo ? "" : "contents"}>
+      <SegmentedSlide
+        className="mx-auto mb-6 w-fit"
+        ariaLabel="Tipo da transação"
+        value={tipo}
+        onChange={(v) => { setTipo(v); setCategoriaId(null); }}
+        opcoes={[{ value: "saida", label: "Saída", cor: "ecos-error" }, { value: "entrada", label: "Entrada", cor: "ecos-success" }]}
+      />
 
       <div className="mb-6 flex flex-col items-center gap-1">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Data</span>
@@ -224,13 +242,13 @@ export function TransactionDetailScreen() {
       <label className="mb-6 flex flex-col items-center gap-1">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Valor</span>
         <div className="flex items-center gap-1">
-          <span className={`font-mono-value text-3xl font-bold ${tipo === "entrada" ? "text-success" : "text-text-primary"}`}>R$</span>
+          <span className={`font-mono-value text-3xl font-bold ${tipo === "entrada" ? "text-success" : "text-error"}`}>R$</span>
           <input
             value={valorReais}
             onChange={(e) => setValorReais(e.target.value)}
             inputMode="decimal"
             className={`w-40 bg-transparent text-center font-mono-value text-3xl font-bold focus:outline-none ${
-              tipo === "entrada" ? "text-success" : "text-text-primary"
+              tipo === "entrada" ? "text-success" : "text-error"
             }`}
           />
         </div>
@@ -257,6 +275,13 @@ export function TransactionDetailScreen() {
         </datalist>
       </label>
 
+      <label className="mb-6 flex flex-col gap-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Observações</span>
+        <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} className="ecos-input resize-none" />
+      </label>
+      </div>
+
+      <div className={largo ? "" : "contents"}>
       {categoriasVisiveis.length > 0 && (
         <div className="mb-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Categoria</p>
@@ -305,30 +330,20 @@ export function TransactionDetailScreen() {
 
       <div className="mb-4 flex flex-col gap-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Status</span>
-        <div className="flex rounded-pill bg-surface-2 p-1 self-start">
-          <button
-            onClick={() => setStatus("efetivada")}
-            className={`rounded-pill px-4 py-1.5 text-sm font-medium ${status === "efetivada" ? "bg-success/20 text-success" : "text-text-muted"}`}
-          >
-            Efetivada
-          </button>
-          <button
-            onClick={() => setStatus("pendente")}
-            className={`rounded-pill px-4 py-1.5 text-sm font-medium ${status === "pendente" ? "bg-warning/20 text-warning" : "text-text-muted"}`}
-          >
-            Pendente
-          </button>
-        </div>
+        <SegmentedSlide
+          className="self-start"
+          ariaLabel="Status da transação"
+          value={status}
+          onChange={setStatus}
+          opcoes={[{ value: "efetivada", label: "Efetivada", cor: "ecos-success" }, { value: "pendente", label: "Pendente", cor: "ecos-warning" }]}
+        />
       </div>
-
-      <label className="mb-6 flex flex-col gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Observações</span>
-        <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} className="ecos-input resize-none" />
-      </label>
 
       <button onClick={salvar} disabled={salvando} className="w-full rounded-2xl bg-violet py-3.5 text-center font-body text-[15px] font-semibold text-black disabled:opacity-40">
         {salvando ? "Salvando..." : "Salvar alterações"}
       </button>
+      </div>
+      </div>
     </div>
   );
 }

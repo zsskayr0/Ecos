@@ -85,6 +85,10 @@ fn espaco_padrao() -> String {
 }
 
 fn validar(payload: &RecorrenciaPayload) -> AppResult<()> {
+    if !(1..=1200).contains(&payload.intervalo) || payload.total_parcelas.is_some_and(|n| n <= 0 || n > 10000) || payload.dia_vencimento.is_some_and(|d| !(1..=31).contains(&d)) || payload.data_fim.is_some_and(|d| d < payload.data_inicio) {
+        return Err(AppError::new(ErrorCode::ValidationError).with_message("Intervalo, parcelas, vencimento ou término inválido"));
+    }
+
     if !["entrada", "saida"].contains(&payload.tipo.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("tipo deve ser 'entrada' ou 'saida'"));
     }

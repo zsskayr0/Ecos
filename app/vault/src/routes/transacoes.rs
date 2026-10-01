@@ -19,6 +19,10 @@ const FORMAS_PAGAMENTO: &[&str] = &["pix", "pix_automatico", "ted", "cartao", "d
 pub struct ListarQuery {
     pub conta_id: Option<String>,
     pub categoria_id: Option<String>,
+    pub tipo: Option<String>,
+    pub forma_pagamento: Option<String>,
+    pub sem_categoria: Option<bool>,
+    pub sem_pagamento: Option<bool>,
     pub status: Option<String>,
     pub data_de: Option<NaiveDate>,
     pub data_ate: Option<NaiveDate>,
@@ -46,11 +50,13 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "criado_por": r.get::<_, String>(15)?,
         "criado_em": r.get::<_, String>(16)?,
         "atualizado_em": r.get::<_, String>(17)?,
+        "conciliada": r.get::<_, bool>(18)?,
+        "data_ocorrencia": r.get::<_, Option<String>>(19)?,
     }))
 }
 
 const COLUNAS: &str = "id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id, beneficiario_id, \
-     forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em";
+     forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em, conciliada, data_ocorrencia";
 
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let limite = q.limit.unwrap_or(30).clamp(1, 200);
@@ -71,6 +77,10 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                 condicoes.push("categoria_id = ?".to_string());
                 params.push(Box::new(v.clone()));
             }
+            if let Some(v) = &q.tipo { condicoes.push("tipo = ?".into()); params.push(Box::new(v.clone())); }
+            if let Some(v) = &q.forma_pagamento { condicoes.push("forma_pagamento = ?".into()); params.push(Box::new(v.clone())); }
+            if q.sem_categoria == Some(true) { condicoes.push("categoria_id IS NULL".into()); }
+            if q.sem_pagamento == Some(true) { condicoes.push("forma_pagamento IS NULL".into()); }
             if let Some(v) = &q.status {
                 condicoes.push("status = ?".to_string());
                 params.push(Box::new(v.clone()));

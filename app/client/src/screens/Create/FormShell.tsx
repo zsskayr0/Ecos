@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { SegmentedSlide, type OpcaoSlide } from "@/components/common/SegmentedSlide";
 import type { TipoCaptura } from "@/lib/ui-context";
 
-const TIPOS: { tipo: TipoCaptura; label: string }[] = [
-  { tipo: "nota", label: "Nota" },
-  { tipo: "tarefa", label: "Tarefa" },
-  { tipo: "transacao", label: "Transação" },
+/** Verde = notas, azul = tarefas, roxo = transações. */
+const TIPOS: OpcaoSlide<TipoCaptura>[] = [
+  { value: "nota", label: "Nota", cor: "ecos-success" },
+  { value: "tarefa", label: "Tarefa", cor: "ecos-cyan" },
+  { value: "transacao", label: "Transação", cor: "ecos-violet" },
 ];
 
 /**
@@ -31,29 +33,17 @@ export function FormShell({
   return (
     <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`}>
       <div className={`flex h-full min-w-0 w-full flex-col ${embedded ? "max-w-6xl px-6" : tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
-        <div className="ecos-capture-header flex items-center justify-between">
+        <div className="ecos-capture-header grid grid-cols-[1fr_auto_1fr] items-center">
           {/* Embutida numa janela do desktop, quem fecha é o X da própria janela; em tela cheia (mobile) este é o único jeito de sair. */}
           {embedded ? (
             <div className="w-12 shrink-0" />
           ) : (
-            <button onClick={onFechar} aria-label="Fechar" className="flex min-h-12 min-w-12 items-center justify-center rounded-xl">
+            <button onClick={onFechar} aria-label="Fechar" className="flex min-h-12 min-w-12 items-center justify-center justify-self-start rounded-xl transition-colors hover:bg-surface-2 active:scale-95">
               <X size={22} className="text-text-muted" />
             </button>
           )}
-          <div className="flex rounded-pill bg-surface-2 p-1">
-            {TIPOS.map(({ tipo, label }) => (
-              <button
-                key={tipo}
-                onClick={() => onTrocarTipo(tipo)}
-                className={`min-h-11 rounded-pill px-3 py-1.5 text-sm font-medium transition-colors ${
-                  tipoAtivo === tipo ? "bg-surface-3 text-text-primary" : "text-text-muted"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="hidden w-12 shrink-0 sm:block" />
+          <SegmentedSlide ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={TIPOS} />
+          <div className="w-12 shrink-0" />
         </div>
         <div className="ecos-capture-content min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+16px)]">
           {erro && (
@@ -62,7 +52,7 @@ export function FormShell({
               {erro}
             </div>
           )}
-          {children}
+          <div key={tipoAtivo} className="ecos-tipo-entra">{children}</div>
         </div>
       </div>
     </div>

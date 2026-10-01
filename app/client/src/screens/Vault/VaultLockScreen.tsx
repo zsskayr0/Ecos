@@ -12,7 +12,10 @@ import { ApiError } from "@/lib/api";
 export function VaultLockScreen({
   primeiraVez,
   onSubmeter,
+  equipe,
 }: {
+  /** Nome da equipe dona deste Cofre; ausente = o Cofre pessoal. */
+  equipe?: string;
   primeiraVez: boolean;
   onSubmeter: (senha: string) => Promise<void>;
 }) {
@@ -45,12 +48,12 @@ export function VaultLockScreen({
       </div>
       <div>
         <p className="font-body text-[15px] font-semibold text-text-primary">
-          {primeiraVez ? "Defina a senha do Cofre" : "O Cofre está bloqueado"}
+          {primeiraVez ? "Defina a senha do Cofre" : "O Cofre está bloqueado"}{equipe ? ` · ${equipe}` : ""}
         </p>
         <p className="mt-1 text-sm text-text-muted">
           {primeiraVez
-            ? "Essa senha é exclusiva do Cofre, separada da sua senha de login. Mínimo de 12 caracteres, sem espaços. Guarde-a — sem ela, não há como recuperar os dados."
-            : "Confirme sua identidade para acessar dados financeiros."}
+            ? `${equipe ? "É o Cofre compartilhado da equipe: quem for membro e souber a senha vê e edita as mesmas finanças. Só dono e administradores ativam. " : ""}Essa senha é exclusiva do Cofre, separada da sua senha de login. Mínimo de 12 caracteres, sem espaços. Guarde-a — sem ela, não há como recuperar os dados.`
+            : equipe ? "Digite a senha do Cofre da equipe, definida por quem o ativou." : "Confirme sua identidade para acessar dados financeiros."}
         </p>
       </div>
 

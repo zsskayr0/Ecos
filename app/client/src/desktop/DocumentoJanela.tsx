@@ -14,6 +14,9 @@ const BORDA = 2;
 const ALTURA_TITULO = 36;
 const ATRIBUTO_BARRA = "data-pane-tabbar";
 
+/** Janelas flutuantes abertas, para o Esc global fechar só a da frente. */
+const janelasAbertas = new Set<{ z: () => number; fechar: () => void }>();
+
 interface Retangulo {
   x: number;
   y: number;
@@ -23,12 +26,13 @@ interface Retangulo {
 
 type Direcao = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-/** Abre sempre em 16:9 (até 1120px de largura), centralizada e levemente escalonada para não cobrir outra janela igual. */
-function retanguloInicial(ordem: number): Retangulo {
+/** Abre em 16:9 (até 1120px de largura), centralizada e levemente escalonada para não cobrir outra janela igual. */
+function retanguloInicial(ordem: number, retrato = false): Retangulo {
   const folgaW = window.innerWidth - MARGEM * 4;
   const folgaH = window.innerHeight - MARGEM * 4;
-  const w = Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
-  const h = (w * 9) / 16 + ALTURA_TITULO;
+  // Formulários altos (lançamento) nascem em retrato; dá para redimensionar e o conteúdo se reparte em colunas.
+  const w = retrato ? Math.min(520, folgaW) : Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
+  const h = retrato ? Math.min(860, folgaH) : (w * 9) / 16 + ALTURA_TITULO;
   const deslocamento = (ordem % 6) * 28;
   return {
     x: Math.min((window.innerWidth - w) / 2 + deslocamento, window.innerWidth - MARGEM - w),
@@ -117,7 +121,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     window.setTimeout(aoFecharDeVez, janelaDeConfiguracoes ? 240 : DURACAO_SAIDA_JANELA_MS);
   }, [aoFecharDeVez, janelaDeConfiguracoes]);
 
-  const [rect, setRect] = useState(() => retanguloInicial(ordem));
+  const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao")));
   const [arrastando, setArrastando] = useState(false);
   const [ajustando, setAjustando] = useState(false);
   const [tituloDinamico, setTituloDinamico] = useState("");
@@ -129,6 +133,27 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   >(null);
 
   useEffect(() => janelaRef.current?.focus(), []);
+
+  // Esc fecha mesmo que o foco não esteja dentro da janela (ex.: depois de carregar o conteúdo); com várias abertas, só a da frente.
+  const zRef = useRef(z);
+  zRef.current = z;
+  const fecharRef = useRef(aoFechar);
+  fecharRef.current = aoFechar;
+  useEffect(() => {
+    const registro = { z: () => zRef.current, fechar: () => fecharRef.current() };
+    janelasAbertas.add(registro);
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const foco = document.activeElement;
+      const dentro = !!janelaRef.current && !!foco && janelaRef.current.contains(foco);
+      if (dentro) return; // o onKeyDown da própria janela já trata
+      if (foco && foco !== document.body) return; // foco em outra parte da interface
+      const frente = [...janelasAbertas].sort((a, b) => b.z() - a.z())[0];
+      if (frente === registro) registro.fechar();
+    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => { janelasAbertas.delete(registro); window.removeEventListener("keydown", aoTeclar); };
+  }, []);
 
   // Janela do app encolheu: a janela flutuante nunca fica maior que ela.
   useEffect(() => {

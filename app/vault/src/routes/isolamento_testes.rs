@@ -38,6 +38,76 @@ async fn chamar(app: &Router, usuario: Option<&str>, legado: bool, metodo: &str,
 fn senha(s: &str) -> Option<serde_json::Value> { Some(serde_json::json!({ "senha": s })) }
 
 #[tokio::test]
+async fn financeiro_importacao_dry_run_dedup_totais_e_lote_atomico() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    chamar(&app,Some("fin"),false,"POST","/vault/ativar",senha("senha-financeiro")).await;
+    let linhas: Vec<_>=(0..251).map(|i|json!({"linha":i+2,"tipo":"entrada","valor_centavos":12345,"data":"2026-09-30","descricao":format!("Receita {i}")})).collect();
+    let (_,preview)=chamar(&app,Some("fin"),false,"POST","/vault/financeiro/importar",Some(json!({"linhas":linhas,"dry_run":true}))).await;
+    assert_eq!(preview["validas"],251); assert_eq!(preview["importadas"],0);
+    let (_,antes)=chamar(&app,Some("fin"),false,"GET","/vault/painel?data_de=2026-09-01&data_ate=2026-09-30",None).await;
+    assert_eq!(antes["receitas"],0);
+    let (_,import)=chamar(&app,Some("fin"),false,"POST","/vault/financeiro/importar",Some(json!({"linhas":linhas,"dry_run":false}))).await;
+    assert_eq!(import["importadas"],251);
+    let (_,dedup)=chamar(&app,Some("fin"),false,"POST","/vault/financeiro/importar",Some(json!({"linhas":linhas,"dry_run":false}))).await;
+    assert_eq!(dedup["importadas"],0);assert_eq!(dedup["duplicadas"].as_array().unwrap().len(),251);
+    let (_,painel)=chamar(&app,Some("fin"),false,"GET","/vault/painel?data_de=2026-09-01&data_ate=2026-09-30",None).await;
+    assert_eq!(painel["receitas"],251*12345); assert_eq!(painel["saldo"],251*12345);
+    let (_,page)=chamar(&app,Some("fin"),false,"GET","/vault/transacoes?limit=200",None).await;
+    assert_eq!(page["items"].as_array().unwrap().len(),200);assert!(page["next_cursor"].is_string());
+    let id=page["items"][0]["id"].as_str().unwrap();
+    let (_,lote)=chamar(&app,Some("fin"),false,"POST","/vault/financeiro/lote",Some(json!({"ids":[id,"inexistente"],"acao":"conciliar"}))).await;
+    assert_eq!(lote["aplicadas"],0);
+    let (_,tx)=chamar(&app,Some("fin"),false,"GET",&format!("/vault/transacoes/{id}"),None).await;
+    assert_eq!(tx["conciliada"],false);
+    let (_,lote)=chamar(&app,Some("fin"),false,"POST","/vault/financeiro/lote",Some(json!({"ids":[id],"acao":"conciliar"}))).await;
+    assert_eq!(lote["aplicadas"],1);
+    let (_,csv)=chamar(&app,Some("fin"),false,"GET","/vault/financeiro/exportar?data_de=2026-09-01&data_ate=2026-09-30",None).await;
+    assert!(csv["csv"].as_str().unwrap().starts_with('\u{feff}'));assert!(csv["csv"].as_str().unwrap().contains("123,45"));
+    chamar(&app,Some("fin"),false,"POST","/vault/bloquear",None).await;
+    assert_eq!(chamar(&app,Some("fin"),false,"GET","/vault/painel?data_de=2026-09-01&data_ate=2026-09-30",None).await.0,StatusCode::UNAUTHORIZED);
+    drop(app);let _=std::fs::remove_dir_all(raiz);
+}
+
+#[tokio::test]
+async fn financeiro_pendencia_e_recorrencia_sao_idempotentes_apos_reagendar() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    chamar(&app,Some("fluxo"),false,"POST","/vault/ativar",senha("senha-financeiro")).await;
+    let (_,p)=chamar(&app,Some("fluxo"),false,"POST","/vault/pendencias",Some(json!({"tipo":"saida","descricao":"Conta","valor_centavos":500}))).await;
+    let path=format!("/vault/pendencias/{}/converter",p["id"].as_str().unwrap());
+    let (a,b)=tokio::join!(chamar(&app,Some("fluxo"),false,"POST",&path,Some(json!({"data":"2026-09-20"}))),chamar(&app,Some("fluxo"),false,"POST",&path,Some(json!({"data":"2026-09-20"}))));
+    assert_eq!(a.0,StatusCode::OK);assert_eq!(a.1["transacao_id"],b.1["transacao_id"]);
+    let (_,r)=chamar(&app,Some("fluxo"),false,"POST","/vault/recorrencias",Some(json!({"tipo":"saida","descricao":"Mensal","valor_centavos":1000,"data_inicio":"2026-01-31","tipo_recorrencia":"parcelada","total_parcelas":4}))).await;
+    let (_,oc)=chamar(&app,Some("fluxo"),false,"GET","/vault/fluxo/ocorrencias?data_de=2026-01-01&data_ate=2026-04-30",None).await;
+    assert_eq!(oc[1]["data"],"2026-02-28");assert_eq!(oc[2]["data"],"2026-03-31");
+    let path=format!("/vault/recorrencias/{}/concluir",r["id"].as_str().unwrap());
+    let (_,a)=chamar(&app,Some("fluxo"),false,"POST",&path,Some(json!({"data_ocorrencia":"2026-02-28","data":"2026-03-05"}))).await;
+    let (_,b)=chamar(&app,Some("fluxo"),false,"POST",&path,Some(json!({"data_ocorrencia":"2026-02-28","data":"2026-03-05"}))).await;
+    assert_eq!(a["transacao_id"],b["transacao_id"]);
+    let (_,oc)=chamar(&app,Some("fluxo"),false,"GET","/vault/fluxo/ocorrencias?data_de=2026-01-01&data_ate=2026-04-30",None).await;
+    assert_eq!(oc.as_array().unwrap().len(),3);
+    let (_,tx)=chamar(&app,Some("fluxo"),false,"GET","/vault/transacoes",None).await;
+    assert_eq!(tx["items"].as_array().unwrap().len(),2);
+    drop(app);let _=std::fs::remove_dir_all(raiz);
+}
+
+#[tokio::test]
+async fn financeiro_importacao_invalida_nao_grava_linhas_validas() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    chamar(&app,Some("csv"),false,"POST","/vault/ativar",senha("senha-financeiro")).await;
+    let (_,r)=chamar(&app,Some("csv"),false,"POST","/vault/financeiro/importar",Some(json!({"dry_run":false,"linhas":[
+        {"linha":2,"tipo":"entrada","valor_centavos":100,"data":"2026-09-30","descricao":"Válida"},
+        {"linha":3,"tipo":"entrada","valor_centavos":100,"data":"2026-02-30","descricao":"Inválida"}
+    ]}))).await;
+    assert_eq!(r["importadas"],0);assert_eq!(r["erros"][0]["linha"],3);
+    let (_,tx)=chamar(&app,Some("csv"),false,"GET","/vault/transacoes",None).await;
+    assert!(tx["items"].as_array().unwrap().is_empty());
+    drop(app);let _=std::fs::remove_dir_all(raiz);
+}
+
+#[tokio::test]
 async fn cada_pessoa_tem_o_proprio_cofre_com_senha_e_dados_separados() {
     let (app, config, raiz) = app_de_teste();
 

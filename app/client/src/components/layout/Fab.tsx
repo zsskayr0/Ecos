@@ -10,12 +10,12 @@ import { useAppUI } from "@/lib/ui-context";
  */
 export function Fab() {
   const location = useLocation();
-  const { abrirCaptura } = useAppUI();
+  const { abrirCaptura, diaCofre } = useAppUI();
   const noCofre = location.pathname.startsWith("/cofre");
   const naAgenda = location.pathname.startsWith("/agenda");
 
   function onClick() {
-    if (noCofre) abrirCaptura("transacao");
+    if (noCofre) abrirCaptura("transacao", diaCofre);
     else if (naAgenda) abrirCaptura("tarefa");
     else abrirCaptura("escolha");
   }
@@ -23,15 +23,15 @@ export function Fab() {
   return (
     <button
       onClick={onClick}
-      aria-label="Criar"
-      className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-nav transition-transform active:scale-95"
+      aria-label={noCofre ? "Nova transação" : "Criar"}
+      className={`ecos-fab fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-nav ${noCofre ? "bottom-20 md:bottom-8" : "bottom-24"}`}
       style={{
         background: noCofre
           ? "linear-gradient(135deg, var(--ecos-violet), var(--ecos-cyan))"
           : "linear-gradient(135deg, var(--ecos-cyan), var(--ecos-violet))",
       }}
     >
-      <Plus size={26} strokeWidth={2} />
+      <Plus size={26} strokeWidth={2} className="ecos-fab-icone" />
     </button>
   );
 }
