@@ -235,7 +235,19 @@ function lerPersistido(): WorkspaceState {
           Array.isArray(p.tabs) &&
           p.tabs.every((t) => typeof t.id === "string" && typeof t.path === "string"),
       );
-    return valido ? normalizar(parsed) : estadoInicial();
+    if (!valido) return estadoInicial();
+
+    // Versões anteriores guardavam o Cofre como uma aba comum. Ele agora é
+    // um contexto de tela inteira e não deve reaparecer na barra de abas ao
+    // restaurar uma sessão antiga.
+    const semCofre: WorkspaceState = {
+      ...parsed,
+      panes: parsed.panes.map((pane) => ({
+        ...pane,
+        tabs: pane.tabs.filter((tab) => !tab.path.startsWith("/cofre")),
+      })),
+    };
+    return normalizar(semCofre);
   } catch {
     return estadoInicial();
   }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Lock, ShieldHalf, LayoutDashboard, ArrowLeftRight, CalendarDays, FileSpreadsheet, Settings2, CloudOff, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Lock, LogOut, Moon, Sun, ShieldHalf, LayoutDashboard, ArrowLeftRight, CalendarDays, FileSpreadsheet, Settings2, CloudOff, RefreshCw, Repeat2, Landmark, Tags, HelpCircle, Github, ChevronUp, Plus, Ellipsis } from "lucide-react";
 import { vault, auth, financeiro, ApiError, type CategoriaApi } from "@/lib/api";
 import { VaultLockScreen } from "./VaultLockScreen";
 import { TransactionDetailScreen } from "./TransactionDetailScreen";
@@ -9,6 +9,7 @@ import { VaultTransactions } from "./VaultTransactions";
 import { VaultWorkflow } from "./VaultWorkflow";
 import { VaultCsv } from "./VaultCsv";
 import { VaultSettings } from "./VaultSettings";
+import { VaultCategories } from "./VaultCategories";
 import { PeriodPicker } from "./nexus/PeriodPicker";
 import { defaultPeriod, periodRange, type Period } from "./nexus/period";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -19,21 +20,42 @@ import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { Fab } from "@/components/layout/Fab";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
 import type { Painel, Periodo } from "./types";
+import { Avatar } from "@/components/common/Avatar";
+import { nomeExibicao, useAuth } from "@/lib/auth-context";
+import { useFotoPerfil } from "@/lib/profile-avatar";
+import { corDaEquipe } from "@/lib/team-color";
+import { useAvatarEquipe } from "@/lib/team-avatar";
 type Fase = "carregando" | "desativado" | "ativar" | "bloqueado" | "aberto";
+function saudacao(nome:string) {
+    const agora=new Date(), hora=agora.getHours(), dia=agora.getDay();
+    let titulo:string, frases:string[], noite=false;
+    if(hora<5){titulo="Boa madrugada";frases=["As contas não dormem, né?","Silêncio total — boa hora pra revisar o extrato com calma.","Trabalhando até tarde. Bora fechar as contas e descansar."];noite=true;}
+    else if(hora<9){titulo="Bom dia";frases=["Café na mão, saldo em dia — vamos nessa.","Começando o dia de olho nas finanças. Respeito.","Hora boa pra revisar o que entrou e o que saiu."];}
+    else if(hora<12){titulo="Bom dia";frases=["Hora boa pra colocar tudo em ordem.","Vamos ver como estão as contas hoje?"];}
+    else if(hora<14){titulo="Boa tarde";frases=["Pausa do almoço? Aproveita pra dar uma olhada nas contas.","Meio do dia — um bom momento pra um lançamento rápido."];}
+    else if(hora<18){titulo="Boa tarde";frases=["Como estão os números hoje?","Boa hora pra revisar os gastos da semana."];}
+    else if(hora<22){titulo="Boa noite";frases=["Fechando o dia — vamos ver como ficaram as contas.","Um minuto pra organizar as finanças antes de descansar."];noite=true;}
+    else {titulo="Boa noite";frases=["Ainda por aqui? Bora fechar o dia com as contas em ordem.","Madrugando ou terminando tarde? De qualquer forma, boa noite."];noite=true;}
+    if(dia===1)frases.push("Início de semana — hora de recalcular a rota financeira.");
+    if(dia===5)frases.push("Sextou! Só confere as contas antes de comemorar.");
+    if(dia===0||dia===6)frases.push("Relaxa, mas não esquece de registrar os gastos do rolê.");
+    const indice=(agora.getDate()+agora.getMonth()+hora)%frases.length;
+    return {titulo:`${titulo}, ${nome}`,frase:frases[indice],noite};
+}
 export function VaultEntry() {
     const location = useLocation();
     const navigate = useNavigate();
     const desktop = useIsDesktop();
     useEffect(() => {
         if (desktop) return; const path = location.pathname; navigate("/feed", { replace: true }); window.dispatchEvent(new CustomEvent("ecos:abrir-cofre", { detail: path })); }, []);
-    // No desktop o Cofre é uma aba como as outras: vive dentro do roteador da aba, sem tomar a janela.
+    // A entrada desktop é hospedada pelo shell em um contexto de tela inteira.
     if (desktop) return <VaultScreen embedded voltar={() => navigate("/feed")}/>;
     return <p role="status">Abrindo Cofre…</p>;
 }
-/** Rota do lançamento: no desktop é a própria tela de detalhe (cabe numa janela flutuante); no mobile segue o fluxo em tela cheia do Cofre. */
+/** Rota do lançamento: no desktop ocupa uma aba interna do Cofre; no mobile segue o fluxo em tela cheia. */
 export function VaultTransacaoEntry() {
     const desktop = useIsDesktop();
-    return desktop ? <div className="cofre-app cofre-embedded"><div className="p-4"><TransactionDetailScreen/></div></div> : <VaultEntry/>;
+    return desktop ? <div className="cofre-app cofre-embedded"><TransactionDetailScreen/></div> : <VaultEntry/>;
 }
 /** O Cofre é por equipe: trocar de espaço no seletor do Ecos reabre o Cofre daquele espaço (estado e senha próprios). */
 export function VaultScreen(props: {
@@ -47,6 +69,7 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
     voltar: () => void;
     embedded?: boolean;
 }) {
+    const rotaAtual = useLocation().pathname;
     const { espacoAtivo } = useAppUI();
     const { equipes } = useMinhasEquipes();
     const nomeEquipe = espacoAtivo.startsWith("equipe:") ? equipes.find(e => e.id === espacoAtivo.slice(7))?.nome ?? "Equipe" : undefined;
@@ -85,11 +108,12 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
             }
         }
         window.addEventListener("ecos:cofre-bloqueado", bloquear);
+        window.addEventListener("ecos:solicitar-bloqueio", bloquear);
         const focus = () => void verificar();
         window.addEventListener("focus", focus);
         const timer = window.setInterval(focus, 30000);
         void verificar(true);
-        return () => { vivo = false; clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("ecos:cofre-bloqueado", bloquear); };
+        return () => { vivo = false; clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("ecos:cofre-bloqueado", bloquear); window.removeEventListener("ecos:solicitar-bloqueio", bloquear); };
     }, [versao]);
     async function bloquear() { setFase("bloqueado"); try {
         await vault.bloquear();
@@ -98,26 +122,37 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
         setErro(`Dados ocultados neste dispositivo. Não foi possível confirmar o bloqueio no servidor: ${(e as Error).message}`);
     } }
     return <div className={embedded ? "cofre-app cofre-embedded" : "cofre-app"}>
-        <header className="cofre-header">
+        {!embedded&&<header className="cofre-header">
             <div className="cofre-brand"><span className="cofre-brand-icon"><ShieldHalf size={21}/></span><span>Cofre<small>{nomeEquipe ? `EQUIPE · ${nomeEquipe.toUpperCase()}` : "ECOS · FINANÇAS"}</small></span></div>
             <div className="cofre-header-actions">{!embedded&&<button title="Voltar ao Ecos" aria-label="Voltar ao Ecos" onClick={voltar}><ArrowLeft size={17}/><span>Voltar ao Ecos</span></button>}{fase === "aberto" && <button title="Bloquear Cofre" aria-label="Bloquear" onClick={() => void bloquear()}><Lock size={16}/><span>Bloquear</span></button>}</div>
-        </header>
+        </header>}
         {erro && <p role="alert" className="cofre-notice">{erro}</p>}
-        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<><Fab/><CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} primeiraVez={fase === "ativar"} onSubmeter={async senha=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);setErro("");setVersao(v=>v+1);}}/>}
+        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} primeiraVez={fase === "ativar"} onSubmeter={async senha=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);setErro("");setVersao(v=>v+1);}}/>}
     </div>;
 }
 
 const menus = [
     {id:"painel",nome:"Painel",curto:"Painel",icone:LayoutDashboard,descricao:"Uma visão clara das suas finanças."},
-    {id:"lancamentos",nome:"Lançamentos",curto:"Extrato",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
-    {id:"fluxo",nome:"Fluxo financeiro",curto:"Fluxo",icone:CalendarDays,descricao:"Organize o que entra e o que sai."},
-    {id:"csv",nome:"Importar / exportar",curto:"CSV",icone:FileSpreadsheet,descricao:"Seus dados, com você."},
-    {id:"configuracoes",nome:"Configurações",curto:"Ajustes",icone:Settings2,descricao:"Contas, categorias e recorrências."},
+    {id:"lancamentos",nome:"Transações",curto:"Extrato",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
+    {id:"recorrencias",nome:"Recorrências",curto:"Recorr.",icone:Repeat2,descricao:"Compromissos recorrentes e parcelamentos."},
+    {id:"fluxo",nome:"Fluxo de Trabalho",curto:"Fluxo",icone:CalendarDays,descricao:"Organize o que entra e o que sai."},
+    {id:"contas",nome:"Contas",curto:"Contas",icone:Landmark,descricao:"Contas e saldos financeiros."},
+    {id:"categorias",nome:"Categorias",curto:"Categorias",icone:Tags,descricao:"Organize receitas e despesas."},
+];
+/** No mobile, estas seções saem da barra inferior e vão para o menu "Mais". */
+const MAIS_MOBILE = ["fluxo", "categorias"];
+const menusSistema = [
+    {id:"csv",nome:"Backup & CSV",icone:FileSpreadsheet,descricao:"Seus dados, com você."},
+    {id:"ajuda",nome:"Ajuda & Suporte",icone:HelpCircle,descricao:"Ajuda para usar o Cofre."},
+    {id:"configuracoes",nome:"Configurações",icone:Settings2,descricao:"Preferências do Cofre."},
 ];
 export function VaultWorkspace() {
-    const navigate=useNavigate(); const location=useLocation();const {versao:externa,notificar}=useRefreshBus();const {setDiaCofre}=useAppUI();
+    const navigate=useNavigate(); const location=useLocation();const {versao:externa,notificar}=useRefreshBus();const {setDiaCofre,abrirCaptura,espacoAtivo,setEspacoAtivo}=useAppUI();
+    const {perfil,logout}=useAuth(); const {equipes}=useMinhasEquipes(); const [menuUsuario,setMenuUsuario]=useState(false); const [maisAberto,setMaisAberto]=useState(false);
+    const nomeUsuario=perfil?nomeExibicao(perfil):"Perfil"; const {url:urlFoto}=useFotoPerfil(perfil?.id,perfil?.avatar_atualizado_em);
+    const greeting=useMemo(()=>saudacao(nomeUsuario.split(" ")[0]),[nomeUsuario]);
     const secao=location.pathname.split("/")[2]||"painel";
-    const menu=menus.find(m=>m.id===secao);
+    const menu=[...menus,...menusSistema].find(m=>m.id===secao);
     const [period,setPeriod]=useState<Period>(defaultPeriod);
     const range=periodRange(period);const periodo:Periodo={data_de:range.from,data_ate:range.to};
     const [painel,setPainel]=useState<Painel|null>(null);
@@ -133,24 +168,40 @@ export function VaultWorkspace() {
         return()=>{vivo=false;};
     },[periodo.data_de,periodo.data_ate,valido,secao,versao,externa]);
     useEffect(()=>{if(secao!=="fluxo")setDiaCofre(null);return()=>setDiaCofre(null);},[secao,setDiaCofre]);
+    useEffect(()=>{document.querySelector<HTMLElement>(".cofre-nav [aria-current=page]")?.scrollIntoView({inline:"center",block:"nearest"});},[secao]);
     function atualizar(){setVersao(v=>v+1);notificar();}
     const abrirDocumento=useAbrirDocumento();
-    // No desktop o lançamento abre numa janela flutuante, como Tarefa e Nota; no mobile navega para a tela de detalhe.
+    // O shell desktop transforma o lançamento em uma aba interna do Cofre; no mobile, navega para o detalhe.
     function abrir(id:string){abrirDocumento(`/cofre/transacao/${id}`);}
+    const navegar=(id:string)=>{setFiltro({});navigate(`/cofre/${id}`);};
+    const equipeAtual=equipes.find(e=>`equipe:${e.id}`===espacoAtivo);
     return <div className="cofre-workspace">
-        <nav aria-label="Navegação do Cofre" className="cofre-nav"><p className="cofre-nav-label">SEU COFRE</p>{menus.map(({id,nome,curto,icone:Icon})=><button key={id} aria-label={nome} title={nome} aria-current={secao===id?"page":undefined} onClick={()=>{setFiltro({});navigate(`/cofre/${id}`);}}><Icon size={18}/><span className="cofre-nav-desktop">{nome}</span><span className="cofre-nav-mobile">{curto}</span></button>)}<div className="cofre-nav-footer"><ShieldHalf size={16}/><span>Seu espaço financeiro<br/><small>Privado e independente</small></span></div></nav>
+        <aside aria-label="Navegação do Cofre" className="cofre-nav">
+          <div className="cofre-sidebar-brand"><ShieldHalf size={18}/><span>COFRE</span></div>
+          <nav>{menus.map(({id,nome,curto,icone:Icon})=><button key={id} aria-label={nome} title={nome} data-mais={MAIS_MOBILE.includes(id)||undefined} aria-current={secao===id?"page":undefined} onClick={()=>navegar(id)}><Icon size={16}/><span className="cofre-nav-desktop">{nome}</span><span className="cofre-nav-mobile">{curto}</span></button>)}<button type="button" className="cofre-more-btn" aria-label="Mais opções" aria-haspopup="menu" aria-expanded={maisAberto} aria-current={MAIS_MOBILE.includes(secao)?"page":undefined} onClick={()=>setMaisAberto(v=>!v)}><Ellipsis size={16}/><span>Mais</span></button></nav>
+          <div className="cofre-nav-system"><p>SISTEMA</p>{menusSistema.map(({id,nome,icone:Icon})=><button key={id} aria-current={secao===id?"page":undefined} onClick={()=>navegar(id)}><Icon size={16}/><span>{nome}</span></button>)}<button disabled title="Repositório ainda não publicado"><Github size={16}/><span>GitHub</span></button></div>
+          <div className="cofre-user-wrap"><button className="cofre-user" onClick={()=>setMenuUsuario(v=>!v)}><Avatar nome={nomeUsuario} tamanho={32} url={urlFoto}/><span><b>{nomeUsuario}</b><small>{equipeAtual?.nome??"Pessoal"}</small></span><ChevronUp size={15}/></button>{menuUsuario&&<div className="cofre-user-menu"><p>Trocar equipe</p><button className="cofre-team-option" onClick={()=>{setEspacoAtivo("pessoal");setMenuUsuario(false);}}><Avatar nome={nomeUsuario} tamanho={26} url={urlFoto}/><span>Pessoal</span></button>{equipes.map(e=><EquipeMenuItem key={e.id} equipe={e} onClick={()=>{setEspacoAtivo(`equipe:${e.id}`);setMenuUsuario(false);}}/>)}<hr/><button className="cofre-action-lock" onClick={()=>void vault.bloquear()}><Lock size={15}/>Bloquear Cofre</button><button className="cofre-action-back" onClick={()=>window.dispatchEvent(new Event("ecos:voltar-do-cofre"))}><ArrowLeft size={15}/>Voltar ao Ecos</button><button className="cofre-action-logout" onClick={()=>void logout()}><LogOut size={15}/>Sair do Ecos</button></div>}</div>
+        </aside>
+        {maisAberto&&<><div className="cofre-more-backdrop" onClick={()=>setMaisAberto(false)}/><div className="cofre-more-sheet" role="menu" aria-label="Mais opções do Cofre">{[...menus.filter(m=>MAIS_MOBILE.includes(m.id)),...menusSistema].map(({id,nome,icone:Icon})=><button key={id} role="menuitem" aria-current={secao===id?"page":undefined} onClick={()=>{setMaisAberto(false);navegar(id);}}><Icon size={18}/><span>{nome}</span></button>)}</div></>}
         <main className="cofre-main"><div className="cofre-content">
-            {menu&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">FINANÇAS PESSOAIS</p><h1>{menu.nome}</h1><p className="cofre-subtitle">{menu.descricao}</p></div><div className="cofre-page-actions">{["painel","lancamentos","csv"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}</div></div>}
+            {menu&&secao!=="lancamentos"&&secao!=="categorias"&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">{secao==="painel"?"PAINEL FINANCEIRO":"COFRE"}</p><h1>{secao==="painel"?<>{greeting.titulo}{greeting.noite?<Moon size={19}/>:<Sun size={20}/>}</>:menu.nome}</h1><p className="cofre-subtitle">{secao==="painel"?greeting.frase:menu.descricao}</p></div><div className="cofre-page-actions">{["painel","csv"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}{secao==="painel"&&<button className="cofre-new-button" onClick={()=>abrirCaptura("transacao")}><Plus size={14}/>Novo lançamento</button>}</div></div>}
             {erro&&<div role="alert" className="cofre-error-card"><span className="cofre-error-icon"><CloudOff size={25}/></span><h2>{erro.incompativel?"O painel precisa de uma atualização":"Não foi possível carregar o painel"}</h2><p>{erro.incompativel?"O serviço do Cofre em execução ainda não oferece este painel. Seus lançamentos continuam disponíveis; atualize o Cofre no servidor para habilitar os gráficos.":erro.texto}</p><div><button className="cofre-solid" onClick={()=>setVersao(v=>v+1)}><RefreshCw size={15}/>Tentar novamente</button><button className="cofre-secondary" onClick={()=>navigate("/cofre/lancamentos")}>Abrir lançamentos <ArrowRight size={15}/></button></div></div>}
             {!valido&&<p role="alert">Selecione um período válido.</p>}
             {secao==="painel"&&(painel?<VaultDashboard painel={painel} categorias={categorias} periodo={periodo} abrir={abrir} onFluxo={()=>navigate("/cofre/fluxo")} drill={f=>{setFiltro(f);navigate("/cofre/lancamentos");}}/>:!erro&&<div className="cofre-loading" role="status"><RefreshCw size={20}/><span>Preparando seu painel…</span><div className="cofre-skeletons">{[1,2,3,4].map(i=><div key={i}/>)}</div></div>)}
             <div className="cofre-panel">
-            {secao==="lancamentos"&&valido&&<>{Object.keys(filtro).length>0&&<button className="cofre-secondary" onClick={()=>setFiltro({})}>Limpar filtro do gráfico</button>}<VaultTransactions recarregar={externa} periodo={periodo} filtro={filtro} categorias={categorias} abrir={abrir} atualizar={atualizar}/></>}
+            {secao==="lancamentos"&&valido&&<>{Object.keys(filtro).length>0&&<button className="cofre-secondary" onClick={()=>setFiltro({})}>Limpar filtro do gráfico</button>}<VaultTransactions recarregar={externa} periodo={periodo} period={period} onPeriodChange={p=>{setPeriod(p);setFiltro({});}} filtro={filtro} categorias={categorias} abrir={abrir} atualizar={atualizar}/></>}
             {secao==="fluxo"&&<VaultWorkflow recarregar={externa} atualizar={atualizar}/>}
             {secao==="csv"&&valido&&<VaultCsv periodo={periodo} atualizar={atualizar}/>}
-            {secao==="configuracoes"&&<VaultSettings atualizar={atualizar}/>}
+            {["configuracoes","recorrencias","contas"].includes(secao)&&<VaultSettings atualizar={atualizar}/>}
+            {secao==="categorias"&&valido&&<VaultCategories period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar}/>}
+            {secao==="ajuda"&&<div className="cofre-card cofre-empty-page"><HelpCircle size={28}/><h2>Ajuda & Suporte</h2><p>Consulte as orientações do Ecos ou entre em contato com o administrador.</p></div>}
             {secao==="transacao"&&<TransactionDetailScreen/>}
             </div>
         </div></main>
     </div>;
+}
+
+function EquipeMenuItem({equipe,onClick}:{equipe:{id:string;nome:string};onClick:()=>void}) {
+    const foto=useAvatarEquipe(equipe.id);
+    return <button className="cofre-team-option" onClick={onClick}><Avatar nome={equipe.nome} tamanho={26} url={foto} corFundo={corDaEquipe(equipe.id)}/><span>{equipe.nome}</span></button>;
 }

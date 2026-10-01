@@ -31,8 +31,8 @@ function retanguloInicial(ordem: number, retrato = false): Retangulo {
   const folgaW = window.innerWidth - MARGEM * 4;
   const folgaH = window.innerHeight - MARGEM * 4;
   // Formulários altos (lançamento) nascem em retrato; dá para redimensionar e o conteúdo se reparte em colunas.
-  const w = retrato ? Math.min(520, folgaW) : Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
-  const h = retrato ? Math.min(860, folgaH) : (w * 9) / 16 + ALTURA_TITULO;
+  const w = retrato ? Math.min(448, folgaW) : Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
+  const h = retrato ? Math.min(695, folgaH) : (w * 9) / 16 + ALTURA_TITULO;
   const deslocamento = (ordem % 6) * 28;
   return {
     x: Math.min((window.innerWidth - w) / 2 + deslocamento, window.innerWidth - MARGEM - w),
@@ -42,19 +42,19 @@ function retanguloInicial(ordem: number, retrato = false): Retangulo {
   };
 }
 
-function redimensionar(r: Retangulo, dir: Direcao, dx: number, dy: number): Retangulo {
+function redimensionar(r: Retangulo, dir: Direcao, dx: number, dy: number, alturaMin = ALTURA_MIN): Retangulo {
   let { x, y, w, h } = r;
   const direita = r.x + r.w;
   const base = r.y + r.h;
 
   if (dir.includes("e")) w = Math.min(Math.max(r.w + dx, LARGURA_MIN), window.innerWidth - MARGEM - r.x);
-  if (dir.includes("s")) h = Math.min(Math.max(r.h + dy, ALTURA_MIN), window.innerHeight - MARGEM - r.y);
+  if (dir.includes("s")) h = Math.min(Math.max(r.h + dy, alturaMin), window.innerHeight - MARGEM - r.y);
   if (dir.includes("w")) {
     x = Math.min(Math.max(r.x + dx, MARGEM), direita - LARGURA_MIN);
     w = direita - x;
   }
   if (dir.includes("n")) {
-    y = Math.min(Math.max(r.y + dy, MARGEM), base - ALTURA_MIN);
+    y = Math.min(Math.max(r.y + dy, MARGEM), base - alturaMin);
     h = base - y;
   }
   return { x, y, w, h };
@@ -93,9 +93,10 @@ interface Props {
   aoFechar: () => void;
   aoFocar: () => void;
   /** `paneId` quando a janela foi solta sobre a barra de abas de uma pane; ausente no botão "Fixar como aba". */
-  aoFixar: (paneId?: string) => void;
+  aoFixar?: (paneId?: string) => void;
   conteudo?: ReactNode;
   titulo?: string;
+  cabecalhoNoConteudo?: boolean;
 }
 
 /**
@@ -105,7 +106,9 @@ interface Props {
  * (voltar, salvar, apagar): o histórico começa em ROTA_FECHAR, então voltar
  * cai nela e fecha a janela — nenhuma tela precisa saber que está numa janela.
  */
-export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFocar, aoFixar, conteudo, titulo }: Props) {
+export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFocar, aoFixar, conteudo, titulo, cabecalhoNoConteudo: cabecalhoProp = false }: Props) {
+  // Lançamentos (novo e edição) trazem o próprio cabeçalho dentro do formulário.
+  const cabecalhoNoConteudo = cabecalhoProp || path.startsWith("/cofre/transacao/");
   const [saindo, setSaindo] = useState(false);
   const fechandoRef = useRef(false);
   const janelaDeConfiguracoes = path.startsWith("/configuracoes");
@@ -133,6 +136,31 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   >(null);
 
   useEffect(() => janelaRef.current?.focus(), []);
+
+  // Formulário de lançamento: a altura natural do conteúdo é o mínimo da janela e a altura inicial (sem barra de rolagem).
+  const alturaMinRef = useRef(ALTURA_MIN);
+  const medirConteudo = useCallback((): number | null => {
+    const corpo = janelaRef.current?.querySelector<HTMLElement>(".cofre-launch-body");
+    const form = corpo?.parentElement;
+    if (!corpo || !form) return null;
+    const antes = corpo.style.flex;
+    corpo.style.flex = "none";
+    const total = Array.from(form.children).reduce((soma, el) => soma + (el as HTMLElement).offsetHeight, 0);
+    corpo.style.flex = antes;
+    return Math.ceil(total) + BORDA + 6;
+  }, []);
+  useEffect(() => {
+    if (!cabecalhoNoConteudo) return;
+    const ajustar = () => {
+      const natural = medirConteudo();
+      if (!natural) return;
+      const h = Math.min(natural, window.innerHeight - MARGEM * 2);
+      alturaMinRef.current = h;
+      if (!usuarioMexeu.current) setRect((r) => ({ ...r, h, y: Math.max(MARGEM, Math.min(r.y, window.innerHeight - MARGEM - h)) }));
+    };
+    const timers = [120, 500, 1200].map((ms) => window.setTimeout(ajustar, ms));
+    return () => timers.forEach(window.clearTimeout);
+  }, [cabecalhoNoConteudo, medirConteudo]);
 
   // Esc fecha mesmo que o foco não esteja dentro da janela (ex.: depois de carregar o conteúdo); com várias abertas, só a da frente.
   const zRef = useRef(z);
@@ -198,6 +226,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
 
   function iniciar(e: PointerEvent<HTMLElement>, tipo: "mover" | Direcao) {
     usuarioMexeu.current = true;
+    if (cabecalhoNoConteudo) { const n = medirConteudo(); if (n) alturaMinRef.current = Math.min(n, window.innerHeight - MARGEM * 2); }
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     gesto.current = { tipo, x: e.clientX, y: e.clientY, rect } as NonNullable<typeof gesto.current>;
@@ -219,7 +248,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       limparDestaques();
       barraSobPonteiro(e.clientX, e.clientY)?.setAttribute("data-drop-alvo", "true");
     } else {
-      setRect(redimensionar(g.rect, g.tipo, dx, dy));
+      setRect(redimensionar(g.rect, g.tipo, dx, dy, alturaMinRef.current));
     }
   }
 
@@ -231,7 +260,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       const barra = barraSobPonteiro(e.clientX, e.clientY);
       limparDestaques();
       const paneId = barra?.getAttribute(ATRIBUTO_BARRA);
-      if (paneId) aoFixar(paneId);
+      if (paneId && aoFixar) aoFixar(paneId);
     }
   }
 
@@ -244,6 +273,10 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
         aria-label={tituloDinamico || titulo || tituloDaRota(path)}
         tabIndex={-1}
         onPointerDownCapture={aoFocar}
+        onPointerDown={(e) => { const alvo=e.target as HTMLElement;if (cabecalhoNoConteudo && alvo.closest("[data-window-drag-handle]")&&!alvo.closest("button,input,textarea,select")) iniciar(e, "mover"); }}
+        onPointerMove={cabecalhoNoConteudo ? mover : undefined}
+        onPointerUp={cabecalhoNoConteudo ? encerrar : undefined}
+        onPointerCancel={cabecalhoNoConteudo ? encerrar : undefined}
         onKeyDown={(e) => e.key === "Escape" && aoFechar()}
         className={`${saindo ? (janelaDeConfiguracoes ? "ecos-configuracoes-saindo" : "ecos-janela-saindo") : "ecos-fade-in"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
           arrastando ? "border-cyan/60" : "border-border"
@@ -257,7 +290,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           transition: ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : undefined,
         }}
       >
-        <header
+        {!cabecalhoNoConteudo&&<header
           onPointerDown={(e) => {
             if (!(e.target as HTMLElement).closest("button")) iniciar(e, "mover");
           }}
@@ -276,7 +309,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-secondary">
             {tituloDinamico || titulo || tituloDaRota(path)}
           </span>
-          <button
+          {aoFixar && <button
             type="button"
             title="Fixar como aba — ou arraste até uma barra de abas"
             aria-label="Fixar como aba"
@@ -284,7 +317,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
             className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
           >
             <Pin size={14} strokeWidth={1.75} />
-          </button>
+          </button>}
           <button
             type="button"
             title="Fechar (Esc)"
@@ -294,9 +327,9 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           >
             <X size={15} strokeWidth={1.75} />
           </button>
-        </header>
+        </header>}
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-b-2xl">
+        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "rounded-2xl overflow-hidden" : "rounded-b-2xl"} ${cabecalhoNoConteudo ? "" : "overflow-y-auto"}`}>
           <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
           <TituloJanelaContext.Provider value={setTituloDinamico}>
           <FecharDocumentoContext.Provider value={aoFechar}>

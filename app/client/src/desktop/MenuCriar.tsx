@@ -46,11 +46,11 @@ export function MenuCriar() {
         aria-haspopup="menu"
         aria-expanded={aberto}
         onClick={() => setAberto((v) => !v)}
-        className="flex h-8 items-center gap-1.5 rounded-lg pl-3 pr-2.5 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-steel-400"
+        className="group flex h-8 items-center gap-1.5 rounded-lg pl-3 pr-2.5 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-steel-400"
         style={{ background: "linear-gradient(135deg, #278fb9 0%, #4b72d8 100%)", boxShadow: "0 1px 2px rgba(45, 91, 195, 0.24)" }}
       >
-        <Plus size={15} strokeWidth={2} />
-        Criar
+        <Plus size={15} strokeWidth={2} className="transition-transform duration-300 ease-out group-hover:rotate-[135deg] group-hover:scale-110 motion-reduce:transform-none motion-reduce:transition-none" />
+        <span>Criar</span>
         <ChevronDown size={13} strokeWidth={2} className={`transition-transform ${aberto ? "rotate-180" : ""}`} />
       </button>
 

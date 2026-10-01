@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { RefreshProvider } from "@/lib/refresh-bus";
 import { AppUIProvider } from "@/lib/ui-context";
+import { AuthProvider } from "@/lib/auth-context";
 vi.mock("@/lib/api", async (importOriginal) => { const o = await importOriginal<typeof import("@/lib/api")>(); return { ...o, auth: { ...o.auth, perfil: vi.fn() }, vault: { ...o.vault, config: vi.fn(), bloquear: vi.fn(), categorias: { listar: vi.fn() }, transacoes: { listar: vi.fn() } }, financeiro: { ...o.financeiro, painel: vi.fn(), ocorrencias: vi.fn(), reagendar: vi.fn(), pendencias: { listar: vi.fn(), converter: vi.fn() } } }; });
 import { auth, vault, financeiro, ApiError } from "@/lib/api";
 import { VaultScreen } from "./VaultScreen";
@@ -26,7 +27,7 @@ it("previsão pode ser ligada e desligada e drill-down respeita intervalo parcia
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(auth.perfil).mockResolvedValue({ cofre_ativado: true } as Awaited<ReturnType<typeof auth.perfil>>); vi.mocked(vault.config).mockResolvedValue({ cofre_ativado: true, destrancado: true, saldos_por_conta: [] }); vi.mocked(vault.categorias.listar).mockResolvedValue([]); vi.mocked(financeiro.painel).mockResolvedValue(painel); vi.mocked(financeiro.ocorrencias).mockResolvedValue([]); vi.mocked(financeiro.pendencias.listar).mockResolvedValue([]); vi.mocked(vault.transacoes.listar).mockResolvedValue({ items: [], next_cursor: null }); });
 it("remove painel e menus financeiros imediatamente ao bloquear", async () => {
     vi.mocked(vault.bloquear).mockImplementation(() => new Promise(() => { }));
-    render(<MemoryRouter initialEntries={["/cofre"]}><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
     await screen.findByText("Saldo total (histórico)");
     fireEvent.click(screen.getByRole("button", { name: "Bloquear" }));
     expect(screen.queryByText("Saldo total (histórico)")).toBeNull();
@@ -36,7 +37,7 @@ it("remove painel e menus financeiros imediatamente ao bloquear", async () => {
 it("resposta atrasada do painel não reaparece depois do bloqueio", async () => {
     let resolver!: (p: Painel) => void;
     vi.mocked(financeiro.painel).mockImplementation(() => new Promise(r => { resolver = r; }));
-    render(<MemoryRouter><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></MemoryRouter>);
+    render(<MemoryRouter><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
     await screen.findByRole("button", { name: "Bloquear" });
     act(() => { window.dispatchEvent(new Event("ecos:cofre-bloqueado")); });
     await act(async () => { resolver(painel); });
@@ -55,7 +56,7 @@ it("agendamento por toque/teclado restaura pendência quando a rede falha", asyn
 
 it("explica rota ausente sem impedir acesso aos lançamentos", async () => {
     vi.mocked(financeiro.painel).mockRejectedValue(new ApiError("NOT_FOUND", "Ausente", 404));
-    render(<MemoryRouter initialEntries={["/cofre"]}><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
     await screen.findByText("O painel precisa de uma atualização");
     fireEvent.click(screen.getByRole("button", {name:"Abrir lançamentos"}));
     await screen.findByText("Nenhum lançamento neste filtro.");

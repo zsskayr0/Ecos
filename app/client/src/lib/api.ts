@@ -1015,6 +1015,8 @@ export const vault = {
   categorias: {
     listar: () => get<CategoriaApi[]>("/vault/categorias"),
     criar: (payload: { nome: string; tipo?: string; icone?: string; cor?: string; espaco?: string }) => post<{ id: string }>("/vault/categorias", payload),
+    atualizar: (id: string, payload: { nome: string; tipo: string; icone?: string | null; cor: string }) => patch<{ ok: true }>(`/vault/categorias/${id}`, payload),
+    excluir: (id: string) => del<{ ok: true }>(`/vault/categorias/${id}`),
   },
   beneficiarios: {
     listar: () => get<BeneficiarioApi[]>("/vault/beneficiarios"),
@@ -1047,7 +1049,7 @@ export const vault = {
 };
 
 export const financeiro = {
-  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean}>>("/vault/recorrencias"),
+  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean; categoria_id?: string | null}>>("/vault/recorrencias"),
   criarRecorrencia: (p: {descricao: string; tipo: string; valor_centavos: number; frequencia: string; intervalo: number; data_inicio: string; tipo_recorrencia: string; total_parcelas?: number}) => post<{id: string}>("/vault/recorrencias",p),
   excluirRecorrencia: (id: string) => del<{ok: boolean}>(`/vault/recorrencias/${id}`),
   painel: (p: Periodo) => get<Painel>(`/vault/painel${qs({...p})}`),

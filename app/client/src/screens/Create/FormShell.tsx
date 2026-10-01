@@ -22,6 +22,7 @@ export function FormShell({
   erro,
   children,
   embedded = false,
+  tiposPermitidos = ["nota", "tarefa", "transacao"],
 }: {
   tipoAtivo: TipoCaptura;
   onTrocarTipo: (tipo: TipoCaptura) => void;
@@ -29,11 +30,13 @@ export function FormShell({
   erro?: string | null;
   children: ReactNode;
   embedded?: boolean;
+  tiposPermitidos?: TipoCaptura[];
 }) {
+  const tipos = TIPOS.filter((tipo) => tiposPermitidos.includes(tipo.value));
   return (
-    <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`}>
-      <div className={`flex h-full min-w-0 w-full flex-col ${embedded ? "max-w-6xl px-6" : tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
-        <div className="ecos-capture-header grid grid-cols-[1fr_auto_1fr] items-center">
+    <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`} data-capture-type={tipoAtivo}>
+      <div className={`flex h-full min-w-0 w-full flex-col ${embedded ? tipoAtivo === "transacao" ? "max-w-none" : "max-w-6xl px-6" : tipoAtivo === "tarefa" ? "max-w-6xl md:px-6" : "max-w-md"}`}>
+        {tipos.length > 1 && <div className="ecos-capture-header grid grid-cols-[1fr_auto_1fr] items-center">
           {/* Embutida numa janela do desktop, quem fecha é o X da própria janela; em tela cheia (mobile) este é o único jeito de sair. */}
           {embedded ? (
             <div className="w-12 shrink-0" />
@@ -42,9 +45,9 @@ export function FormShell({
               <X size={22} className="text-text-muted" />
             </button>
           )}
-          <SegmentedSlide ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={TIPOS} />
+          <SegmentedSlide ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />
           <div className="w-12 shrink-0" />
-        </div>
+        </div>}
         <div className="ecos-capture-content min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+16px)]">
           {erro && (
             <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">

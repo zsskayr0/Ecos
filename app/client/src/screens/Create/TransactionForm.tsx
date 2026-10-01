@@ -1,280 +1,52 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import * as Icons from "lucide-react";
-import { ChevronDown, Delete, Keyboard } from "lucide-react";
+import { Check, ChevronDown, Coins, Plus, Trash2, X } from "lucide-react";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
-import { Chip } from "@/components/common/Chip";
 import { DatePicker } from "@/components/common/DatePicker";
-import { formatMoeda, hojeISO } from "@/lib/format";
+import { formatMoeda } from "@/lib/format";
 import { vault, FORMAS_PAGAMENTO, type CategoriaApi, type ContaApi, type FormaPagamento } from "@/lib/api";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
-interface Props {
-  draft: CapturaDraft;
-  setDraft: SetDraft;
-  onSalvar: () => void;
-  salvando?: boolean;
-}
+interface Props { draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; }
+const LABEL_FORMA:Record<FormaPagamento,string>={pix:"Pix",pix_automatico:"Pix Automático",ted:"TED",cartao:"Cartão",dinheiro:"Dinheiro",boleto:"Boleto",outro:"Outro"};
 
-const TECLAS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
-
-/** UI labels only — the wire value stays the backend's closed enum (`FORMAS_PAGAMENTO`, `lib/api.ts`). */
-const LABEL_FORMA_PAGAMENTO: Record<FormaPagamento, string> = {
-  pix: "Pix",
-  pix_automatico: "Pix Automático",
-  ted: "TED",
-  cartao: "Cartão",
-  dinheiro: "Dinheiro",
-  boleto: "Boleto",
-  outro: "Outro",
-};
-
-const ROTULO = "text-xs font-semibold uppercase tracking-wide text-text-muted";
-
-/**
- * Transacao form — one continuous scroll, no collapsed "mais opções": every
- * field the backend stores is reachable directly while capturing on the go.
- * Field order follows what's actually useful to fill in a hurry — who was
- * paid/received-from before which category it falls under (user feedback:
- * "é mais util saber pra quem paguei ou de quem recebi, do que a qual
- * categoria pertence") — not the order the backend happens to store them in.
- *
- * Em janela larga (PC) vira duas colunas (`.ecos-tx` no global.css): o que se
- * preenche primeiro à esquerda; teclado (recolhível), conta, pagamento, status
- * e observações à direita. Estreito: uma coluna, na mesma ordem de sempre.
- */
-export function TransactionForm({ draft, setDraft, onSalvar, salvando }: Props) {
-  const [categorias, setCategorias] = useState<CategoriaApi[] | null>(null);
-  const [contas, setContas] = useState<ContaApi[]>([]);
-  /** Só vale no PC: no celular o teclado fica sempre à vista (o CSS ignora o estado). */
-  const [tecladoAberto, setTecladoAberto] = useState(false);
-
-  useEffect(() => {
-    vault.categorias
-      .listar()
-      .then(setCategorias)
-      .catch(() => setCategorias([]));
-    // Auto-selects the default Conta (or the first existing one) —
-    // without this the Transaction never shows up in `saldos_por_conta`
-    // (GAP-14, CreateFlow.tsx). Still overridable below, since removed
-    // from behind "mais opções" (user feedback: keep it a single scroll).
-    vault.contas
-      .listar()
-      .then((lista) => {
-        setContas(lista);
-        const escolhida = lista.find((c) => c.padrao) ?? lista[0] ?? null;
-        if (escolhida && !draft.contaId) setDraft((d) => ({ ...d, contaId: escolhida.id }));
-      })
-      .catch(() => setContas([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const categoriasVisiveis = (categorias ?? []).filter((c) => c.tipo === "ambos" || c.tipo === draft.tipoTransacao);
-  const contaAtual = contas.find((c) => c.id === draft.contaId);
-
-  /** Campo do valor: digitar só dígitos empurra a vírgula, igual ao teclado da tela. */
-  function digitarValor(texto: string) {
-    const digitos = texto.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9);
-    setDraft((prev) => ({ ...prev, valorCentavos: Number(digitos || "0") }));
-  }
-
-  function apertar(tecla: string) {
-    if (tecla === "") return;
-    setDraft((prev) => {
-      if (tecla === "del") return { ...prev, valorCentavos: Math.floor(prev.valorCentavos / 10) };
-      const proximo = prev.valorCentavos * 10 + Number(tecla);
-      return proximo > 999_999_999 ? prev : { ...prev, valorCentavos: proximo };
-    });
-  }
-
-  /** A future date almost always means the transaction hasn't happened
-   * yet — default the status accordingly so "pendente" isn't one more
-   * thing to remember to toggle by hand, while still leaving it editable
-   * below for the exception (e.g. a past transaction confirmed late). */
-  function mudarData(novaData: string) {
-    setDraft((prev) => ({
-      ...prev,
-      dataTransacao: novaData,
-      statusTransacao: novaData > hojeISO() ? "pendente" : "efetivada",
-    }));
-  }
-
-  return (
-    <div className="ecos-tx">
-      <div className="ecos-tx-grade">
-        <div className="ecos-tx-col">
-          <div className="ecos-tx-topo">
-            <SegmentedSlide
-              ariaLabel="Tipo da transação"
-              value={draft.tipoTransacao}
-              onChange={(v) => setDraft((d) => ({ ...d, tipoTransacao: v, categoriaId: null }))}
-              opcoes={[
-                { value: "saida", label: "Saída", cor: "ecos-error" },
-                { value: "entrada", label: "Entrada", cor: "ecos-success" },
-              ]}
-            />
-            <div className="flex flex-col items-center gap-1">
-              <span className={ROTULO}>Data</span>
-              <DatePicker value={draft.dataTransacao} onChange={mudarData} />
-            </div>
-          </div>
-
-          <input
-            inputMode="numeric"
-            aria-label="Valor"
-            value={formatMoeda(draft.valorCentavos)}
-            onChange={(e) => digitarValor(e.target.value)}
-            className={`ecos-valor w-full bg-transparent text-center font-mono-value text-4xl font-bold transition-colors duration-300 focus:outline-none ${
-              draft.tipoTransacao === "entrada" ? "text-success" : "text-error"
-            }`}
-          />
-
-          <div className="flex flex-col gap-1.5">
-            <input
-              value={draft.texto}
-              onChange={(e) => setDraft((d) => ({ ...d, texto: e.target.value }))}
-              placeholder="Descrição (ex: almoço, aluguel...)"
-              className="ecos-campo w-full rounded-2xl bg-surface-2 px-4 py-3 text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none"
-            />
-            {contaAtual && <p className="text-xs text-text-muted">Sai de: {contaAtual.nome}</p>}
-          </div>
-
-          <label className="flex flex-col gap-1.5">
-            <span className={ROTULO}>Beneficiário</span>
-            <input
-              value={draft.beneficiarioNome}
-              onChange={(e) => setDraft((d) => ({ ...d, beneficiarioNome: e.target.value }))}
-              placeholder="Quem pagou ou recebeu"
-              className="ecos-input ecos-campo"
-            />
-          </label>
-
-          <div>
-            <p className={`mb-2 ${ROTULO}`}>Categoria</p>
-            {categorias === null ? (
-              <p className="text-sm text-text-muted">Carregando categorias do Cofre...</p>
-            ) : categoriasVisiveis.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                Nenhuma categoria de {draft.tipoTransacao} cadastrada ainda — a Transação pode ser salva sem categoria.
-              </p>
-            ) : (
-              <div key={draft.tipoTransacao} className="ecos-chips flex flex-wrap gap-2">
-                {categoriasVisiveis.map((c) => {
-                  const IconCmp = (Icons as unknown as Record<string, Icons.LucideIcon>)[c.icone ?? ""] ?? Icons.Circle;
-                  return (
-                    <Chip
-                      key={c.id}
-                      selected={draft.categoriaId === c.id}
-                      accentColor={c.cor}
-                      icon={<IconCmp size={15} strokeWidth={1.75} style={{ color: c.cor }} />}
-                      onClick={() => setDraft((d) => ({ ...d, categoriaId: c.id }))}
-                    >
-                      {c.nome}
-                    </Chip>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="ecos-tx-col">
-          <div>
-            <button
-              type="button"
-              onClick={() => setTecladoAberto((v) => !v)}
-              aria-expanded={tecladoAberto}
-              aria-controls="ecos-teclado"
-              className="ecos-tx-toggle-teclado"
-            >
-              <Keyboard size={16} strokeWidth={1.75} />
-              <span>Teclado numérico</span>
-              <ChevronDown size={16} strokeWidth={1.75} className="ecos-tx-seta" />
-            </button>
-            <div id="ecos-teclado" className="ecos-tx-teclado" data-aberto={tecladoAberto}>
-              <div className="ecos-tx-teclado-miolo">
-                <div className="grid grid-cols-3 gap-2 pt-1">
-                  {TECLAS.map((t, i) =>
-                    t === "" ? (
-                      <div key={i} />
-                    ) : (
-                      <button
-                        key={i}
-                        type="button"
-                        aria-label={t === "del" ? "Apagar" : undefined}
-                        onClick={() => apertar(t)}
-                        className="ecos-tecla flex h-12 items-center justify-center rounded-xl bg-surface-2 font-mono-value text-lg text-text-primary"
-                      >
-                        {t === "del" ? <Delete size={18} /> : t}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {contas.length > 0 && (
-            <div>
-              <p className={`mb-2 ${ROTULO}`}>Conta</p>
-              <div className="ecos-chips flex flex-wrap gap-2">
-                {contas.map((c) => (
-                  <Chip key={c.id} selected={draft.contaId === c.id} accentColor={c.cor} onClick={() => setDraft((d) => ({ ...d, contaId: c.id }))}>
-                    {c.nome}
-                  </Chip>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <p className={`mb-2 ${ROTULO}`}>Forma de pagamento</p>
-            <div className="ecos-chips flex flex-wrap gap-2">
-              {FORMAS_PAGAMENTO.map((fp) => (
-                <Chip
-                  key={fp}
-                  selected={draft.formaPagamento === fp}
-                  onClick={() => setDraft((d) => ({ ...d, formaPagamento: d.formaPagamento === fp ? null : fp }))}
-                >
-                  {LABEL_FORMA_PAGAMENTO[fp]}
-                </Chip>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <span className={ROTULO}>Status</span>
-            <SegmentedSlide
-              className="self-start"
-              ariaLabel="Status da transação"
-              value={draft.statusTransacao}
-              onChange={(v) => setDraft((d) => ({ ...d, statusTransacao: v }))}
-              opcoes={[
-                { value: "efetivada", label: "Efetivada", cor: "ecos-success" },
-                { value: "pendente", label: "Pendente", cor: "ecos-warning" },
-              ]}
-            />
-          </div>
-
-          <label className="flex flex-col gap-1.5">
-            <span className={ROTULO}>Observações</span>
-            <textarea
-              value={draft.observacoesTransacao}
-              onChange={(e) => setDraft((d) => ({ ...d, observacoesTransacao: e.target.value }))}
-              rows={2}
-              className="ecos-input ecos-campo resize-none"
-            />
-          </label>
-        </div>
+export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir}:Props) {
+  const [confirmandoExcluir,setConfirmandoExcluir]=useState(false);
+  const [categorias,setCategorias]=useState<CategoriaApi[]>([]),[contas,setContas]=useState<ContaApi[]>([]);
+  useEffect(()=>{vault.categorias.listar().then(setCategorias).catch(()=>setCategorias([]));vault.contas.listar().then(lista=>{setContas(lista);const padrao=lista.find(c=>c.padrao)??lista[0];if(padrao&&!draft.contaId&&!onExcluir)setDraft(d=>({...d,contaId:padrao.id}));}).catch(()=>setContas([]));},[]); // eslint-disable-line react-hooks/exhaustive-deps
+  const categoriasVisiveis=categorias.filter(c=>c.tipo==="ambos"||c.tipo===draft.tipoTransacao);
+  function digitarValor(valor:string){const digitos=valor.replace(/\D/g,"").replace(/^0+/,"").slice(0,9);setDraft(d=>({...d,valorCentavos:Number(digitos||0)}));}
+  function mudarData(data:string){setDraft(d=>({...d,dataTransacao:data}));}
+  const [lancando,setLancando]=useState(false),pode=!!draft.texto.trim()&&draft.valorCentavos>0;
+  function lancar(){if(lancando||salvando||!pode)return;if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){onSalvar();return;}setLancando(true);window.setTimeout(()=>{onSalvar();setLancando(false);},780);}
+  const valor=draft.valorCentavos>0?`${draft.tipoTransacao==="entrada"?"+":"−"}${formatMoeda(draft.valorCentavos)}`:"";
+  async function adicionarCategoria(nome:string){const criada=await vault.categorias.criar({nome,tipo:draft.tipoTransacao,cor:draft.tipoTransacao==="entrada"?"#86d7ad":"#f29a9f",icone:draft.tipoTransacao==="entrada"?"TrendingUp":"ShoppingBag"});const lista=await vault.categorias.listar();setCategorias(lista);setDraft(d=>({...d,categoriaId:criada.id}));}
+  return <form className="cofre-launch-form" onSubmit={e=>{e.preventDefault();lancar();}}>
+    <header className="cofre-launch-header" data-window-drag-handle><div><p>{eyebrow}</p><h2>{titulo}</h2></div><div className="cofre-launch-header-actions">{onExcluir&&<button type="button" aria-label="Apagar" title="Apagar" onClick={()=>setConfirmandoExcluir(true)}><Trash2 size={15}/></button>}<button type="button" aria-label="Fechar" title="Fechar" onClick={onFechar}><X size={16}/></button></div></header>
+    <div className="cofre-launch-body">
+      {erro&&<p className="cofre-launch-alert" role="alert">{erro}</p>}
+      {confirmandoExcluir&&onExcluir&&<div className="cofre-launch-alert" role="alert"><p>Apagar este lançamento? Essa ação não pode ser desfeita.</p><div><button type="button" onClick={()=>setConfirmandoExcluir(false)}>Cancelar</button><button type="button" disabled={salvando} onClick={onExcluir}>{salvando?"Apagando…":"Apagar"}</button></div></div>}
+      <SegmentedSlide className="cofre-launch-slide" ariaLabel="Tipo do lançamento" tamanho="lg" value={draft.tipoTransacao} onChange={v=>setDraft(d=>({...d,tipoTransacao:v,categoriaId:null}))} opcoes={[{value:"saida",label:"Despesa",cor:"ecos-error"},{value:"entrada",label:"Receita",cor:"ecos-success"}]}/>
+      <SegmentedSlide className="cofre-launch-slide" ariaLabel="Situação do lançamento" tamanho="lg" value={draft.statusTransacao} onChange={v=>setDraft(d=>({...d,statusTransacao:v}))} opcoes={[{value:"efetivada",label:"Efetivada",cor:"cofre-blue"},{value:"pendente",label:"Prevista",cor:"cofre-pink"}]}/>
+      {valor&&<strong className="cofre-launch-preview" data-tipo={draft.tipoTransacao}>{valor}</strong>}
+      <div className="cofre-launch-fields">
+        <div className="cofre-launch-grid"><Campo label="Valor"><input autoFocus inputMode="numeric" value={formatMoeda(draft.valorCentavos)} onChange={e=>digitarValor(e.target.value)} placeholder="R$ 0,00"/></Campo><Campo label="Data" className="cofre-launch-date"><DatePicker value={draft.dataTransacao} onChange={mudarData}/></Campo></div>
+        <Campo label="Descrição"><input value={draft.texto} onChange={e=>setDraft(d=>({...d,texto:e.target.value}))} placeholder="Ex.: Mercado Extra"/></Campo>
+        <Campo label="Pagador / Recebedor"><input value={draft.beneficiarioNome} onChange={e=>setDraft(d=>({...d,beneficiarioNome:e.target.value}))} placeholder="Ex.: Mercado Extra Ltda"/></Campo>
+        <Campo label="Categoria"><MenuSelecao value={draft.categoriaId??""} placeholder="Sem categoria" options={categoriasVisiveis.map(c=>({value:c.id,label:c.nome,cor:c.cor,icone:c.icone}))} onChange={value=>setDraft(d=>({...d,categoriaId:value||null}))} onAdd={adicionarCategoria}/></Campo>
+        <div className="cofre-launch-grid"><Campo label="Conta"><MenuSelecao value={draft.contaId??""} placeholder="Sem conta" options={contas.map(c=>({value:c.id,label:c.nome,cor:c.cor}))} onChange={value=>setDraft(d=>({...d,contaId:value||null}))}/></Campo><Campo label="Forma de pagamento"><MenuSelecao value={draft.formaPagamento??""} placeholder="Não informada" options={FORMAS_PAGAMENTO.map(f=>({value:f,label:LABEL_FORMA[f]}))} onChange={value=>setDraft(d=>({...d,formaPagamento:(value||null) as FormaPagamento|null}))}/></Campo></div>
+        <Campo label="Observações"><textarea rows={3} value={draft.observacoesTransacao} onChange={e=>setDraft(d=>({...d,observacoesTransacao:e.target.value}))} placeholder="Opcional"/></Campo>
       </div>
-
-      <button
-        type="button"
-        onClick={onSalvar}
-        disabled={!draft.texto.trim() || draft.valorCentavos === 0 || salvando}
-        className="ecos-salvar ecos-secao-entra mt-5 w-full rounded-2xl bg-violet py-3.5 text-center font-body text-[15px] font-semibold text-black disabled:opacity-40"
-      >
-        {salvando ? "Salvando..." : "Salvar Transação"}
-      </button>
     </div>
-  );
+    <footer className="cofre-launch-footer"><button data-tipo={draft.tipoTransacao} data-lancando={lancando} disabled={salvando||!pode||lancando}><span className="cofre-launch-label">{salvando?"Salvando…":rotuloSalvar}</span>{lancando&&<i className="cofre-launch-coin" aria-hidden="true"><b><Coins size={18} strokeWidth={2.2}/></b></i>}</button></footer>
+  </form>;
 }
+function Campo({label,children,className}:{label:string;children:ReactNode;className?:string}){return <div className={`cofre-launch-field ${className??""}`}><span>{label}</span>{children}</div>;}
+function MenuSelecao({value,placeholder,options,onChange,onAdd}:{value:string;placeholder:string;options:{value:string;label:string;cor?:string|null;icone?:string|null}[];onChange:(value:string)=>void;onAdd?:(nome:string)=>Promise<void>}){
+  const [aberto,setAberto]=useState(false),[adicionando,setAdicionando]=useState(false),[nome,setNome]=useState(""),[salvando,setSalvando]=useState(false),ref=useRef<HTMLDivElement>(null),listaRef=useRef<HTMLDivElement>(null),[pos,setPos]=useState<{acima:boolean;max:number}>({acima:false,max:190});const atual=options.find(o=>o.value===value);const IconeAtual=icone(atual?.icone);
+  useLayoutEffect(()=>{if(!aberto||!ref.current||!listaRef.current)return;const corpo=ref.current.closest(".cofre-launch-body")??document.body,c=corpo.getBoundingClientRect(),b=ref.current.getBoundingClientRect(),abaixo=c.bottom-b.bottom-12,acima=b.top-c.top-12,preciso=Math.min(listaRef.current.scrollHeight,190)+6,sobe=preciso>abaixo&&acima>abaixo;setPos({acima:sobe,max:Math.max(96,Math.min(190,sobe?acima:abaixo))});},[aberto,adicionando]);
+  useEffect(()=>{if(!aberto)return;const fechar=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))setAberto(false);};document.addEventListener("pointerdown",fechar);return()=>document.removeEventListener("pointerdown",fechar);},[aberto]);
+  async function confirmarCategoria(){if(!onAdd||!nome.trim())return;setSalvando(true);try{await onAdd(nome.trim());setAberto(false);setNome("");setAdicionando(false);}finally{setSalvando(false);}}
+  return <div className="cofre-launch-select" ref={ref}><button type="button" aria-haspopup="listbox" aria-expanded={aberto} onClick={()=>setAberto(v=>!v)}>{IconeAtual?<IconeAtual size={14} style={{color:atual?.cor??undefined}}/>:atual?.cor&&<i style={{background:atual.cor}}/>}<span>{atual?.label??placeholder}</span><ChevronDown size={14}/></button>{aberto&&<div className="cofre-launch-options" data-acima={pos.acima} style={{maxHeight:pos.max}} ref={listaRef} role="listbox"><button type="button" role="option" aria-selected={!value} onClick={()=>{onChange("");setAberto(false);}}><span>{placeholder}</span>{!value&&<Check size={13}/>}</button>{options.map(o=>{const Icone=icone(o.icone);return <button type="button" role="option" aria-selected={o.value===value} key={o.value} onClick={()=>{onChange(o.value);setAberto(false);}}>{Icone?<Icone size={14} style={{color:o.cor??undefined}}/>:o.cor&&<i style={{background:o.cor}}/>}<span>{o.label}</span>{o.value===value&&<Check size={13}/>}</button>;})}{onAdd&&<div className="cofre-launch-add-category">{adicionando?<div className="cofre-launch-add-form"><input autoFocus value={nome} onChange={e=>setNome(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();void confirmarCategoria();}}} placeholder="Nome da categoria"/><button type="button" onClick={()=>void confirmarCategoria()} disabled={salvando||!nome.trim()}>{salvando?"…":<Check size={14}/>}</button></div>:<button type="button" onClick={()=>setAdicionando(true)}><Plus size={14}/><span>Adicionar categoria</span></button>}</div>}</div>}</div>;
+}
+function icone(nome?:string|null){return nome?(Icons as unknown as Record<string,Icons.LucideIcon>)[nome]??Icons.Circle:null;}

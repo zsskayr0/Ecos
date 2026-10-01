@@ -10,7 +10,7 @@ function lerExpandida(): boolean {
 }
 
 /** Rail lateral: fino (só ícones) ou expandido (ícone + nome). Ctrl/Cmd+B alterna; a escolha é lembrada. */
-export function Rail() {
+export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
   const [expandida, setExpandida] = useState(lerExpandida);
   useEffect(() => { try { localStorage.setItem(CHAVE_EXPANDIDA, expandida ? "1" : "0"); } catch { /* cache indisponível */ } }, [expandida]);
   useEffect(() => {
@@ -38,14 +38,18 @@ export function Rail() {
         aria-label={modulo.titulo}
         aria-current={ativo ? "page" : undefined}
         title={expandida ? "Ctrl+clique abre ao lado" : `${modulo.titulo} — Ctrl+clique abre ao lado`}
-        onClick={(e) =>
+        onClick={(e) => {
+          if (id === "cofre") {
+            abrirCofre();
+            return;
+          }
           dispatch({
             type: "open",
             path: modulo.raiz,
             where: e.ctrlKey || e.metaKey ? "new-pane" : "focused",
             reuse: "modulo",
-          })
-        }
+          });
+        }}
         className={`relative flex h-10 items-center rounded-xl transition-colors ${expandida ? "w-full gap-3 px-3" : "w-10 justify-center"} ${
           id === "lixeira" ? (ativo ? "bg-error/15 text-error" : "text-error/75 hover:bg-error/10 hover:text-error") : ativo ? "bg-surface-2 text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-primary"
         }`}

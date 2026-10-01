@@ -49,7 +49,7 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         }
     }
     const series = [...pontos.values()];
-    const cores = ["var(--ecos-success)", "var(--ecos-error)"];
+    const cores = ["var(--cofre-income)", "var(--cofre-expense)"];
 
     const faixa = (data: string): Periodo => data.length === 7 ? { data_de: `${data}-01` < periodo.data_de ? periodo.data_de : `${data}-01`, data_ate: new Date(Number(data.slice(0, 4)), Number(data.slice(5, 7)), 0, 12).toLocaleDateString("sv-SE") } : { data_de: data, data_ate: data };
     function abrirData(data: string) {
@@ -73,10 +73,9 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         </div>
         <div className="cofre-chart-toolbar"><h2>Seu período em gráficos</h2></div>
         <div className="cofre-hero-grid">
-            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><div><h3>Receitas × despesas</h3><div className="cofre-legend"><span><i style={{background:cores[0]}}/>Receitas</span><span><i style={{background:cores[1]}}/>Despesas</span></div></div><button className="cofre-forecast" aria-label="Incluir previsão" aria-pressed={previsao} onClick={()=>setPrevisao(v=>!v)}>Previsão <b>{previsao?"ligada":"desligada"}</b></button></div>
+            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Receitas × despesas</h3><div className="cofre-chart-actions"><div className="cofre-legend"><span><i style={{background:cores[0]}}/>Receitas</span><span><i style={{background:cores[1]}}/>Despesas</span></div><button className="cofre-forecast" aria-label="Incluir previsões" aria-pressed={previsao} onClick={()=>setPrevisao(v=>!v)}>Previsões {previsao?"ligadas":"desligadas"}</button></div></div>
                 <ComposedAreaChart points={points} incomeColor={cores[0]} expenseColor={cores[1]} onSelect={i=>abrirData(series[i].data)}/>
                 <p className="cofre-chart-caption">Confirmado: lançamentos efetivados (ou conciliados). Previsão: pendentes e recorrências.</p>
-                <details className="cofre-chart-table"><summary>Consultar valores e lançamentos</summary><div className="cofre-table-scroll"><table><caption className="sr-only">Receitas e despesas por data</caption><thead><tr><th>Data</th><th>Receitas</th><th>Despesas</th></tr></thead><tbody>{series.map(s=><tr key={s.data}><td><button onClick={()=>abrirData(s.data)}>{s.data}</button></td><td>{formatMoeda(s.receitas+(previsao?s.prevReceitas:0))}</td><td>{formatMoeda(s.despesas+(previsao?s.prevDespesas:0))}</td></tr>)}</tbody></table></div></details>
             </section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Próximas ocorrências</h3><span className="cofre-count">{p.previsoes.length}</span></div><div className="cofre-upcoming">{p.previsoes.length?p.previsoes.slice(0,6).map(o=><button key={`${o.recorrencia_id}:${o.data}`} onClick={onFluxo}><span className="cofre-date-tile">{o.data.slice(8)}<small>{new Date(`${o.data}T12:00:00`).toLocaleDateString("pt-BR",{month:"short"})}</small></span><span><b>{o.descricao}</b><small>{o.tipo==="entrada"?"A receber":"A pagar"}</small></span><strong>{formatMoeda(o.valor_centavos)}</strong></button>):<div className="cofre-chart-empty"><TrendingUp size={25}/><span>Nenhuma ocorrência prevista</span><small>Cadastre recorrências nas configurações ou acompanhe o fluxo financeiro.</small></div>}</div></section>
         </div>

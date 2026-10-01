@@ -127,11 +127,12 @@ function payloadReal(tipo: "nota" | "tarefa", draft: CapturaDraft, espaco: strin
   };
 }
 
-export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
+export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, contextoDesktop }: {
   embedded?: boolean;
   onTitleChange?: (title: string) => void;
   /** No desktop as rotas das abas não são a do app: o shell diz em que pasta a pessoa está (`null` = em nenhuma). No mobile vem da rota. */
   pastaContexto?: PastaContexto | null;
+  contextoDesktop?: "ecos" | "cofre";
 }) {
   const { capturaAberta, dataCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
@@ -311,10 +312,10 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto }: {
   }
 
   return (
-    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded}>
+    <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded} tiposPermitidos={contextoDesktop==="cofre"?["transacao"]:contextoDesktop==="ecos"?(capturaAberta==="transacao"?["transacao"]:["nota","tarefa"]):undefined}>
       {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
-      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
+      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} />}
     </FormShell>
   );
 }

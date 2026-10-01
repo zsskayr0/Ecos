@@ -13,7 +13,7 @@ import {
   X,
   type LucideProps,
 } from "lucide-react";
-import { busca } from "@/lib/api";
+import { busca, vault } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
@@ -35,16 +35,21 @@ const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 interface Resultados {
   notas: { id: string; titulo: string; espaco: string }[];
   tarefas: { id: string; titulo: string; espaco: string }[];
+  transacoes?: { id: string; descricao: string; data: string; valor_centavos: number }[];
 }
 
 export function CommandPalette({
   aberta,
   aoFechar,
   aoAbrirDocumento,
+  aoAbrirCofre,
+  escopoCofre = false,
 }: {
   aberta: boolean;
   aoFechar: () => void;
   aoAbrirDocumento: (path: string, emAba: boolean) => void;
+  aoAbrirCofre: () => void;
+  escopoCofre?: boolean;
 }) {
   const { state, dispatch } = useWorkspace();
   const { abrirCaptura } = useAppUI();
@@ -72,16 +77,17 @@ export function CommandPalette({
     }
     let vivo = true;
     const t = setTimeout(() => {
-      busca
-        .buscar(consulta)
-        .then((r) => vivo && setResultados({ notas: r.notas.slice(0, 5), tarefas: r.tarefas.slice(0, 5) }))
+      (escopoCofre
+        ? vault.transacoes.listar({limit:100}).then(r=>({notas:[],tarefas:[],transacoes:r.items.filter(t=>`${t.descricao} ${t.observacoes??""}`.toLowerCase().includes(consulta.toLowerCase())).slice(0,12)}))
+        : busca.buscar(consulta).then(r=>({ notas: r.notas.slice(0, 5), tarefas: r.tarefas.slice(0, 5) })))
+        .then((r) => vivo && setResultados(r))
         .catch(() => vivo && setResultados(null));
     }, 250);
     return () => {
       vivo = false;
       clearTimeout(t);
     };
-  }, [termo, aberta]);
+  }, [termo, aberta, escopoCofre]);
 
   const comandos = useMemo<Comando[]>(() => {
     const abrir = (path: string) => dispatch({ type: "open", path, where: "focused", reuse: "modulo" });
@@ -98,7 +104,7 @@ export function CommandPalette({
 
     for (const id of [...RAIL_PRINCIPAL, ...RAIL_UTILITARIOS, "busca", "perfil", "ajuda"] as const) {
       const m = moduloPorId(id);
-      lista.push({ id: `ir-${id}`, grupo: "Ir para", rotulo: m.titulo, icone: m.icone, executar: () => abrir(m.raiz) });
+      lista.push({ id: `ir-${id}`, grupo: "Ir para", rotulo: m.titulo, icone: m.icone, executar: () => id === "cofre" ? aoAbrirCofre() : abrir(m.raiz) });
     }
 
     for (const id of ["agenda", "tarefas", "notas"] as const) {
@@ -138,8 +144,8 @@ export function CommandPalette({
     }
     lista.push({ id: "eq-nova", grupo: "Equipes", rotulo: "Criar ou entrar numa equipe", icone: Plus, executar: () => abrir("/equipe/nova") });
     lista.push({ id: "sair", grupo: "Conta", rotulo: "Sair", icone: LogOut, executar: () => void logout() });
-    return lista;
-  }, [state.panes, state.focusedPaneId, equipes, dispatch, abrirCaptura, logout]);
+    return escopoCofre ? lista.filter((item) => item.id === "nova-transacao" || item.id === "ir-cofre" || item.id === "sair") : lista;
+  }, [state.panes, state.focusedPaneId, equipes, dispatch, abrirCaptura, logout, aoAbrirCofre, escopoCofre]);
 
   const itens = useMemo<Comando[]>(() => {
     const q = semAcento(termo.trim());
@@ -164,6 +170,7 @@ export function CommandPalette({
         icone: ListChecks,
         executar: (emAba) => aoAbrirDocumento(`/tarefa/${t.id}`, emAba),
       })),
+      ...(resultados?.transacoes ?? []).map<Comando>((t) => ({id:`transacao-${t.id}`,grupo:"Transações",rotulo:t.descricao,dica:new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(t.valor_centavos/100),icone:Wallet,executar:()=>aoAbrirDocumento(`/cofre/transacao/${t.id}`,false)})),
     ];
     return [...filtrados, ...conteudo];
   }, [comandos, termo, resultados, aoAbrirDocumento]);
@@ -198,7 +205,7 @@ export function CommandPalette({
             ref={inputRef}
             value={termo}
             onChange={(e) => setTermo(e.target.value)}
-            placeholder="Digite um comando ou busque nas suas notas e tarefas…"
+            placeholder={escopoCofre?"Busque descrições e observações do Cofre…":"Digite um comando ou busque nas suas notas e tarefas…"}
             className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Routes } from "react-router-dom";
-import { Bell, ChevronDown, FolderTree, LogOut, Search, User, Users, Settings, X } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, FolderTree, Lock, LogOut, Search, User, Users, Settings, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
@@ -18,10 +18,11 @@ import { TabDragProvider } from "./tab-drag";
 import { Workspace } from "./Workspace";
 import { WorkspaceProvider, useWorkspace } from "./workspace-store";
 import { screenRoutes } from "@/routes/screen-routes";
+import { VaultScreen } from "@/screens/Vault/VaultScreen";
 
 const ehMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
-function useAtalhosGlobais(alternarPaleta: () => void) {
+function useAtalhosGlobais(alternarPaleta: (global?: boolean) => void) {
   const { state, dispatch } = useWorkspace();
 
   useEffect(() => {
@@ -32,7 +33,7 @@ function useAtalhosGlobais(alternarPaleta: () => void) {
 
       if (tecla === "k") {
         e.preventDefault();
-        alternarPaleta();
+        alternarPaleta(e.shiftKey);
       } else if (tecla === "w") {
         e.preventDefault();
         const pane = state.panes.find((p) => p.id === state.focusedPaneId);
@@ -56,7 +57,7 @@ function useAtalhosGlobais(alternarPaleta: () => void) {
   }, [state.panes, state.focusedPaneId, dispatch, alternarPaleta]);
 }
 
-function Barra({ abrirPaleta, abrirOrganizacao }: { abrirPaleta: () => void; abrirOrganizacao: () => void }) {
+function Barra({ abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal = false, setBuscaGlobal }: { abrirPaleta: () => void; abrirOrganizacao: () => void; cofre?: boolean; voltarAoEcos?: () => void; buscaGlobal?: boolean; setBuscaGlobal?: (valor:boolean)=>void }) {
   const { perfil, logout } = useAuth();
   const { espacoAtivo, setEspacoAtivo } = useAppUI();
   const { equipes } = useMinhasEquipes();
@@ -84,21 +85,26 @@ function Barra({ abrirPaleta, abrirOrganizacao }: { abrirPaleta: () => void; abr
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-surface-1 px-4">
       <span className="flex items-center gap-2 font-display text-base font-bold text-text-primary">
         <img src={logoIcone} alt="" className="h-6 w-6" />
-        Ecos
+        {cofre ? "Cofre" : "Ecos"}
       </span>
 
+      <div className="mx-auto flex w-full max-w-xl items-center rounded-lg border border-border bg-surface-2 transition-colors hover:border-cyan/40">
       <button
         type="button"
         onClick={abrirPaleta}
-        className="mx-auto flex h-8 w-full max-w-xl items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-left text-sm text-text-muted transition-colors hover:border-cyan/40"
+        className="flex h-8 min-w-0 flex-1 items-center gap-2 px-3 text-left text-sm text-text-muted"
       >
         <Search size={14} strokeWidth={1.75} />
-        <span className="flex-1">Buscar ou executar um comando</span>
+        <span className="flex-1">{cofre&&!buscaGlobal?"Buscar no Cofre":"Buscar ou executar um comando"}</span>
         <kbd className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
           {ehMac ? "⌘" : "Ctrl"} K
         </kbd>
       </button>
+      {cofre&&<button type="button" role="checkbox" aria-checked={buscaGlobal} title="Incluir dados de todo o Ecos (Ctrl+Shift+K)" onClick={()=>setBuscaGlobal?.(!buscaGlobal)} className={`mr-1.5 flex h-5 w-5 items-center justify-center rounded border text-[11px] ${buscaGlobal?"border-cyan bg-cyan/15 text-cyan":"border-border text-transparent"}`}>✓</button>}
+      </div>
 
+      {cofre && <button type="button" onClick={voltarAoEcos} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary"><ArrowLeft size={15} />Voltar ao Ecos</button>}
+      {cofre && <button type="button" onClick={() => window.dispatchEvent(new Event("ecos:solicitar-bloqueio"))} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary"><Lock size={14} />Bloquear</button>}
       <MenuCriar />
 
       <div className="flex items-center gap-1">
@@ -155,11 +161,18 @@ function Conteudo() {
   const abaFocada = paneFocada?.tabs.find((t) => t.id === paneFocada.activeTabId);
   const pastaContexto = abaFocada ? pastaDoCaminho(abaFocada.path) : null;
   const [paletaAberta, setPaletaAberta] = useState(false);
+  const [buscaGlobal, setBuscaGlobal] = useState(false);
+  const [cofreAberto, setCofreAberto] = useState(false);
   const [tituloCaptura, setTituloCaptura] = useState("");
   const [janelas, setJanelas] = useState<JanelaAberta[]>([]);
   const contador = useRef(0);
-  const alternarPaleta = () => setPaletaAberta((v) => !v);
+  const alternarPaleta = (global = false) => { if (global) setBuscaGlobal(true); setPaletaAberta((v) => !v); };
   useAtalhosGlobais(alternarPaleta);
+  useEffect(() => {
+    const voltar = () => setCofreAberto(false);
+    window.addEventListener("ecos:voltar-do-cofre", voltar);
+    return () => window.removeEventListener("ecos:voltar-do-cofre", voltar);
+  }, []);
 
   const trazerParaFrente = useCallback(
     (id: number) => setJanelas((js) => js.map((j) => (j.id === id ? { ...j, z: ++contador.current } : j))),
@@ -170,6 +183,14 @@ function Conteudo() {
   // Clique simples: janela flutuante (a mesma tarefa/nota não abre duas vezes — só vem para a frente). Ctrl/Cmd+clique: só uma aba.
   const abrirDocumento = useCallback(
     (path: string, emAba: boolean) => {
+      if (cofreAberto && path.startsWith("/cofre")) {
+        setJanelas((js) => {
+          const existente = js.find((j) => j.path === path);
+          if (existente) return js.map((j) => j === existente ? { ...j, z: ++contador.current } : j);
+          return [...js, { id: ++contador.current, path, ordem: js.length, z: ++contador.current }];
+        });
+        return;
+      }
       if (emAba) {
         dispatch({ type: "open", path, where: "focused", reuse: "path" });
         return;
@@ -180,7 +201,7 @@ function Conteudo() {
         return [...js, { id: ++contador.current, path, ordem: js.length, z: ++contador.current }];
       });
     },
-    [dispatch],
+    [dispatch, cofreAberto],
   );
 
   function fixarComoAba(janela: JanelaAberta, paneId?: string) {
@@ -191,10 +212,17 @@ function Conteudo() {
 
   return (
     <DocumentoPopupContext.Provider value={abrirDocumento}>
+    {cofreAberto ? (
+      <div className="flex h-screen flex-col overflow-hidden bg-base">
+        <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={["/cofre"]}><VaultScreen embedded voltar={() => setCofreAberto(false)} /></MemoryRouter></div>
+        {janelas.map((j) => <DocumentoJanela key={j.id} path={j.path} ordem={j.ordem} z={j.z} aoFechar={() => fecharJanela(j.id)} aoFocar={() => trazerParaFrente(j.id)} />)}
+        {capturaAberta === "transacao" && <DocumentoJanela path="/cofre/transacao/novo" titulo={tituloCaptura || "Novo lançamento"} ordem={janelas.length} z={contador.current + 1} aoFechar={fecharCaptura} aoFocar={() => {}} cabecalhoNoConteudo conteudo={<div className="cofre-app cofre-capture-scope"><CreateFlow embedded contextoDesktop="cofre" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto} /></div>} />}
+      </div>
+    ) : (
     <div className="flex h-screen flex-col bg-base">
       <Barra abrirPaleta={() => setPaletaAberta(true)} abrirOrganizacao={() => abrirDocumento("/configuracoes/organizacao", false)} />
       <div className="flex min-h-0 flex-1">
-        <Rail />
+        <Rail abrirCofre={() => setCofreAberto(true)} />
         <Workspace />
       </div>
       {janelas.map((j) => (
@@ -209,19 +237,21 @@ function Conteudo() {
         />
       ))}
       {(capturaAberta === "nota" || capturaAberta === "tarefa" || capturaAberta === "transacao") && <DocumentoJanela
-        path={capturaAberta === "nota" ? "/notas" : capturaAberta === "tarefa" ? "/tarefas" : "/cofre"}
+        path={capturaAberta === "nota" ? "/notas" : capturaAberta === "tarefa" ? "/tarefas" : "/cofre/transacao/novo"}
         titulo={tituloCaptura || (capturaAberta === "nota" ? "Nova nota" : capturaAberta === "tarefa" ? "Nova tarefa" : "Nova transação")}
         ordem={janelas.length}
         z={contador.current + 1}
         aoFechar={fecharCaptura}
         aoFocar={() => {}}
+        cabecalhoNoConteudo={capturaAberta==="transacao"}
         aoFixar={() => {}}
-        conteudo={<CreateFlow embedded onTitleChange={setTituloCaptura} pastaContexto={pastaContexto} />}
+        conteudo={capturaAberta==="transacao"?<div className="cofre-app cofre-capture-scope"><CreateFlow embedded contextoDesktop="ecos" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto}/></div>:<CreateFlow embedded contextoDesktop="ecos" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto}/>} 
       />}
-      <CommandPalette aberta={paletaAberta} aoFechar={() => setPaletaAberta(false)} aoAbrirDocumento={abrirDocumento} />
+      <CommandPalette aberta={paletaAberta} aoFechar={() => setPaletaAberta(false)} aoAbrirDocumento={abrirDocumento} aoAbrirCofre={() => setCofreAberto(true)} />
       {/* O fluxo de captura navega depois de salvar (`navigate("/feed")`) — num Router próprio isso não mexe nas abas. */}
       {capturaAberta !== "nota" && capturaAberta !== "tarefa" && capturaAberta !== "transacao" && <MemoryRouter><CreateFlow pastaContexto={pastaContexto} /></MemoryRouter>}
     </div>
+    )}
     </DocumentoPopupContext.Provider>
   );
 }
