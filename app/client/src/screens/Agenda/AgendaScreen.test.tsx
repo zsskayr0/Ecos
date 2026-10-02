@@ -1,3 +1,4 @@
+import { escolher, opcoesDe } from "@/test-helpers/escolher";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -259,7 +260,7 @@ describe("blocos de tempo na grade", () => {
 
   it("o encaixe escolhido é lembrado entre visitas", async () => {
     await abrirAgenda();
-    fireEvent.change(screen.getByLabelText("Encaixe ao arrastar"), { target: { value: "30" } });
+    escolher("Encaixe ao arrastar", "30 min");
     expect(localStorage.getItem("ecos:agenda:encaixe")).toBe("30");
   });
 });
@@ -765,11 +766,11 @@ describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", ()
   it("filtra por prioridade e por tag", async () => {
     await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: [t("a", "Casa alta", { prioridade: "alta", tags: ["casa"] }), t("b", "Trabalho baixa", { prioridade: "baixa", tags: ["trabalho"] })] });
     await waitFor(() => expect(cartoes("2026-09-21")).toHaveLength(2));
-    fireEvent.change(screen.getByLabelText("Filtrar por prioridade"), { target: { value: "baixa" } });
+    escolher("Filtrar por prioridade", "Prioridade baixa");
     expect(cartoes("2026-09-21")).toHaveLength(1);
     expect(cartoes("2026-09-21")[0]).toContain("Trabalho baixa");
     fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
-    fireEvent.change(screen.getByLabelText("Filtrar por tag"), { target: { value: "casa" } });
+    escolher("Filtrar por tag", "#casa");
     expect(cartoes("2026-09-21")).toHaveLength(1);
     expect(cartoes("2026-09-21")[0]).toContain("Casa alta");
   });
@@ -846,10 +847,10 @@ describe("Quinzenal: planejamento por prazo (cards por dia, carga e painel)", ()
     it("filtra por prioridade e tag; sem resultado, explica", async () => {
       await abrirAgenda({ modo: "quinzenal", tarefasDoServidor: SEM_PRAZO });
       await waitFor(() => expect(linhaPainel("s1")).toBeTruthy());
-      fireEvent.change(screen.getByLabelText("Filtrar por prioridade"), { target: { value: "baixa" } });
+      escolher("Filtrar por prioridade", "Prioridade baixa");
       expect(linhaPainel("s1")).toBeNull();
       expect(linhaPainel("s2")).toBeTruthy();
-      fireEvent.change(screen.getByLabelText("Filtrar por tag"), { target: { value: "casa" } });
+      escolher("Filtrar por tag", "#casa");
       expect(screen.getByText(/Nenhuma tarefa sem prazo com esses filtros/)).toBeTruthy();
     });
 

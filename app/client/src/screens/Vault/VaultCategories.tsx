@@ -1,8 +1,9 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
-import { ArrowDown, ArrowUp, Check, Download, LayoutGrid, Plus, RefreshCw, Search, Tag, Trash2, X } from "lucide-react";
-import { vault, financeiro, ApiError, type CategoriaApi, type TransacaoApi } from "@/lib/api";
+import { ArrowDown, ArrowUp, Check, Download, LayoutGrid, Plus, RefreshCw, Search, Tag, X } from "lucide-react";
+import { vault, financeiro, ApiError, type CategoriaApi, type CategoriaUsoApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { DonutChart } from "./nexus/DonutChart";
@@ -32,7 +33,7 @@ const SEM_CATEGORIA = "__sem__";
 const COR_SEM_CATEGORIA = "#6b6c72";
 const TIPO_ROTULO: Record<CategoriaApi["tipo"], string> = { saida: "Despesa", entrada: "Receita", ambos: "Ambas" };
 const EIXOS = ["Total gasto", "Nº lançamentos", "Ticket médio", "Recorrências ativas"];
-const CORES = ["#f29a9f", "#fda4af", "#fdba74", "#fcd34d", "#bef264", "#86d7ad", "#5eead4", "#7dd3fc", "#93c5fd", "#a5b4fc", "#c4b5fd", "#f0abfc", "#f9a8d4", "#d4d4d8", "#a8a29e", "#94a3b8"];
+export const CORES = ["#f29a9f", "#fda4af", "#fdba74", "#fcd34d", "#bef264", "#86d7ad", "#5eead4", "#7dd3fc", "#93c5fd", "#a5b4fc", "#c4b5fd", "#f0abfc", "#f9a8d4", "#d4d4d8", "#a8a29e", "#94a3b8"];
 
 function resolverIcone(nome?: string | null): Icons.LucideIcon {
   if (!nome) return Icons.Tag;
@@ -43,7 +44,7 @@ function resolverIcone(nome?: string | null): Icons.LucideIcon {
 }
 
 /** Texto legível sobre a cor da categoria (preto ou branco, pela luminância). */
-function corDoTexto(hex: string): string {
+export function corDoTexto(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return "#0b0b0b";
   const n = parseInt(m[1]!, 16);
@@ -345,6 +346,7 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
       {editando && createPortal(
         <CategoriaModal
           categoria={editando === "nova" ? undefined : editando}
+          categorias={categorias}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); atualizar(); setTentativa((n) => n + 1); }}
         />,
@@ -409,13 +411,28 @@ function Destaque({ s, periodo, total }: { s: Stat; periodo: string; total: numb
   );
 }
 
-function CategoriaModal({ categoria, onClose, onSaved }: { categoria?: CategoriaApi; onClose: () => void; onSaved: () => void }) {
+/** Lixeira com a tampa separada do corpo: no hover a tampa levanta e abre (CSS em `.cofre-lixeira-tampa`). */
+export function LixeiraAnimada() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <g className="cofre-lixeira-tampa"><path d="M3 6h18" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></g>
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
+
+export function CategoriaModal({ categoria, categorias, onClose, onSaved }: { categoria?: CategoriaApi; categorias: CategoriaApi[]; onClose: () => void; onSaved: () => void }) {
   const [nome, setNome] = useState(categoria?.nome ?? "");
   const [tipo, setTipo] = useState<CategoriaApi["tipo"]>(categoria?.tipo ?? "saida");
   const [icone, setIcone] = useState(categoria?.icone ?? "Tag");
   const [cor, setCor] = useState(categoria?.cor ?? CORES[0]!);
   const [ocupado, setOcupado] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
+  /** Preenchido quando a categoria tem itens: abre o menu de "para onde mover". */
+  const [uso, setUso] = useState<CategoriaUsoApi | null>(null);
+  const [destino, setDestino] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [saindo, setSaindo] = useState(false);
   const nomeRef = useRef<HTMLInputElement>(null);
@@ -447,11 +464,36 @@ function CategoriaModal({ categoria, onClose, onSaved }: { categoria?: Categoria
     }
   }
 
-  async function excluir() {
+  /** Só oferece destino do mesmo tipo dos itens (despesa não vai para categoria de receita). */
+  function compativel(c: CategoriaApi, u: CategoriaUsoApi) {
+    return c.id !== categoria?.id && (c.tipo === "ambos" || u.tipos.every((t) => t === c.tipo));
+  }
+
+  /** Primeiro olha o que usa a categoria: sem uso, pede só a confirmação; com uso, abre o menu de destino. */
+  async function pedirExclusao() {
+    if (!categoria) return;
+    setOcupado(true);
+    setErro(null);
+    try {
+      const u = await vault.categorias.uso(categoria.id);
+      if (u.transacoes + u.recorrencias + u.pendencias === 0) {
+        setConfirmando(true);
+      } else {
+        setDestino(""); // "Sem categoria" é o padrão; mover para outra é escolha da pessoa
+        setUso(u);
+      }
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Não foi possível verificar o uso da categoria.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function excluir(decisao?: { mover_para: string } | { sem_categoria: true }) {
     if (!categoria) return;
     setOcupado(true);
     try {
-      await vault.categorias.excluir(categoria.id);
+      await vault.categorias.excluir(categoria.id, decisao);
       onSaved();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");
@@ -466,7 +508,21 @@ function CategoriaModal({ categoria, onClose, onSaved }: { categoria?: Categoria
         <header>
           <span className="cofre-cats-icon lg" style={{ background: cor, color: corDoTexto(cor) }}><Previa size={18} /></span>
           <div><p>{categoria ? "EDITAR CATEGORIA" : "NOVA CATEGORIA"}</p><h2>{nome.trim() || "Sem nome"}</h2></div>
-          <button type="button" aria-label="Fechar" onClick={fechar}><X size={16} /></button>
+          <span className="cofre-cats-header-acoes">
+            {categoria && (
+              <button
+                type="button"
+                className="cofre-cats-iconbtn cofre-cats-lixeira"
+                aria-label="Apagar categoria"
+                title="Apagar categoria"
+                disabled={ocupado || confirmando || !!uso}
+                onClick={() => void pedirExclusao()}
+              >
+                <LixeiraAnimada />
+              </button>
+            )}
+            <button type="button" className="cofre-cats-iconbtn cofre-cats-fechar" aria-label="Fechar" onClick={fechar}><X size={18} /></button>
+          </span>
         </header>
 
         {erro && <p className="cofre-launch-alert" role="alert">{erro}</p>}
@@ -494,13 +550,45 @@ function CategoriaModal({ categoria, onClose, onSaved }: { categoria?: Categoria
 
         {confirmando && categoria && (
           <div className="cofre-launch-alert" role="alert">
-            <p>Apagar “{categoria.nome}”? Os lançamentos dela ficam sem categoria. Essa ação não pode ser desfeita.</p>
+            <p>Apagar “{categoria.nome}”? Nenhum lançamento usa esta categoria. Essa ação não pode ser desfeita.</p>
             <div><button type="button" onClick={() => setConfirmando(false)}>Cancelar</button><button type="button" disabled={ocupado} onClick={() => void excluir()}>{ocupado ? "Apagando…" : "Apagar"}</button></div>
           </div>
         )}
 
+        {uso && categoria && (
+          <section className="cofre-launch-alert cofre-cats-uso" role="alert" aria-label={`Apagar ${categoria.nome}`}>
+            <p>
+              “{categoria.nome}” é usada por <b>{uso.transacoes} {uso.transacoes === 1 ? "lançamento" : "lançamentos"}</b>
+              {uso.recorrencias > 0 && <>, <b>{uso.recorrencias} {uso.recorrencias === 1 ? "recorrência" : "recorrências"}</b></>}
+              {uso.pendencias > 0 && <>, <b>{uso.pendencias} {uso.pendencias === 1 ? "pendência" : "pendências"}</b></>}.
+              Escolha para onde eles vão antes de apagar.
+            </p>
+            {uso.amostra.length > 0 && (
+              <ul className="cofre-cats-uso-lista" aria-label="Lançamentos desta categoria">
+                {uso.amostra.map((t) => (
+                  <li key={t.id}>
+                    <time>{t.data.split("-").reverse().join("/")}</time>
+                    <span>{t.descricao}</span>
+                    <strong data-tipo={t.tipo}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</strong>
+                  </li>
+                ))}
+                {uso.transacoes > uso.amostra.length && <li className="cofre-cats-uso-mais">e mais {uso.transacoes - uso.amostra.length} {uso.transacoes - uso.amostra.length === 1 ? "lançamento" : "lançamentos"}</li>}
+              </ul>
+            )}
+            <div className="cofre-cats-field">
+              <span>Mover tudo para</span>
+              <SeletorEcos ariaLabel="Mover tudo para" classe="min-h-[40px] max-w-full rounded-[11px] border border-[var(--border)] bg-[var(--panel)] px-2.5 text-[13px] text-[var(--text)]" valor={destino} onChange={setDestino} opcoes={[{ valor: "", rotulo: "Sem categoria" }, ...categorias.filter((c) => compativel(c, uso)).map((c) => ({ valor: c.id, rotulo: c.nome }))]} />
+            </div>
+            <div>
+              <button type="button" onClick={() => setUso(null)} disabled={ocupado}>Cancelar</button>
+              <button type="button" disabled={ocupado} onClick={() => void excluir(destino ? { mover_para: destino } : { sem_categoria: true })}>
+                {ocupado ? "Movendo e apagando…" : destino ? "Mover e apagar" : "Deixar sem categoria e apagar"}
+              </button>
+            </div>
+          </section>
+        )}
+
         <footer>
-          {categoria && !categoria.padrao && !confirmando && <button type="button" className="cofre-cats-danger" onClick={() => setConfirmando(true)}><Trash2 size={14} />Apagar</button>}
           <button type="button" className="cofre-secondary" onClick={fechar}>Cancelar</button>
           <button type="submit" className="cofre-solid" disabled={ocupado || !nome.trim()}>{ocupado && !confirmando ? "Salvando…" : categoria ? "Salvar" : "Criar categoria"}</button>
         </footer>

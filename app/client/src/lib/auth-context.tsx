@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ApiError, auth, prepararConteudoOffline } from "./api";
+import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline } from "./offline-store";
 
@@ -124,6 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // Quem sai da conta não deixa senha de Cofre guardada neste computador.
+      if (perfil) await esquecerSenhasDaConta(perfil.id, ["pessoal", ...perfil.equipes.map((e) => `equipe:${e.id}`)]);
       await auth.logout();
     } finally {
       setPerfil(null);
@@ -132,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       limparConteudoLocal(); // rascunhos, buscas e abas abertas não ficam no aparelho
       void limparDadosOffline(); // cache e alterações pendentes pertencem à conta que saiu
     }
-  }, []);
+  }, [perfil]);
 
   // Enquanto o servidor não volta, tenta de novo sozinho.
   useEffect(() => {

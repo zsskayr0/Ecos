@@ -7,10 +7,10 @@ import { formatMoeda } from "@/lib/format";
 import { vault, FORMAS_PAGAMENTO, type CategoriaApi, type ContaApi, type FormaPagamento } from "@/lib/api";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 
-interface Props { draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; }
+interface Props { draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; /** Nome de quem lançou (só em Cofre de equipe com mais de uma pessoa). Somente leitura. */ criadoPor?:string; /** Container de anexos, logo abaixo de Observações (o editor passa os anexos do lançamento; a criação, os pendentes). */ anexos?:React.ReactNode; }
 const LABEL_FORMA:Record<FormaPagamento,string>={pix:"Pix",pix_automatico:"Pix Automático",ted:"TED",cartao:"Cartão",dinheiro:"Dinheiro",boleto:"Boleto",outro:"Outro"};
 
-export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir}:Props) {
+export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir,criadoPor,anexos}:Props) {
   const [confirmandoExcluir,setConfirmandoExcluir]=useState(false);
   const [categorias,setCategorias]=useState<CategoriaApi[]>([]),[contas,setContas]=useState<ContaApi[]>([]);
   useEffect(()=>{vault.categorias.listar().then(setCategorias).catch(()=>setCategorias([]));vault.contas.listar().then(lista=>{setContas(lista);const padrao=lista.find(c=>c.padrao)??lista[0];if(padrao&&!draft.contaId&&!onExcluir)setDraft(d=>({...d,contaId:padrao.id}));}).catch(()=>setContas([]));},[]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -24,6 +24,7 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
   return <form className="cofre-launch-form" onSubmit={e=>{e.preventDefault();lancar();}}>
     <header className="cofre-launch-header" data-window-drag-handle><div><p>{eyebrow}</p><h2>{titulo}</h2></div><div className="cofre-launch-header-actions">{onExcluir&&<button type="button" aria-label="Apagar" title="Apagar" onClick={()=>setConfirmandoExcluir(true)}><Trash2 size={15}/></button>}<button type="button" aria-label="Fechar" title="Fechar" onClick={onFechar}><X size={16}/></button></div></header>
     <div className="cofre-launch-body">
+      {criadoPor&&<p className="cofre-launch-author" aria-label="Criado por">Criado por <b>{criadoPor}</b></p>}
       {erro&&<p className="cofre-launch-alert" role="alert">{erro}</p>}
       {confirmandoExcluir&&onExcluir&&<div className="cofre-launch-alert" role="alert"><p>Apagar este lançamento? Essa ação não pode ser desfeita.</p><div><button type="button" onClick={()=>setConfirmandoExcluir(false)}>Cancelar</button><button type="button" disabled={salvando} onClick={onExcluir}>{salvando?"Apagando…":"Apagar"}</button></div></div>}
       <SegmentedSlide className="cofre-launch-slide" ariaLabel="Tipo do lançamento" tamanho="lg" value={draft.tipoTransacao} onChange={v=>setDraft(d=>({...d,tipoTransacao:v,categoriaId:null}))} opcoes={[{value:"saida",label:"Despesa",cor:"ecos-error"},{value:"entrada",label:"Receita",cor:"ecos-success"}]}/>
@@ -36,6 +37,7 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
         <Campo label="Categoria"><MenuSelecao value={draft.categoriaId??""} placeholder="Sem categoria" options={categoriasVisiveis.map(c=>({value:c.id,label:c.nome,cor:c.cor,icone:c.icone}))} onChange={value=>setDraft(d=>({...d,categoriaId:value||null}))} onAdd={adicionarCategoria}/></Campo>
         <div className="cofre-launch-grid"><Campo label="Conta"><MenuSelecao value={draft.contaId??""} placeholder="Sem conta" options={contas.map(c=>({value:c.id,label:c.nome,cor:c.cor}))} onChange={value=>setDraft(d=>({...d,contaId:value||null}))}/></Campo><Campo label="Forma de pagamento"><MenuSelecao value={draft.formaPagamento??""} placeholder="Não informada" options={FORMAS_PAGAMENTO.map(f=>({value:f,label:LABEL_FORMA[f]}))} onChange={value=>setDraft(d=>({...d,formaPagamento:(value||null) as FormaPagamento|null}))}/></Campo></div>
         <Campo label="Observações"><textarea rows={3} value={draft.observacoesTransacao} onChange={e=>setDraft(d=>({...d,observacoesTransacao:e.target.value}))} placeholder="Opcional"/></Campo>
+        {anexos}
       </div>
     </div>
     <footer className="cofre-launch-footer"><button data-tipo={draft.tipoTransacao} data-lancando={lancando} disabled={salvando||!pode||lancando}><span className="cofre-launch-label">{salvando?"Salvando…":rotuloSalvar}</span>{lancando&&<i className="cofre-launch-coin" aria-hidden="true"><b><Coins size={18} strokeWidth={2.2}/></b></i>}</button></footer>

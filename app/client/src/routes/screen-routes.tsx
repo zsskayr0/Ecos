@@ -1,4 +1,5 @@
 import { AdministracaoScreen } from "@/screens/Settings/AdministracaoScreen";
+import { EscanearQrScreen } from "@/screens/Team/EscanearQrScreen";
 import { EntrarEquipeScreen } from "@/screens/Team/EntrarEquipeScreen";
 import { Navigate, Route } from "react-router-dom";
 
@@ -80,6 +81,7 @@ export const screenRoutes = (
     <Route path="/cofre/*" element={<VaultEntry />} />
 
     <Route path="/equipe/nova" element={<TeamCreateJoinScreen />} />
+    <Route path="/equipe/escanear" element={<EscanearQrScreen />} />
     <Route path="/equipes" element={<TeamsScreen />} />
     <Route path="/equipe/:equipeId" element={<TeamProfileScreen />} />
 
@@ -105,6 +107,7 @@ export const screenRoutes = (
       <Route path="rotina" element={<RotinaScreen />} />
       <Route path="equipes" element={<TeamsScreen />} />
       <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
+      <Route path="equipes/escanear" element={<EscanearQrScreen />} />
       <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
       <Route path="notificacoes" element={<NotificationsScreen />} />
       <Route path="administracao" element={<AdministracaoScreen />} />

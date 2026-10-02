@@ -137,7 +137,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/calendario/conectar/:provider", get(calendario::conectar))
         .route("/calendario/sincronizar", post(calendario::sincronizar))
         .route("/calendario/:provider", delete(calendario::desconectar))
-        .route("/vault/*resto", axum::routing::any(vault_proxy::encaminhar))
+        .route("/vault/*resto", axum::routing::any(vault_proxy::encaminhar).layer(DefaultBodyLimit::max(vault_proxy::LIMITE_CORPO_BYTES)))
         .route_layer(from_fn_with_state(state, exigir_sessao))
 }
 

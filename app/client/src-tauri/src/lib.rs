@@ -63,7 +63,7 @@ mod sessao_android {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct ErroNativo {
     code: &'static str,
     message: String,
@@ -255,6 +255,107 @@ fn encerrar_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// "Lembrar a senha do Cofre neste computador" (só Windows).
+//
+// O servidor nunca guarda a chave do Cofre (fica só na memória dele, então tranca a cada reinício). Quem quiser não
+// digitar de novo depois de uma atualização pode guardar a senha aqui, no Gerenciador de Credenciais do Windows — o
+// mesmo cofre do SO que já guarda a sessão. É opt-in, por Cofre (pessoal ou equipe) e por conta do Ecos; a `chave`
+// identifica servidor + conta + espaço, então contas e Cofres diferentes não se misturam. No Android e nos demais
+// sistemas não há armazenamento seguro implementado: os comandos dizem que não são suportados e nada é gravado.
+// ---------------------------------------------------------------------------------------------------------------
+
+#[cfg(windows)]
+const COFRE_SERVICO: &str = "app.ecos.client.cofre";
+/// O nome da credencial no Windows (`<chave>.<serviço>`) tem teto de 256 caracteres.
+const COFRE_CHAVE_MAXIMA: usize = 200;
+const COFRE_SENHA_MAXIMA: usize = 512;
+
+fn validar_chave_cofre(chave: &str) -> Result<(), String> {
+    if chave.trim().is_empty() || chave.len() > COFRE_CHAVE_MAXIMA || chave.chars().any(|c| c.is_control()) {
+        return Err("Identificação do Cofre inválida.".into());
+    }
+    Ok(())
+}
+
+fn validar_senha_cofre(senha: &str) -> Result<(), String> {
+    if senha.is_empty() || senha.chars().count() > COFRE_SENHA_MAXIMA {
+        return Err("Senha do Cofre inválida.".into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn entrada_cofre(chave: &str) -> Result<keyring::Entry, String> {
+    validar_chave_cofre(chave)?;
+    keyring::Entry::new(COFRE_SERVICO, chave).map_err(|e| e.to_string())
+}
+
+#[cfg(windows)]
+fn salvar_senha_cofre(chave: &str, senha: &str) -> Result<(), String> {
+    validar_senha_cofre(senha)?;
+    entrada_cofre(chave)?.set_password(senha).map_err(|e| e.to_string())
+}
+
+#[cfg(windows)]
+fn ler_senha_cofre(chave: &str) -> Result<Option<String>, String> {
+    match entrada_cofre(chave)?.get_password() {
+        Ok(s) => Ok(Some(s)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(windows)]
+fn esquecer_senha_cofre(chave: &str) -> Result<(), String> {
+    match entrada_cofre(chave)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(windows))]
+fn salvar_senha_cofre(chave: &str, senha: &str) -> Result<(), String> {
+    validar_chave_cofre(chave)?;
+    validar_senha_cofre(senha)?;
+    Err("Lembrar a senha do Cofre ainda não está disponível nesta plataforma.".into())
+}
+#[cfg(not(windows))]
+fn ler_senha_cofre(_chave: &str) -> Result<Option<String>, String> { Ok(None) }
+#[cfg(not(windows))]
+fn esquecer_senha_cofre(_chave: &str) -> Result<(), String> { Ok(()) }
+
+/// A tela só oferece "Lembrar neste computador" quando isto é `true`.
+#[tauri::command]
+fn cofre_senha_suportada() -> bool {
+    cfg!(windows)
+}
+
+#[tauri::command]
+fn cofre_senha_salvar(chave: String, senha: String) -> Result<(), ErroNativo> {
+    salvar_senha_cofre(&chave, &senha).map_err(ErroNativo::from)
+}
+
+#[tauri::command]
+fn cofre_senha_tem(chave: String) -> Result<bool, ErroNativo> {
+    validar_chave_cofre(&chave)?;
+    Ok(ler_senha_cofre(&chave)?.is_some())
+}
+
+/// Devolve a senha lembrada ao front só para o desbloqueio automático (o front a envia ao Cofre e a descarta).
+#[tauri::command]
+fn cofre_senha_ler(chave: String) -> Result<Option<String>, ErroNativo> {
+    validar_chave_cofre(&chave)?;
+    ler_senha_cofre(&chave).map_err(ErroNativo::from)
+}
+
+#[tauri::command]
+fn cofre_senha_esquecer(chave: String) -> Result<(), ErroNativo> {
+    validar_chave_cofre(&chave)?;
+    esquecer_senha_cofre(&chave).map_err(ErroNativo::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,6 +376,52 @@ mod tests {
         sessao_android::apagar(&dir).unwrap();
         assert!(sessao_android::ler(&dir).unwrap().is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chave_e_senha_do_cofre_sao_validadas_antes_de_tocar_o_armazenamento() {
+        assert!(validar_chave_cofre("http://ecos.local|01ABC|pessoal").is_ok());
+        assert!(validar_chave_cofre("").is_err());
+        assert!(validar_chave_cofre("   ").is_err());
+        assert!(validar_chave_cofre(&"x".repeat(COFRE_CHAVE_MAXIMA + 1)).is_err());
+        assert!(validar_chave_cofre("a\nb").is_err());
+        assert!(validar_senha_cofre("uma senha qualquer").is_ok());
+        assert!(validar_senha_cofre("").is_err());
+        assert!(validar_senha_cofre(&"é".repeat(COFRE_SENHA_MAXIMA + 1)).is_err());
+        assert!(cofre_senha_salvar("".into(), "x".into()).is_err());
+        assert!(cofre_senha_tem("".into()).is_err());
+    }
+
+    /// Usa o Gerenciador de Credenciais de verdade (grava e apaga uma entrada de teste com chave única).
+    #[cfg(windows)]
+    #[test]
+    fn senha_do_cofre_vai_e_volta_pelo_gerenciador_de_credenciais_do_windows_e_some_ao_esquecer() {
+        let chave = format!("ecos-teste|{}|pessoal", std::process::id());
+        let outra = format!("ecos-teste|{}|equipe:abc", std::process::id());
+        assert!(cofre_senha_suportada());
+        let _ = esquecer_senha_cofre(&chave);
+        assert!(!cofre_senha_tem(chave.clone()).unwrap());
+        assert_eq!(cofre_senha_ler(chave.clone()).unwrap(), None);
+
+        cofre_senha_salvar(chave.clone(), "senha-do-cofre-áéí-123".into()).unwrap();
+        assert!(cofre_senha_tem(chave.clone()).unwrap());
+        assert_eq!(cofre_senha_ler(chave.clone()).unwrap().as_deref(), Some("senha-do-cofre-áéí-123"));
+        assert!(!cofre_senha_tem(outra.clone()).unwrap(), "outro Cofre da mesma conta não enxerga a senha");
+
+        cofre_senha_salvar(chave.clone(), "nova-senha-456".into()).unwrap();
+        assert_eq!(cofre_senha_ler(chave.clone()).unwrap().as_deref(), Some("nova-senha-456"), "salvar de novo substitui");
+
+        cofre_senha_esquecer(chave.clone()).unwrap();
+        assert!(!cofre_senha_tem(chave.clone()).unwrap());
+        cofre_senha_esquecer(chave).unwrap(); // esquecer o que não existe não é erro
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn fora_do_windows_nada_e_gravado() {
+        assert!(!cofre_senha_suportada());
+        assert!(cofre_senha_salvar("chave".into(), "senha".into()).is_err());
+        assert!(!cofre_senha_tem("chave".into()).unwrap());
     }
 
     #[test]
@@ -328,7 +475,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![login_desktop, renovar_sessao_desktop, logout_desktop, encerrar_app])
+        .invoke_handler(tauri::generate_handler![login_desktop, renovar_sessao_desktop, logout_desktop, encerrar_app, cofre_senha_suportada, cofre_senha_salvar, cofre_senha_tem, cofre_senha_ler, cofre_senha_esquecer])
         .run(tauri::generate_context!())
         .expect("error starting Ecos");
 }

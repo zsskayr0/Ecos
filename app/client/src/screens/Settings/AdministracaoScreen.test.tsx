@@ -1,3 +1,4 @@
+import { escolher, opcoesDe } from "@/test-helpers/escolher";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,8 +55,8 @@ describe("administração de usuários e equipes", () => {
   it("coloca uma conta numa equipe pelo menu", async () => {
     api.adicionarMembro.mockResolvedValue({ ok: true });
     render(<AdministracaoScreen />);
-    const seletor = await screen.findByLabelText("Adicionar pessoa a Casa");
-    fireEvent.change(seletor, { target: { value: "u2" } });
+    await screen.findByRole("button", { name: "Adicionar pessoa a Casa" });
+    escolher("Adicionar pessoa a Casa", /thaty/);
     await waitFor(() => expect(api.adicionarMembro).toHaveBeenCalledWith("eq", "u2"));
   });
 });

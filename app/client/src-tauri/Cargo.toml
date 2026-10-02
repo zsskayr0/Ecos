@@ -1,6 +1,6 @@
 [package]
 name = "ecos-client"
-version = "0.7.0-alpha"
+version = "0.8.0-alpha"
 description = "Ecos — desktop/mobile client (Tauri + React), see ecos-arquitetura-tecnica.md section 10"
 edition = "2021"
 publish = false
@@ -34,7 +34,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 [target.'cfg(windows)'.dependencies]
 # Windows Credential Manager; the refresh credential never enters WebView
 # storage or the application's regular data directory.
-keyring = "3"
+keyring = { version = "3", features = ["windows-native"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

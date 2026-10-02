@@ -15,7 +15,7 @@ use crate::state::AppState;
 
 const COLUNAS: &str = "id, tipo, descricao, valor_centavos, categoria_id, conta_id, beneficiario_id, forma_pagamento, \
      tipo_recorrencia, frequencia, intervalo, dia_vencimento, data_inicio, data_fim, total_parcelas, parcelas_geradas, \
-     observacoes, espaco, ativa, criado_em, atualizado_em";
+     observacoes, espaco, ativa, criado_em, atualizado_em, criado_por";
 
 fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
     Ok(serde_json::json!({
@@ -27,7 +27,7 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "data_inicio": r.get::<_, String>(12)?, "data_fim": r.get::<_, Option<String>>(13)?,
         "total_parcelas": r.get::<_, Option<i64>>(14)?, "parcelas_geradas": r.get::<_, i64>(15)?,
         "observacoes": r.get::<_, Option<String>>(16)?, "espaco": r.get::<_, String>(17)?,
-        "ativa": r.get::<_, i64>(18)? != 0, "criado_em": r.get::<_, String>(19)?, "atualizado_em": r.get::<_, String>(20)?,
+        "ativa": r.get::<_, i64>(18)? != 0, "criado_em": r.get::<_, String>(19)?, "atualizado_em": r.get::<_, String>(20)?, "criado_por": r.get::<_, Option<String>>(21)?,
     }))
 }
 
@@ -110,6 +110,7 @@ fn validar(payload: &RecorrenciaPayload) -> AppResult<()> {
 pub async fn criar(State(state): State<AppState>, Json(payload): Json<RecorrenciaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar(&payload)?;
     let id = new_id();
+    let autor = crate::db::autor_atual();
     state
         .db
         .with({
@@ -118,8 +119,8 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<Recorrenci
                 conn.execute(
                     "INSERT INTO transacao_recorrente (id, tipo, descricao, valor_centavos, categoria_id, conta_id, \
                      beneficiario_id, forma_pagamento, tipo_recorrencia, frequencia, intervalo, dia_vencimento, \
-                     data_inicio, data_fim, total_parcelas, observacoes, espaco) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                     data_inicio, data_fim, total_parcelas, observacoes, espaco, criado_por) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
                     rusqlite::params![
                         id,
                         payload.tipo,
@@ -138,6 +139,7 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<Recorrenci
                         payload.total_parcelas,
                         payload.observacoes,
                         payload.espaco,
+                        autor,
                     ],
                 )
             }

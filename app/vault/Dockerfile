@@ -26,8 +26,10 @@ RUN cargo build --release -p ecos-vault-db --features ecos-vault-db/real-sqlciph
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates tesseract-ocr tesseract-ocr-por poppler-utils \
     && rm -rf /var/lib/apt/lists/*
+# tesseract-ocr(-por) e poppler-utils: leitura automática de comprovantes (src/ocr). Rodam como processos filhos,
+# sem rede (a rede `internal` não tem saída) e com tempo limite; se faltarem, o Cofre segue só no fluxo manual.
 
 RUN groupadd --gid 10002 ecosvault && useradd --uid 10002 --gid ecosvault --no-create-home --shell /usr/sbin/nologin ecosvault
 

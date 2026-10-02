@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Imagens recebidas pelo menu "Compartilhar" do Android (`CompartilharBridge.kt`, exposta ao WebView como
- * `window.EcosCompartilhar`). Fora do Android a ponte não existe e tudo aqui vira no-op.
+ * Arquivos recebidos pelo menu "Compartilhar" do Android (`CompartilharBridge.kt`, exposta ao WebView como
+ * `window.EcosCompartilhar`). O menu tem dois destinos: "Ecos" (nota) e "Ecos Cofre" (comprovante). Fora do Android
+ * a ponte não existe e tudo aqui vira no-op.
  */
 interface PonteAndroid {
   pendentes(): string;
@@ -10,7 +11,14 @@ interface PonteAndroid {
   descartar(id: string): void;
 }
 
-interface ItemPendente { id: string; nome: string; mime: string; tamanho: number }
+export type DestinoCompartilhado = "nota" | "cofre";
+
+export interface Compartilhado {
+  arquivo: File;
+  destino: DestinoCompartilhado;
+}
+
+interface ItemPendente { id: string; nome: string; mime: string; tamanho: number; destino?: string }
 
 /** Pedaço lido por chamada — bem abaixo do limite da ponte, sem passar a imagem inteira de uma vez. */
 const PARTE_BYTES = 512 * 1024;
@@ -29,14 +37,17 @@ function bytesDeBase64(b64: string): Uint8Array<ArrayBuffer> {
 
 let lendo = false;
 
-/** Pega (e apaga do lado nativo) as imagens à espera. Só uma leitura por vez: quem chegar durante outra recebe `[]`. */
-export async function lerImagensCompartilhadas(): Promise<File[]> {
+/**
+ * Pega (e apaga do lado nativo) os arquivos à espera. Só uma leitura por vez: quem chegar durante outra recebe `[]`.
+ * A cópia nativa some assim que os bytes chegam aqui; quem precisar esperar (Cofre trancado) espera em memória.
+ */
+export async function lerCompartilhados(): Promise<Compartilhado[]> {
   const nativa = ponte();
   if (!nativa || lendo) return [];
   lendo = true;
   try {
     const itens = JSON.parse(nativa.pendentes() || "[]") as ItemPendente[];
-    const arquivos: File[] = [];
+    const lidos: Compartilhado[] = [];
     for (const item of itens) {
       try {
         const partes: BlobPart[] = [];
@@ -45,14 +56,15 @@ export async function lerImagensCompartilhadas(): Promise<File[]> {
           if (!b64) throw new Error("leitura incompleta");
           partes.push(bytesDeBase64(b64));
         }
-        arquivos.push(new File(partes, item.nome, { type: item.mime }));
+        // Versões antigas da ponte não informam o destino: eram só "Ecos" (nota).
+        lidos.push({ arquivo: new File(partes, item.nome, { type: item.mime }), destino: item.destino === "cofre" ? "cofre" : "nota" });
       } catch {
-        /* uma imagem que não deu pra ler não derruba as outras */
+        /* um arquivo que não deu pra ler não derruba os outros */
       } finally {
         nativa.descartar(item.id);
       }
     }
-    return arquivos;
+    return lidos;
   } catch {
     return [];
   } finally {
@@ -61,10 +73,10 @@ export async function lerImagensCompartilhadas(): Promise<File[]> {
 }
 
 /**
- * Chama `aoReceber` com as imagens compartilhadas: as que já estavam à espera quando o app abriu (compartilhar com o
- * app fechado) e as que chegam depois (evento `ecos:compartilhado`, ou ao voltar pra frente).
+ * Chama `aoReceber` com o que foi compartilhado: o que já estava à espera quando o app abriu (compartilhar com o
+ * app fechado) e o que chega depois (evento `ecos:compartilhado`, ou ao voltar pra frente).
  */
-export function useImagensCompartilhadas(aoReceber: (arquivos: File[]) => void) {
+export function useCompartilhados(aoReceber: (itens: Compartilhado[]) => void) {
   const atual = useRef(aoReceber);
   atual.current = aoReceber;
 
@@ -72,8 +84,8 @@ export function useImagensCompartilhadas(aoReceber: (arquivos: File[]) => void) 
     if (!ponte()) return;
     let ativo = true;
     async function verificar() {
-      const arquivos = await lerImagensCompartilhadas();
-      if (ativo && arquivos.length) atual.current(arquivos);
+      const itens = await lerCompartilhados();
+      if (ativo && itens.length) atual.current(itens);
     }
     const aoVoltar = () => { if (document.visibilityState === "visible") void verificar(); };
     void verificar();

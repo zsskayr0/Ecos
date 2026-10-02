@@ -1,3 +1,4 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, ChevronLeft, ChevronRight, Cloud, ListChecks, Lock, Plus, Repeat, StickyNote, Tags } from "lucide-react";
@@ -95,11 +96,8 @@ export function EventosScreen() {
           <button type="button" onClick={() => setAncora((a) => deslocarAncora(periodo, a, 1))} aria-label="Próximo período" className="rounded-lg p-2 text-text-secondary hover:bg-surface-2"><ChevronRight size={18} /></button>
         </div>
         {aba === "lista" && (
-          <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} aria-label="Filtrar por categoria" className="h-9 rounded-xl bg-surface-2 px-3 text-sm text-text-primary outline-none focus:ring-2 focus:ring-cyan/50">
-            <option value="">Todas as categorias</option>
-            <option value="sem">Sem categoria</option>
-            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </select>
+          <SeletorEcos valor={filtroCategoria} onChange={setFiltroCategoria} ariaLabel="Filtrar por categoria" alinhar="dir" classe="h-9 rounded-xl bg-surface-2 px-3 text-sm text-text-primary outline-none focus:ring-2 focus:ring-cyan/50"
+            opcoes={[{ valor: "", rotulo: "Todas as categorias" }, { valor: "sem", rotulo: "Sem categoria" }, ...categorias.map((c) => ({ valor: c.id, rotulo: c.nome }))]} />
         )}
       </div>
 

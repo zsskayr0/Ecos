@@ -13,6 +13,7 @@ import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
 import { TaskForm } from "./TaskForm";
 import { TransactionForm } from "./TransactionForm";
+import { AnexosPendentes, enviarAnexosPendentes } from "@/screens/Vault/comprovantes/AnexosPendentes";
 
 /**
  * A single, persistent Capture draft (rule 5, section 2.4): switching
@@ -139,6 +140,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   const navigate = useNavigate();
   const location = useLocation();
   const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
+  /** Anexos escolhidos para um lançamento novo; vão para o Cofre assim que ele é criado. */
+  const [anexosPendentes, setAnexosPendentes] = useState<File[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
@@ -181,6 +184,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     sessaoCaptura.current += 1;
     fecharCaptura();
     setDraft(DRAFT_VAZIO);
+    setAnexosPendentes([]);
     setItemCriado(null);
     ultimoEnvio.current = null;
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
@@ -223,7 +227,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
           const b = await vault.beneficiarios.criarOuEncontrar({ nome: draft.beneficiarioNome.trim() });
           beneficiarioId = b.id;
         }
-        await vault.transacoes.criar({
+        const criada = await vault.transacoes.criar({
           tipo: draft.tipoTransacao,
           valor_centavos: draft.valorCentavos,
           descricao: draft.texto.trim(),
@@ -235,6 +239,11 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
           observacoes: draft.observacoesTransacao.trim() || undefined,
           data: draft.dataTransacao,
         });
+        if (anexosPendentes.length) {
+          const falhas = await enviarAnexosPendentes(criada.id, anexosPendentes);
+          // O lançamento já existe; só os anexos que falharam precisam de nova tentativa (pelo próprio lançamento).
+          if (falhas.length) avisar(`Lançamento salvo, mas ${falhas.length === 1 ? "1 anexo não foi enviado" : `${falhas.length} anexos não foram enviados`}: ${falhas[0]} Anexe de novo pelo lançamento.`);
+        }
       } else if (tipo === "nota") {
         const dados = payloadReal("nota", draft, espacoAtivo);
         if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
@@ -315,7 +324,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded} tiposPermitidos={contextoDesktop==="cofre"?["transacao"]:contextoDesktop==="ecos"?(capturaAberta==="transacao"?["transacao"]:["nota","tarefa"]):undefined}>
       {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
-      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} />}
+      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} anexos={<AnexosPendentes arquivos={anexosPendentes} onChange={setAnexosPendentes} />} />}
     </FormShell>
   );
 }

@@ -15,14 +15,15 @@ import java.io.RandomAccessFile
 import java.util.UUID
 
 /**
- * Imagens recebidas pelo menu "Compartilhar" do Android.
+ * Arquivos recebidos pelo menu "Compartilhar" do Android. Há dois destinos no menu: "Ecos" (imagens viram anexo de
+ * uma nota) e "Ecos Cofre" (imagens e PDF viram comprovante; é o `activity-alias` [DESTINO_COFRE] do manifesto).
  *
  * A permissão de leitura do URI recebido é temporária, então cada imagem é copiada pro cache do app assim que a
  * intent chega. O front (WebView) pega a lista por `window.EcosCompartilhar` e lê os bytes em pedaços, pra não
- * passar uma imagem inteira de uma vez pela ponte JS. Só imagens, até [LIMITE_BYTES] cada.
+ * passar uma imagem inteira de uma vez pela ponte JS. Imagens (e PDF, só para o Cofre), até [LIMITE_BYTES] cada. O limite de 8 MB do Cofre é conferido no front.
  */
 class CompartilharBridge(private val contexto: Context) {
-    private class Item(val id: String, val nome: String, val mime: String, val arquivo: File)
+    private class Item(val id: String, val nome: String, val mime: String, val arquivo: File, val destino: String)
 
     private val pendentes = LinkedHashMap<String, Item>()
     private var webView: WebView? = null
@@ -34,10 +35,12 @@ class CompartilharBridge(private val contexto: Context) {
     fun receber(intent: Intent?) {
         val uris = uris(intent)
         if (uris.isEmpty()) return
+        // O alias do manifesto dá o nome do destino escolhido no menu; sem ele, é o "Ecos" comum (nota).
+        val destino = if (intent?.component?.className?.endsWith(".$DESTINO_COFRE") == true) "cofre" else "nota"
         Thread {
             limparAntigos()
             var recebeu = false
-            for (uri in uris) if (copiar(uri)) recebeu = true
+            for (uri in uris) if (copiar(uri, destino)) recebeu = true
             if (recebeu) webView?.post { webView?.evaluateJavascript("window.dispatchEvent(new Event('ecos:compartilhado'))", null) }
         }.start()
     }
@@ -58,14 +61,15 @@ class CompartilharBridge(private val contexto: Context) {
         return lista.filterNotNull()
     }
 
-    private fun copiar(uri: Uri): Boolean {
+    private fun copiar(uri: Uri, destino: String): Boolean {
         return try {
             val mime = contexto.contentResolver.getType(uri) ?: return false
-            if (!mime.startsWith("image/")) return false
+            val aceito = mime.startsWith("image/") || (destino == "cofre" && mime == "application/pdf")
+            if (!aceito) return false
             val id = UUID.randomUUID().toString()
-            val destino = File(pasta, id)
+            val destinoArquivo = File(pasta, id)
             val leu = contexto.contentResolver.openInputStream(uri)?.use { entrada ->
-                destino.outputStream().use { saida ->
+                destinoArquivo.outputStream().use { saida ->
                     val buffer = ByteArray(64 * 1024)
                     var total = 0L
                     while (true) {
@@ -78,8 +82,8 @@ class CompartilharBridge(private val contexto: Context) {
                     true
                 }
             } ?: false
-            if (!leu || destino.length() == 0L) { destino.delete(); return false }
-            synchronized(pendentes) { pendentes[id] = Item(id, nomeDe(uri, mime), mime, destino) }
+            if (!leu || destinoArquivo.length() == 0L) { destinoArquivo.delete(); return false }
+            synchronized(pendentes) { pendentes[id] = Item(id, nomeDe(uri, mime), mime, destinoArquivo, destino) }
             true
         } catch (e: Exception) {
             false
@@ -93,6 +97,7 @@ class CompartilharBridge(private val contexto: Context) {
             }
         } catch (e: Exception) { null }
         if (!nome.isNullOrBlank()) return nome
+        if (mime == "application/pdf") return "comprovante.pdf"
         return "imagem." + mime.substringAfter('/').substringBefore('+').ifBlank { "jpg" }
     }
 
@@ -103,12 +108,12 @@ class CompartilharBridge(private val contexto: Context) {
         }
     }
 
-    /** JSON `[{id, nome, mime, tamanho}]` das imagens à espera. */
+    /** JSON `[{id, nome, mime, tamanho, destino}]` dos arquivos à espera; `destino` é "nota" ou "cofre". */
     @JavascriptInterface
     fun pendentes(): String {
         val arr = JSONArray()
         synchronized(pendentes) {
-            for (i in pendentes.values) arr.put(JSONObject().put("id", i.id).put("nome", i.nome).put("mime", i.mime).put("tamanho", i.arquivo.length()))
+            for (i in pendentes.values) arr.put(JSONObject().put("id", i.id).put("nome", i.nome).put("mime", i.mime).put("tamanho", i.arquivo.length()).put("destino", i.destino))
         }
         return arr.toString()
     }
@@ -136,5 +141,9 @@ class CompartilharBridge(private val contexto: Context) {
         item.arquivo.delete()
     }
 
-    companion object { const val LIMITE_BYTES = 40L * 1024 * 1024 }
+    companion object {
+        const val LIMITE_BYTES = 40L * 1024 * 1024
+        /** Nome do `activity-alias` do manifesto que representa "Ecos Cofre" no menu Compartilhar. */
+        const val DESTINO_COFRE = "CompartilharCofre"
+    }
 }

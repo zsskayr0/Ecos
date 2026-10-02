@@ -6,8 +6,10 @@ import {
   buildMonthGrid,
   computeRangeRowSegments,
   formatBR,
+  isTodayPeriod,
   parseBRDateLenient,
   periodLabel,
+  todayPeriod,
   type Period,
 } from "./period";
 import { CalendarDays as IconCalendar, ChevronDown as IconChevronDown } from "lucide-react";
@@ -130,6 +132,18 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div ref={dialog} role="dialog" aria-modal="true" onKeyDown={e=>{if(e.key!=="Tab")return;const controls=Array.from(e.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled)"));const first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}} aria-label="Selecionar período" className="cofre-card cofre-period-popover">
+            <button
+              onClick={() => {
+                onChange(todayPeriod());
+                setOpen(false);
+              }}
+              className={
+                "mb-2 w-full rounded-[9px] border border-[var(--border)] py-1.5 text-[0.74rem] font-bold " +
+                (isTodayPeriod(value) ? "bg-[var(--panel-elevated)] text-[var(--text)]" : "text-[var(--text-muted)] hover:bg-[var(--panel-elevated)] hover:text-[var(--text)]")
+              }
+            >
+              Hoje
+            </button>
             <div className="mb-3 flex rounded-[10px] border border-[var(--border)] bg-[var(--bg)] p-[3px]">
               {(["month", "range", "year"] as Mode[]).map((m) => (
                 <button

@@ -207,3 +207,29 @@ async fn o_cofre_unico_anterior_passa_ao_primeiro_usuario_com_a_mesma_senha() {
 
     let _ = std::fs::remove_dir_all(&raiz);
 }
+
+#[tokio::test]
+async fn a_autoria_vem_do_pedido_e_nao_muda_na_edicao() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    chamar(&app, Some("eq_x"), false, "POST", "/vault/ativar", senha("senha-da-equipe")).await;
+    let como = |autor: &'static str, metodo: &'static str, uri: String, corpo: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let pedido = Request::builder().method(metodo).uri(uri).header("x-ecos-usuario", "eq_x").header("x-ecos-autor", autor).header("content-type", "application/json");
+            let r = app.clone().call(pedido.body(Body::from(corpo.to_string())).unwrap()).await.unwrap();
+            serde_json::from_slice::<serde_json::Value>(&to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap_or_default()
+        }
+    };
+    let nova = como("ana", "POST", "/vault/transacoes".into(), json!({"tipo":"saida","valor_centavos":100,"data":"2026-09-30","descricao":"Mercado","criado_por":"outra"})).await;
+    assert_eq!(nova["criado_por"], "ana", "o corpo não define a autoria");
+    let id = nova["id"].as_str().unwrap().to_string();
+    let editada = como("beto", "PATCH", format!("/vault/transacoes/{id}"), json!({"tipo":"saida","valor_centavos":200,"data":"2026-09-30","descricao":"Mercado 2","criado_por":"beto"})).await;
+    assert_eq!(editada["criado_por"], "ana", "editar não troca o autor");
+    let conta = como("beto", "POST", "/vault/contas".into(), json!({"nome":"Corrente"})).await;
+    let (_, contas) = chamar(&app, Some("eq_x"), false, "GET", "/vault/contas", None).await;
+    assert_eq!(contas[0]["criado_por"], "beto");
+    assert!(conta["id"].is_string());
+    drop(app);
+    let _ = std::fs::remove_dir_all(raiz);
+}

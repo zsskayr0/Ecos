@@ -43,11 +43,11 @@ pub async fn listar_minhas(State(state): State<AppState>, Extension(usuario): Ex
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT e.id, e.nome, m.cargo FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1",
+                "SELECT e.id, e.nome, m.cargo, e.tipo, (SELECT COUNT(*) FROM membro_equipe x WHERE x.equipe_id = e.id) FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1",
             )?;
             let linhas = stmt
                 .query_map([&usuario.0], |r| {
-                    Ok(serde_json::json!({ "id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)? }))
+                    Ok(serde_json::json!({ "id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)?, "tipo": r.get::<_, String>(3)?, "membros": r.get::<_, i64>(4)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
@@ -59,12 +59,22 @@ pub async fn listar_minhas(State(state): State<AppState>, Extension(usuario): Ex
 #[derive(Debug, Deserialize)]
 pub struct CriarEquipePayload {
     pub nome: String,
+    #[serde(default)]
+    pub tipo: Option<String>,
+}
+
+pub const TIPOS_DE_EQUIPE: [&str; 2] = ["pessoal", "corporativo"];
+
+fn tipo_valido(tipo: &str) -> AppResult<()> {
+    if TIPOS_DE_EQUIPE.contains(&tipo) { Ok(()) } else { Err(AppError::validation(vec![CampoInvalido { campo: "tipo".into(), motivo: "deve ser 'pessoal' ou 'corporativo'".into() }])) }
 }
 
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarEquipePayload>) -> AppResult<Json<serde_json::Value>> {
     if payload.nome.trim().is_empty() {
         return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
     }
+    let tipo = payload.tipo.clone().unwrap_or_else(|| "pessoal".to_string());
+    tipo_valido(&tipo)?;
     let id = new_id();
     state
         .db
@@ -72,7 +82,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
             let id = id.clone();
             move |conn| {
                 let tx = conn.unchecked_transaction()?;
-                tx.execute("INSERT INTO equipe (id, nome) VALUES (?1, ?2)", rusqlite::params![id, payload.nome])?;
+                tx.execute("INSERT INTO equipe (id, nome, tipo) VALUES (?1, ?2, ?3)", rusqlite::params![id, payload.nome, tipo])?;
                 tx.execute(
                     "INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'dono')",
                     rusqlite::params![id, usuario.0],
@@ -85,16 +95,29 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
 }
 
 pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    // A equipe pessoal não tem linha em `equipe`: são só os itens que a própria pessoa criou.
+    if id == "pessoal" {
+        let uid = usuario.0.clone();
+        let (notas, tarefas): (i64, i64) = state
+            .db
+            .with(move |conn| {
+                let notas: i64 = conn.query_row("SELECT COUNT(*) FROM nota WHERE espaco = 'pessoal' AND criado_por = ?1", [&uid], |r| r.get(0))?;
+                let tarefas: i64 = conn.query_row("SELECT COUNT(*) FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1", [&uid], |r| r.get(0))?;
+                Ok((notas, tarefas))
+            })
+            .await?;
+        return Ok(Json(serde_json::json!({ "id": "pessoal", "nome": "Pessoal", "tipo": "pessoal", "estatisticas": { "notas": notas, "tarefas": tarefas } })));
+    }
     // Quem não é da equipe (nem administra a instância) não sabe nem que ela existe.
     if cargo_do_usuario(&state, &id, &usuario.0).await?.is_none() && !crate::admin::e_admin(&state, &usuario.0).await? {
         return Err(AppError::new(ErrorCode::NotFound));
     }
     let id2 = id.clone();
-    let equipe: Option<(String, String)> = state
+    let equipe: Option<(String, String, String)> = state
         .db
-        .with(move |conn| conn.query_row("SELECT id, nome FROM equipe WHERE id = ?1", [&id2], |r| Ok((r.get(0)?, r.get(1)?))).optional())
+        .with(move |conn| conn.query_row("SELECT id, nome, tipo FROM equipe WHERE id = ?1", [&id2], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional())
         .await?;
-    let (id, nome) = equipe.ok_or(AppError::new(ErrorCode::NotFound))?;
+    let (id, nome, tipo) = equipe.ok_or(AppError::new(ErrorCode::NotFound))?;
 
     let (notas, tarefas): (i64, i64) = state
         .db
@@ -108,19 +131,22 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         })
         .await?;
 
-    Ok(Json(serde_json::json!({ "id": id, "nome": nome, "estatisticas": { "notas": notas, "tarefas": tarefas } })))
+    Ok(Json(serde_json::json!({ "id": id, "nome": nome, "tipo": tipo, "estatisticas": { "notas": notas, "tarefas": tarefas } })))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AtualizarEquipePayload {
     pub nome: String,
+    #[serde(default)]
+    pub tipo: Option<String>,
 }
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarEquipePayload>) -> AppResult<Json<serde_json::Value>> {
     exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    if let Some(tipo) = &payload.tipo { tipo_valido(tipo)?; }
     let afetadas = state
         .db
-        .with(move |conn| conn.execute("UPDATE equipe SET nome = ?1 WHERE id = ?2", rusqlite::params![payload.nome, id]))
+        .with(move |conn| conn.execute("UPDATE equipe SET nome = ?1, tipo = COALESCE(?2, tipo) WHERE id = ?3", rusqlite::params![payload.nome, payload.tipo, id]))
         .await?;
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::NotFound));

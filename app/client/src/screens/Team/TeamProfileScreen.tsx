@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { TIPOS_DE_EQUIPE, rotuloDoTipoDeEquipe, type TipoEquipe } from "@/lib/tipo-equipe";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil, Camera, Loader2 } from "lucide-react";
+import { MenuSuspenso } from "@/components/common/MenuSuspenso";
+import { ChevronDown, ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil, Camera, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { equipes as equipesApi, ApiError } from "@/lib/api";
@@ -36,7 +38,7 @@ export function TeamProfileScreen() {
   const { versao, notificar } = useRefreshBus();
   const [convidarAberto, setConvidarAberto] = useState(false);
   const [codigoConvite, setCodigoConvite] = useState<string | null>(null);
-  const [equipe, setEquipe] = useState<{ id: string; nome: string; estatisticas: { notas: number; tarefas: number } } | null>(null);
+  const [equipe, setEquipe] = useState<{ id: string; nome: string; tipo: TipoEquipe; estatisticas: { notas: number; tarefas: number } } | null>(null);
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
@@ -45,16 +47,18 @@ export function TeamProfileScreen() {
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
   const fotoEquipe = useAvatarEquipe(equipeId);
+  const pessoal = equipeId === "pessoal";
+  const { url: fotoPessoal } = useFotoPerfil(perfil?.id ?? "", perfil?.avatar_atualizado_em ?? null);
 
   useEffect(() => {
     if (!equipeId) return;
-    Promise.all([equipesApi.obter(equipeId), equipesApi.listarMembros(equipeId)])
+    Promise.all([equipesApi.obter(equipeId), pessoal ? Promise.resolve([] as Membro[]) : equipesApi.listarMembros(equipeId)])
       .then(([e, m]) => {
         setEquipe(e);
         setMembros(m);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Equipe não encontrada."));
-  }, [equipeId, versao]);
+  }, [equipeId, pessoal, versao]);
 
   async function convidar() {
     if (!equipeId) return;
@@ -85,6 +89,12 @@ export function TeamProfileScreen() {
     }
   }
 
+  async function trocarTipo(tipo: TipoEquipe) {
+    if (!equipeId || !equipe) return;
+    try { await equipesApi.atualizar(equipeId, equipe.nome, tipo); setEquipe({ ...equipe, tipo }); notificar(); void recarregarPerfil(); }
+    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível mudar o tipo da equipe."); }
+  }
+
   async function salvarNome() {
     if (!equipeId || !novoNome.trim()) return;
     try { await equipesApi.atualizar(equipeId, novoNome.trim()); setEquipe((atual) => atual ? { ...atual, nome: novoNome.trim() } : atual); setEditando(false); }
@@ -113,9 +123,9 @@ export function TeamProfileScreen() {
     );
   }
 
-  const cor = corDaEquipe(equipe.id);
+  const cor = pessoal ? (localStorage.getItem("ecos:cor-equipe-pessoal") ?? "#3E6FA8") : corDaEquipe(equipe.id);
   const meuCargo = membros.find((m) => m.usuario_id === perfil?.id)?.cargo;
-  const podeEditarFoto = meuCargo === "dono" || meuCargo === "admin";
+  const podeEditarFoto = !pessoal && (meuCargo === "dono" || meuCargo === "admin");
   async function trocarFoto(arquivo?: File) {
     if (!arquivo) return;
     setEnviandoFoto(true);
@@ -133,11 +143,27 @@ export function TeamProfileScreen() {
 
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
         <span className="relative">
-          <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} url={fotoEquipe} />
+          <Avatar nome={equipe.nome} corFundo={cor} tamanho={72} url={pessoal ? fotoPessoal : fotoEquipe} />
           {enviandoFoto && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white"><Loader2 size={20} className="animate-spin" /></span>}
           {podeEditarFoto && <label className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-surface-1 text-text-secondary shadow-nav hover:text-text-primary" title="Trocar foto da equipe"><Camera size={15} /><span className="sr-only">Trocar foto da equipe</span><input type="file" accept="image/*" className="sr-only" onChange={(e) => { void trocarFoto(e.target.files?.[0]); e.target.value = ""; }} /></label>}
         </span>
-        {editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
+        {pessoal ? <h1 className="font-display text-2xl text-text-primary">Pessoal</h1> : editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
+      </div>
+
+      <div className="-mt-2 mb-5 flex justify-center">
+        {pessoal ? (
+          <span className="rounded-pill bg-surface-2 px-3 py-1 text-xs text-text-muted">Equipe pessoal · só você vê</span>
+        ) : podeEditarFoto ? (
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            Tipo
+            <MenuSuspenso ariaLabel="Tipo da equipe" valor={equipe.tipo} onChange={(v) => void trocarTipo(v)} fixo larguraMenu="min-w-[12rem]"
+              opcoes={TIPOS_DE_EQUIPE.map((t) => ({ valor: t.valor, rotulo: t.rotulo }))}
+              classeGatilho="ecos-input flex items-center gap-2 !rounded-lg !py-1.5 text-sm text-text-primary"
+              gatilho={({ aberto, atual }) => <><span>{atual?.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
+          </div>
+        ) : (
+          <span className="rounded-pill bg-surface-2 px-3 py-1 text-xs text-text-muted">{rotuloDoTipoDeEquipe(equipe.tipo)}</span>
+        )}
       </div>
 
       <div className="mb-5 grid grid-cols-2 divide-x divide-border rounded-2xl bg-surface-1 py-3">
@@ -157,10 +183,10 @@ export function TeamProfileScreen() {
           <Rss size={16} strokeWidth={1.75} />
           Ver tudo
         </button>
-        <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">
+        {!pessoal && <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">
           <UserPlus size={16} strokeWidth={1.75} />
           Convidar
-        </button>
+        </button>}
       </div>
 
       {erro && (
@@ -189,8 +215,8 @@ export function TeamProfileScreen() {
         </div>
       )}
 
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Membros</p>
-      <div className="flex flex-col gap-1">
+      {!pessoal && <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Membros</p>}
+      {!pessoal && <div className="flex flex-col gap-1">
         {membros.map((m) => {
           const souEu = m.usuario_id === perfil?.id;
           return (
@@ -206,7 +232,7 @@ export function TeamProfileScreen() {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {meuCargo && (
         <section aria-labelledby="sair-equipe" className="mt-8 rounded-2xl border border-error/30 p-4">

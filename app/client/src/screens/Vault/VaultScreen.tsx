@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Lock, LogOut, Moon, Sun, ShieldHalf, LayoutDashboard, ArrowLeftRight, CalendarDays, FileSpreadsheet, Settings2, CloudOff, RefreshCw, Repeat2, Landmark, Tags, HelpCircle, Github, ChevronUp, Plus, Ellipsis } from "lucide-react";
+import { ArrowLeft, ArrowRight, Lock, LogOut, Moon, Sun, ShieldHalf, LayoutDashboard, ArrowLeftRight, CalendarDays, FileSpreadsheet, Settings2, CloudOff, RefreshCw, Repeat2, Landmark, Tags, HelpCircle, Github, ChevronUp, Plus, Ellipsis, Paperclip } from "lucide-react";
 import { vault, auth, financeiro, ApiError, type CategoriaApi } from "@/lib/api";
 import { VaultLockScreen } from "./VaultLockScreen";
 import { TransactionDetailScreen } from "./TransactionDetailScreen";
 import { VaultDashboard, type Filtro } from "./VaultDashboard";
 import { VaultTransactions } from "./VaultTransactions";
 import { VaultWorkflow } from "./VaultWorkflow";
+import { VaultComprovantes } from "./VaultComprovantes";
 import { VaultCsv } from "./VaultCsv";
 import { VaultSettings } from "./VaultSettings";
 import { VaultCategories } from "./VaultCategories";
+import { VaultAccounts } from "./VaultAccounts";
 import { PeriodPicker } from "./nexus/PeriodPicker";
 import { defaultPeriod, periodRange, type Period } from "./nexus/period";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -25,6 +27,9 @@ import { nomeExibicao, useAuth } from "@/lib/auth-context";
 import { useFotoPerfil } from "@/lib/profile-avatar";
 import { corDaEquipe } from "@/lib/team-color";
 import { useAvatarEquipe } from "@/lib/team-avatar";
+import { useComprovantesEsperando } from "@/lib/fila-comprovantes";
+import { bloqueioManual, chaveDoCofre, esquecerSenha, lembrarSenha, lembrarSenhaSuportado, lerSenhaLembrada, limparBloqueioManual, marcarBloqueioManual } from "@/lib/cofre-lembrado";
+import { SenhaLembrada } from "./SenhaLembrada";
 type Fase = "carregando" | "desativado" | "ativar" | "bloqueado" | "aberto";
 function saudacao(nome:string) {
     const agora=new Date(), hora=agora.getHours(), dia=agora.getDay();
@@ -76,10 +81,48 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
     const [fase, setFase] = useState<Fase>("carregando");
     const [erro, setErro] = useState("");
     const [versao, setVersao] = useState(0);
+    const esperando = useComprovantesEsperando();
+    // Senha lembrada neste computador (Windows): depois de uma atualização do servidor o Cofre abre sozinho.
+    const { perfil: perfilLogado } = useAuth();
+    const chave = perfilLogado ? chaveDoCofre(perfilLogado.id, espacoAtivo) : null;
+    const chaveRef = useRef(chave);
+    chaveRef.current = chave;
+    const [podeLembrar, setPodeLembrar] = useState(false);
+    useEffect(() => { let v = true; void lembrarSenhaSuportado().then((ok) => { if (v) setPodeLembrar(ok); }); return () => { v = false; }; }, []);
+    const ultimaTentativa = useRef(0);
+    const tentando = useRef(false);
+    /** Tenta abrir o Cofre com a senha lembrada. Nunca depois de um "Bloquear" de propósito; no máximo a cada 15 s. */
+    async function tentarDestrancarLembrada(): Promise<boolean> {
+        const k = chaveRef.current;
+        if (!k || tentando.current || bloqueioManual(k) || Date.now() - ultimaTentativa.current < 15000)
+            return false;
+        tentando.current = true;
+        ultimaTentativa.current = Date.now();
+        try {
+            const senha = await lerSenhaLembrada(k);
+            if (!senha)
+                return false;
+            await vault.desbloquear(senha);
+            return true;
+        }
+        catch (e) {
+            // Senha do Cofre incorreta (ela mudou): a lembrada não vale mais. Erro de rede ou de sessão não apaga nada.
+            if (e instanceof ApiError && e.code === "INVALID_CREDENTIALS") {
+                await esquecerSenha(k);
+                setErro("A senha lembrada neste computador não funciona mais. Digite a senha do Cofre.");
+            }
+            return false;
+        }
+        finally {
+            tentando.current = false;
+        }
+    }
     useEffect(() => {
         let vivo = true;
         let geracao = 0;
-        const bloquear = () => { geracao++; setFase("bloqueado"); };
+        const bloquear = () => { geracao++; setFase("bloqueado"); void verificar(); };
+        const bloquearManual = () => { if (chaveRef.current) marcarBloqueioManual(chaveRef.current); bloquear(); };
+        const marcarManual = () => { if (chaveRef.current) marcarBloqueioManual(chaveRef.current); };
         async function verificar(inicial = false) {
             const atual = geracao;
             try {
@@ -95,8 +138,16 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
                     return;
                 if (!cfg.cofre_ativado)
                     setFase("ativar");
-                else if (!cfg.destrancado)
+                else if (!cfg.destrancado) {
+                    if (await tentarDestrancarLembrada()) {
+                        if (vivo && atual === geracao)
+                            setVersao(v => v + 1);
+                        return;
+                    }
+                    if (!vivo || atual !== geracao)
+                        return;
                     setFase("bloqueado");
+                }
                 else if (inicial)
                     setFase("aberto");
             }
@@ -108,13 +159,14 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
             }
         }
         window.addEventListener("ecos:cofre-bloqueado", bloquear);
-        window.addEventListener("ecos:solicitar-bloqueio", bloquear);
+        window.addEventListener("ecos:solicitar-bloqueio", bloquearManual);
+        window.addEventListener("ecos:bloqueio-manual", marcarManual);
         const focus = () => void verificar();
         window.addEventListener("focus", focus);
         const timer = window.setInterval(focus, 30000);
         void verificar(true);
-        return () => { vivo = false; clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("ecos:cofre-bloqueado", bloquear); window.removeEventListener("ecos:solicitar-bloqueio", bloquear); };
-    }, [versao]);
+        return () => { vivo = false; clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("ecos:cofre-bloqueado", bloquear); window.removeEventListener("ecos:solicitar-bloqueio", bloquearManual); window.removeEventListener("ecos:bloqueio-manual", marcarManual); };
+    }, [versao, chave]); // `chave` só passa de nula a definida uma vez (quando o perfil chega): aí a senha lembrada pode ser usada
     async function bloquear() { setFase("bloqueado"); try {
         await vault.bloquear();
     }
@@ -127,20 +179,22 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
             <div className="cofre-header-actions">{!embedded&&<button title="Voltar ao Ecos" aria-label="Voltar ao Ecos" onClick={voltar}><ArrowLeft size={17}/><span>Voltar ao Ecos</span></button>}{fase === "aberto" && <button title="Bloquear Cofre" aria-label="Bloquear" onClick={() => void bloquear()}><Lock size={16}/><span>Bloquear</span></button>}</div>
         </header>}
         {erro && <p role="alert" className="cofre-notice">{erro}</p>}
-        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} primeiraVez={fase === "ativar"} onSubmeter={async senha=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);setErro("");setVersao(v=>v+1);}}/>}
+        {fase !== "aberto" && esperando > 0 && <p role="status" className="cofre-notice">{esperando === 1 ? "1 comprovante está esperando" : `${esperando} comprovantes estão esperando`}: desbloqueie o Cofre para guardar. Se você sair antes, compartilhe de novo.</p>}
+        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
     </div>;
 }
 
 const menus = [
     {id:"painel",nome:"Painel",curto:"Painel",icone:LayoutDashboard,descricao:"Uma visão clara das suas finanças."},
     {id:"lancamentos",nome:"Transações",curto:"Extrato",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
+    {id:"comprovantes",nome:"Comprovantes",curto:"Comprov.",icone:Paperclip,descricao:"Recibos e comprovantes guardados, ligados aos seus lançamentos."},
     {id:"recorrencias",nome:"Recorrências",curto:"Recorr.",icone:Repeat2,descricao:"Compromissos recorrentes e parcelamentos."},
     {id:"fluxo",nome:"Fluxo de Trabalho",curto:"Fluxo",icone:CalendarDays,descricao:"Organize o que entra e o que sai."},
     {id:"contas",nome:"Contas",curto:"Contas",icone:Landmark,descricao:"Contas e saldos financeiros."},
     {id:"categorias",nome:"Categorias",curto:"Categorias",icone:Tags,descricao:"Organize receitas e despesas."},
 ];
 /** No mobile, estas seções saem da barra inferior e vão para o menu "Mais". */
-const MAIS_MOBILE = ["fluxo", "categorias"];
+const MAIS_MOBILE = ["comprovantes", "fluxo", "categorias"];
 const menusSistema = [
     {id:"csv",nome:"Backup & CSV",icone:FileSpreadsheet,descricao:"Seus dados, com você."},
     {id:"ajuda",nome:"Ajuda & Suporte",icone:HelpCircle,descricao:"Ajuda para usar o Cofre."},
@@ -152,6 +206,9 @@ export function VaultWorkspace() {
     const nomeUsuario=perfil?nomeExibicao(perfil):"Perfil"; const {url:urlFoto}=useFotoPerfil(perfil?.id,perfil?.avatar_atualizado_em);
     const greeting=useMemo(()=>saudacao(nomeUsuario.split(" ")[0]),[nomeUsuario]);
     const secao=location.pathname.split("/")[2]||"painel";
+    // Chegou comprovante (soltar no desktop, compartilhar no celular): leva a pessoa para onde ele vai ser guardado.
+    const comprovantesEsperando=useComprovantesEsperando();
+    useEffect(()=>{if(comprovantesEsperando>0&&secao!=="comprovantes")navigate("/cofre/comprovantes");},[comprovantesEsperando,secao,navigate]);
     const menu=[...menus,...menusSistema].find(m=>m.id===secao);
     const [period,setPeriod]=useState<Period>(defaultPeriod);
     const range=periodRange(period);const periodo:Periodo={data_de:range.from,data_ate:range.to};
@@ -184,15 +241,18 @@ export function VaultWorkspace() {
         </aside>
         {maisAberto&&<><div className="cofre-more-backdrop" onClick={()=>setMaisAberto(false)}/><div className="cofre-more-sheet" role="menu" aria-label="Mais opções do Cofre">{[...menus.filter(m=>MAIS_MOBILE.includes(m.id)),...menusSistema].map(({id,nome,icone:Icon})=><button key={id} role="menuitem" aria-current={secao===id?"page":undefined} onClick={()=>{setMaisAberto(false);navegar(id);}}><Icon size={18}/><span>{nome}</span></button>)}</div></>}
         <main className="cofre-main"><div className="cofre-content">
-            {menu&&secao!=="lancamentos"&&secao!=="categorias"&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">{secao==="painel"?"PAINEL FINANCEIRO":"COFRE"}</p><h1>{secao==="painel"?<>{greeting.titulo}{greeting.noite?<Moon size={19}/>:<Sun size={20}/>}</>:menu.nome}</h1><p className="cofre-subtitle">{secao==="painel"?greeting.frase:menu.descricao}</p></div><div className="cofre-page-actions">{["painel","csv"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}{secao==="painel"&&<button className="cofre-new-button" onClick={()=>abrirCaptura("transacao")}><Plus size={14}/>Novo lançamento</button>}</div></div>}
+            {menu&&secao!=="lancamentos"&&secao!=="categorias"&&secao!=="contas"&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">{secao==="painel"?"PAINEL FINANCEIRO":"COFRE"}</p><h1>{secao==="painel"?<>{greeting.titulo}{greeting.noite?<Moon size={19}/>:<Sun size={20}/>}</>:menu.nome}</h1><p className="cofre-subtitle">{secao==="painel"?greeting.frase:menu.descricao}</p></div><div className="cofre-page-actions">{["painel","csv","comprovantes"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}{secao==="painel"&&<button className="cofre-new-button" onClick={()=>abrirCaptura("transacao")}><Plus size={14}/>Novo lançamento</button>}</div></div>}
             {erro&&<div role="alert" className="cofre-error-card"><span className="cofre-error-icon"><CloudOff size={25}/></span><h2>{erro.incompativel?"O painel precisa de uma atualização":"Não foi possível carregar o painel"}</h2><p>{erro.incompativel?"O serviço do Cofre em execução ainda não oferece este painel. Seus lançamentos continuam disponíveis; atualize o Cofre no servidor para habilitar os gráficos.":erro.texto}</p><div><button className="cofre-solid" onClick={()=>setVersao(v=>v+1)}><RefreshCw size={15}/>Tentar novamente</button><button className="cofre-secondary" onClick={()=>navigate("/cofre/lancamentos")}>Abrir lançamentos <ArrowRight size={15}/></button></div></div>}
             {!valido&&<p role="alert">Selecione um período válido.</p>}
             {secao==="painel"&&(painel?<VaultDashboard painel={painel} categorias={categorias} periodo={periodo} abrir={abrir} onFluxo={()=>navigate("/cofre/fluxo")} drill={f=>{setFiltro(f);navigate("/cofre/lancamentos");}}/>:!erro&&<div className="cofre-loading" role="status"><RefreshCw size={20}/><span>Preparando seu painel…</span><div className="cofre-skeletons">{[1,2,3,4].map(i=><div key={i}/>)}</div></div>)}
             <div className="cofre-panel">
             {secao==="lancamentos"&&valido&&<>{Object.keys(filtro).length>0&&<button className="cofre-secondary" onClick={()=>setFiltro({})}>Limpar filtro do gráfico</button>}<VaultTransactions recarregar={externa} periodo={periodo} period={period} onPeriodChange={p=>{setPeriod(p);setFiltro({});}} filtro={filtro} categorias={categorias} abrir={abrir} atualizar={atualizar}/></>}
+            {secao==="comprovantes"&&valido&&<VaultComprovantes recarregar={externa} periodo={periodo} categorias={categorias} abrir={abrir} atualizar={atualizar} irParaData={iso=>{const[y,m]=iso.split("-").map(Number);if(y&&m){setPeriod({kind:"month",year:y,month:m});setFiltro({});}}}/>}
             {secao==="fluxo"&&<VaultWorkflow recarregar={externa} atualizar={atualizar}/>}
             {secao==="csv"&&valido&&<VaultCsv periodo={periodo} atualizar={atualizar}/>}
-            {["configuracoes","recorrencias","contas"].includes(secao)&&<VaultSettings atualizar={atualizar}/>}
+            {secao==="configuracoes"&&<SenhaLembrada/>}
+            {["configuracoes","recorrencias"].includes(secao)&&<VaultSettings atualizar={atualizar}/>}
+            {secao==="contas"&&valido&&<VaultAccounts period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar}/>}
             {secao==="categorias"&&valido&&<VaultCategories period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar}/>}
             {secao==="ajuda"&&<div className="cofre-card cofre-empty-page"><HelpCircle size={28}/><h2>Ajuda & Suporte</h2><p>Consulte as orientações do Ecos ou entre em contato com o administrador.</p></div>}
             {secao==="transacao"&&<TransactionDetailScreen/>}

@@ -7,6 +7,11 @@ const EXTENSAO_MD = /\.(md|markdown)$/i;
 const LIMITE_BYTES = 2 * 1024 * 1024;
 
 const trazArquivos = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+/** Durante o arrasto só o tipo de cada item é conhecido. PDF e imagem não são notas: ficam para o Cofre (`SoltarNoCofre`). */
+const podeSerMarkdown = (e: React.DragEvent) => {
+  const itens = Array.from(e.dataTransfer.items ?? []).filter((i) => i.kind === "file");
+  return itens.length === 0 || itens.some((i) => !i.type || i.type.startsWith("text/"));
+};
 
 /** Arrastar arquivos `.md` de fora para dentro da tela de Notas importa como nota (na pasta aberta, se houver).
  * O servidor completa o front-matter que faltar e nunca altera o corpo. */
@@ -38,10 +43,19 @@ export function SoltarMarkdown({ pasta, children, className }: { pasta?: string;
   }
 
   return <div className={`relative ${className ?? ""}`}
-    onDragEnter={(e) => { if (!trazArquivos(e)) return; e.preventDefault(); profundidade.current++; setSobre(true); }}
-    onDragOver={(e) => { if (trazArquivos(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+    onDragEnter={(e) => { if (!trazArquivos(e) || !podeSerMarkdown(e)) return; e.preventDefault(); profundidade.current++; setSobre(true); }}
+    onDragOver={(e) => { if (trazArquivos(e) && podeSerMarkdown(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
     onDragLeave={(e) => { if (!trazArquivos(e)) return; profundidade.current = Math.max(0, profundidade.current - 1); if (!profundidade.current) setSobre(false); }}
-    onDrop={(e) => { if (!trazArquivos(e)) return; e.preventDefault(); profundidade.current = 0; setSobre(false); void importar(Array.from(e.dataTransfer.files)); }}>
+    onDrop={(e) => {
+      if (!trazArquivos(e)) return;
+      profundidade.current = 0;
+      setSobre(false);
+      const arquivos = Array.from(e.dataTransfer.files);
+      // Nenhum .md: não é conosco. Sem preventDefault, o evento segue e o Cofre pode ficar com o arquivo.
+      if (!arquivos.some((a) => EXTENSAO_MD.test(a.name))) return;
+      e.preventDefault();
+      void importar(arquivos);
+    }}>
     {children}
     {sobre && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-2xl border-2 border-dashed border-steel-400 bg-surface-1/85 backdrop-blur-sm">
       <p className="flex items-center gap-2 text-sm font-medium text-text-primary"><FileUp size={18} />Solte os arquivos .md para importar{pasta ? " nesta pasta" : ""}</p>

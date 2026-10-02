@@ -1,3 +1,4 @@
+import { escolher, opcoesDe } from "@/test-helpers/escolher";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PX_POR_MINUTO, type ItemAgenda, type Posicao } from "@/lib/agenda-tempo";
@@ -179,9 +180,8 @@ describe("encaixe (snap)", () => {
   });
   it("o seletor lista as opções e avisa a mudança", () => {
     const { onMudarEncaixe } = montar([]);
-    const seletor = screen.getByLabelText("Encaixe ao arrastar") as HTMLSelectElement;
-    expect([...seletor.options].map((o) => o.value)).toEqual(["5", "10", "15", "30", "60"]);
-    fireEvent.change(seletor, { target: { value: "30" } });
+    expect(opcoesDe("Encaixe ao arrastar")).toEqual(["5 min", "10 min", "15 min", "30 min", "1 h"]);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "30 min" }));
     expect(onMudarEncaixe).toHaveBeenCalledWith(30);
   });
 });

@@ -1,0 +1,3 @@
+@keyframes ecos-scan-linha { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(calc(var(--ecos-scan-lado) - 2px)); opacity: 0; } }
+.ecos-scan-linha { animation: ecos-scan-linha 2.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ecos-scan-linha { animation: none; opacity: .8; top: 50%; } }

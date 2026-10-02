@@ -48,6 +48,13 @@ pub async fn ativar(State(state): State<AppState>, Json(payload): Json<SenhaPayl
     let chave = crypto::derivar_chave(&payload.senha, &salt);
     state.db.destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave))?;
 
+    // Cofre de equipe nasce sem as categorias pessoais herdadas do Nexus (a migração 0003 as semeia em todo arquivo novo).
+    // A equipe começa sem categorias (cria as suas; até lá os lançamentos ficam "sem categoria"). Roda só na ativação:
+    // o Cofre é novo e ainda não tem lançamentos.
+    if uid.starts_with("eq_") {
+        state.db.with(|conn| conn.execute("DELETE FROM categoria WHERE substr(id, 1, 10) = 'cat_nexus_'", [])).await?;
+    }
+
     let meta = VaultMeta { salt_hex: crypto::para_hex(&salt) };
     meta.salvar(&state.config.meta_de(&uid))?;
 
@@ -79,21 +86,24 @@ pub async fn bloquear(State(state): State<AppState>) -> AppResult<Json<serde_jso
 
 /// `GET /vault/config` (seção 11.14) — `cofre_ativado` + saldo consolidado
 /// por Conta (só quando destrancado; bloqueado, devolve só o status).
+/// `false` numa build de desenvolvimento sem SQLCipher: o arquivo do Cofre fica legível em disco (ver `crypto.rs`).
+pub const CIFRADO: bool = cfg!(feature = "real-sqlcipher");
+
 pub async fn config(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
     let ativado = VaultMeta::carregar(&state.config.meta_de(&usuario()?))?.is_some();
     let destrancado = state.db.esta_destrancado();
 
     if !destrancado {
-        return Ok(Json(serde_json::json!({ "cofre_ativado": ativado, "destrancado": false, "saldos_por_conta": [] })));
+        return Ok(Json(serde_json::json!({ "cofre_ativado": ativado, "destrancado": false, "saldos_por_conta": [], "cifrado": CIFRADO })));
     }
 
     let saldos: Vec<serde_json::Value> = state
         .db
         .with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT c.id, c.nome, COALESCE(SUM(CASE WHEN t.tipo = 'entrada' THEN t.valor_centavos ELSE -t.valor_centavos END), 0) \
+                "SELECT c.id, c.nome, c.saldo_inicial_centavos + COALESCE(SUM(CASE WHEN t.tipo = 'entrada' THEN t.valor_centavos ELSE -t.valor_centavos END), 0) \
                  FROM conta c LEFT JOIN transacao t ON t.conta_id = c.id AND t.status = 'efetivada' \
-                 GROUP BY c.id, c.nome",
+                 GROUP BY c.id, c.nome, c.saldo_inicial_centavos",
             )?;
             let linhas = stmt
                 .query_map([], |r| Ok(serde_json::json!({ "conta_id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "saldo_centavos": r.get::<_, i64>(2)? })))?
@@ -102,5 +112,5 @@ pub async fn config(State(state): State<AppState>) -> AppResult<Json<serde_json:
         })
         .await?;
 
-    Ok(Json(serde_json::json!({ "cofre_ativado": ativado, "destrancado": true, "saldos_por_conta": saldos })))
+    Ok(Json(serde_json::json!({ "cofre_ativado": ativado, "destrancado": true, "saldos_por_conta": saldos, "cifrado": CIFRADO })))
 }

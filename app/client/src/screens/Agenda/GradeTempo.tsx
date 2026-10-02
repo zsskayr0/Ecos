@@ -1,3 +1,4 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { CheckCircle2, Expand, Flag, Inbox, ListChecks, MoreHorizontal, Trash2, X } from "lucide-react";
 import {
@@ -599,12 +600,12 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
             ))}
           </span>
         </div>
-        <label className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           Encaixe
-          <select aria-label="Encaixe ao arrastar" value={encaixe} onChange={(e) => onMudarEncaixe(Number(e.target.value))} className="rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary">
-            {OPCOES_ENCAIXE.map((m) => <option key={m} value={m}>{m === 60 ? "1 h" : `${m} min`}</option>)}
-          </select>
-        </label>
+          <SeletorEcos ariaLabel="Encaixe ao arrastar" valor={String(encaixe)} onChange={(v) => onMudarEncaixe(Number(v))} alinhar="dir"
+            classe="rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary"
+            opcoes={OPCOES_ENCAIXE.map((m) => ({ valor: String(m), rotulo: m === 60 ? "1 h" : `${m} min` }))} />
+        </div>
         </div>
       </div>
 

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronLeft, AlertTriangle } from "lucide-react";
+import { ChevronLeft, AlertTriangle, ScanLine } from "lucide-react";
 import { equipes, ApiError } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAuth } from "@/lib/auth-context";
+import { TIPOS_DE_EQUIPE, type TipoEquipe } from "@/lib/tipo-equipe";
 
 /**
  * GAP-05 (resolved): "Criar ou entrar numa Equipe" — the spec (section
@@ -18,6 +19,7 @@ export function TeamCreateJoinScreen() {
   const { recarregarPerfil } = useAuth();
   const [modo, setModo] = useState<"criar" | "entrar">("criar");
   const [nome, setNome] = useState("");
+  const [tipo, setTipo] = useState<TipoEquipe>("pessoal");
   const [codigo, setCodigo] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function TeamCreateJoinScreen() {
     setCarregando(true);
     setErro(null);
     try {
-      const r = await equipes.criar(nome.trim());
+      const r = await equipes.criar(nome.trim(), tipo);
       notificar();
       // `perfil.equipes` (auth context) comes from `/me`, fetched only
       // once at login — without this, the new Team wouldn't show up in
@@ -74,10 +76,24 @@ export function TeamCreateJoinScreen() {
       </div>
 
       {modo === "criar" ? (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Nome da Equipe</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Família" className="ecos-input" autoFocus />
-        </label>
+        <div className="flex flex-col gap-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Nome da Equipe</span>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Família" className="ecos-input" autoFocus />
+          </label>
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Tipo</legend>
+            {TIPOS_DE_EQUIPE.map((t) => (
+              <label key={t.valor} className={`flex cursor-pointer flex-col rounded-2xl border px-4 py-3 ${tipo === t.valor ? "border-steel-700 bg-surface-2" : "border-border bg-surface-1"}`}>
+                <span className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                  <input type="radio" name="tipo-equipe" checked={tipo === t.valor} onChange={() => setTipo(t.valor)} />
+                  {t.rotulo}
+                </span>
+                <span className="mt-0.5 pl-6 text-xs text-text-muted">{t.descricao}</span>
+              </label>
+            ))}
+          </fieldset>
+        </div>
       ) : (
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Código de convite</span>
@@ -89,6 +105,12 @@ export function TeamCreateJoinScreen() {
             autoFocus
           />
         </label>
+      )}
+      {modo === "entrar" && (
+        <button type="button" onClick={() => navigate(`${baseEquipe}/escanear`)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-surface-2 py-3 text-sm font-semibold text-text-primary">
+          <ScanLine size={16} strokeWidth={1.75} />
+          Escanear QR code
+        </button>
       )}
 
       {erro && (

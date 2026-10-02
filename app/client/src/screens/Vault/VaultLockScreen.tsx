@@ -12,17 +12,22 @@ import { ApiError } from "@/lib/api";
 export function VaultLockScreen({
   primeiraVez,
   onSubmeter,
+  permitirLembrar = false,
   equipe,
 }: {
   /** Nome da equipe dona deste Cofre; ausente = o Cofre pessoal. */
   equipe?: string;
   primeiraVez: boolean;
-  onSubmeter: (senha: string) => Promise<void>;
+  /** `lembrar`: guardar a senha neste computador (só quando `permitirLembrar`). */
+  onSubmeter: (senha: string, lembrar: boolean) => Promise<void>;
+  /** Mostra "Lembrar a senha neste computador" (Windows). */
+  permitirLembrar?: boolean;
 }) {
   const [senha, setSenha] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [lembrar, setLembrar] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +38,7 @@ export function VaultLockScreen({
     }
     setCarregando(true);
     try {
-      await onSubmeter(senha);
+      await onSubmeter(senha, permitirLembrar && lembrar);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível conectar ao Cofre.");
     } finally {
@@ -74,6 +79,16 @@ export function VaultLockScreen({
             placeholder="Confirme a senha"
             className="ecos-input text-center"
           />
+        )}
+
+        {permitirLembrar && (
+          <label className="flex items-start gap-2 text-left text-xs text-text-secondary">
+            <input type="checkbox" className="mt-0.5" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} />
+            <span>
+              Lembrar a senha neste computador
+              <span className="block text-text-muted">Fica no Gerenciador de Credenciais do Windows, só neste usuário. “Bloquear” continua pedindo a senha.</span>
+            </span>
+          </label>
         )}
 
         {erro && (

@@ -48,12 +48,13 @@ pub async fn criar_ou_encontrar(State(state): State<AppState>, Json(payload): Js
     }
 
     let id = new_id();
+    let autor = crate::db::autor_atual();
     state
         .db
         .with({
             let id = id.clone();
             let nome = nome.clone();
-            move |conn| conn.execute("INSERT INTO beneficiario (id, nome, documento, observacoes) VALUES (?1, ?2, ?3, ?4)", rusqlite::params![id, nome, payload.documento, payload.observacoes])
+            move |conn| conn.execute("INSERT INTO beneficiario (id, nome, documento, observacoes, criado_por) VALUES (?1, ?2, ?3, ?4, ?5)", rusqlite::params![id, nome, payload.documento, payload.observacoes, autor])
         })
         .await?;
     Ok(Json(serde_json::json!({ "id": id, "nome": nome, "novo": true })))

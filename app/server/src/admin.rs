@@ -167,15 +167,15 @@ pub async fn listar_equipes(State(state): State<AppState>, Extension(usuario): E
     let equipes: Vec<serde_json::Value> = state
         .db
         .with(|conn| {
-            let mut eq = conn.prepare("SELECT id, nome FROM equipe ORDER BY nome COLLATE NOCASE")?;
+            let mut eq = conn.prepare("SELECT id, nome, tipo FROM equipe ORDER BY nome COLLATE NOCASE")?;
             let mut mem = conn.prepare("SELECT m.usuario_id, u.nome_usuario, u.nome, m.cargo FROM membro_equipe m JOIN usuario u ON u.id = m.usuario_id WHERE m.equipe_id = ?1 ORDER BY u.nome_usuario COLLATE NOCASE")?;
-            let base = eq.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+            let base = eq.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
             let mut saida = Vec::new();
-            for (id, nome) in base {
+            for (id, nome, tipo) in base {
                 let membros = mem
                     .query_map([&id], |r| Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "nome_usuario": r.get::<_, String>(1)?, "nome": r.get::<_, Option<String>>(2)?, "cargo": r.get::<_, String>(3)? })))?
                     .collect::<Result<Vec<_>, _>>()?;
-                saida.push(serde_json::json!({ "id": id, "nome": nome, "membros": membros }));
+                saida.push(serde_json::json!({ "id": id, "nome": nome, "tipo": tipo, "membros": membros }));
             }
             Ok(saida)
         })

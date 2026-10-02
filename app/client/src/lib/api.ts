@@ -9,6 +9,7 @@ import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, Relatorio
  * shell has no origin to be "the same" as, so it reads a real address the
  * user configured in Configurações instead.
  */
+import type { TipoEquipe } from "./tipo-equipe";
 import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
 import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
 import { invoke } from "@tauri-apps/api/core";
@@ -303,7 +304,11 @@ async function reqBlob(path: string, tentouRenovar = false): Promise<Blob | null
   try {
     resp = await fetch(`${BASE()}${path}`, {
       credentials: "include",
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      cache: path.startsWith("/vault/") ? "no-store" : undefined,
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(path.startsWith("/vault/") ? { "x-ecos-espaco": espacoDoCofre } : {}),
+      },
     });
   } catch {
     throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
@@ -315,6 +320,7 @@ async function reqBlob(path: string, tentouRenovar = false): Promise<Blob | null
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const body = await resp.json().catch(() => null);
+    if (path.startsWith("/vault/") && (body?.error === "VAULT_LOCKED" || resp.status === 423)) window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
     throw new ApiError(body?.error ?? "UNKNOWN", body?.message ?? mensagemHttp(resp.status), resp.status, body?.campos, body?.retry_after_segundos);
   }
   return resp.blob();
@@ -374,6 +380,8 @@ export const auth = {
     definirAccessToken(resposta.access_token);
     return resposta;
   },
+  /** Define uma senha nova de login a partir da recovery key (não toca na senha do Cofre). */
+  recuperarSenha: (recovery_key: string, nova_senha: string) => post<{ ok: true }>("/auth/recuperar-senha", { recovery_key, nova_senha }),
   logout: async () => {
     definirAccessToken(null);
     if (estaNoTauri()) {
@@ -384,7 +392,7 @@ export const auth = {
     await post<void>("/auth/logout");
   },
   perfil: () =>
-    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
+    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string; tipo?: TipoEquipe }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
   aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
   /** Troca a própria senha. Com senha temporária (conta criada pela administração) devolve uma recovery key nova, que só aparece uma vez. */
@@ -393,7 +401,7 @@ export const auth = {
 
 /** Administração da instância (só quem administra; para as demais pessoas as rotas respondem 404). */
 export interface UsuarioAdmin { id: string; nome_usuario: string; nome: string | null; papel: "admin" | "usuario"; criado_em: string; deve_trocar_senha: boolean }
-export interface EquipeAdmin { id: string; nome: string; membros: { usuario_id: string; nome_usuario: string; nome: string | null; cargo: string }[] }
+export interface EquipeAdmin { id: string; nome: string; tipo?: TipoEquipe; membros: { usuario_id: string; nome_usuario: string; nome: string | null; cargo: string }[] }
 export const admin = {
   listarUsuarios: () => get<UsuarioAdmin[]>("/admin/usuarios"),
   criarUsuario: (nome_usuario: string, nome: string | undefined, papel: "admin" | "usuario") =>
@@ -417,7 +425,8 @@ export const conta = {
 };
 
 export const avatarPerfil = {
-  obter: () => reqBlob("/me/avatar"),
+  /** Sem `usuarioId`, a foto de quem está logado; com ele, a de outra pessoa. */
+  obter: (usuarioId?: string) => reqBlob(usuarioId ? `/usuarios/${encodeURIComponent(usuarioId)}/avatar` : "/me/avatar"),
   enviar: (arquivo: File) => {
     const dados = new FormData();
     dados.append("arquivo", arquivo);
@@ -875,10 +884,10 @@ export const rotina = {
 };
 
 export const equipes = {
-  listarMinhas: () => get<{ id: string; nome: string; cargo: string }[]>("/equipes"),
-  criar: (nome: string) => post<{ id: string }>("/equipes", { nome }),
-  obter: (id: string) => get<{ id: string; nome: string; estatisticas: { notas: number; tarefas: number } }>(`/equipes/${id}`),
-  atualizar: (id: string, nome: string) => patch<{ ok: true }>(`/equipes/${id}`, { nome }),
+  listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number }[]>("/equipes"),
+  criar: (nome: string, tipo: TipoEquipe = "pessoal") => post<{ id: string }>("/equipes", { nome, tipo }),
+  obter: (id: string) => get<{ id: string; nome: string; tipo: TipoEquipe; estatisticas: { notas: number; tarefas: number } }>(`/equipes/${id}`),
+  atualizar: (id: string, nome: string, tipo?: TipoEquipe) => patch<{ ok: true }>(`/equipes/${id}`, { nome, ...(tipo ? { tipo } : {}) }),
   // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
   excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
   listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; nome?: string }[]>(`/equipes/${id}/membros`),
@@ -946,6 +955,8 @@ export const notificacoes = {
 // --- Vault / Cofre (section 11.14, via /vault/* proxy) ---------------------
 
 export interface TransacaoApi {
+  /** Quantos anexos (comprovantes) o lançamento tem. */
+  anexos?: number;
   conciliada?: boolean;
   data_ocorrencia?: string | null;
   transacao_recorrente_id?: string | null;
@@ -963,6 +974,8 @@ export interface TransacaoApi {
   observacoes: string | null;
   origem: string;
   espaco: string;
+  /** Id de quem lançou. Definido pelo servidor na criação; nunca editável. */
+  criado_por?: string | null;
   criado_em: string;
   atualizado_em: string;
 }
@@ -975,6 +988,7 @@ export interface CategoriaApi {
   cor: string;
   padrao: boolean;
   espaco: string;
+  criado_por?: string | null;
 }
 
 export interface ContaApi {
@@ -986,6 +1000,32 @@ export interface ContaApi {
   cor: string;
   padrao: boolean;
   espaco: string;
+  criado_por?: string | null;
+  tipo: TipoConta;
+  /** Código COMPE do banco (ex.: "260"). */
+  codigo_banco: string | null;
+  saldo_inicial_centavos: number;
+}
+
+export type TipoConta = "corrente" | "poupanca" | "carteira" | "investimento" | "cartao" | "outro";
+
+export interface ContaPayload {
+  nome: string;
+  banco?: string | null;
+  codigo_banco?: string | null;
+  agencia?: string | null;
+  numero_conta?: string | null;
+  cor?: string;
+  tipo?: TipoConta;
+  saldo_inicial_centavos?: number;
+  espaco?: string;
+}
+
+/** O que usa uma conta (para mostrar antes de apagá-la). */
+export interface ContaUsoApi {
+  transacoes: number;
+  recorrencias: number;
+  amostra: { id: string; data: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number }[];
 }
 
 export interface BeneficiarioApi {
@@ -999,24 +1039,97 @@ export interface BeneficiarioApi {
 export const FORMAS_PAGAMENTO = ["pix", "pix_automatico", "ted", "cartao", "dinheiro", "boleto", "outro"] as const;
 export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number];
 
+/** O que usa uma categoria (para mostrar antes de apagá-la). `tipos` são os tipos dos itens que a usam. */
+export interface CategoriaUsoApi {
+  transacoes: number;
+  recorrencias: number;
+  pendencias: number;
+  tipos: ("entrada" | "saida")[];
+  /** Os lançamentos mais recentes (até 100). */
+  amostra: { id: string; data: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number }[];
+}
+
+/** Arquivo anexado a uma transação (o conteúdo vem de `vault.anexos.conteudo`). */
+export interface AnexoApi {
+  id: string;
+  nome_arquivo: string;
+  mime_type: string;
+  tamanho_bytes: number;
+  checksum_sha256: string;
+  criado_em: string;
+}
+
+/** Comprovante arquivado, com os dados da transação a que pertence: é de lá que vêm data, categoria, pagador e conta. */
+export interface ComprovanteApi {
+  id: string;
+  nome_arquivo: string;
+  mime_type: string;
+  tamanho_bytes: number;
+  criado_em: string;
+  transacao: {
+    id: string;
+    data: string;
+    descricao: string;
+    tipo: "entrada" | "saida";
+    valor_centavos: number;
+    categoria_id: string | null;
+    beneficiario_id: string | null;
+    conta_id: string | null;
+  };
+}
+
+/** Estado da leitura automática: `indisponivel` = servidor sem OCR (ou formato que ele não lê, como HEIC). */
+export type OcrStatus = "processando" | "pronto" | "sem_texto" | "indisponivel" | "falhou";
+
+/** O que a leitura sugeriu. Cada confiança vai de 0 (não encontrou) a 1; `geral` é o pior entre valor e data. */
+export interface SugestaoComprovante {
+  descricao: string | null;
+  valor_centavos: number | null;
+  data: string | null;
+  tipo: "entrada" | "saida" | null;
+  forma_pagamento: FormaPagamento | null;
+  beneficiario_nome: string | null;
+  documento: string | null;
+  confianca: { valor: number; data: number; tipo: number; beneficiario: number; geral: number };
+}
+
+/** Comprovante recebido que ainda não virou lançamento. */
+export interface RascunhoApi {
+  id: string;
+  nome_arquivo: string;
+  mime_type: string;
+  tamanho_bytes: number;
+  criado_em: string;
+  ocr_status: OcrStatus;
+  tem_miniatura: boolean;
+  sugestao?: SugestaoComprovante | null;
+}
+
+export { ANEXO_TAMANHO_MAXIMO_BYTES } from "./tipos-comprovante";
+
 export const vault = {
   /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
   resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
-  bloquear: () => { window.dispatchEvent(new Event("ecos:cofre-bloqueado")); return post<{ ok: true }>("/vault/bloquear"); },
+  bloquear: () => { window.dispatchEvent(new Event("ecos:bloqueio-manual")); window.dispatchEvent(new Event("ecos:cofre-bloqueado")); return post<{ ok: true }>("/vault/bloquear"); },
   config: () => get<{ cofre_ativado: boolean; destrancado: boolean; saldos_por_conta: { conta_id: string; nome: string; saldo_centavos: number }[] }>("/vault/config"),
 
   contas: {
     listar: () => get<ContaApi[]>("/vault/contas"),
-    criar: (payload: { nome: string; banco?: string; agencia?: string; numero_conta?: string; cor?: string; espaco?: string }) =>
-      post<{ id: string }>("/vault/contas", payload),
+    criar: (payload: ContaPayload) => post<{ id: string }>("/vault/contas", payload),
+    atualizar: (id: string, payload: ContaPayload) => patch<{ ok: true }>(`/vault/contas/${id}`, payload),
+    /** Com itens usando a conta, o servidor exige o destino: outra conta ou `sem_conta`. */
+    excluir: (id: string, destino?: { mover_para: string } | { sem_conta: true }) => del<{ ok: true; movidos?: number }>(`/vault/contas/${id}`, destino),
+    uso: (id: string) => get<ContaUsoApi>(`/vault/contas/${id}/uso`),
   },
   categorias: {
     listar: () => get<CategoriaApi[]>("/vault/categorias"),
     criar: (payload: { nome: string; tipo?: string; icone?: string; cor?: string; espaco?: string }) => post<{ id: string }>("/vault/categorias", payload),
     atualizar: (id: string, payload: { nome: string; tipo: string; icone?: string | null; cor: string }) => patch<{ ok: true }>(`/vault/categorias/${id}`, payload),
-    excluir: (id: string) => del<{ ok: true }>(`/vault/categorias/${id}`),
+    /** Com itens usando a categoria, o servidor exige o destino: outra categoria ou `sem_categoria`. */
+    excluir: (id: string, destino?: { mover_para: string } | { sem_categoria: true }) => del<{ ok: true; movidos?: number }>(`/vault/categorias/${id}`, destino),
+    uso: (id: string) => get<CategoriaUsoApi>(`/vault/categorias/${id}/uso`),
   },
   beneficiarios: {
     listar: () => get<BeneficiarioApi[]>("/vault/beneficiarios"),
@@ -1046,10 +1159,45 @@ export const vault = {
       patch<TransacaoApi>(`/vault/transacoes/${id}`, payload),
     excluir: (id: string) => del<{ ok: true }>(`/vault/transacoes/${id}`),
   },
+  anexos: {
+    listar: (transacaoId: string) => get<AnexoApi[]>(`/vault/transacoes/${transacaoId}/anexos`),
+    /** `duplicado_em` é o id da outra transação onde o mesmo arquivo já estava, se houver. */
+    enviar: (transacaoId: string, arquivo: File) => {
+      const dados = new FormData();
+      dados.append("arquivo", arquivo);
+      return req<{ id: string; nome_arquivo: string; tamanho_bytes: number; duplicado_em: string | null }>(`/vault/transacoes/${transacaoId}/anexos`, { method: "POST", body: dados });
+    },
+    excluir: (id: string) => del<{ ok: true }>(`/vault/anexos/${id}`),
+    /** `null` quando o anexo não existe mais. */
+    conteudo: (id: string) => reqBlob(`/vault/anexos/${id}/conteudo`),
+    /** JPEG pequeno gerado no servidor; `null` para PDF/HEIC ou enquanto a leitura não terminou. */
+    miniatura: (id: string) => reqBlob(`/vault/anexos/${id}/miniatura`),
+  },
+  comprovantes: {
+    listar: (params: { data_de?: string; data_ate?: string; categoria_id?: string; beneficiario_id?: string; conta_id?: string; q?: string; limit?: number; offset?: number } = {}) =>
+      get<{ items: ComprovanteApi[] }>(`/vault/comprovantes${qs(params)}`),
+    /** Guarda o arquivo como rascunho e começa a leitura. `ja_anexado_em` = lançamento onde o mesmo arquivo já está. */
+    receber: (arquivo: File) => {
+      const dados = new FormData();
+      dados.append("arquivo", arquivo);
+      return req<{ id: string; nome_arquivo: string; mime_type: string; tamanho_bytes: number; reaproveitado: boolean; ja_anexado_em: string | null; ocr_status: OcrStatus }>("/vault/comprovantes", { method: "POST", body: dados });
+    },
+    rascunhos: {
+      listar: () => get<{ items: RascunhoApi[] }>("/vault/comprovantes/rascunhos"),
+      obter: (id: string) => get<RascunhoApi>(`/vault/comprovantes/rascunhos/${id}`),
+      conteudo: (id: string) => reqBlob(`/vault/comprovantes/rascunhos/${id}/conteudo`),
+      miniatura: (id: string) => reqBlob(`/vault/comprovantes/rascunhos/${id}/miniatura`),
+      reprocessar: (id: string) => post<{ ocr_status: OcrStatus }>(`/vault/comprovantes/rascunhos/${id}/reprocessar`),
+      descartar: (id: string) => del<{ ok: true }>(`/vault/comprovantes/rascunhos/${id}`),
+      /** Cria o lançamento e move o arquivo para os anexos dele, tudo ou nada. */
+      confirmar: (id: string, payload: { tipo: "entrada" | "saida"; valor_centavos: number; data: string; descricao: string; categoria_id?: string; conta_id?: string; beneficiario_id?: string; forma_pagamento?: string; status?: "efetivada" | "pendente"; observacoes?: string }) =>
+        post<TransacaoApi>(`/vault/comprovantes/rascunhos/${id}/confirmar`, payload),
+    },
+  },
 };
 
 export const financeiro = {
-  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean; categoria_id?: string | null}>>("/vault/recorrencias"),
+  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean; categoria_id?: string | null; conta_id?: string | null}>>("/vault/recorrencias"),
   criarRecorrencia: (p: {descricao: string; tipo: string; valor_centavos: number; frequencia: string; intervalo: number; data_inicio: string; tipo_recorrencia: string; total_parcelas?: number}) => post<{id: string}>("/vault/recorrencias",p),
   excluirRecorrencia: (id: string) => del<{ok: boolean}>(`/vault/recorrencias/${id}`),
   painel: (p: Periodo) => get<Painel>(`/vault/painel${qs({...p})}`),

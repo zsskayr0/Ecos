@@ -122,6 +122,7 @@ fn entidade(
     c: &Connection,
     tabela: &str,
     nome: &Option<String>,
+    autor: &str,
 ) -> rusqlite::Result<Option<String>> {
     let Some(nome) = nome.as_ref().filter(|s| !s.trim().is_empty()) else {
         return Ok(None);
@@ -138,13 +139,13 @@ fn entidade(
     }
     let id = new_id();
     let sql = if tabela == "beneficiario" {
-        format!("INSERT INTO {tabela}(id,nome) VALUES(?1,?2)")
+        format!("INSERT INTO {tabela}(id,nome,criado_por) VALUES(?1,?2,?3)")
     } else if tabela == "categoria" {
-        format!("INSERT INTO {tabela}(id,nome,espaco,tipo) VALUES(?1,?2,'pessoal','ambos')")
+        format!("INSERT INTO {tabela}(id,nome,espaco,tipo,criado_por) VALUES(?1,?2,'pessoal','ambos',?3)")
     } else {
-        format!("INSERT INTO {tabela}(id,nome,espaco) VALUES(?1,?2,'pessoal')")
+        format!("INSERT INTO {tabela}(id,nome,espaco,criado_por) VALUES(?1,?2,'pessoal',?3)")
     };
-    c.execute(&sql, [&id, nome])?;
+    c.execute(&sql, [&id, nome, autor])?;
     Ok(Some(id))
 }
 pub async fn importar(
@@ -155,6 +156,7 @@ pub async fn importar(
         return Err(AppError::new(ErrorCode::ValidationError)
             .with_message("Importe entre 1 e 10.000 linhas"));
     }
+    let autor=crate::db::autor_atual().unwrap_or_default();
     let result=state.db.with(move |c| {
         let tx=c.unchecked_transaction()?;
         let mut erros=Vec::new(); let mut duplicadas=Vec::new(); let mut validas=Vec::new();
@@ -170,8 +172,8 @@ pub async fn importar(
         let quantidade=validas.len();
         if !p.dry_run && erros.is_empty() {
             for l in validas {
-                let categoria=entidade(&tx,"categoria",&l.categoria)?; let beneficiario=entidade(&tx,"beneficiario",&l.beneficiario)?; let conta=entidade(&tx,"conta",&l.conta)?;
-                tx.execute("INSERT INTO transacao(id,tipo,valor_centavos,data,descricao,categoria_id,beneficiario_id,conta_id,forma_pagamento,observacoes,conciliada,status,espaco,criado_por) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'pessoal','usuario_local')",params![new_id(),l.tipo,l.valor_centavos,l.data,l.descricao,categoria,beneficiario,conta,l.forma_pagamento,l.observacoes,l.conciliada,l.status])?;
+                let categoria=entidade(&tx,"categoria",&l.categoria,&autor)?; let beneficiario=entidade(&tx,"beneficiario",&l.beneficiario,&autor)?; let conta=entidade(&tx,"conta",&l.conta,&autor)?;
+                tx.execute("INSERT INTO transacao(id,tipo,valor_centavos,data,descricao,categoria_id,beneficiario_id,conta_id,forma_pagamento,observacoes,conciliada,status,espaco,criado_por) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'pessoal',?13)",params![new_id(),l.tipo,l.valor_centavos,l.data,l.descricao,categoria,beneficiario,conta,l.forma_pagamento,l.observacoes,l.conciliada,l.status,autor])?;
             }
             tx.commit()?;
         }

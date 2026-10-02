@@ -1,3 +1,4 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronsUp, Clock, Equal, Flag, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { PrioridadeTarefa, TarefaResumo } from "@/lib/api";
@@ -334,14 +335,10 @@ export function PlanejamentoQuinzenal({ dias, hoje, rotulo, acoes, tarefas, capa
         <button type="button" aria-pressed={filtro.mostrarConcluidas} onClick={() => setFiltro((f) => ({ ...f, mostrarConcluidas: !f.mostrarConcluidas }))} className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${filtro.mostrarConcluidas ? "border-success/50 bg-success/15 text-success" : "border-border bg-surface-1 text-text-secondary hover:bg-surface-2"}`}>
           <CheckCircle2 size={14} aria-hidden />{filtro.mostrarConcluidas ? "Ocultar concluídas" : "Mostrar concluídas"}{!filtro.mostrarConcluidas && concluidasNoPeriodo > 0 && <span className="text-text-muted">({concluidasNoPeriodo})</span>}
         </button>
-        <select aria-label="Filtrar por prioridade" value={filtro.prioridade ?? ""} onChange={(e) => setFiltro((f) => ({ ...f, prioridade: (e.target.value || null) as PrioridadeTarefa | null }))} className={CLASSE_FILTRO}>
-          <option value="">Todas as prioridades</option>
-          {(["alta", "media", "baixa"] as const).map((p) => <option key={p} value={p}>Prioridade {ROTULO_PRIORIDADE[p].toLowerCase()}</option>)}
-        </select>
-        <select aria-label="Filtrar por tag" value={filtro.tag ?? ""} onChange={(e) => setFiltro((f) => ({ ...f, tag: e.target.value || null }))} className={CLASSE_FILTRO}>
-          <option value="">Todas as tags</option>
-          {tags.map((tag) => <option key={tag} value={tag}>#{tag}</option>)}
-        </select>
+        <SeletorEcos ariaLabel="Filtrar por prioridade" valor={filtro.prioridade ?? ""} onChange={(v) => setFiltro((f) => ({ ...f, prioridade: (v || null) as PrioridadeTarefa | null }))} classe={CLASSE_FILTRO}
+          opcoes={[{ valor: "", rotulo: "Todas as prioridades" }, ...(["alta", "media", "baixa"] as const).map((p) => ({ valor: p as string, rotulo: `Prioridade ${ROTULO_PRIORIDADE[p].toLowerCase()}` }))]} />
+        <SeletorEcos ariaLabel="Filtrar por tag" valor={filtro.tag ?? ""} onChange={(v) => setFiltro((f) => ({ ...f, tag: v || null }))} classe={CLASSE_FILTRO}
+          opcoes={[{ valor: "", rotulo: "Todas as tags" }, ...tags.map((tag) => ({ valor: tag, rotulo: `#${tag}` }))]} />
         {filtrando && <button type="button" onClick={() => setFiltro((f) => ({ ...f, prioridade: null, tag: null }))} className="h-8 rounded-lg px-2 text-xs text-text-muted underline hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan">Limpar filtros</button>}
       </div>
 

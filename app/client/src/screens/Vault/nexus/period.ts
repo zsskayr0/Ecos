@@ -27,6 +27,19 @@ export function defaultPeriod(): Period {
   return { kind: "month", year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
+/** Atalho "Hoje": intervalo de um único dia (data local). */
+export function todayPeriod(): Period {
+  const d = today();
+  const iso = toISO(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  return { kind: "range", from: iso, to: iso };
+}
+
+export function isTodayPeriod(period: Period): boolean {
+  if (period.kind !== "range") return false;
+  const t = todayPeriod() as { from: string; to: string };
+  return period.from === t.from && period.to === t.to;
+}
+
 export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
@@ -58,6 +71,8 @@ export function periodRange(period: Period): { from: string; to: string } {
 export function periodLabel(period: Period): string {
   if (period.kind === "month") return `${MONTH_NAMES[period.month - 1]} ${period.year}`;
   if (period.kind === "year") return `${period.year}`;
+  if (isTodayPeriod(period)) return "Hoje";
+  if (period.from === period.to) return formatBR(period.from);
   return `${formatBR(period.from)} – ${formatBR(period.to)}`;
 }
 

@@ -20,6 +20,10 @@ const PERGUNTAS = [
     a: "Sem a senha, o Cofre não pode ser destravado — é criptografado de propósito. A recovery key da sua conta (mostrada uma única vez no cadastro) não recupera a senha do Cofre, são coisas separadas.",
   },
   {
+    q: "Esqueci minha senha de login, e agora?",
+    a: "Na tela de login, toque em \"Esqueci minha senha\", informe a recovery key da sua conta (mostrada uma única vez no cadastro) e escolha uma senha nova. Sem a chave, só quem administra o Ecos pode redefinir a senha. A chave não recupera a senha do Cofre.",
+  },
+  {
     q: "Posso usar de mais de um dispositivo?",
     a: "Sim, mas sincronização é opt-in — configure em Sincronização & Backup. Sem isso, cada dispositivo mantém sua própria cópia local.",
   },

@@ -1,23 +1,40 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ImagePlus } from "lucide-react";
 import { ApiError, media } from "@/lib/api";
-import { useImagensCompartilhadas } from "@/lib/compartilhar";
+import { useAuth } from "@/lib/auth-context";
+import { useCompartilhados } from "@/lib/compartilhar";
+import { enfileirarComprovantes } from "@/lib/fila-comprovantes";
 import { useAppUI } from "@/lib/ui-context";
 
 type Aviso = { tipo: "enviando" | "erro"; texto: string };
 
 /**
- * Imagens compartilhadas com o Ecos pelo menu do Android: abre uma nota nova (título em foco, pronto pra digitar),
- * sobe cada imagem pra biblioteca e entrega a referência Markdown pra captura, que a coloca no corpo. Só existe
- * logado — sem sessão as imagens ficam à espera no lado nativo até o login.
+ * Arquivos compartilhados com o Ecos pelo menu do Android. O menu tem dois destinos:
+ * - "Ecos": abre uma nota nova (título em foco, pronto pra digitar), sobe cada imagem pra biblioteca e entrega a
+ *   referência Markdown pra captura, que a coloca no corpo;
+ * - "Ecos Cofre": o arquivo (imagem ou PDF) vai para a fila de comprovantes e o Cofre abre na aba Comprovantes. Se o
+ *   Cofre estiver trancado, a pessoa vê a tela de senha primeiro e o arquivo espera em memória até o desbloqueio.
+ * Só existe logado — sem sessão os arquivos ficam à espera no lado nativo até o login.
  */
 export function ReceptorCompartilhamento() {
   const { capturaAberta, trocarTipoCaptura, empilharAnexosDeCaptura, espacoAtivo } = useAppUI();
+  const { perfil } = useAuth();
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const capturaRef = useRef(capturaAberta);
   capturaRef.current = capturaAberta;
+  const perfilRef = useRef(perfil);
+  perfilRef.current = perfil;
 
-  useImagensCompartilhadas(async (arquivos) => {
+  function receberNoCofre(arquivos: File[]) {
+    if (perfilRef.current && !perfilRef.current.cofre_ativado) {
+      setAviso({ tipo: "erro", texto: "O Cofre não está ativado nesta conta. Ative-o nas configurações do Ecos e compartilhe de novo." });
+      return;
+    }
+    enfileirarComprovantes(arquivos);
+    window.dispatchEvent(new CustomEvent("ecos:abrir-cofre", { detail: "/cofre/comprovantes" }));
+  }
+
+  async function receberEmNota(arquivos: File[]) {
     // Já digitando uma nota ou tarefa: a imagem entra nela. Senão, começa uma nota nova.
     if (capturaRef.current !== "nota" && capturaRef.current !== "tarefa") trocarTipoCaptura("nota");
     setAviso({ tipo: "enviando", texto: arquivos.length === 1 ? "Anexando a imagem…" : `Anexando ${arquivos.length} imagens…` });
@@ -33,6 +50,13 @@ export function ReceptorCompartilhamento() {
       }
     }
     setAviso(falhas ? { tipo: "erro", texto: falhas === arquivos.length ? ultimoErro : `${falhas} de ${arquivos.length} imagens não foram enviadas.` } : null);
+  }
+
+  useCompartilhados(async (itens) => {
+    const doCofre = itens.filter((i) => i.destino === "cofre").map((i) => i.arquivo);
+    const deNota = itens.filter((i) => i.destino === "nota").map((i) => i.arquivo);
+    if (doCofre.length) receberNoCofre(doCofre);
+    if (deNota.length) await receberEmNota(deNota);
   });
 
   useEffect(() => {

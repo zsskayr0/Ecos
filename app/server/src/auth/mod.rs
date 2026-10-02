@@ -403,9 +403,9 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
         .with({
             let usuario_id = usuario_id.clone();
             move |conn| {
-                let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
+                let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo, e.tipo FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
                 let linhas = stmt
-                    .query_map([&usuario_id], |r| Ok(serde_json::json!({"id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)?})))?
+                    .query_map([&usuario_id], |r| Ok(serde_json::json!({"id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)?, "tipo": r.get::<_, String>(3)?})))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(linhas)
             }

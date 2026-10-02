@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { equipes as equipesApi } from "./api";
 import { useRefreshBus } from "./refresh-bus";
+import type { TipoEquipe } from "./tipo-equipe";
 
 export interface MinhaEquipe {
   id: string;
   nome: string;
   cargo: string;
+  tipo: TipoEquipe;
+  /** Quantas pessoas a equipe tem (inclui quem está logado). */
+  membros: number;
 }
 
 /**

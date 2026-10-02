@@ -18,11 +18,12 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "beneficiario_id": r.get::<_, Option<String>>(5)?, "transacao_recorrente_id": r.get::<_, Option<String>>(6)?,
         "observacoes": r.get::<_, Option<String>>(7)?, "espaco": r.get::<_, String>(8)?,
         "criado_em": r.get::<_, String>(9)?, "atualizado_em": r.get::<_, String>(10)?,
+        "criado_por": r.get::<_, Option<String>>(11)?,
     }))
 }
 
 const COLUNAS: &str = "id, tipo, descricao, valor_centavos, categoria_id, beneficiario_id, transacao_recorrente_id, \
-     observacoes, espaco, criado_em, atualizado_em";
+     observacoes, espaco, criado_em, atualizado_em, criado_por";
 
 pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
     let linhas: Vec<serde_json::Value> = state
@@ -63,15 +64,16 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<PendenciaP
         return Err(AppError::new(ErrorCode::TransactionInvalidAmount));
     }
     let id = new_id();
+    let autor = crate::db::autor_atual();
     state
         .db
         .with({
             let id = id.clone();
             move |conn| {
                 conn.execute(
-                    "INSERT INTO pendencia_avulsa (id, tipo, descricao, valor_centavos, categoria_id, beneficiario_id, observacoes, espaco) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    rusqlite::params![id, payload.tipo, payload.descricao, payload.valor_centavos, payload.categoria_id, payload.beneficiario_id, payload.observacoes, payload.espaco],
+                    "INSERT INTO pendencia_avulsa (id, tipo, descricao, valor_centavos, categoria_id, beneficiario_id, observacoes, espaco, criado_por) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    rusqlite::params![id, payload.tipo, payload.descricao, payload.valor_centavos, payload.categoria_id, payload.beneficiario_id, payload.observacoes, payload.espaco, autor],
                 )
             }
         })
@@ -98,7 +100,7 @@ pub async fn converter(State(state): State<AppState>, Path(id): Path<String>, Js
         let existente: Option<String> = tx.query_row("SELECT transacao_id FROM pendencia_convertida WHERE pendencia_id=?1", [&id], |r| r.get(0)).optional()?;
         if existente.is_some() { return Ok(existente); }
         let transacao_id = new_id();
-        let n = tx.execute("INSERT INTO transacao (id,tipo,valor_centavos,data,descricao,categoria_id,beneficiario_id,observacoes,espaco,criado_por,conciliada) SELECT ?1,tipo,valor_centavos,?2,descricao,categoria_id,beneficiario_id,observacoes,espaco,'usuario_local',1 FROM pendencia_avulsa WHERE id=?3", rusqlite::params![transacao_id,payload.data.to_string(),id])?;
+        let n = tx.execute("INSERT INTO transacao (id,tipo,valor_centavos,data,descricao,categoria_id,beneficiario_id,observacoes,espaco,criado_por,conciliada) SELECT ?1,tipo,valor_centavos,?2,descricao,categoria_id,beneficiario_id,observacoes,espaco,COALESCE(?4,criado_por,'usuario_local'),1 FROM pendencia_avulsa WHERE id=?3", rusqlite::params![transacao_id,payload.data.to_string(),id,crate::db::autor_atual()])?;
         if n == 0 { return Ok(None); }
         tx.execute("DELETE FROM pendencia_avulsa WHERE id=?1", [&id])?;
         tx.execute("INSERT INTO pendencia_convertida VALUES(?1,?2)", [&id,&transacao_id])?;

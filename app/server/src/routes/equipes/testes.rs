@@ -64,3 +64,34 @@ async fn nenhuma_resposta_expoe_hash_de_senha_recovery_key_hash_ou_sessao() {
         }
     }
 }
+
+#[tokio::test]
+async fn equipe_tem_tipo_pessoal_ou_corporativo() {
+    let state = novo_estado();
+    state.db.with(|c| {
+        c.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash) VALUES ('u1', 'u1', 'h', 'r'), ('u2', 'u2', 'h', 'r')", [])?;
+        Ok(())
+    }).await.unwrap();
+    let token = session::emitir_access_token("u1", SEGREDO).unwrap();
+
+    let (status, nova) = chamar(&state, "POST", "/api/v1/equipes", Some(&token), json!({ "nome": "Casa" })).await;
+    assert_eq!(status, StatusCode::OK);
+    let casa = nova["id"].as_str().unwrap().to_string();
+    let (_, corp) = chamar(&state, "POST", "/api/v1/equipes", Some(&token), json!({ "nome": "Empresa", "tipo": "corporativo" })).await;
+    let empresa = corp["id"].as_str().unwrap().to_string();
+    let (status, _) = chamar(&state, "POST", "/api/v1/equipes", Some(&token), json!({ "nome": "X", "tipo": "banana" })).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "tipo desconhecido é recusado");
+
+    let (_, lista) = chamar(&state, "GET", "/api/v1/equipes", Some(&token), Value::Null).await;
+    let tipo_de = |id: &str| lista.as_array().unwrap().iter().find(|e| e["id"] == id).unwrap()["tipo"].as_str().unwrap().to_string();
+    assert_eq!((tipo_de(&casa).as_str(), tipo_de(&empresa).as_str()), ("pessoal", "corporativo"), "sem tipo, nasce pessoal/familiar");
+
+    let (status, _) = chamar(&state, "PATCH", &format!("/api/v1/equipes/{casa}"), Some(&token), json!({ "nome": "Casa", "tipo": "corporativo" })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, obtida) = chamar(&state, "GET", &format!("/api/v1/equipes/{casa}"), Some(&token), Value::Null).await;
+    assert_eq!(obtida["tipo"], "corporativo");
+    let (status, _) = chamar(&state, "PATCH", &format!("/api/v1/equipes/{casa}"), Some(&token), json!({ "nome": "Casa" })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, obtida) = chamar(&state, "GET", &format!("/api/v1/equipes/{casa}"), Some(&token), Value::Null).await;
+    assert_eq!(obtida["tipo"], "corporativo", "renomear sem mandar tipo não o altera");
+}

@@ -1,3 +1,4 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, KeyRound, Shield, UserPlus, X } from "lucide-react";
 import { admin, ApiError, type EquipeAdmin, type UsuarioAdmin } from "@/lib/api";
@@ -131,13 +132,13 @@ export function AdministracaoScreen() {
               </div>
             ))}
             {disponiveis.length > 0 && (
-              <label className="flex items-center gap-2 border-t border-border/60 px-4 py-2.5 text-sm text-text-secondary">
+              <div className="flex items-center gap-2 border-t border-border/60 px-4 py-2.5 text-sm text-text-secondary">
                 <UserPlus size={15} />
-                <select value="" disabled={ocupado} onChange={(e) => { const id = e.target.value; if (id) void executar(async () => { await admin.adicionarMembro(eq.id, id); }); }} className="ecos-input flex-1" aria-label={`Adicionar pessoa a ${eq.nome}`}>
-                  <option value="">Adicionar pessoa…</option>
-                  {disponiveis.map((u) => <option key={u.id} value={u.id}>{nomeDe(u)} (@{u.nome_usuario})</option>)}
-                </select>
-              </label>
+                <div className="min-w-0 flex-1">
+                  <SeletorEcos valor="" disabled={ocupado} onChange={(id) => { if (id) void executar(async () => { await admin.adicionarMembro(eq.id, id); }); }} classe="ecos-input w-full" ariaLabel={`Adicionar pessoa a ${eq.nome}`}
+                    opcoes={[{ valor: "", rotulo: "Adicionar pessoa…" }, ...disponiveis.map((u) => ({ valor: u.id, rotulo: `${nomeDe(u)} (@${u.nome_usuario})` }))]} />
+                </div>
+              </div>
             )}
           </div>
         );

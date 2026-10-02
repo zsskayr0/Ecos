@@ -17,6 +17,16 @@ tokio::task_local! {
     pub static USUARIO: String;
 }
 
+tokio::task_local! {
+    /// Quem está agindo de fato. No Cofre de uma equipe o dono (`USUARIO`) é a equipe; o autor é a pessoa.
+    pub static AUTOR: String;
+}
+
+/// Autor da requisição em curso; sem ele (jobs), cai no dono do cofre.
+pub fn autor_atual() -> Option<String> {
+    AUTOR.try_with(|a| a.clone()).ok().or_else(usuario_atual)
+}
+
 /// Usuário do escopo atual; `None` fora de um `USUARIO.scope(..)`.
 pub fn usuario_atual() -> Option<String> {
     USUARIO.try_with(|u| u.clone()).ok()
@@ -31,7 +41,11 @@ fn migrations() -> Migrations<'static> {
     Migrations::new(vec![M::up(include_str!("../../migrations/0001_init_up.sql"))
         .down(include_str!("../../migrations/0001_init_down.sql")),
         M::up(include_str!("../../migrations/0002_financeiro.sql")),
-        M::up(include_str!("../../migrations/0003_categorias_nexus.sql"))])
+        M::up(include_str!("../../migrations/0003_categorias_nexus.sql")),
+        M::up(include_str!("../../migrations/0004_autoria.sql")),
+        M::up(include_str!("../../migrations/0005_comprovantes.sql")),
+        M::up(include_str!("../../migrations/0006_ocr_miniatura.sql")),
+        M::up(include_str!("../../migrations/0007_conta_detalhes.sql"))])
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -115,17 +129,70 @@ impl VaultDb {
         .expect("tarefa de banco de dados não deve entrar em pânico")
     }
 
-    /// Snapshot consistente do arquivo aberto (usado pelo backup diário —
-    /// seção 3.5). Sem `real-sqlcipher`, o snapshot também sai sem cifra;
-    /// com a feature ligada, `sqlite3_backup` copia o arquivo já cifrado
-    /// byte a byte (a chave nunca é reescrita em outro formato).
+    /// Snapshot consistente do arquivo aberto (usado pelo backup diário — seção 3.5). Usa `VACUUM INTO`: com
+    /// `real-sqlcipher` a cópia sai cifrada com a mesma chave do original (a chave nunca é reescrita em outro
+    /// formato). `sqlite3_backup` para um arquivo aberto sem chave falha com SQLCipher — foi o que quebrava o
+    /// backup em produção. O destino não pode existir.
     pub async fn snapshot_para(&self, destino: &Path) -> Result<(), VaultDbError> {
-        let destino = destino.to_path_buf();
-        self.with(move |conn| {
-            let mut destino_conn = Connection::open(&destino)?;
-            let backup = rusqlite::backup::Backup::new(conn, &mut destino_conn)?;
-            backup.run_to_completion(5, std::time::Duration::from_millis(50), None)
-        })
-        .await
+        let destino = destino.to_string_lossy().to_string();
+        self.with(move |conn| conn.execute("VACUUM INTO ?1", [&destino]).map(|_| ())).await
+    }
+}
+
+/// Só compila com a cifra de verdade (`--features real-sqlcipher`, a build do Dockerfile). Prova que o arquivo do
+/// Cofre — com comprovante dentro — não é legível sem a chave: nem pelo cabeçalho SQLite, nem abrindo sem senha,
+/// nem com a chave errada.
+#[cfg(all(test, feature = "real-sqlcipher"))]
+mod testes_cifra {
+    use super::*;
+
+    #[tokio::test]
+    async fn arquivo_do_cofre_nao_abre_sem_a_chave_certa() {
+        let raiz = std::env::temp_dir().join(format!("ecos-cifra-{}", ecos_core::new_id()));
+        let caminho = raiz.join("ecos-vault.db");
+        let chave = crate::crypto::para_hex(&crate::crypto::derivar_chave("senha-certa-123", &crate::crypto::gerar_salt()));
+        let segredo = b"COMPROVANTE-SIGILOSO-123456".to_vec();
+        {
+            let db = VaultDb::trancado();
+            USUARIO
+                .scope("ana".into(), async {
+                    db.destrancar(&caminho, &chave).unwrap();
+                    let s = segredo.clone();
+                    db.with(move |c| {
+                        c.execute("INSERT INTO comprovante_rascunho (id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES ('1','a.pdf','application/pdf',1,'x',?1)", [&s])
+                    })
+                    .await
+                    .unwrap();
+                })
+                .await;
+        }
+        // O backup também sai cifrado, com a mesma chave, e restaura o conteúdo.
+        let backup = raiz.join("backup.db");
+        {
+            let db = VaultDb::trancado();
+            USUARIO
+                .scope("ana".into(), async {
+                    db.destrancar(&caminho, &chave).unwrap();
+                    db.snapshot_para(&backup).await.unwrap();
+                })
+                .await;
+        }
+        let copia = std::fs::read(&backup).unwrap();
+        assert!(!copia.starts_with(b"SQLite format 3") && !copia.windows(segredo.len()).any(|w| w == segredo.as_slice()), "backup não pode estar em claro");
+        let aberta = Connection::open(&backup).unwrap();
+        aberta.pragma_update(None, "key", format!("x'{chave}'")).unwrap();
+        let conteudo: Vec<u8> = aberta.query_row("SELECT conteudo FROM comprovante_rascunho WHERE id='1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(conteudo, segredo, "o backup restaura o comprovante com a chave certa");
+        assert!(Connection::open(&backup).unwrap().query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)).is_err(), "backup sem chave não abre");
+
+        let bytes = std::fs::read(&caminho).unwrap();
+        assert!(!bytes.starts_with(b"SQLite format 3"), "o cabeçalho SQLite não pode aparecer em claro");
+        assert!(!bytes.windows(segredo.len()).any(|w| w == segredo.as_slice()), "o conteúdo do comprovante não pode aparecer em claro");
+        let sem_chave = Connection::open(&caminho).unwrap();
+        assert!(sem_chave.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)).is_err(), "sem chave não abre");
+        let errada = Connection::open(&caminho).unwrap();
+        errada.pragma_update(None, "key", format!("x'{}'", "00".repeat(32))).unwrap();
+        assert!(errada.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)).is_err(), "chave errada não abre");
+        let _ = std::fs::remove_dir_all(raiz);
     }
 }

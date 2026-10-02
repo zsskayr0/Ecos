@@ -19,10 +19,17 @@ use crate::error::AppError;
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
+/// Teto do corpo repassado ao Cofre: um comprovante (8 MB) mais o envelope multipart. Sem isso o axum corta em 2 MB.
+pub const LIMITE_CORPO_BYTES: usize = 10 * 1024 * 1024;
+
 /// Cabeçalhos com que este serviço se identifica ao Cofre. O Cofre tem um arquivo e uma senha por pessoa e
 /// só confia no id que vem daqui (nada do que o cliente mandar é repassado: o pedido é montado do zero).
 pub const CABECALHO_USUARIO: &str = "x-ecos-usuario";
 pub const CABECALHO_DONO_LEGADO: &str = "x-ecos-dono-legado";
+
+/// Quem de fato fez o pedido. No Cofre de uma equipe o dono é a equipe, então a autoria (`criado_por`) precisa
+/// vir daqui: o Cofre grava este id e ignora qualquer `criado_por` do corpo.
+pub const CABECALHO_AUTOR: &str = "x-ecos-autor";
 
 /// Espaço do Cofre que o cliente quer usar (`pessoal` ou `equipe:<id>`). Só é lido aqui, nunca repassado.
 pub const CABECALHO_ESPACO: &str = "x-ecos-espaco";
@@ -109,7 +116,7 @@ pub async fn encaminhar(State(state): State<AppState>, Extension(usuario): Exten
             return AppError::new(ErrorCode::VaultLocked).into_response();
         }
     }
-    let mut requisicao = requisicao_interna(&state, method.clone(), caminho, &dono).await;
+    let mut requisicao = requisicao_interna(&state, method.clone(), caminho, &dono).await.header(CABECALHO_AUTOR, usuario.0.as_str());
     if let Some(content_type) = headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
         requisicao = requisicao.header("content-type", content_type);
     }
@@ -124,6 +131,12 @@ pub async fn encaminhar(State(state): State<AppState>, Extension(usuario): Exten
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/json")
                 .to_string();
+            // Quando o Cofre devolve um arquivo, as travas que ele definiu (sem interpretação, sem script) precisam
+            // chegar ao navegador; o resto dos cabeçalhos continua sendo montado aqui.
+            let travas: Vec<(axum::http::HeaderName, String)> = [axum::http::header::X_CONTENT_TYPE_OPTIONS, axum::http::header::CONTENT_SECURITY_POLICY, axum::http::header::CONTENT_DISPOSITION]
+                .into_iter()
+                .filter_map(|nome| Some((nome.clone(), resposta.headers().get(nome.as_str())?.to_str().ok()?.to_string())))
+                .collect();
             let mut corpo = resposta.bytes().await.unwrap_or_default().to_vec();
             if de_equipe {
                 let chave = (usuario.0.clone(), dono.clone());
@@ -148,7 +161,13 @@ pub async fn encaminhar(State(state): State<AppState>, Extension(usuario): Exten
                     _ => {}
                 }
             }
-            (status, [(axum::http::header::CONTENT_TYPE, content_type), (axum::http::header::CACHE_CONTROL, "no-store, private".to_string())], corpo).into_response()
+            let mut resposta = (status, [(axum::http::header::CONTENT_TYPE, content_type), (axum::http::header::CACHE_CONTROL, "no-store, private".to_string())], corpo).into_response();
+            for (nome, valor) in travas {
+                if let Ok(valor) = axum::http::HeaderValue::from_str(&valor) {
+                    resposta.headers_mut().insert(nome, valor);
+                }
+            }
+            resposta
         }
         Err(err) => {
             tracing::error!(error = %err, "falha ao repassar requisição pro ecos-vault-db");
@@ -168,7 +187,7 @@ mod testes {
     // Cofre de mentira: devolve os cabeçalhos internos que recebeu.
     async fn eco(headers: HeaderMap) -> Json<serde_json::Value> {
         let v = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(str::to_string);
-        Json(serde_json::json!({ "usuario": v("x-ecos-usuario"), "legado": v("x-ecos-dono-legado"), "cookie": v("cookie"), "authorization": v("authorization") }))
+        Json(serde_json::json!({ "usuario": v("x-ecos-usuario"), "legado": v("x-ecos-dono-legado"), "autor": v("x-ecos-autor"), "cookie": v("cookie"), "authorization": v("authorization") }))
     }
 
     #[tokio::test]
@@ -203,6 +222,7 @@ mod testes {
                     .header("authorization", format!("Bearer {token}"))
                     .header("x-ecos-usuario", "U1")        // tentativa de se passar por outra pessoa
                     .header("x-ecos-dono-legado", "1")     // e de reivindicar o cofre antigo
+                    .header("x-ecos-autor", "U1")          // ou de assinar em nome dela
                     .body(Body::empty()).unwrap();
                 let r = app.call(req).await.unwrap();
                 assert_eq!(r.status(), StatusCode::OK);
@@ -213,6 +233,7 @@ mod testes {
         assert_eq!((diogo["usuario"].as_str(), diogo["legado"].as_str()), (Some("U1"), Some("1")), "o primeiro usuário é o dono do cofre antigo");
         let thaty = pedir("U2").await;
         assert_eq!((thaty["usuario"].as_str(), thaty["legado"].as_str()), (Some("U2"), None), "a identidade vem da sessão, não do cabeçalho do cliente; sem reivindicar o legado");
+        assert_eq!((diogo["autor"].as_str(), thaty["autor"].as_str()), (Some("U1"), Some("U2")), "o autor é a pessoa da sessão, nunca o que o cliente mandar");
         assert!(thaty["authorization"].is_null() && thaty["cookie"].is_null(), "credenciais da sessão não vazam para o Cofre");
         let _ = std::fs::remove_dir_all(&temp);
     }
@@ -264,6 +285,41 @@ mod testes {
         // Trancar vale para a equipe toda.
         assert_eq!(chamar("U1", "POST", "/vault/bloquear").await.0, StatusCode::OK);
         assert_eq!(chamar("U2", "GET", "/vault/contas").await.0, StatusCode::UNAUTHORIZED);
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[tokio::test]
+    async fn comprovante_de_5mb_atravessa_o_proxy_e_as_travas_do_arquivo_chegam_ao_cliente() {
+        // Cofre de mentira: confirma quantos bytes chegaram e responde como a rota de download de arquivo.
+        async fn arquivo(body: axum::body::Bytes) -> impl axum::response::IntoResponse {
+            ([("content-type", "application/pdf"), ("x-content-type-options", "nosniff"), ("content-security-policy", "default-src 'none'; sandbox"), ("content-disposition", "inline; filename=\"a.pdf\"")], body.len().to_string())
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, Router::new().fallback(any(arquivo)).layer(axum::extract::DefaultBodyLimit::disable())).await.unwrap() });
+        let temp = std::env::temp_dir().join(format!("ecos-proxy-up-{}", new_id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let segredo = b"segredo-efemero-exclusivo-do-teste-do-proxy-upload".to_vec();
+        let state = AppState {
+            db: IndexDb::open(&temp.join("index.db")).unwrap(),
+            config: Arc::new(Config {
+                ambiente: Ambiente::Desenvolvimento, porta: 0, notes_root: temp.clone(), index_db_path: temp.join("index.db"),
+                vault_enabled: true, vault_internal_url: url, session_secret: segredo.clone(), ranking_interval_secs: 300,
+                static_dir: None, cookie_secure: false, google: None,
+            }),
+            http: reqwest::Client::new(), pareamentos: Arc::new(Mutex::new(Default::default())),
+        };
+        state.db.with(|c| { c.execute("INSERT INTO usuario (id, nome_usuario, senha_hash, recovery_key_hash, criado_em) VALUES ('U1','diogo','x','x','2026-01-01')", [])?; Ok(()) }).await.unwrap();
+        let mut app = crate::routes::montar(state);
+        let token = session::emitir_access_token("U1", &segredo).unwrap();
+        let tamanho = 5 * 1024 * 1024;
+        let req = Request::post("/api/v1/vault/comprovantes").header("authorization", format!("Bearer {token}")).body(Body::from(vec![1u8; tamanho])).unwrap();
+        let r = app.call(req).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK, "upload de 5 MB não pode esbarrar no limite padrão de 2 MB");
+        assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+        assert!(r.headers()["content-security-policy"].to_str().unwrap().contains("sandbox"));
+        assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("inline"));
+        assert_eq!(to_bytes(r.into_body(), 64).await.unwrap().as_ref(), tamanho.to_string().as_bytes(), "o Cofre recebeu o arquivo inteiro");
         let _ = std::fs::remove_dir_all(&temp);
     }
 }

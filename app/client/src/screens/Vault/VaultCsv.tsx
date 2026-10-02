@@ -1,3 +1,4 @@
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useMemo, useState } from "react";
 import { financeiro } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
@@ -69,8 +70,8 @@ export function VaultCsv({ periodo, atualizar }: {
     catch {
         setErro("Não foi possível ler o arquivo.");
     } }}/></label>
-      <label className="block">Separador<select className="ecos-input" value={separador} onChange={e => carregar(texto, e.target.value)}><option value=";">Ponto e vírgula</option><option value=",">Vírgula</option><option value={"\t"}>Tabulação</option></select></label>
-      {parsed.rows.length > 0 && <><h3 className="font-semibold">2. Confira as colunas</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{campos.map(c => <label key={c} className="text-sm">{c}<select className="ecos-input block w-full" value={mapa[c] ?? ""} onChange={e => { setMapa({ ...mapa, [c]: e.target.value === "" ? undefined : Number(e.target.value) }); setRelatorio(null); }}><option value="">Não importar</option>{parsed.rows[0].map((h, i) => <option key={i} value={i}>{h}</option>)}</select></label>)}</div></>}
+      <label className="block">Separador<SeletorEcos ariaLabel="Separador" classe="ecos-input" valor={separador} onChange={v => carregar(texto, v)} opcoes={[{ valor: ";", rotulo: "Ponto e vírgula" }, { valor: ",", rotulo: "Vírgula" }, { valor: "\t", rotulo: "Tabulação" }]} /></label>
+      {parsed.rows.length > 0 && <><h3 className="font-semibold">2. Confira as colunas</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{campos.map(c => <label key={c} className="text-sm">{c}<SeletorEcos ariaLabel={`Coluna para ${c}`} classe="ecos-input w-full" valor={String(mapa[c] ?? "")} onChange={v => { setMapa({ ...mapa, [c]: v === "" ? undefined : Number(v) }); setRelatorio(null); }} opcoes={[{ valor: "", rotulo: "Não importar" }, ...parsed.rows[0].map((h, i) => ({ valor: String(i), rotulo: h }))]} /></label>)}</div></>}
     </fieldset>
     {(erro || parsed.erro) && <p role="alert" className="text-error">{erro || parsed.erro}</p>}
     {texto && <>

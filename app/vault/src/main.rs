@@ -4,11 +4,13 @@
 //! até `POST /vault/desbloquear` — nenhuma chave fica em memória sem antes
 //! passar pela senha do usuário (seção 5.3).
 
+mod arquivo;
 mod config;
 mod crypto;
 mod db;
 mod error;
 mod jobs;
+mod ocr;
 mod pagination;
 mod routes;
 mod state;
@@ -22,6 +24,10 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().json().init();
+
+    if !routes::ativacao::CIFRADO {
+        tracing::warn!("build SEM SQLCipher: o arquivo do Cofre não é criptografado em disco. Não use com dados reais.");
+    }
 
     let config = Config::from_env()?;
     let state = AppState {

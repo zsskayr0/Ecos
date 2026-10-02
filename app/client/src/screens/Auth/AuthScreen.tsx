@@ -25,7 +25,9 @@ import { DocumentoLegalDialog, type DocumentoLegal } from "@/components/legal/Do
 export function AuthScreen() {
   const { login, registrar } = useAuth();
   const [instanciaVazia, setInstanciaVazia] = useState<boolean | null>(null);
-  const [modo, setModo] = useState<"login" | "registro">("login");
+  const [modo, setModo] = useState<"login" | "registro" | "recuperar">("login");
+  const [chaveRecuperacao, setChaveRecuperacao] = useState("");
+  const [senhaRecuperada, setSenhaRecuperada] = useState(false);
   const [nomeUsuario, setNomeUsuario] = useState("");
   const [primeiroNome, setPrimeiroNome] = useState("");
   const [sobrenome, setSobrenome] = useState("");
@@ -85,6 +87,12 @@ export function AuthScreen() {
     try {
       if (modo === "login") {
         await login(nomeUsuario, senha);
+      } else if (modo === "recuperar") {
+        await auth.recuperarSenha(chaveRecuperacao.trim(), senha);
+        setSenha("");
+        setChaveRecuperacao("");
+        setSenhaRecuperada(true);
+        setModo("login");
       } else {
         const nomeCompleto = `${primeiroNome.trim()} ${sobrenome.trim()}`.trim();
         const { recovery_key } = await registrar(nomeUsuario, senha, nomeCompleto, declaraIdade, aceitaTermos);
@@ -119,7 +127,14 @@ export function AuthScreen() {
             <p className="font-display text-3xl font-bold text-text-primary">Ecos</p>
           </div>
 
-          {instanciaVazia ? (
+          {modo === "recuperar" ? (
+            <div className="flex flex-col gap-1 text-center">
+              <p className="font-display text-xl text-text-primary">Recuperar acesso</p>
+              <p className="text-sm text-text-secondary">
+                Use a recovery key da sua conta para definir uma senha nova de login. Ela não recupera a senha do Cofre.
+              </p>
+            </div>
+          ) : instanciaVazia ? (
             <p className="text-center text-sm text-text-secondary">
               Esta é uma instância nova — crie a primeira conta, que se torna a administradora.
             </p>
@@ -129,7 +144,7 @@ export function AuthScreen() {
                 <button
                   key={m}
                   type="button"
-                  onClick={() => setModo(m)}
+                  onClick={() => { setModo(m); setSenhaRecuperada(false); }}
                   className={`rounded-xl py-2.5 text-sm font-semibold transition-colors ${
                     modo === m ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-secondary"
                   }`}
@@ -153,6 +168,27 @@ export function AuthScreen() {
                 </label>
               </div>
             )}
+            {modo === "recuperar" && (
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-semibold text-text-primary">Recovery key</span>
+                <textarea
+                  value={chaveRecuperacao}
+                  onChange={(e) => setChaveRecuperacao(e.target.value)}
+                  className="ecos-input min-h-24 font-mono-value"
+                  placeholder="As 24 palavras, na ordem, separadas por espaço"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoFocus
+                />
+              </label>
+            )}
+            {senhaRecuperada && modo === "login" && (
+              <p className="rounded-2xl border border-success/40 bg-success/10 p-3 text-center text-sm text-text-primary">
+                Senha alterada. Entre com a senha nova.
+              </p>
+            )}
+            {modo !== "recuperar" && (
             <label className="flex flex-col gap-2">
               <span className="text-sm font-semibold text-text-primary">Usuário</span>
               <input
@@ -169,8 +205,9 @@ export function AuthScreen() {
               />
               {modo === "registro" && <span className="text-xs text-text-muted">De 3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o nome da sua pasta e não poderá ser alterado.</span>}
             </label>
+            )}
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-text-primary">Senha</span>
+              <span className="text-sm font-semibold text-text-primary">{modo === "recuperar" ? "Nova senha" : "Senha"}</span>
               <div className="relative">
                 <input
                   type={mostrarSenha ? "text" : "password"}
@@ -178,7 +215,7 @@ export function AuthScreen() {
                   onChange={(e) => setSenha(e.target.value.replace(/\s/g, ""))}
                   onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
                   className="ecos-input pr-12"
-                  placeholder={modo === "registro" ? "Mínimo 12 caracteres, sem espaços" : "Sua senha"}
+                  placeholder={modo === "login" ? "Sua senha" : "Mínimo 12 caracteres, sem espaços"}
                   autoComplete={modo === "login" ? "current-password" : "new-password"}
                 />
                 <button
@@ -190,8 +227,17 @@ export function AuthScreen() {
                   {mostrarSenha ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
                 </button>
               </div>
-              {modo === "registro" && <span className="text-xs text-text-muted">Mínimo 12 caracteres, sem espaços. Evite senhas comuns e o seu nome de usuário.</span>}
+              {modo !== "login" && <span className="text-xs text-text-muted">Mínimo 12 caracteres, sem espaços. Evite senhas comuns e o seu nome de usuário.</span>}
             </label>
+            {modo === "login" && (
+              <button
+                type="button"
+                onClick={() => { setModo("recuperar"); setErroLocal(null); setSenhaRecuperada(false); setSenha(""); }}
+                className="-mt-2 self-end text-sm text-text-muted hover:text-text-primary"
+              >
+                Esqueci minha senha
+              </button>
+            )}
 
             {modo === "registro" && (
               <label className="flex cursor-pointer items-start gap-3 text-sm text-text-secondary">
@@ -232,14 +278,19 @@ export function AuthScreen() {
               disabled={
                 carregando ||
                 bloqueadoAte !== null ||
-                !nomeUsuario.trim() ||
-                senha.length < (modo === "registro" ? 12 : 1) ||
+                (modo === "recuperar" ? chaveRecuperacao.trim().split(/\s+/).filter(Boolean).length < 24 : !nomeUsuario.trim()) ||
+                Array.from(senha).length < (modo === "login" ? 1 : 12) ||
                 (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade || !aceitaTermos))
               }
               className="mt-1 rounded-2xl bg-text-primary py-3.5 text-center font-body text-[15px] font-semibold text-base transition-opacity disabled:opacity-40"
             >
-              {carregando ? "Um momento..." : modo === "login" ? "Entrar" : "Criar conta"}
+              {carregando ? "Um momento..." : modo === "login" ? "Entrar" : modo === "recuperar" ? "Definir senha nova" : "Criar conta"}
             </button>
+            {modo === "recuperar" && (
+              <button type="button" onClick={() => { setModo("login"); setErroLocal(null); setSenha(""); }} className="text-sm text-text-muted hover:text-text-primary">
+                Voltar ao login
+              </button>
+            )}
           </form>
       </div>
       <DocumentoLegalDialog documento={lendo} onClose={() => setLendo(null)} />
@@ -272,6 +323,10 @@ export function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
           Ela só aparece essa vez. O Ecos não guarda em texto simples — sem ela, perder a senha significa perder o
           acesso à conta.
         </p>
+        <div className="max-w-sm space-y-1 rounded-2xl bg-surface-1 p-3 text-left text-sm text-text-secondary">
+          <p><strong className="text-text-primary">Recupera:</strong> a sua conta. Em "Esqueci minha senha", na tela de login, ela define uma senha nova.</p>
+          <p><strong className="text-text-primary">Não recupera:</strong> a senha do Cofre. Ela é separada e, se for perdida, os dados do Cofre não podem ser abertos.</p>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-warning/30 bg-surface-1 p-4">

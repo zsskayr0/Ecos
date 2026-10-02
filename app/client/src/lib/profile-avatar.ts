@@ -25,7 +25,7 @@ async function carregarFoto(id: string, versao?: number | null, forcar = false):
   if (!forcar && fotosEmMemoria.has(id) && versoesEmMemoria.get(id) === versao) return fotosEmMemoria.get(id);
   const existente = carregamentos.get(id);
   if (existente) return existente;
-  const carregamento = avatarPerfil.obter().then((blob) => {
+  const carregamento = avatarPerfil.obter(id).then((blob) => {
     const anterior = fotosEmMemoria.get(id);
     const proxima = blob ? URL.createObjectURL(blob) : fotoLegada(id);
     if (anterior?.startsWith("blob:") && anterior !== proxima) URL.revokeObjectURL(anterior);

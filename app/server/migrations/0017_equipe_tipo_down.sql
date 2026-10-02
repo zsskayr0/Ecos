@@ -1,0 +1,1 @@
+ALTER TABLE equipe DROP COLUMN tipo;

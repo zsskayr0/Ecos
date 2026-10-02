@@ -99,7 +99,7 @@ pub fn materializar(
         return Ok(tx);
     }
     let tx = new_id();
-    conn.execute("INSERT INTO transacao(id,tipo,descricao,valor_centavos,data,categoria_id,conta_id,beneficiario_id,forma_pagamento,observacoes,espaco,origem,criado_por,transacao_recorrente_id,data_ocorrencia,status,conciliada) SELECT ?1,tipo,descricao,valor_centavos,?2,categoria_id,conta_id,beneficiario_id,forma_pagamento,observacoes,espaco,'recorrencia_gerada','sistema',id,?3,?4,?5 FROM transacao_recorrente WHERE id=?6", rusqlite::params![tx,destino,original,if confirmar {"efetivada"} else {"pendente"},confirmar,id])?;
+    conn.execute("INSERT INTO transacao(id,tipo,descricao,valor_centavos,data,categoria_id,conta_id,beneficiario_id,forma_pagamento,observacoes,espaco,origem,criado_por,transacao_recorrente_id,data_ocorrencia,status,conciliada) SELECT ?1,tipo,descricao,valor_centavos,?2,categoria_id,conta_id,beneficiario_id,forma_pagamento,observacoes,espaco,'recorrencia_gerada',COALESCE(criado_por,'sistema'),id,?3,?4,?5 FROM transacao_recorrente WHERE id=?6", rusqlite::params![tx,destino,original,if confirmar {"efetivada"} else {"pendente"},confirmar,id])?;
     conn.execute(
         "INSERT INTO ocorrencia_processada VALUES(?1,?2,?3)",
         [id, original, &tx],
@@ -184,6 +184,7 @@ mod testes {
         c.execute_batch(include_str!("../../migrations/0001_init_up.sql")).unwrap();
         c.execute("INSERT INTO transacao_recorrente(id,tipo,descricao,valor_centavos,tipo_recorrencia,data_inicio,parcelas_geradas,espaco) VALUES('r','saida','Mensal',100,'fixa','2026-01-31',2,'pessoal')",[]).unwrap();
         c.execute_batch(include_str!("../../migrations/0002_financeiro.sql")).unwrap();
+        c.execute_batch(include_str!("../../migrations/0004_autoria.sql")).unwrap();
         let oc=ocorrencias(&c,"2026-01-01".parse().unwrap(),"2026-03-31".parse().unwrap()).unwrap();
         assert_eq!(oc.len(),1);assert_eq!(oc[0].data,"2026-03-31");
         let tx=c.unchecked_transaction().unwrap();

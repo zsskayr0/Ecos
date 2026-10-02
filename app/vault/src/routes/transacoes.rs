@@ -4,11 +4,9 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::Json;
 use chrono::NaiveDate;
-use ecos_core::types::ANEXO_TAMANHO_MAXIMO_BYTES;
 use ecos_core::{new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -52,11 +50,14 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "atualizado_em": r.get::<_, String>(17)?,
         "conciliada": r.get::<_, bool>(18)?,
         "data_ocorrencia": r.get::<_, Option<String>>(19)?,
+        // Quantos comprovantes/anexos o lançamento tem (a lista mostra o clipe com este número).
+        "anexos": r.get::<_, i64>(20)?,
     }))
 }
 
 const COLUNAS: &str = "id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id, beneficiario_id, \
-     forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em, conciliada, data_ocorrencia";
+     forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em, conciliada, data_ocorrencia, \
+     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id)";
 
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let limite = q.limit.unwrap_or(30).clamp(1, 200);
@@ -145,8 +146,6 @@ pub struct TransacaoPayload {
     pub observacoes: Option<String>,
     #[serde(default = "espaco_padrao")]
     pub espaco: String,
-    #[serde(default = "criado_por_padrao")]
-    pub criado_por: String,
     #[serde(default)]
     pub titulo: Option<String>, // aceito quando vem via Captura universal (seção 11.3) — vira `descricao`
 }
@@ -159,9 +158,6 @@ fn status_padrao() -> String {
 }
 fn espaco_padrao() -> String {
     "pessoal".to_string()
-}
-fn criado_por_padrao() -> String {
-    "usuario_local".to_string()
 }
 
 fn validar_transacao(payload: &TransacaoPayload) -> AppResult<()> {
@@ -200,6 +196,48 @@ async fn checar_referencias(state: &AppState, categoria_id: &Option<String>, con
     Ok(())
 }
 
+/// INSERT da transação, compartilhado entre o lançamento manual e a confirmação de um comprovante.
+pub(crate) fn inserir_transacao(
+    conn: &rusqlite::Connection,
+    id: &str,
+    payload: &TransacaoPayload,
+    autor: &str,
+    origem: &str,
+    ocr_texto: Option<&str>,
+    ocr_confianca: Option<f64>,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        "INSERT INTO transacao (id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id,          beneficiario_id, forma_pagamento, status, observacoes, origem, ocr_texto_bruto, ocr_confianca, espaco, criado_por)          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        rusqlite::params![
+            id,
+            payload.tipo,
+            payload.valor_centavos,
+            payload.moeda,
+            payload.data.to_string(),
+            payload.descricao,
+            payload.categoria_id,
+            payload.conta_id,
+            payload.beneficiario_id,
+            payload.forma_pagamento,
+            payload.status,
+            payload.observacoes,
+            origem,
+            ocr_texto,
+            ocr_confianca,
+            payload.espaco,
+            autor,
+        ],
+    )
+}
+
+pub(crate) fn validar(payload: &TransacaoPayload) -> AppResult<()> {
+    validar_transacao(payload)
+}
+
+pub(crate) async fn validar_referencias(state: &AppState, payload: &TransacaoPayload) -> AppResult<()> {
+    checar_referencias(state, &payload.categoria_id, &payload.conta_id).await
+}
+
 pub async fn criar(State(state): State<AppState>, Json(mut payload): Json<TransacaoPayload>) -> AppResult<Json<serde_json::Value>> {
     if let Some(titulo) = payload.titulo.take() {
         if payload.descricao.trim().is_empty() {
@@ -210,33 +248,13 @@ pub async fn criar(State(state): State<AppState>, Json(mut payload): Json<Transa
     checar_referencias(&state, &payload.categoria_id, &payload.conta_id).await?;
 
     let id = new_id();
+    // A autoria vem do pedido autenticado, nunca do corpo: não dá para lançar em nome de outra pessoa.
+    let autor = crate::db::autor_atual().unwrap_or_default();
     state
         .db
         .with({
             let id = id.clone();
-            move |conn| {
-                conn.execute(
-                    "INSERT INTO transacao (id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id, \
-                     beneficiario_id, forma_pagamento, status, observacoes, origem, espaco, criado_por) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'manual', ?13, ?14)",
-                    rusqlite::params![
-                        id,
-                        payload.tipo,
-                        payload.valor_centavos,
-                        payload.moeda,
-                        payload.data.to_string(),
-                        payload.descricao,
-                        payload.categoria_id,
-                        payload.conta_id,
-                        payload.beneficiario_id,
-                        payload.forma_pagamento,
-                        payload.status,
-                        payload.observacoes,
-                        payload.espaco,
-                        payload.criado_por,
-                    ],
-                )
-            }
+            move |conn| inserir_transacao(conn, &id, &payload, &autor, "manual", None, None)
         })
         .await?;
 
@@ -336,23 +354,10 @@ pub async fn excluir_em_lote(State(state): State<AppState>, Json(payload): Json<
     Ok(Json(serde_json::json!({ "excluidas": afetadas })))
 }
 
-/// Upload de imagem → OCR → rascunho não salvo (seção 11.14). O motor real
-/// (`leptess`/Tesseract, seção 4.5) fica `TODO` — devolve um rascunho vazio
-/// pra revisão manual, contrato idêntico ao que o front espera.
+/// Upload de imagem → OCR → rascunho não salvo (seção 11.14). Mantida por compatibilidade; o fluxo novo é
+/// `POST /vault/comprovantes` (que guarda o arquivo cifrado até a confirmação).
 pub async fn captura_foto(mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
-    let mut recebeu_arquivo = false;
-    while let Some(campo) = multipart.next_field().await.map_err(|_| AppError::new(ErrorCode::ValidationError))? {
-        if campo.name() == Some("foto") {
-            let bytes = campo.bytes().await.map_err(|_| AppError::new(ErrorCode::ValidationError))?;
-            if bytes.len() as i64 > ANEXO_TAMANHO_MAXIMO_BYTES {
-                return Err(AppError::new(ErrorCode::AttachmentTooLarge));
-            }
-            recebeu_arquivo = true;
-        }
-    }
-    if !recebeu_arquivo {
-        return Err(AppError::new(ErrorCode::ValidationError).with_message("campo 'foto' ausente no multipart"));
-    }
+    crate::arquivo::ler_multipart(&mut multipart, "foto").await?;
     Ok(Json(serde_json::json!({
         "rascunho": { "descricao": null, "valor_centavos": null, "data": null, "ocr_texto_bruto": "", "ocr_confianca": 0.0 },
         "aviso": "OCR (Tesseract/leptess) ainda não implementado nesta build — revise manualmente."
@@ -387,37 +392,38 @@ pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>,
         return Err(AppError::new(ErrorCode::NotFound));
     }
 
-    while let Some(campo) = multipart.next_field().await.map_err(|_| AppError::new(ErrorCode::ValidationError))? {
-        if campo.name() != Some("arquivo") {
-            continue;
-        }
-        let nome_arquivo = campo.file_name().unwrap_or("comprovante").to_string();
-        let mime_type = campo.content_type().unwrap_or("application/octet-stream").to_string();
-        let bytes = campo.bytes().await.map_err(|_| AppError::new(ErrorCode::ValidationError))?;
-        if bytes.len() as i64 > ANEXO_TAMANHO_MAXIMO_BYTES {
-            return Err(AppError::new(ErrorCode::AttachmentTooLarge));
-        }
-        let checksum = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>();
-        let anexo_id = new_id();
-        let tamanho = bytes.len() as i64;
-        let conteudo = bytes.to_vec();
-        state
-            .db
-            .with({
-                let id = id.clone();
-                let anexo_id = anexo_id.clone();
-                let nome_arquivo = nome_arquivo.clone();
-                move |conn| {
-                    conn.execute(
-                        "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        rusqlite::params![anexo_id, id, nome_arquivo, mime_type, tamanho, checksum, conteudo],
-                    )
+    let arquivo = crate::arquivo::ler_multipart(&mut multipart, "arquivo").await?;
+    let anexo_id = new_id();
+    let tamanho = arquivo.bytes.len() as i64;
+    let resposta_nome = arquivo.nome.clone();
+    let para_ler = arquivo.bytes.clone();
+    let mime = arquivo.tipo.mime;
+    // Mesmo arquivo na mesma transação: devolve o que já existe (reenvio por rede ruim não duplica).
+    // Em outra transação: grava e avisa onde já estava.
+    let (mantido, duplicado_em) = state
+        .db
+        .with({
+            let (id, anexo_id) = (id.clone(), anexo_id.clone());
+            move |conn| {
+                let tx = conn.unchecked_transaction()?;
+                let aqui: Option<String> = tx.query_row("SELECT id FROM anexo WHERE transacao_id = ?1 AND checksum_sha256 = ?2", rusqlite::params![id, arquivo.checksum], |r| r.get(0)).optional()?;
+                if let Some(existente) = aqui {
+                    return Ok((existente, None));
                 }
-            })
-            .await?;
-        return Ok(Json(serde_json::json!({ "id": anexo_id, "nome_arquivo": nome_arquivo, "tamanho_bytes": tamanho })));
+                let outra: Option<String> = tx.query_row("SELECT transacao_id FROM anexo WHERE checksum_sha256 = ?1 AND transacao_id <> ?2 LIMIT 1", rusqlite::params![arquivo.checksum, id], |r| r.get(0)).optional()?;
+                tx.execute(
+                    "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![anexo_id, id, arquivo.nome, arquivo.tipo.mime, tamanho, arquivo.checksum, arquivo.bytes],
+                )?;
+                tx.commit()?;
+                Ok((anexo_id, outra))
+            }
+        })
+        .await?;
+    if mantido == anexo_id {
+        super::comprovantes::ler_anexo_em_segundo_plano(state, mantido.clone(), para_ler, mime.to_string());
     }
-    Err(AppError::new(ErrorCode::ValidationError).with_message("campo 'arquivo' ausente no multipart"))
+    Ok(Json(serde_json::json!({ "id": mantido, "nome_arquivo": resposta_nome, "tamanho_bytes": tamanho, "duplicado_em": duplicado_em })))
 }
 
 pub async fn excluir_anexo(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {

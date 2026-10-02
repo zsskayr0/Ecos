@@ -8,12 +8,14 @@ import { nomeExibicao, useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { DocumentoPopupContext } from "@/lib/documento-popup";
+import { useComprovantesEsperando } from "@/lib/fila-comprovantes";
 import { pastaDoCaminho } from "@/lib/pasta-contexto";
 import { useFotoPerfil } from "@/lib/profile-avatar";
 import { CommandPalette } from "./CommandPalette";
 import { DocumentoJanela } from "./DocumentoJanela";
 import { MenuCriar } from "./MenuCriar";
 import { Rail } from "./Rail";
+import { SoltarNoCofre } from "./SoltarNoCofre";
 import { TabDragProvider } from "./tab-drag";
 import { Workspace } from "./Workspace";
 import { WorkspaceProvider, useWorkspace } from "./workspace-store";
@@ -168,6 +170,9 @@ function Conteudo() {
   const contador = useRef(0);
   const alternarPaleta = (global = false) => { if (global) setBuscaGlobal(true); setPaletaAberta((v) => !v); };
   useAtalhosGlobais(alternarPaleta);
+  // Comprovante solto na janela: abre o Cofre (a aba Comprovantes recolhe a fila sozinha).
+  const comprovantesEsperando = useComprovantesEsperando();
+  useEffect(() => { if (comprovantesEsperando > 0) setCofreAberto(true); }, [comprovantesEsperando]);
   useEffect(() => {
     const voltar = () => setCofreAberto(false);
     window.addEventListener("ecos:voltar-do-cofre", voltar);
@@ -212,6 +217,7 @@ function Conteudo() {
 
   return (
     <DocumentoPopupContext.Provider value={abrirDocumento}>
+    <SoltarNoCofre />
     {cofreAberto ? (
       <div className="flex h-screen flex-col overflow-hidden bg-base">
         <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={["/cofre"]}><VaultScreen embedded voltar={() => setCofreAberto(false)} /></MemoryRouter></div>
