@@ -17,6 +17,9 @@ const COLUNAS: &str = "id, tipo, descricao, valor_centavos, categoria_id, conta_
      tipo_recorrencia, frequencia, intervalo, dia_vencimento, data_inicio, data_fim, total_parcelas, parcelas_geradas, \
      observacoes, espaco, ativa, criado_em, atualizado_em, criado_por";
 
+/// `COLUNAS` + quantas ocorrências já viraram lançamento efetivado (progresso do parcelamento).
+const SELECT_COM_PROGRESSO: &str = "SELECT id, tipo, descricao, valor_centavos, categoria_id, conta_id, beneficiario_id, forma_pagamento,      tipo_recorrencia, frequencia, intervalo, dia_vencimento, data_inicio, data_fim, total_parcelas, parcelas_geradas,      observacoes, espaco, ativa, criado_em, atualizado_em, criado_por,      (SELECT COUNT(*) FROM transacao t WHERE t.transacao_recorrente_id = transacao_recorrente.id AND t.status = 'efetivada')      FROM transacao_recorrente";
+
 fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
     Ok(serde_json::json!({
         "id": r.get::<_, String>(0)?, "tipo": r.get::<_, String>(1)?, "descricao": r.get::<_, String>(2)?,
@@ -28,6 +31,7 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "total_parcelas": r.get::<_, Option<i64>>(14)?, "parcelas_geradas": r.get::<_, i64>(15)?,
         "observacoes": r.get::<_, Option<String>>(16)?, "espaco": r.get::<_, String>(17)?,
         "ativa": r.get::<_, i64>(18)? != 0, "criado_em": r.get::<_, String>(19)?, "atualizado_em": r.get::<_, String>(20)?, "criado_por": r.get::<_, Option<String>>(21)?,
+        "efetivadas": r.get::<_, i64>(22)?,
     }))
 }
 
@@ -35,7 +39,7 @@ pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json:
     let linhas: Vec<serde_json::Value> = state
         .db
         .with(|conn| {
-            let mut stmt = conn.prepare(&format!("SELECT {COLUNAS} FROM transacao_recorrente ORDER BY criado_em DESC"))?;
+            let mut stmt = conn.prepare(&format!("{SELECT_COM_PROGRESSO} ORDER BY criado_em DESC"))?;
             let linhas = stmt.query_map([], linha_para_json)?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
         })
@@ -72,6 +76,9 @@ pub struct RecorrenciaPayload {
     pub observacoes: Option<String>,
     #[serde(default = "espaco_padrao")]
     pub espaco: String,
+    /// Só na edição: pausa (`false`) ou reativa a recorrência.
+    #[serde(default)]
+    pub ativa: Option<bool>,
 }
 
 fn frequencia_padrao() -> String {
@@ -151,22 +158,28 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<Recorrenci
 pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let linha: Option<serde_json::Value> = state
         .db
-        .with(move |conn| conn.query_row(&format!("SELECT {COLUNAS} FROM transacao_recorrente WHERE id = ?1"), [&id], linha_para_json).optional())
+        .with(move |conn| conn.query_row(&format!("{SELECT_COM_PROGRESSO} WHERE id = ?1"), [&id], linha_para_json).optional())
         .await?;
     linha.map(Json).ok_or(AppError::new(ErrorCode::RecurringTransactionNotFound))
 }
 
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<RecorrenciaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar(&payload)?;
-    let afetadas = state
+    // 0 = não existe, 1 = ok, 2 = tentou mexer na âncora de uma série que já gerou lançamentos.
+    let resultado = state
         .db
         .with({
             let id = id.clone();
             move |conn| {
+                let atual: Option<(String, String, i64)> = conn
+                    .query_row("SELECT data_inicio, tipo_recorrencia, parcelas_geradas FROM transacao_recorrente WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .optional()?;
+                let Some((inicio, tipo_rec, geradas)) = atual else { return Ok(0u8) };
+                if geradas > 0 && (inicio != payload.data_inicio.to_string() || tipo_rec != payload.tipo_recorrencia) {
+                    return Ok(2);
+                }
                 conn.execute(
-                    "UPDATE transacao_recorrente SET tipo=?1, descricao=?2, valor_centavos=?3, categoria_id=?4, conta_id=?5, \
-                     beneficiario_id=?6, forma_pagamento=?7, frequencia=?8, intervalo=?9, dia_vencimento=?10, data_fim=?11, \
-                     total_parcelas=?12, observacoes=?13, atualizado_em=datetime('now') WHERE id=?14",
+                    "UPDATE transacao_recorrente SET tipo=?1, descricao=?2, valor_centavos=?3, categoria_id=?4, conta_id=?5,                      beneficiario_id=?6, forma_pagamento=?7, frequencia=?8, intervalo=?9, dia_vencimento=?10, data_fim=?11,                      total_parcelas=?12, observacoes=?13, data_inicio=?14, tipo_recorrencia=?15, ativa=COALESCE(?16, ativa),                      atualizado_em=datetime('now') WHERE id=?17",
                     rusqlite::params![
                         payload.tipo,
                         payload.descricao,
@@ -181,20 +194,38 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
                         payload.data_fim.map(|d| d.to_string()),
                         payload.total_parcelas,
                         payload.observacoes,
+                        payload.data_inicio.to_string(),
+                        payload.tipo_recorrencia,
+                        payload.ativa,
                         id,
                     ],
-                )
+                )?;
+                Ok(1)
             }
         })
         .await?;
-    if afetadas == 0 {
-        return Err(AppError::new(ErrorCode::RecurringTransactionNotFound));
+    match resultado {
+        0 => return Err(AppError::new(ErrorCode::RecurringTransactionNotFound)),
+        2 => return Err(AppError::new(ErrorCode::ValidationError).with_message("Início e tipo não podem mudar depois que a recorrência já gerou lançamentos")),
+        _ => {}
     }
     obter(State(state), Path(id)).await
 }
 
+/// Apaga só a regra: os lançamentos já gerados continuam no extrato, soltos da recorrência.
 pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let afetadas = state.db.with(move |conn| conn.execute("DELETE FROM transacao_recorrente WHERE id = ?1", [&id])).await?;
+    let afetadas = state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("UPDATE transacao SET transacao_recorrente_id = NULL, data_ocorrencia = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
+            tx.execute("UPDATE pendencia_avulsa SET transacao_recorrente_id = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
+            tx.execute("DELETE FROM ocorrencia_processada WHERE recorrencia_id = ?1", [&id])?;
+            let n = tx.execute("DELETE FROM transacao_recorrente WHERE id = ?1", [&id])?;
+            tx.commit()?;
+            Ok(n)
+        })
+        .await?;
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::RecurringTransactionNotFound));
     }
@@ -210,10 +241,16 @@ pub async fn duplicar(State(state): State<AppState>, Path(id): Path<String>) -> 
             let nova_id = nova_id.clone();
             move |conn| {
                 let colunas_sem_id = COLUNAS.trim_start_matches("id, ");
-                conn.execute(
+                let n = conn.execute(
                     &format!("INSERT INTO transacao_recorrente (id, {colunas_sem_id}) SELECT ?1, {colunas_sem_id} FROM transacao_recorrente WHERE id = ?2"),
                     rusqlite::params![nova_id, id],
-                )
+                )?;
+                // A cópia começa do zero: sem parcelas geradas e identificável na lista.
+                conn.execute(
+                    "UPDATE transacao_recorrente SET parcelas_geradas = 0, descricao = descricao || ' (cópia)', criado_em = datetime('now'), atualizado_em = datetime('now') WHERE id = ?1",
+                    [&nova_id],
+                )?;
+                Ok(n)
             }
         })
         .await?;
@@ -241,4 +278,35 @@ pub async fn adicionar_exclusao(State(state): State<AppState>, Path(id): Path<St
         })
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// "Excluir este e os próximos": encerra a série no dia anterior à ocorrência e apaga os lançamentos ainda
+/// pendentes dessa data em diante (o job já os gerou para o que venceu). Lançamentos efetivados ficam.
+/// Se a ocorrência é a primeira da série, a regra inteira é removida (mantendo o histórico).
+pub async fn encerrar_a_partir(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<ExclusaoPayload>) -> AppResult<Json<serde_json::Value>> {
+    let data = payload.data_ocorrencia;
+    let resultado = state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let inicio: Option<String> = tx.query_row("SELECT data_inicio FROM transacao_recorrente WHERE id = ?1", [&id], |r| r.get(0)).optional()?;
+            let Some(inicio) = inicio else { return Ok(None) };
+            let corte = data.to_string();
+            let apagadas = tx.execute("DELETE FROM transacao WHERE transacao_recorrente_id = ?1 AND status = 'pendente' AND data_ocorrencia >= ?2", rusqlite::params![id, corte])?;
+            let regra_removida = corte <= inicio;
+            if regra_removida {
+                tx.execute("UPDATE transacao SET transacao_recorrente_id = NULL, data_ocorrencia = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
+                tx.execute("UPDATE pendencia_avulsa SET transacao_recorrente_id = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
+                tx.execute("DELETE FROM ocorrencia_processada WHERE recorrencia_id = ?1", [&id])?;
+                tx.execute("DELETE FROM transacao_recorrente WHERE id = ?1", [&id])?;
+            } else {
+                let fim = data.pred_opt().unwrap_or(data).to_string();
+                tx.execute("UPDATE transacao_recorrente SET data_fim = ?1, atualizado_em = datetime('now') WHERE id = ?2", rusqlite::params![fim, id])?;
+            }
+            tx.commit()?;
+            Ok(Some((apagadas, regra_removida)))
+        })
+        .await?;
+    let (apagadas, regra_removida) = resultado.ok_or(AppError::new(ErrorCode::RecurringTransactionNotFound))?;
+    Ok(Json(serde_json::json!({ "ok": true, "lancamentos_apagados": apagadas, "regra_removida": regra_removida })))
 }

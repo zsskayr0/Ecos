@@ -1,9 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileText, RefreshCw, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, FileText, Minus, Plus, RefreshCw, StretchHorizontal, StretchVertical, X } from "lucide-react";
 import { vault } from "@/lib/api";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { EditorDeLancamento } from "../EditorDeLancamento";
-import { exibivelComoImagem, formatarTamanho, useBlobUrl } from "./use-blob-url";
+import { exibivelComoImagem, formatarTamanho, useBlobUrl, usePdfDados } from "./use-blob-url";
+
+// O leitor de PDF (pdf.js) é pesado e só é preciso quando se abre um PDF.
+const PdfReader = lazy(() => import("@/components/common/PdfReader").then((m) => ({ default: m.PdfReader })));
+
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_PASSO = 0.25;
+const CHAVE_MODO = "ecos.cofre.visualizador.modo";
+const BOTAO = "flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-30";
+type ModoImagem = "fixo" | "dinamico";
+function lerModo(): ModoImagem {
+  try { return localStorage.getItem(CHAVE_MODO) === "dinamico" ? "dinamico" : "fixo"; } catch { return "fixo"; }
+}
 
 export interface ArquivoVisto {
   id: string;
@@ -13,8 +26,8 @@ export interface ArquivoVisto {
 }
 
 /**
- * Visualizador de um comprovante. A janela começa do tamanho do próprio comprovante. Imagens aparecem aqui; PDF e HEIC
- * só são baixados (o app não abre documentos embutidos). Com `lancamentoId`, o rodapé ganha um botão que abre o
+ * Visualizador de um comprovante ou nota fiscal. A janela começa do tamanho do próprio arquivo. Imagens e PDF aparecem
+ * aqui (o PDF num leitor simples, com páginas, zoom e rolagem); HEIC só é baixado. Com `lancamentoId`, o rodapé ganha um botão que abre o
  * lançamento num painel à direita, na mesma janela, com animação (e fecha de novo no mesmo botão).
  */
 export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMudar, navegacao }: {
@@ -29,12 +42,28 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
   navegacao?: { posicao: string; temAnterior: boolean; temProximo: boolean; anterior: () => void; proximo: () => void };
 }) {
   const imagem = exibivelComoImagem(arquivo.mime_type);
+  const pdf = arquivo.mime_type === "application/pdf";
   const { url, estado, tentarDeNovo } = useBlobUrl(imagem ? arquivo.id : null, () => vault.anexos.conteudo(arquivo.id));
+  const doc = usePdfDados(pdf ? arquivo.id : null, () => vault.anexos.conteudo(arquivo.id));
   const [erroDownload, setErroDownload] = useState(false);
   const [painelAberto, setPainelAberto] = useState(false);
   /** O editor só é montado na primeira abertura, mas depois fica montado: fechar o painel anima sem esvaziá-lo. */
   const [jaAbriu, setJaAbriu] = useState(false);
   const fechar = useRef<HTMLButtonElement>(null);
+  /** "fixo": a imagem inteira cabe na altura da janela; "dinamico": preenche a largura, com zoom e rolagem (como o PDF). */
+  const [modo, setModo] = useState<ModoImagem>(lerModo);
+  const [zoom, setZoom] = useState(1);
+  const ajustar = (delta: number) => setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + delta) * 100) / 100)));
+  const janela = useRef<HTMLDivElement>(null);
+  const imagemRef = useRef<HTMLImageElement>(null);
+  const antes = useRef<{ j: DOMRect; i: DOMRect } | null>(null);
+  function alternarModo() {
+    const novo: ModoImagem = modo === "fixo" ? "dinamico" : "fixo";
+    if (janela.current && imagemRef.current) antes.current = { j: janela.current.getBoundingClientRect(), i: imagemRef.current.getBoundingClientRect() };
+    setModo(novo);
+    setZoom(1);
+    try { localStorage.setItem(CHAVE_MODO, novo); } catch { /* vale só nesta visita */ }
+  }
 
   useEffect(() => {
     fechar.current?.focus();
@@ -57,6 +86,25 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [onFechar, painelAberto, navegacao]);
 
+  // Trocar de modo muda o tamanho da janela e da imagem: ambas deslizam do tamanho antigo para o novo.
+  useLayoutEffect(() => {
+    const a = antes.current;
+    antes.current = null;
+    const j = janela.current, img = imagemRef.current;
+    if (!a || !j || !img || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const opcoes = { duration: 380, easing: "cubic-bezier(.2,.8,.2,1)" };
+    const nj = j.getBoundingClientRect(), ni = img.getBoundingClientRect();
+    if (Math.abs(a.j.width - nj.width) > 1 || Math.abs(a.j.height - nj.height) > 1) {
+      j.animate([{ width: `${a.j.width}px`, height: `${a.j.height}px` }, { width: `${nj.width}px`, height: `${nj.height}px` }], opcoes);
+    }
+    if (ni.width && ni.height) {
+      img.animate([
+        { transformOrigin: "0 0", transform: `translate(${a.i.left - ni.left}px, ${a.i.top - ni.top}px) scale(${a.i.width / ni.width}, ${a.i.height / ni.height})` },
+        { transformOrigin: "0 0", transform: "none" },
+      ], opcoes);
+    }
+  }, [modo]);
+
   function alternarPainel() {
     setJaAbriu(true);
     setPainelAberto((v) => !v);
@@ -76,6 +124,7 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
   return (
     <div className="cofre-viewer-backdrop" onClick={onFechar}>
       <div
+        ref={janela}
         className="cofre-viewer"
         data-lancamento={lancamentoId ? (painelAberto ? "aberto" : "fechado") : undefined}
         role="dialog"
@@ -98,8 +147,27 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
           <button ref={fechar} className="cofre-icon-button" aria-label="Fechar" onClick={onFechar}><X size={18} /></button>
         </header>
         <div className="cofre-viewer-corpo">
-          <div className="cofre-viewer-body">
-            {imagem && estado === "pronto" && url && <img src={url} alt={`Comprovante ${arquivo.nome_arquivo}`} />}
+          <div className="cofre-viewer-body" data-pdf={pdf || undefined} data-imagem={imagem && estado === "pronto" ? modo : undefined}>
+            {imagem && estado === "pronto" && url && (
+              <>
+                <div className="cofre-viewer-barra">
+                  {modo === "dinamico" && (
+                    <>
+                      <button type="button" className={BOTAO} aria-label="Diminuir zoom" disabled={zoom <= ZOOM_MIN} onClick={() => ajustar(-ZOOM_PASSO)}><Minus size={15} /></button>
+                      <button type="button" onClick={() => setZoom(1)} title="Ajustar à largura" className="h-8 w-12 rounded-lg font-mono text-xs text-text-secondary hover:bg-surface-3">{Math.round(zoom * 100)}%</button>
+                      <button type="button" className={BOTAO} aria-label="Aumentar zoom" disabled={zoom >= ZOOM_MAX} onClick={() => ajustar(ZOOM_PASSO)}><Plus size={15} /></button>
+                      <span className="mx-1 h-5 w-px bg-border" />
+                    </>
+                  )}
+                  <button type="button" className={BOTAO} aria-pressed={modo === "dinamico"} aria-label={modo === "fixo" ? "Preencher a largura, com zoom" : "Ajustar à altura da janela"} title={modo === "fixo" ? "Preencher a largura, com zoom" : "Ajustar à altura da janela"} onClick={alternarModo}>
+                    {modo === "fixo" ? <StretchVertical size={16} /> : <StretchHorizontal size={16} />}
+                  </button>
+                </div>
+                <div className="cofre-viewer-imagem" style={{ "--zoom": zoom } as React.CSSProperties}>
+                  <img ref={imagemRef} src={url} alt={`Comprovante ${arquivo.nome_arquivo}`} />
+                </div>
+              </>
+            )}
             {imagem && estado === "carregando" && <p role="status">Abrindo comprovante…</p>}
             {imagem && estado === "ausente" && <p role="alert">Este comprovante não existe mais.</p>}
             {imagem && estado === "erro" && (
@@ -108,10 +176,23 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
                 <button className="cofre-secondary" onClick={tentarDeNovo}><RefreshCw size={14} />Tentar novamente</button>
               </div>
             )}
-            {!imagem && (
+            {pdf && doc.estado === "pronto" && doc.dados && (
+              <Suspense fallback={<p role="status">Abrindo PDF…</p>}>
+                <PdfReader dados={doc.dados} nome={arquivo.nome_arquivo} />
+              </Suspense>
+            )}
+            {pdf && doc.estado === "carregando" && <p role="status">Abrindo comprovante…</p>}
+            {pdf && doc.estado === "ausente" && <p role="alert">Este arquivo não existe mais.</p>}
+            {pdf && doc.estado === "erro" && (
+              <div role="alert" className="cofre-viewer-erro">
+                <p>Não foi possível abrir o arquivo.</p>
+                <button className="cofre-secondary" onClick={doc.tentarDeNovo}><RefreshCw size={14} />Tentar novamente</button>
+              </div>
+            )}
+            {!imagem && !pdf && (
               <div className="cofre-viewer-erro">
                 <FileText size={36} aria-hidden />
-                <p>{arquivo.mime_type === "application/pdf" ? "Documentos PDF são abertos fora do Ecos. Use Baixar." : "Este formato não pode ser exibido aqui. Use Baixar."}</p>
+                <p>Este formato não pode ser exibido aqui. Use Baixar.</p>
               </div>
             )}
             {erroDownload && <p role="alert">Não foi possível baixar o arquivo. Tente novamente.</p>}
@@ -129,6 +210,7 @@ export function ComprovanteViewer({ arquivo, onFechar, acoes, lancamentoId, aoMu
                   <EditorDeLancamento
                     id={lancamentoId}
                     aninhado
+                    comComprovantes={false}
                     aoSalvar={() => { aoMudar?.(); setPainelAberto(false); }}
                     aoExcluir={() => { aoMudar?.(); onFechar(); }}
                     aoFechar={() => setPainelAberto(false)}

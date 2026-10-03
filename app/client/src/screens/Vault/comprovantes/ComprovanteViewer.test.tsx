@@ -15,6 +15,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
     },
   };
 });
+// O leitor de PDF (pdf.js) não roda no jsdom; aqui basta saber que ele é o que abre o arquivo.
+vi.mock("@/components/common/PdfReader", () => ({ PdfReader: ({ nome }: { nome: string }) => <div data-testid="leitor-pdf">{nome}</div> }));
 import { vault, type TransacaoApi } from "@/lib/api";
 import { RefreshProvider } from "@/lib/refresh-bus";
 import { AppUIProvider } from "@/lib/ui-context";
@@ -31,7 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:t"), revokeObjectURL: vi.fn() }));
   window.matchMedia = vi.fn((q: string) => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), onchange: null, dispatchEvent: vi.fn() })) as unknown as typeof window.matchMedia;
-  vi.mocked(vault.anexos.conteudo).mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+  vi.mocked(vault.anexos.conteudo).mockResolvedValue(Object.assign(new Blob(["x"], { type: "image/png" }), { arrayBuffer: async () => new ArrayBuffer(8) }));
   vi.mocked(vault.anexos.listar).mockResolvedValue([]);
   vi.mocked(vault.anexos.miniatura).mockResolvedValue(null);
   vi.mocked(vault.transacoes.obter).mockResolvedValue(lancamento);
@@ -137,7 +139,25 @@ it("a lista de comprovantes do lançamento não se repete dentro do painel (o ar
   renderizar(<ComprovanteViewer arquivo={foto} lancamentoId="t1" onFechar={vi.fn()} />);
   alternar("Abrir lançamento");
   await screen.findByDisplayValue("Compra no mercado");
-  expect(screen.queryByRole("region", { name: "Comprovantes do lançamento" })).toBeNull();
+  expect(screen.queryByRole("region", { name: /do lançamento$/ })).toBeNull();
+});
+
+it("o PDF abre num leitor dentro da janela, em vez de mandar baixar", async () => {
+  renderizar(<ComprovanteViewer arquivo={pdf} onFechar={vi.fn()} />);
+  expect((await screen.findByTestId("leitor-pdf")).textContent).toBe("pix.pdf");
+  expect(vault.anexos.conteudo).toHaveBeenCalledWith("a1");
+  expect(screen.queryByText(/abertos fora do Ecos/)).toBeNull();
+});
+
+it("PDF que não existe mais explica, e falha de rede deixa tentar de novo", async () => {
+  vi.mocked(vault.anexos.conteudo).mockResolvedValueOnce(null);
+  const { unmount } = renderizar(<ComprovanteViewer arquivo={pdf} onFechar={vi.fn()} />);
+  expect((await screen.findByRole("alert")).textContent).toContain("não existe mais");
+  unmount();
+  vi.mocked(vault.anexos.conteudo).mockRejectedValueOnce(new Error("rede"));
+  renderizar(<ComprovanteViewer arquivo={pdf} onFechar={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Tentar novamente" }));
+  await screen.findByTestId("leitor-pdf");
 });
 
 it("a imagem do comprovante aparece na janela", async () => {

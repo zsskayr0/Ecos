@@ -74,7 +74,7 @@ it("escolher um banco do catálogo preenche nome, número e cor, e cria a conta 
   vi.mocked(vault.contas.criar).mockResolvedValue({ id: "novo" });
   const onSaved = vi.fn();
   render(<ContaModal contas={[]} onClose={vi.fn()} onSaved={onSaved} />);
-  fireEvent.click(screen.getByRole("option", { name: /Itaú/ }));
+  fireEvent.click(screen.getByRole("option", { name: /^Itaú\s*341$/ }));
   expect((screen.getByLabelText("Nome da conta") as HTMLInputElement).value).toBe("Itaú");
   fireEvent.change(screen.getByLabelText("Agência"), { target: { value: "1234" } });
   fireEvent.change(screen.getByLabelText("Número da conta"), { target: { value: "99999-0" } });
@@ -117,4 +117,40 @@ it("apagar conta em uso: lista o que usa e move para outra conta", async () => {
   fireEvent.click(within(menu).getByRole("button", { name: "Deixar sem conta e apagar" }));
   await waitFor(() => expect(vault.contas.excluir).toHaveBeenCalledWith("c1", { sem_conta: true }));
   expect(onSaved).toHaveBeenCalled();
+});
+
+it("banco personalizado: a sigla escolhida vai para a conta e o catálogo não envia sigla", async () => {
+  vi.mocked(vault.contas.criar).mockResolvedValue({ id: "novo" });
+  render(<ContaModal contas={[]} onClose={vi.fn()} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("option", { name: /personalizado/ }));
+  fireEvent.change(screen.getByLabelText("Nome do banco"), { target: { value: "Banco da Vila" } });
+  fireEvent.change(screen.getByLabelText("Sigla do selo"), { target: { value: "bv-1x9" } });
+  expect((screen.getByLabelText("Sigla do selo") as HTMLInputElement).value).toBe("BV1X");
+  fireEvent.change(screen.getByLabelText("Nome da conta"), { target: { value: "Reserva" } });
+  fireEvent.click(screen.getByRole("button", { name: "Criar conta" }));
+  await waitFor(() => expect(vault.contas.criar).toHaveBeenCalledWith(expect.objectContaining({ banco: "Banco da Vila", sigla: "BV1X" })));
+});
+
+it("os bancos com logo em SVG mostram o desenho, e os demais mostram a sigla", async () => {
+  const { logoDoBanco } = await import("./contas/logos");
+  expect(logoDoBanco("260")).toMatch(/^<svg/); // Nubank vem de fábrica
+  expect(logoDoBanco("260")).not.toMatch(/<title>/);
+  expect(logoDoBanco("999")).toBeUndefined();
+  render(<ContaModal contas={[]} onClose={vi.fn()} onSaved={vi.fn()} />);
+  const nubank = screen.getByRole("option", { name: /Nubank/ });
+  expect(nubank.querySelector(".cofre-conta-logo svg")).toBeTruthy();
+  const bradesco = screen.getByRole("option", { name: /Bradesco 237/ });
+  expect(bradesco.querySelector(".cofre-conta-logo")).toBeNull();
+  expect(bradesco.textContent).toContain("BR");
+});
+
+it("Itaú, Santander e Caixa têm logo na pasta, em uma cor só (currentColor), prontos para colorir", async () => {
+  const { logoDoBanco } = await import("./contas/logos");
+  for (const codigo of ["341", "033", "104"]) {
+    const svg = logoDoBanco(codigo)!;
+    expect(svg).toMatch(/^<svg/);
+    expect(svg).toContain('fill="currentColor"');
+    expect(svg).not.toMatch(/fill="#|fill:#/); // nenhuma cor fixa: a cor vem do selo
+  }
+  expect(logoDoBanco("33")).toBe(logoDoBanco("033"));
 });

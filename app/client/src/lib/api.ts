@@ -955,8 +955,10 @@ export const notificacoes = {
 // --- Vault / Cofre (section 11.14, via /vault/* proxy) ---------------------
 
 export interface TransacaoApi {
-  /** Quantos anexos (comprovantes) o lançamento tem. */
+  /** Quantos comprovantes de pagamento o lançamento tem. */
   anexos?: number;
+  /** Quantas notas fiscais o lançamento tem. */
+  notas_fiscais?: number;
   conciliada?: boolean;
   data_ocorrencia?: string | null;
   transacao_recorrente_id?: string | null;
@@ -1005,6 +1007,8 @@ export interface ContaApi {
   /** Código COMPE do banco (ex.: "260"). */
   codigo_banco: string | null;
   saldo_inicial_centavos: number;
+  /** Sigla do selo de um banco personalizado (até 4 letras ou números). */
+  sigla?: string | null;
 }
 
 export type TipoConta = "corrente" | "poupanca" | "carteira" | "investimento" | "cartao" | "outro";
@@ -1019,6 +1023,7 @@ export interface ContaPayload {
   tipo?: TipoConta;
   saldo_inicial_centavos?: number;
   espaco?: string;
+  sigla?: string | null;
 }
 
 /** O que usa uma conta (para mostrar antes de apagá-la). */
@@ -1033,6 +1038,8 @@ export interface BeneficiarioApi {
   nome: string;
   documento: string | null;
   observacoes: string | null;
+  /** Quantos lançamentos usam este cadastro. */
+  transacoes?: number;
 }
 
 /** Matches `FORMAS_PAGAMENTO` in `app/vault/src/routes/transacoes.rs` — a closed enum, not free text. */
@@ -1049,9 +1056,13 @@ export interface CategoriaUsoApi {
   amostra: { id: string; data: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number }[];
 }
 
+/** O que o arquivo anexado é: o comprovante do pagamento ou a nota fiscal da compra. */
+export type TipoAnexo = "comprovante" | "nota_fiscal";
+
 /** Arquivo anexado a uma transação (o conteúdo vem de `vault.anexos.conteudo`). */
 export interface AnexoApi {
   id: string;
+  tipo: TipoAnexo;
   nome_arquivo: string;
   mime_type: string;
   tamanho_bytes: number;
@@ -1062,6 +1073,7 @@ export interface AnexoApi {
 /** Comprovante arquivado, com os dados da transação a que pertence: é de lá que vêm data, categoria, pagador e conta. */
 export interface ComprovanteApi {
   id: string;
+  tipo: TipoAnexo;
   nome_arquivo: string;
   mime_type: string;
   tamanho_bytes: number;
@@ -1096,6 +1108,7 @@ export interface SugestaoComprovante {
 /** Comprovante recebido que ainda não virou lançamento. */
 export interface RascunhoApi {
   id: string;
+  tipo?: TipoAnexo;
   nome_arquivo: string;
   mime_type: string;
   tamanho_bytes: number;
@@ -1107,12 +1120,27 @@ export interface RascunhoApi {
 
 export { ANEXO_TAMANHO_MAXIMO_BYTES } from "./tipos-comprovante";
 
+export interface PreferenciasCofreApi {
+  conta_padrao: string | null;
+  ordem_contas: string[];
+  ordem_categorias: string[];
+}
+
 export const vault = {
   /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
   resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
   bloquear: () => { window.dispatchEvent(new Event("ecos:bloqueio-manual")); window.dispatchEvent(new Event("ecos:cofre-bloqueado")); return post<{ ok: true }>("/vault/bloquear"); },
+  /** Escolhas da pessoa neste Cofre (por pessoa, não por equipe): conta padrão e ordem de contas e categorias. */
+  preferencias: {
+    obter: () => get<PreferenciasCofreApi>("/vault/preferencias"),
+    salvar: (chave: "conta_padrao", valor: string | null) => put<{ ok: true }>(`/vault/preferencias/${chave}`, { valor }),
+    salvarOrdem: (chave: "ordem_contas" | "ordem_categorias", ids: string[]) => put<{ ok: true }>(`/vault/preferencias/${chave}`, { valor: ids }),
+  },
+  /** Pesquisa tolerante (acento, erro de digitação, texto lido dos comprovantes). Devolve os ids que casam, do melhor para o pior. */
+  busca: (q: string, params: { data_de?: string; data_ate?: string; limit?: number } = {}) =>
+    get<{ items: { id: string; pontuacao: number; so_no_anexo: boolean }[] }>(`/vault/busca${qs({ q, ...params })}`),
   config: () => get<{ cofre_ativado: boolean; destrancado: boolean; saldos_por_conta: { conta_id: string; nome: string; saldo_centavos: number }[] }>("/vault/config"),
 
   contas: {
@@ -1136,6 +1164,10 @@ export const vault = {
     /** `POST` is find-or-create by name (see `beneficiarios.rs`). */
     criarOuEncontrar: (payload: { nome: string; documento?: string; observacoes?: string }) =>
       post<{ id: string; nome: string; novo: boolean }>("/vault/beneficiarios", payload),
+    /** Corrige o nome; um nome que já é de outro cadastro volta 409 (o caminho é mesclar). */
+    renomear: (id: string, nome: string) => patch<{ ok: true; nome: string }>(`/vault/beneficiarios/${id}`, { nome }),
+    /** Junta cadastros duplicados no `destino_id`: os lançamentos mudam de dono e as origens são apagadas. */
+    mesclar: (payload: { destino_id: string; origem_ids: string[]; nome?: string }) => post<{ ok: true; movidos: number }>("/vault/beneficiarios/mesclar", payload),
   },
   transacoes: {
     /** `espaco` força o Cofre de outro espaço só nesta chamada (ex.: a Agenda filtrada por equipe). */
@@ -1162,11 +1194,13 @@ export const vault = {
   anexos: {
     listar: (transacaoId: string) => get<AnexoApi[]>(`/vault/transacoes/${transacaoId}/anexos`),
     /** `duplicado_em` é o id da outra transação onde o mesmo arquivo já estava, se houver. */
-    enviar: (transacaoId: string, arquivo: File) => {
+    enviar: (transacaoId: string, arquivo: File, tipo: TipoAnexo = "comprovante") => {
       const dados = new FormData();
       dados.append("arquivo", arquivo);
-      return req<{ id: string; nome_arquivo: string; tamanho_bytes: number; duplicado_em: string | null }>(`/vault/transacoes/${transacaoId}/anexos`, { method: "POST", body: dados });
+      return req<{ id: string; nome_arquivo: string; tamanho_bytes: number; duplicado_em: string | null }>(`/vault/transacoes/${transacaoId}/anexos${tipo === "comprovante" ? "" : `?tipo=${tipo}`}`, { method: "POST", body: dados });
     },
+    /** Troca um anexo de comprovante para nota fiscal (ou o contrário) sem reenviar o arquivo. */
+    reclassificar: (id: string, tipo: TipoAnexo) => patch<{ ok: true }>(`/vault/anexos/${id}`, { tipo }),
     excluir: (id: string) => del<{ ok: true }>(`/vault/anexos/${id}`),
     /** `null` quando o anexo não existe mais. */
     conteudo: (id: string) => reqBlob(`/vault/anexos/${id}/conteudo`),
@@ -1174,13 +1208,13 @@ export const vault = {
     miniatura: (id: string) => reqBlob(`/vault/anexos/${id}/miniatura`),
   },
   comprovantes: {
-    listar: (params: { data_de?: string; data_ate?: string; categoria_id?: string; beneficiario_id?: string; conta_id?: string; q?: string; limit?: number; offset?: number } = {}) =>
+    listar: (params: { data_de?: string; data_ate?: string; categoria_id?: string; beneficiario_id?: string; conta_id?: string; q?: string; tipo?: TipoAnexo; limit?: number; offset?: number } = {}) =>
       get<{ items: ComprovanteApi[] }>(`/vault/comprovantes${qs(params)}`),
     /** Guarda o arquivo como rascunho e começa a leitura. `ja_anexado_em` = lançamento onde o mesmo arquivo já está. */
-    receber: (arquivo: File) => {
+    receber: (arquivo: File, tipo: TipoAnexo = "comprovante") => {
       const dados = new FormData();
       dados.append("arquivo", arquivo);
-      return req<{ id: string; nome_arquivo: string; mime_type: string; tamanho_bytes: number; reaproveitado: boolean; ja_anexado_em: string | null; ocr_status: OcrStatus }>("/vault/comprovantes", { method: "POST", body: dados });
+      return req<{ id: string; nome_arquivo: string; mime_type: string; tamanho_bytes: number; reaproveitado: boolean; ja_anexado_em: string | null; ocr_status: OcrStatus }>(`/vault/comprovantes${tipo === "comprovante" ? "" : `?tipo=${tipo}`}`, { method: "POST", body: dados });
     },
     rascunhos: {
       listar: () => get<{ items: RascunhoApi[] }>("/vault/comprovantes/rascunhos"),
@@ -1196,13 +1230,84 @@ export const vault = {
   },
 };
 
+/** Regra de recorrência (fixa ou parcelada) do Cofre. */
+export interface RecorrenciaApi {
+  id: string;
+  tipo: "entrada" | "saida";
+  descricao: string;
+  valor_centavos: number;
+  categoria_id: string | null;
+  conta_id: string | null;
+  beneficiario_id: string | null;
+  forma_pagamento: string | null;
+  tipo_recorrencia: "fixa" | "parcelada";
+  frequencia: "semanal" | "mensal" | "anual";
+  intervalo: number;
+  dia_vencimento: number | null;
+  data_inicio: string;
+  data_fim: string | null;
+  total_parcelas: number | null;
+  /** Quantas ocorrências já viraram lançamento (pendente ou efetivado). */
+  parcelas_geradas: number;
+  /** Quantas já estão efetivadas — o progresso real do parcelamento. */
+  efetivadas: number;
+  observacoes: string | null;
+  espaco: string;
+  ativa: boolean;
+  criado_em: string;
+  atualizado_em: string;
+  criado_por?: string | null;
+}
+
+export interface RecorrenciaPayload {
+  tipo: "entrada" | "saida";
+  descricao: string;
+  valor_centavos: number;
+  categoria_id?: string | null;
+  conta_id?: string | null;
+  beneficiario_id?: string | null;
+  forma_pagamento?: string | null;
+  tipo_recorrencia: "fixa" | "parcelada";
+  frequencia: "semanal" | "mensal" | "anual";
+  intervalo: number;
+  dia_vencimento?: number | null;
+  data_inicio: string;
+  data_fim?: string | null;
+  total_parcelas?: number | null;
+  observacoes?: string | null;
+  /** Só na edição: pausa (`false`) ou reativa. */
+  ativa?: boolean;
+}
+
+/** Uma ocorrência de uma regra dentro de um período: pendente (só prevista) ou já lançada. */
+export interface OcorrenciaRecorrente {
+  recorrencia_id: string;
+  /** Data natural de vencimento (a chave da ocorrência). */
+  data: string;
+  parcela: number | null;
+  transacao_id: string | null;
+  status: "efetivada" | "pendente" | null;
+  valor_centavos: number;
+  /** Data do lançamento, que pode ter sido reagendada para além da natural. */
+  data_lancamento: string | null;
+}
+
 export const financeiro = {
-  recorrencias: () => get<Array<{id: string; descricao: string; tipo: string; valor_centavos: number; frequencia: string; ativa: boolean; categoria_id?: string | null; conta_id?: string | null}>>("/vault/recorrencias"),
-  criarRecorrencia: (p: {descricao: string; tipo: string; valor_centavos: number; frequencia: string; intervalo: number; data_inicio: string; tipo_recorrencia: string; total_parcelas?: number}) => post<{id: string}>("/vault/recorrencias",p),
+  recorrencias: () => get<RecorrenciaApi[]>("/vault/recorrencias"),
+  criarRecorrencia: (p: RecorrenciaPayload) => post<{id: string}>("/vault/recorrencias",p),
+  atualizarRecorrencia: (id: string, p: RecorrenciaPayload) => patch<RecorrenciaApi>(`/vault/recorrencias/${id}`, p),
+  /** Apaga só a regra; os lançamentos já gerados continuam no extrato. */
   excluirRecorrencia: (id: string) => del<{ok: boolean}>(`/vault/recorrencias/${id}`),
+  duplicarRecorrencia: (id: string) => post<{id: string}>(`/vault/recorrencias/${id}/duplicar`),
+  /** Pula só esta data: o resto da série segue. */
+  pularOcorrencia: (id: string, data_ocorrencia: string) => post<{ok: boolean}>(`/vault/recorrencias/${id}/exclusoes`, {data_ocorrencia}),
+  /** Encerra a série antes desta data e apaga os lançamentos pendentes dela em diante. */
+  encerrarAPartir: (id: string, data_ocorrencia: string) => post<{ok: boolean; lancamentos_apagados: number; regra_removida: boolean}>(`/vault/recorrencias/${id}/encerrar-a-partir`, {data_ocorrencia}),
+  ocorrenciasDoPeriodo: (p: Periodo) => get<OcorrenciaRecorrente[]>(`/vault/recorrencias/ocorrencias${qs({...p})}`),
   painel: (p: Periodo) => get<Painel>(`/vault/painel${qs({...p})}`),
   ocorrencias: (p: Periodo) => get<Ocorrencia[]>(`/vault/fluxo/ocorrencias${qs({...p})}`),
-  concluir: (id: string, data_ocorrencia: string, data: string) => post<{transacao_id: string}>(`/vault/recorrencias/${id}/concluir`, {data_ocorrencia, data}),
+  /** Efetiva a ocorrência. `valor_centavos` menor que o cheio = conclusão parcial (o restante vira pendência); `confirmar: false` só agenda. */
+  concluir: (id: string, data_ocorrencia: string, data: string, opcoes: {valor_centavos?: number; confirmar?: boolean} = {}) => post<{transacao_id: string}>(`/vault/recorrencias/${id}/concluir`, {data_ocorrencia, data, ...opcoes}),
   reagendar: (id: string, data: string) => patch<{ok: boolean}>(`/vault/transacoes/${id}/data`, {data}),
   lote: (ids: string[], acao: "conciliar" | "desconciliar" | "excluir" | "efetivar") => post<{aplicadas: number; erros: {linha: number; erro: string}[]}>("/vault/financeiro/lote", {ids, acao}),
   importar: (linhas: LinhaImportacao[], dry_run: boolean) => post<RelatorioImportacao>("/vault/financeiro/importar", {linhas, dry_run}),

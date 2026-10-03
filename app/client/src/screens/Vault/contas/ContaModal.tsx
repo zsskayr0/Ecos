@@ -1,31 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Landmark, Search, Wallet, X } from "lucide-react";
+import { Check, Landmark, LayoutGrid, List, Search, Wallet, X } from "lucide-react";
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { vault, ApiError, type ContaApi, type ContaUsoApi, type TipoConta } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { CORES, LixeiraAnimada, corDoTexto } from "../VaultCategories";
-import { BANCOS, GRUPOS_BANCO, TIPOS_CONTA, bancoPorCodigo, buscarBancos, iniciais, type Banco } from "./bancos";
+import { BANCOS, GRUPOS_BANCO, TIPOS_CONTA, bancoPorCodigo, buscarBancos, type Banco } from "./bancos";
+import { SeloConta } from "./SeloConta";
+import { SeletorCor } from "./SeletorCor";
+import { iniciais as iniciaisDe } from "./bancos";
 import { centavosBR, centavosParaCampo } from "./analise";
 
 const PERSONALIZADO = "__personalizado__";
+const CHAVE_MODO_BANCOS = "ecos:cofre:bancos-modo";
+type ModoBancos = "lista" | "grade";
+function lerModoBancos(): ModoBancos {
+  try { return localStorage.getItem(CHAVE_MODO_BANCOS) === "grade" ? "grade" : "lista"; } catch { return "lista"; }
+}
 const COR_PADRAO = "#94a3b8";
 
-/** Selo da conta: iniciais sobre a cor da conta (não usamos logos de terceiros). */
-export function SeloConta({ nome, cor, tipo, tamanho = "" }: { nome: string; cor: string; tipo?: TipoConta; tamanho?: "sm" | "lg" | "" }) {
-  const Icone = tipo === "carteira" ? Wallet : null;
-  return (
-    <span className={`cofre-cats-icon cofre-conta-selo ${tamanho}`} style={{ background: cor, color: corDoTexto(cor) }} aria-hidden>
-      {Icone ? <Icone size={tamanho === "sm" ? 12 : 16} /> : <b>{iniciais(nome)}</b>}
-    </span>
-  );
-}
+export { SeloConta };
 
 export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaApi; contas: ContaApi[]; onClose: () => void; onSaved: (id?: string) => void }) {
   const bancoInicial = conta ? (bancoPorCodigo(conta.codigo_banco) ? conta.codigo_banco! : conta.banco || conta.tipo !== "carteira" ? PERSONALIZADO : "") : "";
   const [escolhido, setEscolhido] = useState<string>(bancoInicial);
   const [busca, setBusca] = useState("");
+  const [modoBancos, setModoBancos] = useState<ModoBancos>(lerModoBancos);
   const [bancoNome, setBancoNome] = useState(conta?.banco ?? "");
   const [codigo, setCodigo] = useState(conta?.codigo_banco ?? "");
+  const [sigla, setSigla] = useState(conta?.sigla ?? "");
   const [nome, setNome] = useState(conta?.nome ?? "");
   const [nomeEditado, setNomeEditado] = useState(!!conta);
   const [tipo, setTipo] = useState<TipoConta>(conta?.tipo ?? "corrente");
@@ -50,6 +52,11 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
   const lista = useMemo(() => buscarBancos(busca), [busca]);
   const grupos = useMemo(() => (Object.keys(GRUPOS_BANCO) as Banco["grupo"][]).map((g) => ({ g, itens: lista.filter((b) => b.grupo === g) })).filter((x) => x.itens.length), [lista]);
   const saldoCentavos = centavosBR(saldo);
+
+  function trocarModo(m: ModoBancos) {
+    setModoBancos(m);
+    try { localStorage.setItem(CHAVE_MODO_BANCOS, m); } catch { /* vale só nesta sessão */ }
+  }
 
   function fechar() {
     setSaindo(true);
@@ -88,12 +95,15 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
     if (!nome.trim()) { setErro("Informe um nome para a conta."); return; }
     if (saldoCentavos === null) { setErro("Saldo inicial inválido. Use o formato 1.234,56 (pode ser negativo)."); return; }
     if (codigo && !/^\d{1,4}$/.test(codigo.trim())) { setErro("O código do banco tem só números (ex.: 260)."); return; }
+    if (sigla && !/^[\p{L}\p{N}]{1,4}$/u.test(sigla.trim())) { setErro("A sigla tem até 4 letras ou números."); return; }
     setOcupado(true);
     setErro(null);
     const payload = {
       nome: nome.trim(), tipo, cor,
       banco: bancoNome.trim() || null, codigo_banco: codigo.trim() ? codigo.trim().padStart(3, "0") : null,
       agencia: agencia.trim() || null, numero_conta: numero.trim() || null, saldo_inicial_centavos: saldoCentavos,
+      // A sigla só existe no banco personalizado; os do catálogo têm logo ou iniciais próprias.
+      sigla: escolhido === PERSONALIZADO && sigla.trim() ? sigla.trim().toUpperCase() : null,
     };
     try {
       if (conta) { await vault.contas.atualizar(conta.id, payload); onSaved(conta.id); }
@@ -133,13 +143,14 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
 
   const ehCarteira = tipo === "carteira";
   const personalizado = escolhido === PERSONALIZADO;
+  const bancoPronto = bancoPorCodigo(escolhido);
 
   return (
     <div className="cofre-cats-modal" data-saindo={saindo || undefined}>
       <div className="cofre-cats-backdrop" onClick={fechar} />
       <form className="cofre-card cofre-cats-dialog cofre-contas-dialog" role="dialog" aria-modal="true" aria-label={conta ? "Editar conta" : "Nova conta"} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
         <header>
-          <SeloConta nome={nome.trim() || "?"} cor={cor} tipo={tipo} tamanho="lg" />
+          <SeloConta nome={nome.trim() || "?"} cor={cor} tipo={tipo} codigoBanco={codigo || null} sigla={escolhido === PERSONALIZADO ? sigla : null} tamanho="lg" />
           <div><p>{conta ? "EDITAR CONTA" : "NOVA CONTA"}</p><h2>{nome.trim() || "Sem nome"}</h2></div>
           <span className="cofre-cats-header-acoes">
             {conta && (
@@ -153,12 +164,20 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
 
         {erro && <p className="cofre-launch-alert" role="alert">{erro}</p>}
 
-        <div className="cofre-cats-field">
+        <div className="cofre-contas-corpo">
+          <div className="cofre-contas-esq">
+        <div className="cofre-cats-field cofre-contas-instituicao">
           <span>Instituição</span>
-          <label className="cofre-cats-search"><Search size={13} /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar banco pelo nome ou número…" aria-label="Buscar banco" />{busca && <button type="button" aria-label="Limpar busca" onClick={() => setBusca("")}><X size={12} /></button>}</label>
-          <div className="cofre-bancos" role="listbox" aria-label="Bancos">
+          <div className="cofre-bancos-busca">
+            <label className="cofre-cats-search"><Search size={13} /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar banco pelo nome ou número…" aria-label="Buscar banco" />{busca && <button type="button" aria-label="Limpar busca" onClick={() => setBusca("")}><X size={12} /></button>}</label>
+            <div className="cofre-bancos-modo" role="group" aria-label="Modo de exibição dos bancos">
+              <button type="button" aria-pressed={modoBancos === "lista"} aria-label="Ver bancos em lista" title="Lista" onClick={() => trocarModo("lista")}><List size={15} /></button>
+              <button type="button" aria-pressed={modoBancos === "grade"} aria-label="Ver bancos em grade" title="Grade" onClick={() => trocarModo("grade")}><LayoutGrid size={15} /></button>
+            </div>
+          </div>
+          <div className="cofre-bancos" role="listbox" aria-label="Bancos" data-modo={modoBancos}>
             {!busca && (
-              <div className="cofre-bancos-grupo">
+              <div className="cofre-bancos-grupo cofre-bancos-outras">
                 <h5>Outras opções</h5>
                 <div>
                   <button type="button" role="option" aria-selected={personalizado} className="cofre-banco" data-ativo={personalizado || undefined} onClick={escolherPersonalizado}>
@@ -178,7 +197,7 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
                 <div>
                   {itens.map((b) => (
                     <button key={b.codigo} type="button" role="option" aria-selected={escolhido === b.codigo} className="cofre-banco" data-ativo={escolhido === b.codigo || undefined} onClick={() => escolherBanco(b)}>
-                      <span className="cofre-banco-selo" style={{ background: b.cor, color: corDoTexto(b.cor) }}>{iniciais(b.curto)}</span>
+                      <span className="cofre-banco-selo" style={{ background: "none" }}><SeloConta nome={b.curto} cor={b.cor} codigoBanco={b.codigo} tamanho="sm" /></span>
                       <span><b>{b.curto}</b><small>{b.codigo}</small></span>
                     </button>
                   ))}
@@ -192,13 +211,14 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
           <small className="cofre-bancos-total">{BANCOS.length} instituições no catálogo · o número é o código COMPE do banco</small>
         </div>
 
-        {personalizado && (
-          <div className="cofre-launch-grid">
-            <label className="cofre-cats-field"><span>Nome do banco</span><input value={bancoNome} onChange={(e) => setBancoNome(e.target.value)} placeholder="Ex.: Banco Fulano" maxLength={60} /></label>
-            <label className="cofre-cats-field"><span>Número do banco</span><input value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Ex.: 001" inputMode="numeric" /></label>
           </div>
-        )}
-
+          <div className="cofre-contas-dir">
+        <div className="cofre-contas-banco" data-travado={!personalizado || undefined}>
+          <label className="cofre-cats-field"><span>Nome do banco</span><input value={bancoNome} onChange={(e) => setBancoNome(e.target.value)} placeholder={personalizado ? "Ex.: Banco Fulano" : "—"} maxLength={60} disabled={!personalizado} /></label>
+          <label className="cofre-cats-field"><span>Número do banco</span><input value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder={personalizado ? "Ex.: 001" : "—"} inputMode="numeric" disabled={!personalizado} /></label>
+          <label className="cofre-cats-field"><span>Sigla do selo</span><input value={personalizado ? sigla : bancoPronto ? iniciaisDe(bancoPronto.curto) : ""} onChange={(e) => setSigla(e.target.value.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 4).toUpperCase())} placeholder={personalizado ? iniciaisDe(bancoNome || nome) : "—"} maxLength={4} aria-label="Sigla do selo" disabled={!personalizado} /></label>
+          {personalizado && <small className="cofre-contas-dica">A sigla (até 4 letras) aparece no selo da conta. Sem sigla, usamos as iniciais do nome.</small>}
+        </div>
         <label className="cofre-cats-field"><span>Nome da conta</span><input ref={nomeRef} value={nome} onChange={(e) => { setNome(e.target.value); setNomeEditado(true); }} placeholder="Ex.: Nubank — conta principal" maxLength={60} /></label>
 
         <div className="cofre-cats-field">
@@ -223,13 +243,10 @@ export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaA
 
         <div className="cofre-cats-field">
           <span>Cor</span>
-          <div className="cofre-cats-swatches">
-            {[...new Set([cor, ...CORES])].slice(0, 16).map((c) => (
-              <button key={c} type="button" aria-label={`Cor ${c}`} aria-pressed={cor === c} style={{ background: c, color: corDoTexto(c) }} onClick={() => setCor(c)}>{cor === c && <Check size={13} strokeWidth={3} />}</button>
-            ))}
+          <SeletorCor valor={cor} onChange={setCor} />
+        </div>
           </div>
         </div>
-
         {confirmando && conta && (
           <div className="cofre-launch-alert" role="alert">
             <p>Apagar “{conta.nome}”? Nenhum lançamento usa esta conta. Essa ação não pode ser desfeita.</p>

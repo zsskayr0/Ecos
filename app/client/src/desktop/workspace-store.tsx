@@ -6,6 +6,9 @@ export interface Tab {
   id: string;
   path: string;
   title?: string;
+  /** Histórico da aba (voltar/avançar) e posição atual — sobrevive a recarregar a página. */
+  hist?: string[];
+  idx?: number;
 }
 
 export interface Pane {
@@ -33,7 +36,7 @@ export type WorkspaceAction =
   | { type: "move-tab-to-new-pane"; tabId: string; nextToPaneId: string; side: Side }
   | { type: "split-active-right" }
   | { type: "resize"; leftPaneId: string; rightPaneId: string; leftSize: number }
-  | { type: "navigated"; tabId: string; path: string }
+  | { type: "navigated"; tabId: string; path: string; hist?: string[]; idx?: number }
   | { type: "set-tab-title"; tabId: string; title: string };
 
 const STORAGE_KEY = "ecos.desktop.workspace.v1";
@@ -209,7 +212,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
         ...state,
         panes: state.panes.map((p) => ({
           ...p,
-          tabs: p.tabs.map((t) => (t.id === action.tabId && t.path !== action.path ? { ...t, path: action.path } : t)),
+          tabs: p.tabs.map((t) => (t.id === action.tabId ? (t.path === action.path && t.idx === action.idx && t.hist?.length === action.hist?.length ? t : { ...t, path: action.path, hist: action.hist, idx: action.idx }) : t)),
         })),
       };
 

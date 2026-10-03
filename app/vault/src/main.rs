@@ -5,6 +5,7 @@
 //! passar pela senha do usuário (seção 5.3).
 
 mod arquivo;
+mod busca;
 mod config;
 mod crypto;
 mod db;

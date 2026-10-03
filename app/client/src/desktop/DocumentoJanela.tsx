@@ -42,6 +42,12 @@ function retanguloInicial(ordem: number, retrato = false): Retangulo {
   };
 }
 
+/** Tamanho com que uma janela comum (Configurações, notas…) nasce; o painel de configurações do Cofre usa o mesmo, por consistência. */
+export function tamanhoInicialDeJanela(): { w: number; h: number } {
+  const { w, h } = retanguloInicial(0);
+  return { w, h };
+}
+
 function redimensionar(r: Retangulo, dir: Direcao, dx: number, dy: number, alturaMin = ALTURA_MIN): Retangulo {
   let { x, y, w, h } = r;
   const direita = r.x + r.w;

@@ -233,3 +233,115 @@ async fn a_autoria_vem_do_pedido_e_nao_muda_na_edicao() {
     drop(app);
     let _ = std::fs::remove_dir_all(raiz);
 }
+
+#[tokio::test]
+async fn recorrencia_conclui_parcial_reagenda_pausa_encerra_e_exclui_preservando_historico() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    let u = Some("rec");
+    chamar(&app, u, false, "POST", "/vault/ativar", senha("senha-recorrencia")).await;
+    let (_, r) = chamar(&app, u, false, "POST", "/vault/recorrencias", Some(json!({"tipo":"saida","descricao":"Aluguel","valor_centavos":10000,"data_inicio":"2026-01-10","tipo_recorrencia":"fixa"}))).await;
+    let id = r["id"].as_str().unwrap().to_string();
+    let lista = "/vault/recorrencias/ocorrencias?data_de=2026-01-01&data_ate=2026-04-30";
+
+    // Nada foi lançado ainda: três meses previstos, nenhum com lançamento.
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert_eq!(oc.as_array().unwrap().len(), 4);
+    assert!(oc.as_array().unwrap().iter().all(|o| o["transacao_id"].is_null()));
+
+    // Conclusão parcial: lança só o pago e deixa o restante como pendência ligada à recorrência, uma única vez.
+    let concluir = format!("/vault/recorrencias/{id}/concluir");
+    let (s, a) = chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-01-10","data":"2026-01-10","valor_centavos":4000}))).await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, b) = chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-01-10","data":"2026-01-10","valor_centavos":4000}))).await;
+    assert_eq!(a["transacao_id"], b["transacao_id"]);
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert_eq!(oc[0]["status"], "efetivada");
+    assert_eq!(oc[0]["valor_centavos"], 4000);
+    let (_, pend) = chamar(&app, u, false, "GET", "/vault/pendencias", None).await;
+    assert_eq!(pend.as_array().unwrap().len(), 1);
+    assert_eq!(pend[0]["valor_centavos"], 6000);
+    assert_eq!(pend[0]["transacao_recorrente_id"], id.as_str());
+
+    // Valor parcial inválido não cria nada.
+    let (s, _) = chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-02-10","data":"2026-02-10","valor_centavos":0}))).await;
+    assert_ne!(s, StatusCode::OK);
+
+    // Reagendar só agenda (pendente na data nova); concluir depois efetiva o mesmo lançamento.
+    let (_, ag) = chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-02-10","data":"2026-02-12","confirmar":false}))).await;
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert_eq!(oc[1]["status"], "pendente");
+    assert_eq!(oc[1]["data_lancamento"], "2026-02-12");
+    assert_eq!(oc[1]["valor_centavos"], 10000);
+    let (_, ef) = chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-02-10","data":"2026-02-12"}))).await;
+    assert_eq!(ag["transacao_id"], ef["transacao_id"]);
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert_eq!(oc[1]["status"], "efetivada");
+    let (_, pend) = chamar(&app, u, false, "GET", "/vault/pendencias", None).await;
+    assert_eq!(pend.as_array().unwrap().len(), 1);
+
+    // Depois de gerar lançamentos, início e tipo ficam travados; o resto pode mudar, e pausar tira da lista.
+    let base = json!({"tipo":"saida","descricao":"Aluguel","valor_centavos":10000,"data_inicio":"2026-01-10","tipo_recorrencia":"fixa"});
+    let rota = format!("/vault/recorrencias/{id}");
+    let mut mudou_inicio = base.clone();
+    mudou_inicio["data_inicio"] = json!("2026-02-10");
+    assert_ne!(chamar(&app, u, false, "PATCH", &rota, Some(mudou_inicio)).await.0, StatusCode::OK);
+    let mut pausada = base.clone();
+    pausada["ativa"] = json!(false);
+    pausada["valor_centavos"] = json!(12000);
+    let (s, reg) = chamar(&app, u, false, "PATCH", &rota, Some(pausada)).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(reg["ativa"], false);
+    assert_eq!(reg["valor_centavos"], 12000);
+    assert_eq!(reg["efetivadas"], 2);
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert!(oc.as_array().unwrap().is_empty());
+    let mut reativada = base.clone();
+    reativada["ativa"] = json!(true);
+    chamar(&app, u, false, "PATCH", &rota, Some(reativada)).await;
+
+    // Encerrar a partir de março: a série acaba em 09/03, e os lançamentos pendentes dali em diante somem.
+    chamar(&app, u, false, "POST", &concluir, Some(json!({"data_ocorrencia":"2026-03-10","data":"2026-03-10","confirmar":false}))).await;
+    let (_, enc) = chamar(&app, u, false, "POST", &format!("{rota}/encerrar-a-partir"), Some(json!({"data_ocorrencia":"2026-03-10"}))).await;
+    assert_eq!(enc["lancamentos_apagados"], 1);
+    assert_eq!(enc["regra_removida"], false);
+    let (_, reg) = chamar(&app, u, false, "GET", &rota, None).await;
+    assert_eq!(reg["data_fim"], "2026-03-09");
+    let (_, oc) = chamar(&app, u, false, "GET", lista, None).await;
+    assert_eq!(oc.as_array().unwrap().len(), 2);
+
+    // Excluir a regra mantém os lançamentos já feitos, soltos da recorrência.
+    let (s, _) = chamar(&app, u, false, "DELETE", &rota, None).await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, tx) = chamar(&app, u, false, "GET", "/vault/transacoes", None).await;
+    let itens = tx["items"].as_array().unwrap();
+    assert_eq!(itens.len(), 2);
+    assert!(itens.iter().all(|t| t["transacao_recorrente_id"].is_null()));
+    assert_eq!(chamar(&app, u, false, "GET", &rota, None).await.0, StatusCode::NOT_FOUND);
+    drop(app);
+    let _ = std::fs::remove_dir_all(raiz);
+}
+
+#[tokio::test]
+async fn encerrar_na_primeira_ocorrencia_remove_a_regra_e_duplicar_comeca_do_zero() {
+    use serde_json::json;
+    let (app, _, raiz) = app_de_teste();
+    let u = Some("rec2");
+    chamar(&app, u, false, "POST", "/vault/ativar", senha("senha-recorrencia")).await;
+    let (_, r) = chamar(&app, u, false, "POST", "/vault/recorrencias", Some(json!({"tipo":"entrada","descricao":"Salário","valor_centavos":500000,"data_inicio":"2026-05-05","tipo_recorrencia":"fixa"}))).await;
+    let id = r["id"].as_str().unwrap();
+    chamar(&app, u, false, "POST", &format!("/vault/recorrencias/{id}/concluir"), Some(json!({"data_ocorrencia":"2026-05-05","data":"2026-05-05"}))).await;
+    let (_, copia) = chamar(&app, u, false, "POST", &format!("/vault/recorrencias/{id}/duplicar"), None).await;
+    let (_, regra) = chamar(&app, u, false, "GET", &format!("/vault/recorrencias/{}", copia["id"].as_str().unwrap()), None).await;
+    assert_eq!(regra["descricao"], "Salário (cópia)");
+    assert_eq!(regra["parcelas_geradas"], 0);
+    let (_, enc) = chamar(&app, u, false, "POST", &format!("/vault/recorrencias/{id}/encerrar-a-partir"), Some(json!({"data_ocorrencia":"2026-05-05"}))).await;
+    assert_eq!(enc["regra_removida"], true);
+    let (_, lista) = chamar(&app, u, false, "GET", "/vault/recorrencias", None).await;
+    assert_eq!(lista.as_array().unwrap().len(), 1);
+    // O lançamento já efetivado fica no extrato.
+    let (_, tx) = chamar(&app, u, false, "GET", "/vault/transacoes", None).await;
+    assert_eq!(tx["items"].as_array().unwrap().len(), 1);
+    drop(app);
+    let _ = std::fs::remove_dir_all(raiz);
+}

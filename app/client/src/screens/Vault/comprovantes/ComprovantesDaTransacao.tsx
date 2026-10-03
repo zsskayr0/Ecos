@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, X } from "lucide-react";
-import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi } from "@/lib/api";
+import { Paperclip, Receipt, X } from "lucide-react";
+import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi, type TipoAnexo } from "@/lib/api";
+import { ROTULOS_ANEXO } from "./rotulos";
 import { MiniaturaDoAnexo } from "./Miniatura";
 import { VisualizadorDaTransacao } from "./VisualizadorDaTransacao";
 
 const ACEITOS = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
 
 /**
- * Anexos de um lançamento, mostrados como miniaturas do próprio comprovante: clicar abre o visualizador (com setas se
- * houver mais de um), anexar e remover ficam aqui mesmo. O arquivo fica cifrado dentro do Cofre.
+ * Comprovantes (ou notas fiscais, conforme `tipo`) de um lançamento, mostrados como miniaturas do próprio arquivo:
+ * clicar abre o visualizador (com setas se houver mais de um), anexar e remover ficam aqui mesmo. O arquivo fica
+ * cifrado dentro do Cofre.
  */
-export function ComprovantesDaTransacao({ transacaoId, aoMudar }: { transacaoId: string; aoMudar?: () => void }) {
+export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprovante" }: { transacaoId: string; aoMudar?: () => void; tipo?: TipoAnexo }) {
+  const r = ROTULOS_ANEXO[tipo];
+  const Icone = tipo === "nota_fiscal" ? Receipt : Paperclip;
   const [anexos, setAnexos] = useState<AnexoApi[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -20,7 +24,7 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar }: { transacaoId:
 
   async function carregar() {
     try {
-      setAnexos((await vault.anexos.listar(transacaoId)) ?? []);
+      setAnexos(((await vault.anexos.listar(transacaoId)) ?? []).filter((a) => a.tipo === tipo));
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível carregar os anexos.");
       setAnexos((atual) => atual ?? []);
@@ -44,8 +48,8 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar }: { transacaoId:
     setEnviando(true);
     try {
       for (const arquivo of lista) {
-        const r = await vault.anexos.enviar(transacaoId, arquivo);
-        if (r.duplicado_em) setAviso(`“${arquivo.name}” já estava anexado a outro lançamento. Foi guardado aqui também.`);
+        const enviado = await vault.anexos.enviar(transacaoId, arquivo, tipo);
+        if (enviado.duplicado_em) setAviso(`“${arquivo.name}” já estava anexado a outro lançamento. Foi guardado aqui também.`);
       }
       await carregar();
       aoMudar?.();
@@ -69,9 +73,9 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar }: { transacaoId:
   }
 
   return (
-    <section className="cofre-anexos" aria-label="Anexos do lançamento">
+    <section className="cofre-anexos" data-tipo={tipo} aria-label={`${r.titulo} do lançamento`}>
       <div className="cofre-anexos-head">
-        <h3><Paperclip size={14} aria-hidden />Anexos{anexos && anexos.length > 0 && <span>{anexos.length}</span>}</h3>
+        <h3><Icone size={14} aria-hidden />{r.titulo}{anexos && anexos.length > 0 && <span>{anexos.length}</span>}</h3>
       </div>
       {erro && <p role="alert" className="cofre-transactions-error">{erro}</p>}
       {aviso && <p role="status" className="cofre-transactions-feedback">{aviso}</p>}
@@ -88,14 +92,14 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar }: { transacaoId:
           ))}
           <li className="cofre-anexo-item">
             <button type="button" className="cofre-anexo-novo" disabled={enviando} onClick={() => entrada.current?.click()}>
-              <Paperclip size={20} aria-hidden />
+              <Icone size={20} aria-hidden />
               <span>{enviando ? "Enviando…" : "Anexar"}</span>
             </button>
           </li>
         </ul>
       )}
-      {anexos !== null && anexos.length === 0 && <p className="cofre-anexos-vazio">Nenhum anexo neste lançamento. Anexe um PDF ou uma foto (até 8 MB).</p>}
-      <input ref={entrada} type="file" accept={ACEITOS} multiple hidden aria-label="Escolher arquivos de comprovante" onChange={(e) => void enviar(e.target.files)} />
+      {anexos !== null && anexos.length === 0 && <p className="cofre-anexos-vazio">{r.vazio}</p>}
+      <input ref={entrada} type="file" accept={ACEITOS} multiple hidden aria-label={`Escolher arquivos de ${r.singular}`} onChange={(e) => void enviar(e.target.files)} />
       {aberto !== null && anexos && <VisualizadorDaTransacao transacaoId={transacaoId} anexos={anexos} inicial={aberto} onFechar={() => setAberto(null)} aoMudar={aoMudar} />}
     </section>
   );

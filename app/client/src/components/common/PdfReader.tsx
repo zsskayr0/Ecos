@@ -72,7 +72,7 @@ function PaginaPdf({ pdf, numero, escala, base, raiz }: { pdf: PDFDocumentProxy;
 
 const BOTAO = "flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 hover:text-text-primary disabled:opacity-30";
 
-export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: ArrayBuffer; nome: string; urlExterna: string; aoMedirPagina?: (primeiraPagina: Tamanho) => void }) {
+export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: ArrayBuffer; nome: string; /** Sem endereço (arquivo que só existe na memória), o botão "abrir fora do app" não aparece. */ urlExterna?: string; aoMedirPagina?: (primeiraPagina: Tamanho) => void }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [base, setBase] = useState<Tamanho | null>(null);
   const [erro, setErro] = useState(false);
@@ -159,7 +159,7 @@ export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: A
             <button type="button" className={BOTAO} aria-label="Aumentar zoom" disabled={zoom >= ZOOM_MAX} onClick={() => ajustar(ZOOM_PASSO)}><Plus size={15} /></button>
           </>
         )}
-        <a href={urlExterna} target="_blank" rel="noreferrer" title="Abrir fora do app" aria-label="Abrir fora do app" className={BOTAO}><ExternalLink size={15} /></a>
+        {urlExterna && <a href={urlExterna} target="_blank" rel="noreferrer" title="Abrir fora do app" aria-label="Abrir fora do app" className={BOTAO}><ExternalLink size={15} /></a>}
       </div>
 
       <div ref={setRolagem} onScroll={aoRolar} className="min-h-0 flex-1 overflow-auto bg-surface-2 px-4 py-4">

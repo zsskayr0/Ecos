@@ -12,6 +12,8 @@ pub mod health;
 #[cfg(test)]
 mod isolamento_testes;
 pub mod pendencias;
+pub mod preferencias;
+pub mod busca;
 pub mod recorrencias;
 pub mod reset;
 pub mod transacoes;
@@ -24,7 +26,7 @@ use crate::state::AppState;
 use axum::extract::{Request, State};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use ecos_core::ErrorCode;
 
@@ -67,6 +69,11 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/categorias/:id", patch(categorias::atualizar).delete(categorias::excluir))
         .route("/vault/categorias/:id/uso", get(categorias::uso))
         .route("/vault/beneficiarios", get(beneficiarios::listar).post(beneficiarios::criar_ou_encontrar))
+        .route("/vault/beneficiarios/mesclar", post(beneficiarios::mesclar))
+        .route("/vault/beneficiarios/:id", patch(beneficiarios::renomear))
+        .route("/vault/preferencias", get(preferencias::obter))
+        .route("/vault/preferencias/:chave", put(preferencias::salvar))
+        .route("/vault/busca", get(busca::buscar))
         .route("/vault/painel", get(financeiro::painel))
         .route("/vault/financeiro/importar", post(financeiro::importar))
         .route("/vault/financeiro/exportar", get(financeiro::exportar))
@@ -80,7 +87,7 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/transacoes/:id", get(transacoes::obter).patch(transacoes::atualizar).delete(transacoes::excluir))
         .route("/vault/transacoes/:id/status", patch(transacoes::atualizar_status))
         .route("/vault/transacoes/:id/anexos", get(transacoes::listar_anexos).post(transacoes::upload_anexo))
-        .route("/vault/anexos/:id", delete(transacoes::excluir_anexo))
+        .route("/vault/anexos/:id", patch(transacoes::reclassificar_anexo).delete(transacoes::excluir_anexo))
         .route("/vault/anexos/:id/conteudo", get(comprovantes::conteudo_anexo))
         .route("/vault/comprovantes", get(comprovantes::listar).post(comprovantes::receber))
         .route("/vault/comprovantes/rascunhos", get(comprovantes::listar_rascunhos))
@@ -90,10 +97,12 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/comprovantes/rascunhos/:id/reprocessar", post(comprovantes::reprocessar))
         .route("/vault/comprovantes/rascunhos/:id/conteudo", get(comprovantes::conteudo_rascunho))
         .route("/vault/comprovantes/rascunhos/:id/confirmar", post(comprovantes::confirmar))
+        .route("/vault/recorrencias/ocorrencias", get(fluxo::listar_completas))
         .route("/vault/recorrencias", get(recorrencias::listar).post(recorrencias::criar))
         .route("/vault/recorrencias/:id", get(recorrencias::obter).patch(recorrencias::atualizar).delete(recorrencias::excluir))
         .route("/vault/recorrencias/:id/duplicar", post(recorrencias::duplicar))
         .route("/vault/recorrencias/:id/exclusoes", post(recorrencias::adicionar_exclusao))
+        .route("/vault/recorrencias/:id/encerrar-a-partir", post(recorrencias::encerrar_a_partir))
         .route("/vault/pendencias", get(pendencias::listar).post(pendencias::criar))
         .route("/vault/pendencias/:id", delete(pendencias::excluir))
         .route("/vault/pendencias/:id/converter", post(pendencias::converter))

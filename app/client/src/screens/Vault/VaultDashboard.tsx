@@ -59,7 +59,8 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
     const points = series.map(s => ({
         label: p.mensal ? new Date(`${s.data}-01T12:00:00`).toLocaleDateString("pt-BR",{month:"short",year:"2-digit"}) : s.data.slice(8),
         incomeConfirmedCents:s.receitas, expenseConfirmedCents:s.despesas,
-        incomeForecastCents:previsao?s.prevReceitas:0, expenseForecastCents:previsao?s.prevDespesas:0,
+        // Sempre manda a previsão: quem liga e desliga (com animação) é o gráfico.
+        incomeForecastCents:s.prevReceitas, expenseForecastCents:s.prevDespesas,
     }));
     const palette=["#38bdf8","#a78bfa","#f59e0b","#34d399","#f472b6","#fb923c","#60a5fa","#2dd4bf"];
     const segments=p.categorias.map((g,i)=>({label:categorias.find(c=>c.id===g.chave)?.nome??"Sem categoria",valueCents:g.valor,color:categorias.find(c=>c.id===g.chave)?.cor??palette[i%palette.length]}));
@@ -74,7 +75,7 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         <div className="cofre-chart-toolbar"><h2>Seu período em gráficos</h2></div>
         <div className="cofre-hero-grid">
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Receitas × despesas</h3><div className="cofre-chart-actions"><div className="cofre-legend"><span><i style={{background:cores[0]}}/>Receitas</span><span><i style={{background:cores[1]}}/>Despesas</span></div><button className="cofre-forecast" aria-label="Incluir previsões" aria-pressed={previsao} onClick={()=>setPrevisao(v=>!v)}>Previsões {previsao?"ligadas":"desligadas"}</button></div></div>
-                <ComposedAreaChart points={points} incomeColor={cores[0]} expenseColor={cores[1]} onSelect={i=>abrirData(series[i].data)}/>
+                <ComposedAreaChart points={points} showForecast={previsao} incomeColor={cores[0]} expenseColor={cores[1]} onSelect={i=>abrirData(series[i].data)}/>
                 <p className="cofre-chart-caption">Confirmado: lançamentos efetivados (ou conciliados). Previsão: pendentes e recorrências.</p>
             </section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Próximas ocorrências</h3><span className="cofre-count">{p.previsoes.length}</span></div><div className="cofre-upcoming">{p.previsoes.length?p.previsoes.slice(0,6).map(o=><button key={`${o.recorrencia_id}:${o.data}`} onClick={onFluxo}><span className="cofre-date-tile">{o.data.slice(8)}<small>{new Date(`${o.data}T12:00:00`).toLocaleDateString("pt-BR",{month:"short"})}</small></span><span><b>{o.descricao}</b><small>{o.tipo==="entrada"?"A receber":"A pagar"}</small></span><strong>{formatMoeda(o.valor_centavos)}</strong></button>):<div className="cofre-chart-empty"><TrendingUp size={25}/><span>Nenhuma ocorrência prevista</span><small>Cadastre recorrências nas configurações ou acompanhe o fluxo financeiro.</small></div>}</div></section>

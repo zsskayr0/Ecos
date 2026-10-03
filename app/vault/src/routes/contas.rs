@@ -17,11 +17,12 @@ const TIPOS: [&str; 6] = ["corrente", "poupanca", "carteira", "investimento", "c
 const TABELAS_COM_CONTA: [&str; 2] = ["transacao", "transacao_recorrente"];
 
 pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+    let usuario = crate::db::autor_atual().unwrap_or_default();
     let linhas: Vec<serde_json::Value> = state
         .db
-        .with(|conn| {
+        .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, nome, banco, agencia, numero_conta, cor, padrao, espaco, criado_por, tipo, codigo_banco, saldo_inicial_centavos FROM conta ORDER BY nome",
+                "SELECT id, nome, banco, agencia, numero_conta, cor, padrao, espaco, criado_por, tipo, codigo_banco, saldo_inicial_centavos, sigla FROM conta ORDER BY nome",
             )?;
             let linhas = stmt
                 .query_map([], |r| {
@@ -31,10 +32,20 @@ pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json:
                         "cor": r.get::<_, String>(5)?, "padrao": r.get::<_, i64>(6)? != 0, "espaco": r.get::<_, String>(7)?,
                         "criado_por": r.get::<_, Option<String>>(8)?,
                         "tipo": r.get::<_, String>(9)?, "codigo_banco": r.get::<_, Option<String>>(10)?,
-                        "saldo_inicial_centavos": r.get::<_, i64>(11)?,
+                        "saldo_inicial_centavos": r.get::<_, i64>(11)?, "sigla": r.get::<_, Option<String>>(12)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            let mut linhas = linhas;
+            // Ordem e conta padrão são de quem pergunta: o `padrao` da coluna só vale enquanto a pessoa não escolheu.
+            super::preferencias::ordenar_por(&mut linhas, &super::preferencias::ler_ordem(conn, &usuario, super::preferencias::ORDEM_CONTAS)?);
+            if let Some(escolhida) = super::preferencias::ler(conn, &usuario, super::preferencias::CONTA_PADRAO)?.and_then(|v| v.as_str().map(str::to_string)) {
+                if linhas.iter().any(|l| l["id"] == escolhida.as_str()) {
+                    for l in linhas.iter_mut() {
+                        l["padrao"] = serde_json::json!(l["id"] == escolhida.as_str());
+                    }
+                }
+            }
             Ok(linhas)
         })
         .await?;
@@ -60,6 +71,9 @@ pub struct ContaPayload {
     pub codigo_banco: Option<String>,
     #[serde(default)]
     pub saldo_inicial_centavos: i64,
+    /// Sigla do selo de um banco personalizado (até 4 letras ou números).
+    #[serde(default)]
+    pub sigla: Option<String>,
 }
 
 fn cor_padrao() -> String {
@@ -79,6 +93,11 @@ fn validar(payload: &ContaPayload) -> AppResult<()> {
     if !TIPOS.contains(&payload.tipo.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("tipo de conta inválido"));
     }
+    if let Some(s) = payload.sigla.as_deref().map(str::trim) {
+        if s.chars().count() > 4 || !s.chars().all(|c| c.is_alphanumeric()) {
+            return Err(AppError::new(ErrorCode::ValidationError).with_message("a sigla tem até 4 letras ou números"));
+        }
+    }
     // Dinheiro de verdade cabe com folga em 15 dígitos de centavos; isto só barra lixo.
     if payload.saldo_inicial_centavos.abs() > 999_999_999_999_999 {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("saldo inicial fora do limite"));
@@ -96,9 +115,9 @@ pub async fn criar(State(state): State<AppState>, Json(payload): Json<ContaPaylo
             let id = id.clone();
             move |conn| {
                 conn.execute(
-                    "INSERT INTO conta (id, nome, banco, agencia, numero_conta, cor, espaco, criado_por, tipo, codigo_banco, saldo_inicial_centavos) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                    rusqlite::params![id, payload.nome.trim(), payload.banco, payload.agencia, payload.numero_conta, payload.cor, payload.espaco, autor, payload.tipo, payload.codigo_banco, payload.saldo_inicial_centavos],
+                    "INSERT INTO conta (id, nome, banco, agencia, numero_conta, cor, espaco, criado_por, tipo, codigo_banco, saldo_inicial_centavos, sigla) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    rusqlite::params![id, payload.nome.trim(), payload.banco, payload.agencia, payload.numero_conta, payload.cor, payload.espaco, autor, payload.tipo, payload.codigo_banco, payload.saldo_inicial_centavos, payload.sigla.as_deref().map(str::trim).filter(|x| !x.is_empty()).map(str::to_uppercase)],
                 )
             }
         })
@@ -112,9 +131,9 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
         .db
         .with(move |conn| {
             conn.execute(
-                "UPDATE conta SET nome = ?1, banco = ?2, agencia = ?3, numero_conta = ?4, cor = ?5, tipo = ?6, codigo_banco = ?7, saldo_inicial_centavos = ?8, \
-                 atualizado_em = datetime('now') WHERE id = ?9",
-                rusqlite::params![payload.nome.trim(), payload.banco, payload.agencia, payload.numero_conta, payload.cor, payload.tipo, payload.codigo_banco, payload.saldo_inicial_centavos, id],
+                "UPDATE conta SET nome = ?1, banco = ?2, agencia = ?3, numero_conta = ?4, cor = ?5, tipo = ?6, codigo_banco = ?7, saldo_inicial_centavos = ?8, sigla = ?9, \
+                 atualizado_em = datetime('now') WHERE id = ?10",
+                rusqlite::params![payload.nome.trim(), payload.banco, payload.agencia, payload.numero_conta, payload.cor, payload.tipo, payload.codigo_banco, payload.saldo_inicial_centavos, payload.sigla.as_deref().map(str::trim).filter(|x| !x.is_empty()).map(str::to_uppercase), id],
             )
         })
         .await?;
@@ -279,6 +298,21 @@ mod testes {
         let (s, _) = chamar(&app, "PATCH", &format!("/vault/contas/{id}"), Some(json!({ "nome": "Nubank", "tipo": "poupanca", "saldo_inicial_centavos": 0 }))).await;
         assert_eq!(s, StatusCode::OK);
         assert_eq!(saldo(&app, &id).await, 20_000);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[tokio::test]
+    async fn sigla_do_banco_personalizado_e_guardada_em_maiusculas_e_validada() {
+        let (app, raiz) = app();
+        ativar(&app).await;
+        let id = conta(&app, json!({ "nome": "Banco da Vila", "banco": "Banco da Vila", "sigla": " bv1 " })).await;
+        let (_, lista) = chamar(&app, "GET", "/vault/contas", None).await;
+        assert_eq!(lista[0]["sigla"], "BV1");
+        // Sigla vazia limpa; longa demais ou com símbolo é recusada.
+        assert_eq!(chamar(&app, "PATCH", &format!("/vault/contas/{id}"), Some(json!({ "nome": "Banco da Vila", "sigla": "" }))).await.0, StatusCode::OK);
+        assert!(chamar(&app, "GET", "/vault/contas", None).await.1[0]["sigla"].is_null());
+        assert_eq!(chamar(&app, "PATCH", &format!("/vault/contas/{id}"), Some(json!({ "nome": "X", "sigla": "ABCDE" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(chamar(&app, "POST", "/vault/contas", Some(json!({ "nome": "X", "sigla": "A-B" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
         let _ = std::fs::remove_dir_all(raiz);
     }
 

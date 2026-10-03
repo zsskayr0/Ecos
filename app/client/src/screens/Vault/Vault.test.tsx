@@ -16,15 +16,22 @@ it("previsão pode ser ligada e desligada e drill-down respeita intervalo parcia
     const drill=vi.fn();
     const p={...painel,mensal:true,series:[{data:"2026-09",receitas:300,despesas:0,receitas_confirmadas:100,despesas_confirmadas:0}],previsoes:[{recorrencia_id:"r",data:"2026-09-22",tipo:"entrada" as const,descricao:"previsão",valor_centavos:500}]};
     render(<VaultDashboard painel={p} categorias={[]} periodo={{data_de:"2026-09-15",data_ate:"2026-09-25"}} drill={drill} abrir={vi.fn()}/>);
-    expect(screen.getByRole("table",{hidden:true}).textContent).toContain(formatMoeda(100));
-    fireEvent.click(screen.getByLabelText("Incluir previsão"));
-    expect(screen.getByRole("table",{hidden:true}).textContent).toContain(formatMoeda(800));
-    fireEvent.click(screen.getByLabelText("Incluir previsão"));
-    expect(screen.getByRole("table",{hidden:true}).textContent).toContain(formatMoeda(100));
-    fireEvent.click(screen.getByRole("button",{name:"2026-09",hidden:true}));
+    const slider=screen.getByRole("slider");
+    const dica=()=>document.querySelector(".cofre-area-chart .pointer-events-none.absolute")?.textContent??"";
+    fireEvent.keyDown(slider,{key:"Home"});
+    expect(dica()).toContain(formatMoeda(100));
+    expect(dica()).not.toContain("previsto");
+    const botao=screen.getByLabelText("Incluir previsões");
+    expect(botao.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(botao);
+    expect(botao.getAttribute("aria-pressed")).toBe("true");
+    expect(dica()).toContain(`${formatMoeda(700)} previsto`); // 200 da série + 500 da ocorrência
+    fireEvent.click(botao);
+    expect(dica()).not.toContain("previsto");
+    fireEvent.keyDown(slider,{key:"Enter"});
     expect(drill).toHaveBeenCalledWith({data_de:"2026-09-15",data_ate:"2026-09-25"});
 });
-beforeEach(() => { vi.clearAllMocks(); vi.mocked(auth.perfil).mockResolvedValue({ cofre_ativado: true } as Awaited<ReturnType<typeof auth.perfil>>); vi.mocked(vault.config).mockResolvedValue({ cofre_ativado: true, destrancado: true, saldos_por_conta: [] }); vi.mocked(vault.categorias.listar).mockResolvedValue([]); vi.mocked(financeiro.painel).mockResolvedValue(painel); vi.mocked(financeiro.ocorrencias).mockResolvedValue([]); vi.mocked(financeiro.pendencias.listar).mockResolvedValue([]); vi.mocked(vault.transacoes.listar).mockResolvedValue({ items: [], next_cursor: null }); });
+beforeEach(() => { vi.clearAllMocks(); Element.prototype.scrollIntoView = vi.fn(); vi.mocked(auth.perfil).mockResolvedValue({ id: "u1", nome: "Ana Souza", nome_usuario: "ana", cofre_ativado: true, equipes: [] } as unknown as Awaited<ReturnType<typeof auth.perfil>>); vi.mocked(vault.config).mockResolvedValue({ cofre_ativado: true, destrancado: true, saldos_por_conta: [] }); vi.mocked(vault.categorias.listar).mockResolvedValue([]); vi.mocked(financeiro.painel).mockResolvedValue(painel); vi.mocked(financeiro.ocorrencias).mockResolvedValue([]); vi.mocked(financeiro.pendencias.listar).mockResolvedValue([]); vi.mocked(vault.transacoes.listar).mockResolvedValue({ items: [], next_cursor: null }); });
 it("remove painel e menus financeiros imediatamente ao bloquear", async () => {
     vi.mocked(vault.bloquear).mockImplementation(() => new Promise(() => { }));
     render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
@@ -59,7 +66,7 @@ it("explica rota ausente sem impedir acesso aos lançamentos", async () => {
     render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
     await screen.findByText("O painel precisa de uma atualização");
     fireEvent.click(screen.getByRole("button", {name:"Abrir lançamentos"}));
-    await screen.findByText("Nenhum lançamento neste filtro.");
+    await screen.findByText("Nenhum lançamento encontrado.");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(financeiro.painel).toHaveBeenCalledTimes(1);
 });

@@ -26,12 +26,12 @@ function Pai({ inicial = [], aoMudar }: { inicial?: File[]; aoMudar?: (f: File[]
   const [lista, setLista] = useState<File[]>(inicial);
   return <AnexosPendentes arquivos={lista} onChange={(f) => { setLista(f); aoMudar?.(f); }} />;
 }
-const escolher = (...arquivos: File[]) => fireEvent.change(screen.getByLabelText("Escolher anexos do lançamento"), { target: { files: arquivos } });
+const escolher = (...arquivos: File[]) => fireEvent.change(screen.getByLabelText("Escolher comprovantes do lançamento"), { target: { files: arquivos } });
 
 it("começa vazio, opcional, e explica que só salva com o lançamento", () => {
   render(<Pai />);
-  expect(screen.getByText("Anexos")).toBeTruthy();
-  expect(screen.getByText(/Os anexos são guardados quando você salvar o lançamento/)).toBeTruthy();
+  expect(screen.getByText("Comprovantes")).toBeTruthy();
+  expect(screen.getByText(/Comprovantes são guardados quando você salvar o lançamento/)).toBeTruthy();
 });
 
 it("anexar mostra o comprovante como miniatura, com contagem e botão de tirar", () => {
@@ -43,7 +43,7 @@ it("anexar mostra o comprovante como miniatura, com contagem e botão de tirar",
   expect(document.querySelector('img[src="blob:extrato.pdf"]')).toBeNull(); // PDF mostra ícone, não imagem
   expect(screen.getByText("pix.png")).toBeTruthy();
   expect(screen.getByText("2")).toBeTruthy();
-  expect(screen.queryByText(/Os anexos são guardados quando/)).toBeNull();
+  expect(screen.queryByText(/Comprovantes são guardados quando/)).toBeNull();
 });
 
 it("tirar um anexo remove só aquele", () => {
@@ -82,8 +82,8 @@ it("enviarAnexosPendentes sobe todos no lançamento criado e devolve vazio quand
   const a = arq("a.png", "image/png");
   const b = arq("b.pdf", "application/pdf");
   expect(await enviarAnexosPendentes("t9", [a, b])).toEqual([]);
-  expect(vault.anexos.enviar).toHaveBeenNthCalledWith(1, "t9", a);
-  expect(vault.anexos.enviar).toHaveBeenNthCalledWith(2, "t9", b);
+  expect(vault.anexos.enviar).toHaveBeenNthCalledWith(1, "t9", a, "comprovante");
+  expect(vault.anexos.enviar).toHaveBeenNthCalledWith(2, "t9", b, "comprovante");
 });
 
 it("uma falha não impede os outros anexos e é devolvida para avisar a pessoa", async () => {

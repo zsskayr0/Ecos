@@ -8,7 +8,7 @@ export interface Banco {
   curto: string;
   /** Cor da marca (aproximada), usada como cor padrão da conta. */
   cor: string;
-  grupo: "grandes" | "digitais" | "cooperativas" | "regionais" | "investimento";
+  grupo: "grandes" | "digitais" | "cooperativas" | "regionais" | "investimento" | "financeiras" | "estrangeiros";
 }
 
 export const GRUPOS_BANCO: Record<Banco["grupo"], string> = {
@@ -17,6 +17,8 @@ export const GRUPOS_BANCO: Record<Banco["grupo"], string> = {
   cooperativas: "Cooperativas",
   regionais: "Regionais e públicos",
   investimento: "Investimento e outros",
+  financeiras: "Financeiras e de marcas",
+  estrangeiros: "Bancos estrangeiros",
 };
 
 export const BANCOS: Banco[] = [
@@ -73,6 +75,78 @@ export const BANCOS: Banco[] = [
   { codigo: "243", nome: "Banco Master", curto: "Master", cor: "#6b2fa0", grupo: "investimento" },
   { codigo: "643", nome: "Banco Pine", curto: "Pine", cor: "#0f7a4d", grupo: "investimento" },
   { codigo: "074", nome: "Banco J. Safra", curto: "J. Safra", cor: "#7a6a3a", grupo: "investimento" },
+  { codigo: "007", nome: "BNDES", curto: "BNDES", cor: "#005ca9", grupo: "regionais" },
+  { codigo: "021", nome: "Banestes", curto: "Banestes", cor: "#0067b1", grupo: "regionais" },
+  { codigo: "037", nome: "Banco do Estado do Pará (Banpará)", curto: "Banpará", cor: "#0a7abf", grupo: "regionais" },
+  { codigo: "047", nome: "Banco do Estado de Sergipe (Banese)", curto: "Banese", cor: "#1d70b8", grupo: "regionais" },
+  { codigo: "082", nome: "Banco Topázio", curto: "Topázio", cor: "#d7282f", grupo: "regionais" },
+  { codigo: "254", nome: "Paraná Banco", curto: "Paraná Banco", cor: "#1d4ed8", grupo: "regionais" },
+  { codigo: "741", nome: "Banco Ribeirão Preto", curto: "Ribeirão Preto", cor: "#1e3a8a", grupo: "regionais" },
+  { codigo: "743", nome: "Banco Semear", curto: "Semear", cor: "#0e7490", grupo: "regionais" },
+  { codigo: "612", nome: "Banco Guanabara", curto: "Guanabara", cor: "#0369a1", grupo: "regionais" },
+  { codigo: "634", nome: "Banco Triângulo", curto: "Triângulo", cor: "#9d174d", grupo: "regionais" },
+  { codigo: "604", nome: "Banco Industrial do Brasil", curto: "Industrial do Brasil", cor: "#1e40af", grupo: "regionais" },
+  { codigo: "340", nome: "Super Pagamentos (Superdigital)", curto: "Superdigital", cor: "#e30613", grupo: "digitais" },
+  { codigo: "383", nome: "Juno", curto: "Juno", cor: "#ff4f7b", grupo: "digitais" },
+  { codigo: "332", nome: "Acesso Soluções de Pagamento", curto: "Acesso Bank", cor: "#0057b8", grupo: "digitais" },
+  { codigo: "450", nome: "Fitbank", curto: "Fitbank", cor: "#0ea5e9", grupo: "digitais" },
+  { codigo: "462", nome: "Stark Bank", curto: "Stark Bank", cor: "#7c3aed", grupo: "digitais" },
+  { codigo: "509", nome: "Celcoin", curto: "Celcoin", cor: "#00c389", grupo: "digitais" },
+  { codigo: "510", nome: "Facta Financeira", curto: "Facta", cor: "#e4002b", grupo: "digitais" },
+  { codigo: "396", nome: "Hub Pagamentos", curto: "Hub", cor: "#2d6cdf", grupo: "digitais" },
+  { codigo: "363", nome: "Singulare", curto: "Singulare", cor: "#0e7490", grupo: "digitais" },
+  { codigo: "144", nome: "Bexs Banco de Câmbio", curto: "Bexs", cor: "#0d9488", grupo: "digitais" },
+  { codigo: "321", nome: "Crefaz", curto: "Crefaz", cor: "#ef4444", grupo: "digitais" },
+  { codigo: "630", nome: "Banco Smartbank", curto: "Smartbank", cor: "#2563eb", grupo: "digitais" },
+  { codigo: "613", nome: "Omni Banco", curto: "Omni", cor: "#0369a1", grupo: "digitais" },
+  { codigo: "010", nome: "Credicoamo", curto: "Credicoamo", cor: "#0b8f3a", grupo: "cooperativas" },
+  { codigo: "114", nome: "Central Cooperativa Esperança (Cecoopes)", curto: "Cecoopes", cor: "#2e8b57", grupo: "cooperativas" },
+  { codigo: "246", nome: "Banco ABC Brasil", curto: "ABC Brasil", cor: "#0b3c8a", grupo: "investimento" },
+  { codigo: "265", nome: "Banco Fator", curto: "Fator", cor: "#1d4ed8", grupo: "investimento" },
+  { codigo: "224", nome: "Banco Fibra", curto: "Fibra", cor: "#334155", grupo: "investimento" },
+  { codigo: "184", nome: "Banco Itaú BBA", curto: "Itaú BBA", cor: "#ec7000", grupo: "investimento" },
+  { codigo: "107", nome: "Banco Bocom BBM", curto: "Bocom BBM", cor: "#be123c", grupo: "investimento" },
+  { codigo: "188", nome: "Ativa Investimentos", curto: "Ativa", cor: "#0f766e", grupo: "investimento" },
+  { codigo: "611", nome: "Banco Paulista", curto: "Paulista", cor: "#9a3412", grupo: "investimento" },
+  { codigo: "653", nome: "Banco Indusval (Voiter)", curto: "Voiter", cor: "#0f766e", grupo: "investimento" },
+  { codigo: "712", nome: "Banco Ourinvest", curto: "Ourinvest", cor: "#b45309", grupo: "investimento" },
+  { codigo: "720", nome: "Banco Maxima", curto: "Maxima", cor: "#7c2d12", grupo: "investimento" },
+  { codigo: "330", nome: "Banco Bari", curto: "Bari", cor: "#dc2626", grupo: "investimento" },
+  { codigo: "412", nome: "Banco Capital", curto: "Capital", cor: "#7e22ce", grupo: "investimento" },
+  { codigo: "233", nome: "Banco Cifra", curto: "Cifra", cor: "#475569", grupo: "investimento" },
+  { codigo: "320", nome: "Banco CCB Brasil", curto: "CCB Brasil", cor: "#c8102e", grupo: "investimento" },
+  { codigo: "479", nome: "Banco ItauBank", curto: "ItauBank", cor: "#ec7000", grupo: "investimento" },
+  { codigo: "029", nome: "Banco Itaú Consignado", curto: "Itaú Consignado", cor: "#ec7000", grupo: "financeiras" },
+  { codigo: "626", nome: "Banco C6 Consignado", curto: "C6 Consignado", cor: "#4a4a4f", grupo: "financeiras" },
+  { codigo: "394", nome: "Banco Bradesco Financiamentos", curto: "Bradesco Financiamentos", cor: "#cc092f", grupo: "financeiras" },
+  { codigo: "063", nome: "Banco Bradescard", curto: "Bradescard", cor: "#cc092f", grupo: "financeiras" },
+  { codigo: "204", nome: "Banco Bradesco Cartões", curto: "Bradesco Cartões", cor: "#cc092f", grupo: "financeiras" },
+  { codigo: "069", nome: "Banco Crefisa", curto: "Crefisa", cor: "#00a859", grupo: "financeiras" },
+  { codigo: "120", nome: "Banco Rodobens", curto: "Rodobens", cor: "#dc2626", grupo: "financeiras" },
+  { codigo: "610", nome: "Banco VR", curto: "VR", cor: "#00a859", grupo: "financeiras" },
+  { codigo: "387", nome: "Banco Toyota do Brasil", curto: "Toyota", cor: "#eb0a1e", grupo: "financeiras" },
+  { codigo: "390", nome: "Banco GM", curto: "GM Financial", cor: "#005aa7", grupo: "financeiras" },
+  { codigo: "393", nome: "Banco Volkswagen", curto: "Volkswagen", cor: "#001e50", grupo: "financeiras" },
+  { codigo: "739", nome: "Banco Cetelem", curto: "Cetelem", cor: "#00a859", grupo: "financeiras" },
+  { codigo: "174", nome: "Pernambucanas Financiadora", curto: "Pernambucanas", cor: "#d4145a", grupo: "financeiras" },
+  { codigo: "359", nome: "Zema Crédito", curto: "Zema", cor: "#e30613", grupo: "financeiras" },
+  { codigo: "411", nome: "Via Certa Financiadora", curto: "Via Certa", cor: "#0369a1", grupo: "financeiras" },
+  { codigo: "477", nome: "Citibank N.A.", curto: "Citibank N.A.", cor: "#1b5faa", grupo: "estrangeiros" },
+  { codigo: "376", nome: "Banco J.P. Morgan", curto: "J.P. Morgan", cor: "#2f2f2f", grupo: "estrangeiros" },
+  { codigo: "370", nome: "Banco Mizuho do Brasil", curto: "Mizuho", cor: "#0b2f7a", grupo: "estrangeiros" },
+  { codigo: "456", nome: "Banco MUFG Brasil", curto: "MUFG", cor: "#d4001a", grupo: "estrangeiros" },
+  { codigo: "464", nome: "Banco Sumitomo Mitsui Brasileiro", curto: "Sumitomo Mitsui", cor: "#007a3d", grupo: "estrangeiros" },
+  { codigo: "487", nome: "Deutsche Bank", curto: "Deutsche Bank", cor: "#0018a8", grupo: "estrangeiros" },
+  { codigo: "505", nome: "Banco Credit Suisse (Brasil)", curto: "Credit Suisse", cor: "#003c71", grupo: "estrangeiros" },
+  { codigo: "752", nome: "Banco BNP Paribas Brasil", curto: "BNP Paribas", cor: "#00915a", grupo: "estrangeiros" },
+  { codigo: "751", nome: "Scotiabank Brasil", curto: "Scotiabank", cor: "#ec111a", grupo: "estrangeiros" },
+  { codigo: "755", nome: "Bank of America Merrill Lynch", curto: "Bank of America", cor: "#e31837", grupo: "estrangeiros" },
+  { codigo: "757", nome: "Banco KEB Hana do Brasil", curto: "KEB Hana", cor: "#00857c", grupo: "estrangeiros" },
+  { codigo: "064", nome: "Goldman Sachs do Brasil", curto: "Goldman Sachs", cor: "#6e9bd1", grupo: "estrangeiros" },
+  { codigo: "066", nome: "Banco Morgan Stanley", curto: "Morgan Stanley", cor: "#0b3a6f", grupo: "estrangeiros" },
+  { codigo: "017", nome: "BNY Mellon Banco", curto: "BNY Mellon", cor: "#8c1d18", grupo: "estrangeiros" },
+  { codigo: "163", nome: "Commerzbank Brasil", curto: "Commerzbank", cor: "#e5b800", grupo: "estrangeiros" },
+  { codigo: "065", nome: "Banco AndBank (Brasil)", curto: "AndBank", cor: "#ee2e24", grupo: "estrangeiros" },
 ];
 
 export const TIPOS_CONTA: { valor: TipoConta; rotulo: string }[] = [
@@ -102,7 +176,7 @@ export function bancoPorCodigo(codigo: string | null | undefined): Banco | undef
   return codigo ? BANCOS.find((b) => b.codigo === codigo) : undefined;
 }
 
-/** Iniciais para o selo da conta (sem logos de terceiros: o selo usa a cor da marca). */
+/** Iniciais para o selo da conta quando o banco não tem logo (o selo usa a cor da marca). */
 export function iniciais(nome: string): string {
   const partes = nome.trim().split(/\s+/).filter(Boolean);
   if (partes.length === 0) return "?";

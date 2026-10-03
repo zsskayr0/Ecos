@@ -45,7 +45,9 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0004_autoria.sql")),
         M::up(include_str!("../../migrations/0005_comprovantes.sql")),
         M::up(include_str!("../../migrations/0006_ocr_miniatura.sql")),
-        M::up(include_str!("../../migrations/0007_conta_detalhes.sql"))])
+        M::up(include_str!("../../migrations/0007_conta_detalhes.sql")),
+        M::up(include_str!("../../migrations/0008_preferencias_nota_fiscal.sql")),
+        M::up(include_str!("../../migrations/0009_conta_sigla.sql"))])
 }
 
 #[derive(Debug, thiserror::Error)]

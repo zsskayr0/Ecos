@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { CampoLuz } from "@/components/brand/CampoLuz";
 import { LogoAnimada } from "@/components/brand/LogoAnimada";
 
 const CURVAS = [
@@ -25,6 +26,9 @@ export function ArteAuth({ pulso = 0 }: { pulso?: number }) {
     <div aria-hidden className="auth-arte relative hidden overflow-hidden lg:block">
       <div className="auth-arte-brilho auth-arte-brilho-a" />
       <div className="auth-arte-brilho auth-arte-brilho-b" />
+
+      {/* A fumaça fica entre os brilhos de fundo e as curvas: as linhas de luz atravessam e acendem dentro dela. */}
+      <CampoLuz className="pointer-events-none absolute inset-0 h-full w-full opacity-95 mix-blend-screen" />
 
       <svg viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full">
         <defs>

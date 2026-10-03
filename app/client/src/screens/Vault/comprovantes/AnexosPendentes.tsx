@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Paperclip, X } from "lucide-react";
-import { ApiError, vault } from "@/lib/api";
+import { FileText, Paperclip, Receipt, X } from "lucide-react";
+import { ApiError, vault, type TipoAnexo } from "@/lib/api";
+import { ROTULOS_ANEXO } from "./rotulos";
 import { ANEXO_TAMANHO_MAXIMO_BYTES, ehArquivoDoCofre } from "@/lib/tipos-comprovante";
 import { prepararComprovante } from "@/lib/preparar-comprovante";
 
@@ -10,11 +11,11 @@ const ACEITOS = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
  * Sobe os anexos escolhidos antes de o lançamento existir. Foto acima do limite é reduzida; o que falhar não impede
  * o resto. Devolve as mensagens de falha (vazio = tudo certo).
  */
-export async function enviarAnexosPendentes(transacaoId: string, arquivos: File[]): Promise<string[]> {
+export async function enviarAnexosPendentes(transacaoId: string, arquivos: File[], tipo: TipoAnexo = "comprovante"): Promise<string[]> {
   const falhas: string[] = [];
   for (const original of arquivos) {
     try {
-      await vault.anexos.enviar(transacaoId, await prepararComprovante(original));
+      await vault.anexos.enviar(transacaoId, await prepararComprovante(original), tipo);
     } catch (e) {
       falhas.push(e instanceof ApiError || e instanceof Error ? e.message : `Não foi possível anexar “${original.name}”.`);
     }
@@ -22,8 +23,10 @@ export async function enviarAnexosPendentes(transacaoId: string, arquivos: File[
   return falhas;
 }
 
-/** Anexos de um lançamento NOVO: ficam na memória até salvar; aí são enviados ao Cofre. */
-export function AnexosPendentes({ arquivos, onChange }: { arquivos: File[]; onChange: (arquivos: File[]) => void }) {
+/** Comprovantes (ou notas fiscais) de um lançamento NOVO: ficam na memória até salvar; aí são enviados ao Cofre. */
+export function AnexosPendentes({ arquivos, onChange, tipo = "comprovante" }: { arquivos: File[]; onChange: (arquivos: File[]) => void; tipo?: TipoAnexo }) {
+  const r = ROTULOS_ANEXO[tipo];
+  const Icone = tipo === "nota_fiscal" ? Receipt : Paperclip;
   const entrada = useRef<HTMLInputElement>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -45,9 +48,9 @@ export function AnexosPendentes({ arquivos, onChange }: { arquivos: File[]; onCh
   }
 
   return (
-    <section className="cofre-anexos" aria-label="Anexos do lançamento">
+    <section className="cofre-anexos" data-tipo={tipo} aria-label={`${r.titulo} do lançamento`}>
       <div className="cofre-anexos-head">
-        <h3><Paperclip size={14} aria-hidden />Anexos{arquivos.length > 0 && <span>{arquivos.length}</span>}</h3>
+        <h3><Icone size={14} aria-hidden />{r.titulo}{arquivos.length > 0 && <span>{arquivos.length}</span>}</h3>
       </div>
       {erro && <p role="alert" className="cofre-transactions-error">{erro}</p>}
       <ul className="cofre-anexos-grade">
@@ -61,11 +64,11 @@ export function AnexosPendentes({ arquivos, onChange }: { arquivos: File[]; onCh
           </li>
         ))}
         <li className="cofre-anexo-item">
-          <button type="button" className="cofre-anexo-novo" onClick={() => entrada.current?.click()}><Paperclip size={20} aria-hidden /><span>Anexar</span></button>
+          <button type="button" className="cofre-anexo-novo" onClick={() => entrada.current?.click()}><Icone size={20} aria-hidden /><span>Anexar</span></button>
         </li>
       </ul>
-      {arquivos.length === 0 && <p className="cofre-anexos-vazio">Opcional. Os anexos são guardados quando você salvar o lançamento.</p>}
-      <input ref={entrada} type="file" accept={ACEITOS} multiple hidden aria-label="Escolher anexos do lançamento" onChange={(e) => adicionar(e.target.files)} />
+      {arquivos.length === 0 && <p className="cofre-anexos-vazio">{r.titulo} são guardad{tipo === "nota_fiscal" ? "as" : "os"} quando você salvar o lançamento.</p>}
+      <input ref={entrada} type="file" accept={ACEITOS} multiple hidden aria-label={`Escolher ${r.plural} do lançamento`} onChange={(e) => adicionar(e.target.files)} />
     </section>
   );
 }

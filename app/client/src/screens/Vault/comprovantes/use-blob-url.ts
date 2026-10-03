@@ -34,6 +34,34 @@ export function useBlobUrl(chave: string | null, carregar: () => Promise<Blob | 
   return { url, estado, tentarDeNovo: () => setTentativa((n) => n + 1) };
 }
 
+/** Baixa um arquivo autenticado como bytes (para o leitor de PDF, que lê da memória e não de uma URL). */
+export function usePdfDados(chave: string | null, carregar: () => Promise<Blob | null>) {
+  const [estado, setEstado] = useState<EstadoBlob>("carregando");
+  const [dados, setDados] = useState<ArrayBuffer | null>(null);
+  const [tentativa, setTentativa] = useState(0);
+
+  useEffect(() => {
+    if (!chave) return;
+    let vivo = true;
+    setEstado("carregando");
+    setDados(null);
+    carregar()
+      .then(async (blob) => {
+        if (!vivo) return;
+        if (!blob) { setEstado("ausente"); return; }
+        const bytes = await blob.arrayBuffer();
+        if (!vivo) return;
+        setDados(bytes);
+        setEstado("pronto");
+      })
+      .catch(() => { if (vivo) setEstado("erro"); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave, tentativa]);
+
+  return { dados, estado, tentarDeNovo: () => setTentativa((n) => n + 1) };
+}
+
 /** O que o WebView do Cofre consegue desenhar numa `<img>`; o resto (PDF, HEIC) é só baixar. */
 export const exibivelComoImagem = (mime: string) => ["image/jpeg", "image/png", "image/webp"].includes(mime);
 

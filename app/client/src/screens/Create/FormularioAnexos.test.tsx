@@ -48,22 +48,26 @@ beforeEach(() => {
 
 const envolver = (ui: React.ReactElement) => render(<MemoryRouter><AuthProvider><RefreshProvider>{ui}</RefreshProvider></AuthProvider></MemoryRouter>);
 
-it("EDITAR: o container Anexos fica DENTRO do formulário, logo abaixo de Observações e acima do botão Salvar", async () => {
+it("EDITAR: os containers de Comprovantes e Notas fiscais ficam DENTRO do formulário, logo abaixo de Observações e acima do botão Salvar", async () => {
   envolver(<EditorDeLancamento id="t1" aoSalvar={vi.fn()} aoExcluir={vi.fn()} aoFechar={vi.fn()} />);
   const observacoes = await screen.findByPlaceholderText("Opcional");
-  const anexos = await screen.findByRole("region", { name: "Anexos do lançamento" });
+  const anexos = await screen.findByRole("region", { name: "Comprovantes do lançamento" });
+  const notas = await screen.findByRole("region", { name: "Notas fiscais do lançamento" });
   const salvar = screen.getByRole("button", { name: /Salvar alterações/ });
   const antes = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-  expect(antes(observacoes, anexos)).toBe(true); // Observações → Anexos
-  expect(antes(anexos, salvar)).toBe(true); // Anexos → Salvar
-  expect(salvar.closest("form")!.contains(anexos)).toBe(true); // dentro do formulário
+  expect(antes(observacoes, anexos)).toBe(true); // Observações → Comprovantes
+  expect(antes(anexos, notas)).toBe(true); // Comprovantes → Notas fiscais
+  expect(antes(notas, salvar)).toBe(true); // Notas fiscais → Salvar
+  expect(salvar.closest("form")!.contains(anexos) && salvar.closest("form")!.contains(notas)).toBe(true); // dentro do formulário
 });
 
-it("NOVO: o formulário de lançamento também tem o container Anexos abaixo de Observações", async () => {
+it("NOVO: o formulário de lançamento também tem os containers de Comprovantes e Notas fiscais abaixo de Observações", async () => {
   envolver(<CreateFlow />);
   const observacoes = await screen.findByPlaceholderText("Opcional");
-  const anexos = await screen.findByRole("region", { name: "Anexos do lançamento" });
+  const anexos = await screen.findByRole("region", { name: "Comprovantes do lançamento" });
+  const notas = await screen.findByRole("region", { name: "Notas fiscais do lançamento" });
   expect(Boolean(observacoes.compareDocumentPosition(anexos) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  expect(Boolean(anexos.compareDocumentPosition(notas) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
 });
 
 it("NOVO: os anexos escolhidos antes de salvar são enviados ao lançamento recém-criado", async () => {
@@ -71,11 +75,23 @@ it("NOVO: os anexos escolhidos antes de salvar são enviados ao lançamento rec�
   fireEvent.change(await screen.findByPlaceholderText("Ex.: Mercado Extra"), { target: { value: "Compra no mercado" } });
   fireEvent.change(screen.getByPlaceholderText("R$ 0,00"), { target: { value: "12990" } });
   const comprovante = new File(["png"], "comprovante.png", { type: "image/png" });
-  fireEvent.change(screen.getByLabelText("Escolher anexos do lançamento"), { target: { files: [comprovante] } });
+  fireEvent.change(screen.getByLabelText("Escolher comprovantes do lançamento"), { target: { files: [comprovante] } });
   expect(screen.getByText("comprovante.png")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Salvar lançamento/ }));
   await waitFor(() => expect(vault.transacoes.criar).toHaveBeenCalledWith(expect.objectContaining({ descricao: "Compra no mercado", valor_centavos: 12990 })));
-  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("novo", comprovante));
+  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("novo", comprovante, "comprovante"));
+});
+
+it("NOVO: a nota fiscal escolhida antes de salvar é enviada como nota fiscal", async () => {
+  envolver(<CreateFlow />);
+  fireEvent.change(await screen.findByPlaceholderText("Ex.: Mercado Extra"), { target: { value: "Compra com nota" } });
+  fireEvent.change(screen.getByPlaceholderText("R$ 0,00"), { target: { value: "8000" } });
+  const nota = new File(["pdf"], "nota.pdf", { type: "application/pdf" });
+  fireEvent.change(screen.getByLabelText("Escolher notas fiscais do lançamento"), { target: { files: [nota] } });
+  expect(screen.getByText("nota.pdf")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Salvar lançamento/ }));
+  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("novo", nota, "nota_fiscal"));
+  expect(vault.anexos.enviar).toHaveBeenCalledTimes(1);
 });
 
 it("NOVO: sem anexos escolhidos, salvar não chama o envio de anexos", async () => {

@@ -19,9 +19,12 @@ import { SoltarNoCofre } from "./SoltarNoCofre";
 import { TabDragProvider } from "./tab-drag";
 import { Workspace } from "./Workspace";
 import { WorkspaceProvider, useWorkspace } from "./workspace-store";
+import { PathReporter } from "./TabContent";
+import { definirTopoNavegacao, navegacaoDaAba, topoNavegacao } from "./navegacao-abas";
 import { screenRoutes } from "@/routes/screen-routes";
 import { VaultScreen } from "@/screens/Vault/VaultScreen";
 
+const COFRE_ABERTO_KEY = "ecos.desktop.cofre-aberto.v1";
 const ehMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
 function useAtalhosGlobais(alternarPaleta: (global?: boolean) => void) {
@@ -57,6 +60,48 @@ function useAtalhosGlobais(alternarPaleta: (global?: boolean) => void) {
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [state.panes, state.focusedPaneId, dispatch, alternarPaleta]);
+}
+
+/** Botões voltar/avançar do mouse e Alt+←/→ navegam no histórico da aba em foco (ou do Cofre) — nunca saem do app. */
+function useNavegacaoGlobal() {
+  const { state } = useWorkspace();
+  const estado = useRef(state);
+  estado.current = state;
+  useEffect(() => {
+    const ir = (d: -1 | 1) => {
+      const topo = topoNavegacao();
+      let chave = topo;
+      if (!chave) {
+        const pane = estado.current.panes.find((p) => p.id === estado.current.focusedPaneId);
+        if (pane) chave = `aba:${pane.activeTabId}`;
+      }
+      if (chave) navegacaoDaAba(chave)?.ir(d);
+    };
+    const botao = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === "mouseup") ir(e.button === 3 ? -1 : 1);
+    };
+    const tecla = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName))) return;
+      e.preventDefault();
+      ir(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    // Rede de segurança: qualquer "voltar" do navegador que escape fica preso aqui em vez de sair do app.
+    const preso = () => window.history.pushState(null, "", window.location.href);
+    preso();
+    window.addEventListener("popstate", preso);
+    for (const t of ["mousedown", "mouseup", "auxclick"]) window.addEventListener(t, botao as EventListener, true);
+    window.addEventListener("keydown", tecla);
+    return () => {
+      window.removeEventListener("popstate", preso);
+      for (const t of ["mousedown", "mouseup", "auxclick"]) window.removeEventListener(t, botao as EventListener, true);
+      window.removeEventListener("keydown", tecla);
+    };
+  }, []);
 }
 
 function Barra({ abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal = false, setBuscaGlobal }: { abrirPaleta: () => void; abrirOrganizacao: () => void; cofre?: boolean; voltarAoEcos?: () => void; buscaGlobal?: boolean; setBuscaGlobal?: (valor:boolean)=>void }) {
@@ -155,6 +200,8 @@ interface JanelaAberta {
   z: number;
 }
 
+function cofreCaminhoInicial() { try { return sessionStorage.getItem("ecos.desktop.cofre-rota.v1") || "/cofre"; } catch { return "/cofre"; } }
+
 function Conteudo() {
   const { state, dispatch } = useWorkspace();
   const { capturaAberta, fecharCaptura } = useAppUI();
@@ -164,12 +211,15 @@ function Conteudo() {
   const pastaContexto = abaFocada ? pastaDoCaminho(abaFocada.path) : null;
   const [paletaAberta, setPaletaAberta] = useState(false);
   const [buscaGlobal, setBuscaGlobal] = useState(false);
-  const [cofreAberto, setCofreAberto] = useState(false);
+  const [cofreAberto, setCofreAbertoState] = useState(() => { try { return localStorage.getItem(COFRE_ABERTO_KEY) === "1"; } catch { return false; } });
+  const setCofreAberto = useCallback((aberto: boolean) => { setCofreAbertoState(aberto); try { localStorage.setItem(COFRE_ABERTO_KEY, aberto ? "1" : "0"); } catch { /* só conveniência */ } }, []);
+  useEffect(() => { definirTopoNavegacao(cofreAberto ? "cofre" : null); return () => definirTopoNavegacao(null); }, [cofreAberto]);
   const [tituloCaptura, setTituloCaptura] = useState("");
   const [janelas, setJanelas] = useState<JanelaAberta[]>([]);
   const contador = useRef(0);
   const alternarPaleta = (global = false) => { if (global) setBuscaGlobal(true); setPaletaAberta((v) => !v); };
   useAtalhosGlobais(alternarPaleta);
+  useNavegacaoGlobal();
   // Comprovante solto na janela: abre o Cofre (a aba Comprovantes recolhe a fila sozinha).
   const comprovantesEsperando = useComprovantesEsperando();
   useEffect(() => { if (comprovantesEsperando > 0) setCofreAberto(true); }, [comprovantesEsperando]);
@@ -220,7 +270,7 @@ function Conteudo() {
     <SoltarNoCofre />
     {cofreAberto ? (
       <div className="flex h-screen flex-col overflow-hidden bg-base">
-        <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={["/cofre"]}><VaultScreen embedded voltar={() => setCofreAberto(false)} /></MemoryRouter></div>
+        <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={[cofreCaminhoInicial()]}><PathReporter chave="cofre" hist={[cofreCaminhoInicial()]} idx={0} /><VaultScreen embedded voltar={() => setCofreAberto(false)} /></MemoryRouter></div>
         {janelas.map((j) => <DocumentoJanela key={j.id} path={j.path} ordem={j.ordem} z={j.z} aoFechar={() => fecharJanela(j.id)} aoFocar={() => trazerParaFrente(j.id)} />)}
         {capturaAberta === "transacao" && <DocumentoJanela path="/cofre/transacao/novo" titulo={tituloCaptura || "Novo lançamento"} ordem={janelas.length} z={contador.current + 1} aoFechar={fecharCaptura} aoFocar={() => {}} cabecalhoNoConteudo conteudo={<div className="cofre-app cofre-capture-scope"><CreateFlow embedded contextoDesktop="cofre" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto} /></div>} />}
       </div>

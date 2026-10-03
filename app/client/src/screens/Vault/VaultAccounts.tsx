@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { ArrowDown, ArrowUp, Download, Landmark, Pencil, Plus, RefreshCw, Search, CloudOff, Wallet, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Landmark, Pencil, Plus, RefreshCw, Search, CloudOff, Star, Wallet, X } from "lucide-react";
 import { vault, financeiro, ApiError, type CategoriaApi, type ContaApi, type TipoConta, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { DonutChart } from "./nexus/DonutChart";
@@ -9,15 +9,20 @@ import { ComposedAreaChart } from "./nexus/ComposedAreaChart";
 import { PeriodPicker } from "./nexus/PeriodPicker";
 import { RadarChart } from "./nexus/RadarChart";
 import { periodNoun, periodRange, toISO, type Period } from "./nexus/period";
-import { ContaModal, SeloConta } from "./contas/ContaModal";
+import { ContaModal } from "./contas/ContaModal";
+import { SeloConta } from "./contas/SeloConta";
 import { ROTULO_TIPO, bancoPorCodigo } from "./contas/bancos";
 import { resumir, serieSaldo, somarSaidasPor, variacao, type Resumo, type Tx } from "./contas/analise";
 import { SaldoChart } from "./contas/SaldoChart";
 import { corDoTexto } from "./VaultCategories";
+import { casaBusca } from "@/lib/texto-busca";
+import { avisar } from "@/lib/toast";
+import { AlcaOrdem, useOrdemPessoal } from "./ordem-pessoal";
 
 type Recorrencia = Awaited<ReturnType<typeof financeiro.recorrencias>>[number];
 
 const TODAS = "__todas__";
+const SEM_CONTAS: ContaApi[] = [];
 const SEM_CONTA = "__sem__";
 const COR_SEM_CATEGORIA = "#6b6c72";
 const COR_ENTRADA = "var(--cofre-income)";
@@ -110,6 +115,16 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
   const [filtroTipo, setFiltroTipo] = useState<"todas" | TipoConta>("todas");
   const [sel, setSel] = useState<string>(TODAS);
   const [foco, setFoco] = useState<string | null>(null);
+  // A ordem das contas e a conta padrão são da pessoa (e valem só para este Cofre): o servidor devolve tudo já ajustado.
+  const ordem = useOrdemPessoal(contas ?? SEM_CONTAS, (ids) => vault.preferencias.salvarOrdem("ordem_contas", ids), () => avisar("Não foi possível guardar a nova ordem das contas."));
+  async function alternarPadrao(c: ContaApi) {
+    try {
+      await vault.preferencias.salvar("conta_padrao", c.padrao ? null : c.id);
+      setContas(await vault.contas.listar());
+    } catch (e) {
+      avisar(e instanceof ApiError ? e.message : "Não foi possível mudar a conta padrão.");
+    }
+  }
 
   const ant = useMemo(() => periodoAnterior(range.from, range.to), [range.from, range.to]);
 
@@ -179,10 +194,18 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
   const saldoPositivoTotal = linhas.reduce((s, l) => s + Math.max(0, l.saldo), 0);
   const segmentosSaldo = linhas.filter((l) => l.saldo > 0).sort((a, b) => b.saldo - a.saldo).map((l) => ({ label: l.nome, valueCents: l.saldo, color: l.cor }));
 
-  const visiveis = (contas ?? []).filter((c) => (filtroTipo === "todas" || c.tipo === filtroTipo) && `${c.nome} ${c.banco ?? ""} ${c.codigo_banco ?? ""}`.toLowerCase().includes(busca.trim().toLowerCase()));
+  const visiveis = ordem.ordenados.filter((c) => (filtroTipo === "todas" || c.tipo === filtroTipo) && casaBusca(busca, c.nome, c.banco, c.codigo_banco, c.agencia, c.numero_conta));
+  const filtrando = busca.trim() !== "" || filtroTipo !== "todas";
   const tiposPresentes = [...new Set((contas ?? []).map((c) => c.tipo))];
   const carregando = contas === null && !erro;
   const semDados = !carregando && !erro && (contas?.length ?? 0) === 0;
+
+  const formasCard = (
+    <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(9)}>
+      <h4>Formas de pagamento</h4>
+      <HorizontalBarChart items={porForma.map((g) => ({ label: FORMAS[g.chave ?? ""] ?? "Não informada", valueCents: g.valor }))} color={COR_SAIDA} />
+    </div>
+  );
 
   const varEntradas = variacao(resumo.entradas, resumoAnt.entradas);
   const varSaidas = variacao(resumo.saidas, resumoAnt.saidas);
@@ -256,10 +279,11 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
                 const l = linhas.find((x) => x.id === c.id);
                 const share = saldoPositivoTotal > 0 && l ? Math.max(0, l.saldo) / saldoPositivoTotal * 100 : 0;
                 return (
-                  <div key={c.id} role="button" tabIndex={0} aria-pressed={sel === c.id} aria-label={`Conta ${c.nome}`} className="cofre-cats-row" data-ativa={sel === c.id || undefined} data-foco={foco === c.id ? "true" : undefined} style={estiloI(i)}
+                  <div key={c.id} role="button" tabIndex={0} aria-pressed={sel === c.id} aria-label={`Conta ${c.nome}`} className="cofre-cats-row" data-ordem-linha data-ativa={sel === c.id || undefined} data-foco={foco === c.id ? "true" : undefined} style={estiloI(i)} {...ordem.linha(c.id)}
                     onClick={() => setSel(c.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSel(c.id); } }}
                     onMouseEnter={() => setFoco(c.id)} onMouseLeave={() => setFoco(null)} onFocus={() => setFoco(c.id)} onBlur={() => setFoco(null)}>
-                    <SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} />
+                    <AlcaOrdem nome={c.nome} desativada={filtrando} {...ordem.alca(c.id)} />
+                    <SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} codigoBanco={c.codigo_banco} sigla={c.sigla} />
                     <span className="cofre-cats-row-main">
                       <span className="cofre-cats-row-name"><b>{c.nome}</b>{c.padrao && <em>Padrão</em>}</span>
                       <small>{descricaoConta(c)}</small>
@@ -268,6 +292,7 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
                       <b className="cofre-mono" data-neg={(l?.saldo ?? 0) < 0 || undefined}>{formatMoeda(l?.saldo ?? c.saldo_inicial_centavos)}</b>
                       <i><u style={{ width: `${Math.max(share > 0 ? 4 : 0, share)}%`, background: c.cor }} /></i>
                     </span>
+                    <button type="button" className="cofre-conta-padrao" data-ativa={c.padrao || undefined} aria-pressed={c.padrao} aria-label={c.padrao ? `${c.nome} é a sua conta padrão. Remover` : `Tornar ${c.nome} a sua conta padrão`} title={c.padrao ? "Sua conta padrão (clique para remover)" : "Tornar conta padrão"} onClick={(e) => { e.stopPropagation(); void alternarPadrao(c); }}><Star size={13} /></button>
                     <button type="button" className="cofre-conta-editar" aria-label={`Editar ${c.nome}`} title="Editar conta" onClick={(e) => { e.stopPropagation(); setEditando(c); }}><Pencil size={13} /></button>
                   </div>
                 );
@@ -335,38 +360,13 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
                     />
                   </div>
 
-                  <div className="cofre-cats-duo">
+                  <div className="cofre-cats-duo" data-solo={atual ? "true" : undefined}>
                     <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(8)}>
                       <h4>Gastos por categoria</h4>
                       <DonutChart segments={segmentosCat} />
                     </div>
-                    <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(9)}>
-                      <h4>Formas de pagamento</h4>
-                      <HorizontalBarChart items={porForma.map((g) => ({ label: FORMAS[g.chave ?? ""] ?? "Não informada", valueCents: g.valor }))} color={COR_SAIDA} />
-                    </div>
+                    {!atual && formasCard}
                   </div>
-
-                  {!atual && linhas.length > 1 && (
-                    <div className="cofre-cats-duo">
-                      <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(10)}>
-                        <h4>Distribuição do saldo</h4>
-                        <DonutChart segments={segmentosSaldo} />
-                      </div>
-                      <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(11)}>
-                        <h4>Ranking de saldo</h4>
-                        <div className="cofre-cats-ranking" data-focando={foco ? "true" : undefined}>
-                          {ranking.map((l, i) => (
-                            <button key={l.id} type="button" className="cofre-conta-rank" data-foco={foco === l.id ? "true" : undefined} onClick={() => setSel(l.id)} onMouseEnter={() => setFoco(l.id)} onMouseLeave={() => setFoco(null)}>
-                              <SeloConta nome={l.nome} cor={l.cor} tipo={l.tipo} tamanho="sm" />
-                              <span className="cofre-cats-rank-name" title={l.nome}>{l.nome}</span>
-                              <i className="cofre-cats-bar"><u className="cofre-grow" style={{ ...estiloI(i), width: `${Math.max(3, Math.max(0, l.saldo) / Math.max(1, ranking[0]?.saldo ?? 1) * 100)}%`, background: l.cor }} /></i>
-                              <b className="cofre-mono" data-neg={l.saldo < 0 || undefined}>{formatMoeda(l.saldo)}</b>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {top3.length > 1 && (
                     <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(12)}>
@@ -390,6 +390,27 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
                       <h4>Comparativo visual</h4>
                       <RadarChart axes={EIXOS} series={top3.map((l) => ({ label: l.nome, color: l.cor, values: [l.atual.entradas / 100, l.atual.saidas / 100, l.atual.lancamentos, l.atual.ticketSaida / 100] }))} />
                     </div>
+                  )}
+                  {atual ? formasCard : linhas.length > 1 && (
+                    <>
+                      <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(10)}>
+                        <h4>Distribuição do saldo</h4>
+                        <DonutChart segments={segmentosSaldo} />
+                      </div>
+                      <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(11)}>
+                        <h4>Ranking de saldo</h4>
+                        <div className="cofre-cats-ranking" data-focando={foco ? "true" : undefined}>
+                          {ranking.map((l, i) => (
+                            <button key={l.id} type="button" className="cofre-conta-rank" data-foco={foco === l.id ? "true" : undefined} onClick={() => setSel(l.id)} onMouseEnter={() => setFoco(l.id)} onMouseLeave={() => setFoco(null)}>
+                              <SeloConta nome={l.nome} cor={l.cor} tipo={l.tipo} codigoBanco={l.conta?.codigo_banco} sigla={l.conta?.sigla} tamanho="sm" />
+                              <span className="cofre-cats-rank-name" title={l.nome}>{l.nome}</span>
+                              <i className="cofre-cats-bar"><u className="cofre-grow" style={{ ...estiloI(i), width: `${Math.max(3, Math.max(0, l.saldo) / Math.max(1, ranking[0]?.saldo ?? 1) * 100)}%`, background: l.cor }} /></i>
+                              <b className="cofre-mono" data-neg={l.saldo < 0 || undefined}>{formatMoeda(l.saldo)}</b>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -472,7 +493,7 @@ function Destaque({ linha, total, saldoPositivoTotal, saldoEscopo }: { linha: Li
     <div className="cofre-card cofre-cats-card cofre-cats-highlight cofre-rise" style={{ ...estiloI(1), ["--destaque" as string]: cor }}>
       <div className="cofre-cats-highlight-head"><span>Saldo atual</span><span className="cofre-mono">{formatMoeda(linha ? saldoEscopo : total)}</span></div>
       <div className="cofre-cats-highlight-body">
-        {linha ? <SeloConta nome={linha.nome} cor={linha.cor} tipo={linha.tipo} tamanho="lg" /> : <span className="cofre-cats-icon lg" style={{ background: cor, color: corDoTexto(cor) }}><Landmark size={18} /></span>}
+        {linha ? <SeloConta nome={linha.nome} cor={linha.cor} tipo={linha.tipo} codigoBanco={linha.conta?.codigo_banco} sigla={linha.conta?.sigla} tamanho="lg" /> : <span className="cofre-cats-icon lg" style={{ background: cor, color: corDoTexto(cor) }}><Landmark size={18} /></span>}
         <span className="cofre-cats-highlight-name"><small>{linha ? "Conta selecionada" : "Visão geral"}</small><b>{linha?.nome ?? "Todas as contas"}</b></span>
         <span className="cofre-cats-highlight-score"><b className="cofre-mono">{nota.toFixed(0)}%</b><small>do patrimônio</small></span>
       </div>

@@ -10,7 +10,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 import { vault, ANEXO_TAMANHO_MAXIMO_BYTES, type AnexoApi } from "@/lib/api";
 import { BotaoAnexos } from "./BotaoAnexos";
 
-const anexo = (id: string, nome: string, mime = "image/png"): AnexoApi => ({ id, nome_arquivo: nome, mime_type: mime, tamanho_bytes: 100, checksum_sha256: "h", criado_em: "2026-10-02" });
+const anexo = (id: string, nome: string, mime = "image/png"): AnexoApi => ({ id, nome_arquivo: nome, mime_type: mime, tamanho_bytes: 100, checksum_sha256: "h", criado_em: "2026-10-02", tipo: "comprovante" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -32,26 +32,38 @@ function naLinha(props: Partial<React.ComponentProps<typeof BotaoAnexos>> = {}) 
   return { abrirLancamento, aoMudar, ...r };
 }
 
-it("sem anexos o clipe convida a anexar; com anexos mostra quantos são", () => {
+it("sem anexos o clipe convida a anexar; com anexos fica marcado e a contagem vai só na dica (sem número no ícone)", () => {
   const { unmount } = naLinha({ quantidade: 0 });
   expect(screen.getByRole("button", { name: "Anexar comprovante a Mercado" })).toBeTruthy();
-  expect(document.querySelector(".cofre-clipe-n")).toBeNull();
   unmount();
   naLinha({ quantidade: 3 });
-  const botao = screen.getByRole("button", { name: "3 anexos de Mercado" });
-  expect(botao.textContent).toBe("3");
+  const botao = screen.getByRole("button", { name: "3 comprovantes de Mercado" });
+  expect(botao.textContent).toBe("");
+  expect(botao.getAttribute("title")).toContain("3 comprovantes");
   expect(botao.getAttribute("data-tem")).toBe("true");
+});
+
+it("a nota fiscal tem o próprio ícone, só lista as notas e envia como nota fiscal", async () => {
+  vi.mocked(vault.anexos.listar).mockResolvedValue([anexo("a1", "pix.png"), { ...anexo("n1", "nota.png"), tipo: "nota_fiscal" }]);
+  const { unmount } = naLinha({ quantidade: 1, tipo: "nota_fiscal" });
+  fireEvent.click(screen.getByRole("button", { name: "1 nota fiscal de Mercado" }));
+  await screen.findByRole("img", { name: "Comprovante nota.png" });
+  expect(screen.queryByText("1 de 2")).toBeNull(); // o comprovante comum não entra na navegação das notas
+  unmount();
+  naLinha({ quantidade: 0, tipo: "nota_fiscal" });
+  fireEvent.change(screen.getByLabelText("Escolher nota fiscal para Mercado"), { target: { files: [new File(["x"], "n.png", { type: "image/png" })] } });
+  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("t1", expect.any(File), "nota_fiscal"));
 });
 
 it("no singular fala em 1 anexo", () => {
   naLinha({ quantidade: 1 });
-  expect(screen.getByRole("button", { name: "1 anexo de Mercado" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "1 comprovante de Mercado" })).toBeTruthy();
 });
 
 it("com anexos, clicar MOSTRA O COMPROVANTE no visualizador, com o lançamento disponível ao lado", async () => {
   vi.mocked(vault.anexos.listar).mockResolvedValue([anexo("a1", "pix.png")]);
   const { abrirLancamento } = naLinha({ quantidade: 1 });
-  fireEvent.click(screen.getByRole("button", { name: "1 anexo de Mercado" }));
+  fireEvent.click(screen.getByRole("button", { name: "1 comprovante de Mercado" }));
   const imagem = await screen.findByRole("img", { name: "Comprovante pix.png" });
   expect(imagem.getAttribute("src")).toBe("blob:t");
   expect(vault.anexos.listar).toHaveBeenCalledWith("t1");
@@ -62,7 +74,7 @@ it("com anexos, clicar MOSTRA O COMPROVANTE no visualizador, com o lançamento d
 it("vários anexos: setas passam de um para o outro e mostram a posição", async () => {
   vi.mocked(vault.anexos.listar).mockResolvedValue([anexo("a1", "um.png"), anexo("a2", "dois.png")]);
   naLinha({ quantidade: 2 });
-  fireEvent.click(screen.getByRole("button", { name: "2 anexos de Mercado" }));
+  fireEvent.click(screen.getByRole("button", { name: "2 comprovantes de Mercado" }));
   await screen.findByRole("img", { name: "Comprovante um.png" });
   expect(screen.getByText("1 de 2")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Anexo anterior" }) as HTMLButtonElement).disabled).toBe(true);
@@ -75,7 +87,7 @@ it("vários anexos: setas passam de um para o outro e mostram a posição", asyn
 it("clicar dentro do visualizador (inclusive no fundo) nunca abre o lançamento da linha", async () => {
   vi.mocked(vault.anexos.listar).mockResolvedValue([anexo("a1", "pix.png")]);
   const { abrirLancamento } = naLinha({ quantidade: 1 });
-  fireEvent.click(screen.getByRole("button", { name: "1 anexo de Mercado" }));
+  fireEvent.click(screen.getByRole("button", { name: "1 comprovante de Mercado" }));
   await screen.findByRole("img", { name: "Comprovante pix.png" });
   fireEvent.click(screen.getByRole("img", { name: "Comprovante pix.png" }));
   fireEvent.click(document.querySelector(".cofre-viewer-backdrop")!); // fecha o visualizador
@@ -92,7 +104,7 @@ it("sem anexos, clicar abre a escolha de arquivo, envia, avisa a lista e mostra 
   expect(abrirLancamento).not.toHaveBeenCalled();
   const arquivo = new File(["png"], "novo.png", { type: "image/png" });
   fireEvent.change(screen.getByLabelText("Escolher comprovante para Mercado"), { target: { files: [arquivo] } });
-  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("t1", arquivo));
+  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("t1", arquivo, "comprovante"));
   expect(aoMudar).toHaveBeenCalled();
   await screen.findByRole("img", { name: "Comprovante novo.png" }); // abre direto no último, o que acabou de entrar
   expect(screen.getByText("2 de 2")).toBeTruthy();
@@ -126,7 +138,7 @@ it("falha ao enviar avisa e não abre visualizador nem muda a lista", async () =
 it("contagem desatualizada (lista diz que há anexo, mas já não há): avisa em vez de abrir vazio", async () => {
   vi.mocked(vault.anexos.listar).mockResolvedValue([]);
   naLinha({ quantidade: 1 });
-  fireEvent.click(screen.getByRole("button", { name: "1 anexo de Mercado" }));
-  await waitFor(() => expect(avisar).toHaveBeenCalledWith("Este lançamento não tem anexos."));
+  fireEvent.click(screen.getByRole("button", { name: "1 comprovante de Mercado" }));
+  await waitFor(() => expect(avisar).toHaveBeenCalledWith("Este lançamento não tem comprovantes."));
   expect(screen.queryByRole("dialog")).toBeNull();
 });

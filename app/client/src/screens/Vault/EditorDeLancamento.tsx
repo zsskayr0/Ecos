@@ -126,7 +126,7 @@ export function EditorDeLancamento({ id, aoSalvar, aoExcluir, aoFechar, aninhado
         erro={erro}
         onExcluir={() => { void excluir(); }}
         criadoPor={autoria.nomeDe(tx.criado_por)}
-        anexos={comComprovantes ? <ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /> : undefined}
+        anexos={comComprovantes ? <div className="cofre-anexos-par"><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="nota_fiscal" /></div> : undefined}
       />
     </div>
   );

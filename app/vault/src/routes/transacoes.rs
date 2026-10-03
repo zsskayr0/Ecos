@@ -50,14 +50,16 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         "atualizado_em": r.get::<_, String>(17)?,
         "conciliada": r.get::<_, bool>(18)?,
         "data_ocorrencia": r.get::<_, Option<String>>(19)?,
-        // Quantos comprovantes/anexos o lançamento tem (a lista mostra o clipe com este número).
+        // Quantos comprovantes e quantas notas fiscais o lançamento tem (a lista mostra um ícone para cada).
         "anexos": r.get::<_, i64>(20)?,
+        "notas_fiscais": r.get::<_, i64>(21)?,
     }))
 }
 
 const COLUNAS: &str = "id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id, beneficiario_id, \
      forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em, conciliada, data_ocorrencia, \
-     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id)";
+     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'comprovante'), \
+     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'nota_fiscal')";
 
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let limite = q.limit.unwrap_or(30).clamp(1, 200);
@@ -364,16 +366,32 @@ pub async fn captura_foto(mut multipart: Multipart) -> AppResult<Json<serde_json
     })))
 }
 
+/// Tipos de anexo: o comprovante de pagamento e a nota fiscal da compra. Os dois seguem o mesmo caminho.
+pub(crate) const TIPOS_ANEXO: [&str; 2] = ["comprovante", "nota_fiscal"];
+
+pub(crate) fn validar_tipo_anexo(tipo: Option<&str>) -> AppResult<&'static str> {
+    match tipo {
+        None => Ok("comprovante"),
+        Some(t) => TIPOS_ANEXO.iter().find(|x| **x == t).copied().ok_or_else(|| AppError::new(ErrorCode::ValidationError).with_message("tipo de anexo deve ser 'comprovante' ou 'nota_fiscal'")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TipoQuery {
+    pub tipo: Option<String>,
+}
+
 pub async fn listar_anexos(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let linhas: Vec<serde_json::Value> = state
         .db
         .with(move |conn| {
-            let mut stmt = conn.prepare("SELECT id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, criado_em FROM anexo WHERE transacao_id = ?1")?;
+            let mut stmt = conn.prepare("SELECT id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, criado_em, tipo FROM anexo WHERE transacao_id = ?1 ORDER BY criado_em, id")?;
             let linhas = stmt
                 .query_map([&id], |r| {
                     Ok(serde_json::json!({
                         "id": r.get::<_, String>(0)?, "nome_arquivo": r.get::<_, String>(1)?, "mime_type": r.get::<_, String>(2)?,
                         "tamanho_bytes": r.get::<_, i64>(3)?, "checksum_sha256": r.get::<_, String>(4)?, "criado_em": r.get::<_, String>(5)?,
+                        "tipo": r.get::<_, String>(6)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -383,7 +401,8 @@ pub async fn listar_anexos(State(state): State<AppState>, Path(id): Path<String>
     Ok(Json(serde_json::json!(linhas)))
 }
 
-pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>, Query(tq): Query<TipoQuery>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let tipo_anexo = validar_tipo_anexo(tq.tipo.as_deref())?;
     let existe: Option<i64> = state.db.with({
         let id = id.clone();
         move |conn| conn.query_row("SELECT 1 FROM transacao WHERE id = ?1", [&id], |r| r.get(0)).optional()
@@ -412,8 +431,8 @@ pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>,
                 }
                 let outra: Option<String> = tx.query_row("SELECT transacao_id FROM anexo WHERE checksum_sha256 = ?1 AND transacao_id <> ?2 LIMIT 1", rusqlite::params![arquivo.checksum, id], |r| r.get(0)).optional()?;
                 tx.execute(
-                    "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    rusqlite::params![anexo_id, id, arquivo.nome, arquivo.tipo.mime, tamanho, arquivo.checksum, arquivo.bytes],
+                    "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![anexo_id, id, arquivo.nome, arquivo.tipo.mime, tamanho, arquivo.checksum, arquivo.bytes, tipo_anexo],
                 )?;
                 tx.commit()?;
                 Ok((anexo_id, outra))
@@ -424,6 +443,21 @@ pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>,
         super::comprovantes::ler_anexo_em_segundo_plano(state, mantido.clone(), para_ler, mime.to_string());
     }
     Ok(Json(serde_json::json!({ "id": mantido, "nome_arquivo": resposta_nome, "tamanho_bytes": tamanho, "duplicado_em": duplicado_em })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReclassificarPayload {
+    pub tipo: String,
+}
+
+/// Troca um anexo de comprovante para nota fiscal (ou ao contrário), sem reenviar o arquivo.
+pub async fn reclassificar_anexo(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<ReclassificarPayload>) -> AppResult<Json<serde_json::Value>> {
+    let tipo = validar_tipo_anexo(Some(&payload.tipo))?;
+    let afetadas = state.db.with(move |conn| conn.execute("UPDATE anexo SET tipo = ?1 WHERE id = ?2", rusqlite::params![tipo, id])).await?;
+    if afetadas == 0 {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 pub async fn excluir_anexo(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {

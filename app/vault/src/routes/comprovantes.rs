@@ -12,7 +12,7 @@ use ecos_core::{new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 
-use super::transacoes::{inserir_transacao, obter, validar, validar_referencias, TransacaoPayload};
+use super::transacoes::{inserir_transacao, obter, validar, validar_referencias, validar_tipo_anexo, TipoQuery, TransacaoPayload};
 use crate::arquivo;
 use crate::db::{usuario_atual, USUARIO};
 use crate::ocr;
@@ -93,7 +93,8 @@ pub(crate) fn ler_anexo_em_segundo_plano(state: AppState, id: String, bytes: Vec
 
 /// Recebe o arquivo, guarda como rascunho e começa a leitura em segundo plano. O mesmo arquivo enviado de novo
 /// devolve o rascunho que já está lá, para que um reenvio por rede ruim não duplique.
-pub async fn receber(State(state): State<AppState>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+pub async fn receber(State(state): State<AppState>, Query(tq): Query<TipoQuery>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
+    let tipo_anexo = validar_tipo_anexo(tq.tipo.as_deref())?;
     let arq = arquivo::ler_multipart(&mut multipart, "arquivo").await?;
     let autor = crate::db::autor_atual().unwrap_or_default();
     let (nome, mime, tamanho) = (arq.nome.clone(), arq.tipo.mime, arq.bytes.len() as i64);
@@ -113,8 +114,8 @@ pub async fn receber(State(state): State<AppState>, mut multipart: Multipart) ->
                     return Ok((id, true, anexado, status));
                 }
                 tx.execute(
-                    "INSERT INTO comprovante_rascunho (id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, criado_por, ocr_iniciado_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))",
-                    rusqlite::params![novo_id, arq.nome, arq.tipo.mime, tamanho, arq.checksum, arq.bytes, autor],
+                    "INSERT INTO comprovante_rascunho (id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, criado_por, ocr_iniciado_em, tipo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'), ?8)",
+                    rusqlite::params![novo_id, arq.nome, arq.tipo.mime, tamanho, arq.checksum, arq.bytes, autor, tipo_anexo],
                 )?;
                 tx.commit()?;
                 Ok((novo_id, false, anexado, "processando".to_string()))
@@ -136,7 +137,7 @@ pub async fn obter_rascunho(State(state): State<AppState>, Path(id): Path<String
         .db
         .with(move |conn| {
             conn.query_row(
-                &format!("SELECT id, nome_arquivo, mime_type, tamanho_bytes, criado_em, {STATUS_EFETIVO}, sugestao_json, ocr_confianca, miniatura IS NOT NULL FROM comprovante_rascunho WHERE id = ?1"),
+                &format!("SELECT id, nome_arquivo, mime_type, tamanho_bytes, criado_em, {STATUS_EFETIVO}, sugestao_json, ocr_confianca, miniatura IS NOT NULL, tipo FROM comprovante_rascunho WHERE id = ?1"),
                 [&id],
                 |r| {
                     let sugestao: Option<String> = r.get(6)?;
@@ -144,7 +145,7 @@ pub async fn obter_rascunho(State(state): State<AppState>, Path(id): Path<String
                         "id": r.get::<_, String>(0)?, "nome_arquivo": r.get::<_, String>(1)?, "mime_type": r.get::<_, String>(2)?,
                         "tamanho_bytes": r.get::<_, i64>(3)?, "criado_em": r.get::<_, String>(4)?, "ocr_status": r.get::<_, String>(5)?,
                         "sugestao": sugestao.and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok()),
-                        "ocr_confianca": r.get::<_, Option<f64>>(7)?, "tem_miniatura": r.get::<_, bool>(8)?,
+                        "ocr_confianca": r.get::<_, Option<f64>>(7)?, "tem_miniatura": r.get::<_, bool>(8)?, "tipo": r.get::<_, String>(9)?,
                     }))
                 },
             )
@@ -184,13 +185,13 @@ pub async fn listar_rascunhos(State(state): State<AppState>) -> AppResult<Json<s
     let itens: Vec<serde_json::Value> = state
         .db
         .with(|conn| {
-            let mut stmt = conn.prepare(&format!("SELECT id, nome_arquivo, mime_type, tamanho_bytes, criado_em, {STATUS_EFETIVO}, miniatura IS NOT NULL FROM comprovante_rascunho ORDER BY criado_em DESC, id DESC"))?;
+            let mut stmt = conn.prepare(&format!("SELECT id, nome_arquivo, mime_type, tamanho_bytes, criado_em, {STATUS_EFETIVO}, miniatura IS NOT NULL, tipo FROM comprovante_rascunho ORDER BY criado_em DESC, id DESC"))?;
             let linhas = stmt
                 .query_map([], |r| {
                     Ok(serde_json::json!({
                         "id": r.get::<_, String>(0)?, "nome_arquivo": r.get::<_, String>(1)?, "mime_type": r.get::<_, String>(2)?,
                         "tamanho_bytes": r.get::<_, i64>(3)?, "criado_em": r.get::<_, String>(4)?,
-                        "ocr_status": r.get::<_, String>(5)?, "tem_miniatura": r.get::<_, bool>(6)?,
+                        "ocr_status": r.get::<_, String>(5)?, "tem_miniatura": r.get::<_, bool>(6)?, "tipo": r.get::<_, String>(7)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -264,16 +265,16 @@ pub async fn confirmar(State(state): State<AppState>, Path(id): Path<String>, Js
                 let tx = conn.unchecked_transaction()?;
                 let linha = tx
                     .query_row(
-                        "SELECT nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, ocr_texto, ocr_confianca, miniatura FROM comprovante_rascunho WHERE id = ?1",
+                        "SELECT nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, ocr_texto, ocr_confianca, miniatura, tipo FROM comprovante_rascunho WHERE id = ?1",
                         [&id],
-                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, Vec<u8>>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<f64>>(6)?, r.get::<_, Option<Vec<u8>>>(7)?)),
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, Vec<u8>>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<f64>>(6)?, r.get::<_, Option<Vec<u8>>>(7)?, r.get::<_, String>(8)?)),
                     )
                     .optional()?;
-                let Some((nome, mime, tamanho, checksum, conteudo, ocr, confianca, miniatura)) = linha else { return Ok(false) };
+                let Some((nome, mime, tamanho, checksum, conteudo, ocr, confianca, miniatura, tipo)) = linha else { return Ok(false) };
                 inserir_transacao(&tx, &transacao_id, &payload, &autor, "captura_camera", ocr.as_deref(), confianca)?;
                 tx.execute(
-                    "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, miniatura, ocr_texto) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    rusqlite::params![anexo_id, transacao_id, nome, mime, tamanho, checksum, conteudo, miniatura, ocr],
+                    "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, miniatura, ocr_texto, tipo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    rusqlite::params![anexo_id, transacao_id, nome, mime, tamanho, checksum, conteudo, miniatura, ocr, tipo],
                 )?;
                 tx.execute("DELETE FROM comprovante_rascunho WHERE id = ?1", [&id])?;
                 tx.commit()?;
@@ -295,14 +296,24 @@ pub struct ListarQuery {
     pub beneficiario_id: Option<String>,
     pub conta_id: Option<String>,
     pub q: Option<String>,
+    /// `comprovante` ou `nota_fiscal`; sem isso, os dois.
+    pub tipo: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
-/// Todos os comprovantes já arquivados, com os dados da transação a que pertencem, mais recentes primeiro.
+/// Todos os comprovantes e notas fiscais já arquivados, com os dados da transação a que pertencem, mais recentes
+/// primeiro. `q` usa a busca tolerante (acento, erro de digitação, confusão de OCR) sobre descrição, nome do arquivo,
+/// categoria, pagador e o texto lido do arquivo.
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
-    let limite = q.limit.unwrap_or(50).clamp(1, 200);
-    let deslocamento = q.offset.unwrap_or(0).max(0);
+    let tipo = match q.tipo.as_deref() {
+        None | Some("") => None,
+        t => Some(validar_tipo_anexo(t)?),
+    };
+    let consulta = q.q.as_deref().and_then(crate::busca::Consulta::nova);
+    let pediu_texto = q.q.as_deref().is_some_and(|t| !t.trim().is_empty());
+    let limite = q.limit.unwrap_or(50).clamp(1, 200) as usize;
+    let deslocamento = q.offset.unwrap_or(0).max(0) as usize;
     let itens = state
         .db
         .with(move |conn| {
@@ -317,36 +328,48 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
             if let Some(v) = q.categoria_id { filtro("t.categoria_id = ?", Box::new(v)); }
             if let Some(v) = q.beneficiario_id { filtro("t.beneficiario_id = ?", Box::new(v)); }
             if let Some(v) = q.conta_id { filtro("t.conta_id = ?", Box::new(v)); }
-            if let Some(texto) = q.q.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-                let padrao = format!("%{}%", texto.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
-                filtro("(t.descricao LIKE ? ESCAPE '\\' OR a.nome_arquivo LIKE ? ESCAPE '\\' OR a.ocr_texto LIKE ? ESCAPE '\\')", Box::new(padrao.clone()));
-            }
-            params.push(Box::new(limite));
-            params.push(Box::new(deslocamento));
+            if let Some(v) = tipo { filtro("a.tipo = ?", Box::new(v.to_string())); }
             let sql = format!(
-                "SELECT a.id, a.nome_arquivo, a.mime_type, a.tamanho_bytes, a.criado_em, \
-                        t.id, t.data, t.descricao, t.tipo, t.valor_centavos, t.categoria_id, t.beneficiario_id, t.conta_id \
+                "SELECT a.id, a.nome_arquivo, a.mime_type, a.tamanho_bytes, a.criado_em, a.tipo, \
+                        t.id, t.data, t.descricao, t.tipo, t.valor_centavos, t.categoria_id, t.beneficiario_id, t.conta_id, \
+                        c.nome, b.nome, a.ocr_texto \
                  FROM anexo a JOIN transacao t ON t.id = a.transacao_id \
-                 WHERE {} ORDER BY t.data DESC, a.criado_em DESC, a.id DESC LIMIT ?{} OFFSET ?{}",
-                onde.join(" AND "),
-                params.len() - 1,
-                params.len()
+                 LEFT JOIN categoria c ON c.id = t.categoria_id LEFT JOIN beneficiario b ON b.id = t.beneficiario_id \
+                 WHERE {} ORDER BY t.data DESC, a.criado_em DESC, a.id DESC",
+                onde.join(" AND ")
             );
             let mut stmt = conn.prepare(&sql)?;
-            let linhas = stmt
-                .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |r| {
-                    Ok(serde_json::json!({
-                        "id": r.get::<_, String>(0)?, "nome_arquivo": r.get::<_, String>(1)?, "mime_type": r.get::<_, String>(2)?,
-                        "tamanho_bytes": r.get::<_, i64>(3)?, "criado_em": r.get::<_, String>(4)?,
-                        "transacao": {
-                            "id": r.get::<_, String>(5)?, "data": r.get::<_, String>(6)?, "descricao": r.get::<_, String>(7)?,
-                            "tipo": r.get::<_, String>(8)?, "valor_centavos": r.get::<_, i64>(9)?,
-                            "categoria_id": r.get::<_, Option<String>>(10)?, "beneficiario_id": r.get::<_, Option<String>>(11)?, "conta_id": r.get::<_, Option<String>>(12)?,
-                        },
-                    }))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(linhas)
+            let mut linhas = stmt.query(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())))?;
+            let mut itens = Vec::new();
+            let mut pulados = 0usize;
+            while let Some(r) = linhas.next()? {
+                if let Some(c) = &consulta {
+                    let texto = |i: usize| r.get::<_, Option<String>>(i).map(Option::unwrap_or_default);
+                    let (arquivo, descricao, categoria, pagador, ocr) = (texto(1)?, texto(8)?, texto(14)?, texto(15)?, texto(16)?);
+                    if c.avaliar(&[arquivo.as_str(), descricao.as_str(), categoria.as_str(), pagador.as_str()], &[ocr.as_str()]).is_none() {
+                        continue;
+                    }
+                } else if pediu_texto {
+                    continue; // só havia pontuação na pesquisa: não casa com nada
+                }
+                if pulados < deslocamento {
+                    pulados += 1;
+                    continue;
+                }
+                if itens.len() == limite {
+                    break;
+                }
+                itens.push(serde_json::json!({
+                    "id": r.get::<_, String>(0)?, "nome_arquivo": r.get::<_, String>(1)?, "mime_type": r.get::<_, String>(2)?,
+                    "tamanho_bytes": r.get::<_, i64>(3)?, "criado_em": r.get::<_, String>(4)?, "tipo": r.get::<_, String>(5)?,
+                    "transacao": {
+                        "id": r.get::<_, String>(6)?, "data": r.get::<_, String>(7)?, "descricao": r.get::<_, String>(8)?,
+                        "tipo": r.get::<_, String>(9)?, "valor_centavos": r.get::<_, i64>(10)?,
+                        "categoria_id": r.get::<_, Option<String>>(11)?, "beneficiario_id": r.get::<_, Option<String>>(12)?, "conta_id": r.get::<_, Option<String>>(13)?,
+                    },
+                }));
+            }
+            Ok(itens)
         })
         .await?;
     Ok(Json(serde_json::json!({ "items": itens })))
@@ -545,7 +568,9 @@ mod testes {
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes", None).await.1), 2);
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?data_de=2026-09-01&data_ate=2026-09-30", None).await.1), 1);
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=Aluguel", None).await.1), 1);
-        assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=%25100", None).await.1), 0, "% é texto, não curinga");
+        assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=%25zzz", None).await.1), 0, "% não é curinga");
+        assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=%25", None).await.1), 0, "só pontuação não casa com tudo");
+        assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=aluguél", None).await.1), 1, "acento é ignorado");
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=set.pdf", None).await.1), 1);
         assert_eq!(n(chamar(&app, "bia", "GET", "/vault/comprovantes", None).await.1), 0);
         let (_, r) = enviar(&app, "ana", "/vault/comprovantes", "arquivo", "x.pdf", "application/pdf", &pdf(500, 3)).await;
@@ -650,6 +675,162 @@ mod testes {
         let n = |v: Value| v["items"].as_array().unwrap().len();
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=Padaria", None).await.1), 1);
         assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes?q=Farmacia", None).await.1), 0);
+        drop(app);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// Pedido feito por `autor` no Cofre de `usuario` (numa equipe, o dono é a equipe e o autor é a pessoa).
+    async fn como(app: &Router, usuario: &str, autor: &str, metodo: &str, uri: &str, corpo: Option<Value>) -> (StatusCode, Value) {
+        let c = corpo.map(|c| c.to_string().into_bytes()).unwrap_or_default();
+        let p = Request::builder().method(metodo).uri(uri).header("x-ecos-usuario", usuario).header("x-ecos-autor", autor).header("content-type", "application/json");
+        json_de(app.clone().call(p.body(Body::from(c)).unwrap()).await.unwrap()).await
+    }
+
+    #[tokio::test]
+    async fn conta_padrao_e_ordem_sao_de_cada_pessoa_dentro_do_mesmo_cofre() {
+        let (app, raiz) = app();
+        ativar(&app, "equipe").await;
+        let mut ids = Vec::new();
+        for nome in ["Alfa", "Beta", "Gama"] {
+            let (_, c) = como(&app, "equipe", "ana", "POST", "/vault/contas", Some(json!({ "nome": nome }))).await;
+            ids.push(c["id"].as_str().unwrap().to_string());
+        }
+        let nomes = |v: &Value| v.as_array().unwrap().iter().map(|c| c["nome"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        // Antes de qualquer escolha: ordem alfabética, ninguém é padrão.
+        let (_, l) = como(&app, "equipe", "ana", "GET", "/vault/contas", None).await;
+        assert_eq!(nomes(&l), ["Alfa", "Beta", "Gama"]);
+        assert!(l.as_array().unwrap().iter().all(|c| c["padrao"] == false));
+
+        // Ana escolhe a ordem e a padrão; Bia continua vendo o Cofre do jeito original.
+        let ordem = json!([ids[2], ids[0]]); // Beta fica de fora: é "nova", vai para o fim
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/ordem_contas", Some(json!({ "valor": ordem }))).await.0, StatusCode::OK);
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/conta_padrao", Some(json!({ "valor": ids[2] }))).await.0, StatusCode::OK);
+        let (_, da_ana) = como(&app, "equipe", "ana", "GET", "/vault/contas", None).await;
+        assert_eq!(nomes(&da_ana), ["Gama", "Alfa", "Beta"]);
+        assert_eq!(da_ana[0]["padrao"], true);
+        assert_eq!(da_ana[1]["padrao"], false);
+        let (_, da_bia) = como(&app, "equipe", "bia", "GET", "/vault/contas", None).await;
+        assert_eq!(nomes(&da_bia), ["Alfa", "Beta", "Gama"]);
+        assert!(da_bia.as_array().unwrap().iter().all(|c| c["padrao"] == false));
+        let (_, prefs) = como(&app, "equipe", "ana", "GET", "/vault/preferencias", None).await;
+        assert_eq!(prefs["conta_padrao"], ids[2]);
+        assert_eq!(como(&app, "equipe", "bia", "GET", "/vault/preferencias", None).await.1["conta_padrao"], Value::Null);
+
+        // Validação: conta que não existe, chave desconhecida, lista malformada.
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/conta_padrao", Some(json!({ "valor": "nao-existe" }))).await.0, StatusCode::NOT_FOUND);
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/qualquer", Some(json!({ "valor": 1 }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/ordem_contas", Some(json!({ "valor": [1, 2] }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        // Remover a padrão (nulo) volta ao estado original; uma conta apagada some da lista sem quebrar nada.
+        como(&app, "equipe", "ana", "PUT", "/vault/preferencias/conta_padrao", Some(json!({ "valor": null }))).await;
+        como(&app, "equipe", "ana", "DELETE", &format!("/vault/contas/{}", ids[2]), None).await;
+        let (_, depois) = como(&app, "equipe", "ana", "GET", "/vault/contas", None).await;
+        assert_eq!(nomes(&depois), ["Alfa", "Beta"]);
+        assert!(depois.as_array().unwrap().iter().all(|c| c["padrao"] == false));
+        drop(app);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[tokio::test]
+    async fn ordem_das_categorias_e_por_pessoa() {
+        let (app, raiz) = app();
+        ativar(&app, "equipe").await;
+        let mut ids = Vec::new();
+        for nome in ["Casa", "Lazer", "Saúde"] {
+            let (_, c) = como(&app, "equipe", "ana", "POST", "/vault/categorias", Some(json!({ "nome": nome }))).await;
+            ids.push(c["id"].as_str().unwrap().to_string());
+        }
+        // O Cofre já nasce com categorias semeadas; compara ids para não depender delas.
+        let ids_de = |v: &Value| v.as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let (_, base) = como(&app, "equipe", "ana", "GET", "/vault/categorias", None).await;
+        let base = ids_de(&base);
+        como(&app, "equipe", "ana", "PUT", "/vault/preferencias/ordem_categorias", Some(json!({ "valor": [ids[2], ids[1], ids[0]] }))).await;
+        let (_, a) = como(&app, "equipe", "ana", "GET", "/vault/categorias", None).await;
+        let a = ids_de(&a);
+        assert_eq!(a[..3], [ids[2].clone(), ids[1].clone(), ids[0].clone()]);
+        assert_eq!(a.len(), base.len(), "nenhuma categoria some ou se repete");
+        let (_, b) = como(&app, "equipe", "bia", "GET", "/vault/categorias", None).await;
+        assert_eq!(ids_de(&b), base);
+        drop(app);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[tokio::test]
+    async fn nota_fiscal_e_um_anexo_com_tipo_proprio_e_a_lista_conta_separado() {
+        let (app, raiz) = app();
+        ativar(&app, "ana").await;
+        let (_, t) = chamar(&app, "ana", "POST", "/vault/transacoes", Some(lancamento("Compra"))).await;
+        let id = t["id"].as_str().unwrap().to_string();
+        let uri = format!("/vault/transacoes/{id}/anexos");
+        enviar(&app, "ana", &uri, "arquivo", "comprovante.pdf", "application/pdf", &pdf(500, 1)).await;
+        let (s, nf) = enviar(&app, "ana", &format!("{uri}?tipo=nota_fiscal"), "arquivo", "nota.pdf", "application/pdf", &pdf(500, 2)).await;
+        assert_eq!(s, StatusCode::OK, "{nf}");
+        assert_eq!(enviar(&app, "ana", &format!("{uri}?tipo=recibo"), "arquivo", "x.pdf", "application/pdf", &pdf(500, 3)).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+        let (_, det) = chamar(&app, "ana", "GET", &format!("/vault/transacoes/{id}"), None).await;
+        assert_eq!((det["anexos"].clone(), det["notas_fiscais"].clone()), (json!(1), json!(1)));
+        let (_, anexos) = chamar(&app, "ana", "GET", &uri, None).await;
+        let tipos: Vec<_> = anexos.as_array().unwrap().iter().map(|a| a["tipo"].as_str().unwrap().to_string()).collect();
+        assert_eq!(tipos, ["comprovante", "nota_fiscal"]);
+
+        let n = |v: Value| v["items"].as_array().unwrap().len();
+        assert_eq!(n(chamar(&app, "ana", "GET", "/vault/comprovantes", None).await.1), 2);
+        let (_, so_notas) = chamar(&app, "ana", "GET", "/vault/comprovantes?tipo=nota_fiscal", None).await;
+        assert_eq!((n(so_notas.clone()), so_notas["items"][0]["nome_arquivo"].clone()), (1, json!("nota.pdf")));
+        assert_eq!(chamar(&app, "ana", "GET", "/vault/comprovantes?tipo=foo", None).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Reclassificar sem reenviar o arquivo.
+        let nid = nf["id"].as_str().unwrap();
+        assert_eq!(chamar(&app, "ana", "PATCH", &format!("/vault/anexos/{nid}"), Some(json!({ "tipo": "comprovante" }))).await.0, StatusCode::OK);
+        assert_eq!(chamar(&app, "ana", "PATCH", &format!("/vault/anexos/{nid}"), Some(json!({ "tipo": "x" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(chamar(&app, "ana", "PATCH", "/vault/anexos/inexistente", Some(json!({ "tipo": "comprovante" }))).await.0, StatusCode::NOT_FOUND);
+        assert_eq!(chamar(&app, "ana", "GET", &format!("/vault/transacoes/{id}"), None).await.1["notas_fiscais"], 0);
+
+        // Rascunho nasce com o tipo e o leva para o anexo na confirmação.
+        let (_, r) = enviar(&app, "ana", "/vault/comprovantes?tipo=nota_fiscal", "arquivo", "nf.png", "image/png", &png_liso()).await;
+        assert_eq!(chamar(&app, "ana", "GET", &format!("/vault/comprovantes/rascunhos/{}", r["id"].as_str().unwrap()), None).await.1["tipo"], "nota_fiscal");
+        let (s, nova) = chamar(&app, "ana", "POST", &format!("/vault/comprovantes/rascunhos/{}/confirmar", r["id"].as_str().unwrap()), Some(lancamento("Da nota"))).await;
+        assert_eq!(s, StatusCode::OK, "{nova}");
+        assert_eq!(nova["notas_fiscais"], 1);
+        drop(app);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    #[tokio::test]
+    async fn busca_ignora_acento_tolera_digitacao_e_acha_pelo_texto_do_comprovante() {
+        use crate::db::USUARIO;
+        let (app, estado, raiz) = app_e_estado();
+        ativar(&app, "ana").await;
+        let (_, cat) = chamar(&app, "ana", "POST", "/vault/categorias", Some(json!({ "nome": "Alimentação" }))).await;
+        let mut c1 = lancamento("Supermercado Pão de Açúcar");
+        c1["categoria_id"] = cat["id"].clone();
+        let (_, t1) = chamar(&app, "ana", "POST", "/vault/transacoes", Some(c1)).await;
+        let (_, t2) = chamar(&app, "ana", "POST", "/vault/transacoes", Some(lancamento("Despesa qualquer"))).await;
+        let (_, a) = enviar(&app, "ana", &format!("/vault/transacoes/{}/anexos", t2["id"].as_str().unwrap()), "arquivo", "scan001.png", "image/png", &png_liso()).await;
+        let aid = a["id"].as_str().unwrap().to_string();
+        // Espera a leitura em segundo plano gravar a miniatura: ela é a última coisa que escreve no anexo.
+        for _ in 0..100 {
+            let id = aid.clone();
+            let pronta = USUARIO.scope("ana".into(), estado.db.with(move |c| c.query_row("SELECT miniatura IS NOT NULL FROM anexo WHERE id = ?1", [&id], |r| r.get::<_, bool>(0)))).await.unwrap();
+            if pronta { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        // O OCR leu "FARMAC1A" e "PAGAMENT0".
+        USUARIO.scope("ana".into(), estado.db.with(move |c| c.execute("UPDATE anexo SET ocr_texto='COMPROVANTE DE PAGAMENT0 FARMAC1A POPULAR' WHERE id=?1", [&aid]))).await.unwrap();
+
+        let ids = |v: Value| v["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let (id1, id2) = (t1["id"].as_str().unwrap().to_string(), t2["id"].as_str().unwrap().to_string());
+        for q in ["pao de acucar", "PÃO", "alimentacao", "supermecado", "alimentação supermercado"] {
+            assert_eq!(ids(chamar(&app, "ana", "GET", &format!("/vault/busca?q={}", q.replace(' ', "%20")), None).await.1), [id1.clone()], "{q}");
+        }
+        let (_, farm) = chamar(&app, "ana", "GET", "/vault/busca?q=farmacia", None).await;
+        assert_eq!(ids(farm.clone()), [id2.clone()]);
+        assert_eq!(farm["items"][0]["so_no_anexo"], true, "avisa que só achou dentro do comprovante");
+        assert!(ids(chamar(&app, "ana", "GET", "/vault/busca?q=zzzzzz", None).await.1).is_empty());
+        assert!(ids(chamar(&app, "ana", "GET", "/vault/busca?q=%20%21", None).await.1).is_empty());
+        assert_eq!(ids(chamar(&app, "ana", "GET", "/vault/busca?q=despesa&data_de=2099-01-01", None).await.1).len(), 0, "respeita o período");
+        // Outra pessoa não enxerga nada do Cofre da Ana.
+        ativar(&app, "bia").await;
+        assert!(ids(chamar(&app, "bia", "GET", "/vault/busca?q=despesa", None).await.1).is_empty());
         drop(app);
         let _ = std::fs::remove_dir_all(raiz);
     }

@@ -44,22 +44,22 @@ beforeEach(() => {
   vi.mocked(auth.perfil).mockResolvedValue(perfil as never);
   vi.mocked(vault.transacoes.listar).mockResolvedValue({ items: [comAnexos, semAnexos], next_cursor: null });
   vi.mocked(vault.anexos.listar).mockResolvedValue([
-    { id: "a1", nome_arquivo: "pix.png", mime_type: "image/png", tamanho_bytes: 10, checksum_sha256: "h", criado_em: "" },
-    { id: "a2", nome_arquivo: "recibo.png", mime_type: "image/png", tamanho_bytes: 10, checksum_sha256: "h", criado_em: "" },
+    { id: "a1", nome_arquivo: "pix.png", mime_type: "image/png", tamanho_bytes: 10, checksum_sha256: "h", criado_em: "", tipo: "comprovante" as const },
+    { id: "a2", nome_arquivo: "recibo.png", mime_type: "image/png", tamanho_bytes: 10, checksum_sha256: "h", criado_em: "", tipo: "comprovante" as const },
   ]);
   vi.mocked(vault.anexos.conteudo).mockResolvedValue(new Blob(["x"], { type: "image/png" }));
 });
 
 it("cada transação da lista tem o clipe: com número quando há anexos, e convidando a anexar quando não há", async () => {
   tela();
-  const com = await screen.findByRole("button", { name: "2 anexos de Pix para Karine" });
-  expect(com.textContent).toBe("2");
+  const com = await screen.findByRole("button", { name: "2 comprovantes de Pix para Karine" });
+  expect(com.textContent).toBe(""); // só o ícone: a contagem fica na dica
   expect(screen.getByRole("button", { name: "Anexar comprovante a Padaria" }).textContent).toBe("");
 });
 
 it("clicar no clipe mostra o comprovante e NÃO abre o lançamento da linha", async () => {
   const { abrir } = tela();
-  fireEvent.click(await screen.findByRole("button", { name: "2 anexos de Pix para Karine" }));
+  fireEvent.click(await screen.findByRole("button", { name: "2 comprovantes de Pix para Karine" }));
   await screen.findByRole("img", { name: "Comprovante pix.png" });
   expect(screen.getByText("1 de 2")).toBeTruthy();
   expect(abrir).not.toHaveBeenCalled();
@@ -77,17 +77,17 @@ it("anexar pela lista recarrega a tela (a contagem muda)", async () => {
   await screen.findByRole("button", { name: "Anexar comprovante a Padaria" });
   const antes = vi.mocked(vault.transacoes.listar).mock.calls.length;
   fireEvent.change(screen.getByLabelText("Escolher comprovante para Padaria"), { target: { files: [new File(["x"], "n.png", { type: "image/png" })] } });
-  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("t2", expect.any(File)));
+  await waitFor(() => expect(vault.anexos.enviar).toHaveBeenCalledWith("t2", expect.any(File), "comprovante"));
   await waitFor(() => expect(atualizar).toHaveBeenCalled());
   await waitFor(() => expect(vi.mocked(vault.transacoes.listar).mock.calls.length).toBeGreaterThan(antes));
 });
 
 it("na visão em tabela o clipe também existe em cada linha", async () => {
   tela();
-  await screen.findByRole("button", { name: "2 anexos de Pix para Karine" });
+  await screen.findByRole("button", { name: "2 comprovantes de Pix para Karine" });
   fireEvent.click(screen.getByRole("button", { name: /Tabela/ }));
   const tabela = await screen.findByRole("table");
-  expect(within(tabela).getByRole("button", { name: "2 anexos de Pix para Karine" })).toBeTruthy();
+  expect(within(tabela).getByRole("button", { name: "2 comprovantes de Pix para Karine" })).toBeTruthy();
   expect(within(tabela).getByRole("button", { name: "Anexar comprovante a Padaria" })).toBeTruthy();
   expect(within(tabela).getByRole("columnheader", { name: "Anexos" })).toBeTruthy();
 });

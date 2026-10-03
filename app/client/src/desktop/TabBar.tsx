@@ -133,3 +133,4 @@ function MenuModulos({ aoEscolher, aoFechar }: { aoEscolher: (path: string) => v
     </div>
   );
 }
+

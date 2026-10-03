@@ -10,9 +10,10 @@ use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+    let usuario = crate::db::autor_atual().unwrap_or_default();
     let linhas: Vec<serde_json::Value> = state
         .db
-        .with(|conn| {
+        .with(move |conn| {
             let mut stmt = conn.prepare("SELECT id, nome, tipo, icone, cor, padrao, espaco, criado_por FROM categoria ORDER BY nome")?;
             let linhas = stmt
                 .query_map([], |r| {
@@ -23,6 +24,8 @@ pub async fn listar(State(state): State<AppState>) -> AppResult<Json<serde_json:
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            let mut linhas = linhas;
+            super::preferencias::ordenar_por(&mut linhas, &super::preferencias::ler_ordem(conn, &usuario, super::preferencias::ORDEM_CATEGORIAS)?);
             Ok(linhas)
         })
         .await?;

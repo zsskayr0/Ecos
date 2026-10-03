@@ -142,6 +142,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
   /** Anexos escolhidos para um lançamento novo; vão para o Cofre assim que ele é criado. */
   const [anexosPendentes, setAnexosPendentes] = useState<File[]>([]);
+  const [notasPendentes, setNotasPendentes] = useState<File[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
@@ -185,6 +186,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     fecharCaptura();
     setDraft(DRAFT_VAZIO);
     setAnexosPendentes([]);
+    setNotasPendentes([]);
     setItemCriado(null);
     ultimoEnvio.current = null;
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
@@ -239,8 +241,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
           observacoes: draft.observacoesTransacao.trim() || undefined,
           data: draft.dataTransacao,
         });
-        if (anexosPendentes.length) {
-          const falhas = await enviarAnexosPendentes(criada.id, anexosPendentes);
+        if (anexosPendentes.length || notasPendentes.length) {
+          const falhas = [...await enviarAnexosPendentes(criada.id, anexosPendentes), ...await enviarAnexosPendentes(criada.id, notasPendentes, "nota_fiscal")];
           // O lançamento já existe; só os anexos que falharam precisam de nova tentativa (pelo próprio lançamento).
           if (falhas.length) avisar(`Lançamento salvo, mas ${falhas.length === 1 ? "1 anexo não foi enviado" : `${falhas.length} anexos não foram enviados`}: ${falhas[0]} Anexe de novo pelo lançamento.`);
         }
@@ -324,7 +326,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded} tiposPermitidos={contextoDesktop==="cofre"?["transacao"]:contextoDesktop==="ecos"?(capturaAberta==="transacao"?["transacao"]:["nota","tarefa"]):undefined}>
       {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
       {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
-      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} anexos={<AnexosPendentes arquivos={anexosPendentes} onChange={setAnexosPendentes} />} />}
+      {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} anexos={<div className="cofre-anexos-par"><AnexosPendentes arquivos={anexosPendentes} onChange={setAnexosPendentes} /><AnexosPendentes arquivos={notasPendentes} onChange={setNotasPendentes} tipo="nota_fiscal" /></div>} />}
     </FormShell>
   );
 }

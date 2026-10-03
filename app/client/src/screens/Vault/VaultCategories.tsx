@@ -10,6 +10,10 @@ import { DonutChart } from "./nexus/DonutChart";
 import { PeriodPicker } from "./nexus/PeriodPicker";
 import { RadarChart } from "./nexus/RadarChart";
 import { periodNoun, periodRange, toISO, type Period } from "./nexus/period";
+import { casaBusca } from "@/lib/texto-busca";
+import { avisar } from "@/lib/toast";
+import { AlcaOrdem, useOrdemPessoal } from "./ordem-pessoal";
+import { SeletorCor } from "./contas/SeletorCor";
 
 const IconPicker = lazy(() => import("./IconPicker"));
 
@@ -35,12 +39,19 @@ const TIPO_ROTULO: Record<CategoriaApi["tipo"], string> = { saida: "Despesa", en
 const EIXOS = ["Total gasto", "Nº lançamentos", "Ticket médio", "Recorrências ativas"];
 export const CORES = ["#f29a9f", "#fda4af", "#fdba74", "#fcd34d", "#bef264", "#86d7ad", "#5eead4", "#7dd3fc", "#93c5fd", "#a5b4fc", "#c4b5fd", "#f0abfc", "#f9a8d4", "#d4d4d8", "#a8a29e", "#94a3b8"];
 
-function resolverIcone(nome?: string | null): Icons.LucideIcon {
+export function resolverIcone(nome?: string | null): Icons.LucideIcon {
   if (!nome) return Icons.Tag;
   const mapa = Icons as unknown as Record<string, Icons.LucideIcon>;
   if (mapa[nome]) return mapa[nome];
   const pascal = nome.split(/[-_ ]/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
   return mapa[pascal] ?? Icons.Tag;
+}
+
+/** Ícone da categoria sobre a cor dela (o mesmo da tela de Categorias); sem categoria, um ponto de interrogação neutro. */
+export function CategoriaIcone({ categoria, tamanho = 16, className = "cofre-cats-icon" }: { categoria?: Pick<CategoriaApi, "icone" | "cor" | "nome"> | null; tamanho?: number; className?: string }) {
+  if (!categoria) return <span className={className} style={{ background: COR_SEM_CATEGORIA, color: "#ffffff" }} aria-hidden><Icons.CircleHelp size={tamanho} /></span>;
+  const Icone = resolverIcone(categoria.icone);
+  return <span className={className} style={{ background: categoria.cor, color: corDoTexto(categoria.cor) }} aria-hidden><Icone size={tamanho} /></span>;
 }
 
 /** Texto legível sobre a cor da categoria (preto ou branco, pela luminância). */
@@ -116,6 +127,8 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
   const [busca, setBusca] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<"todas" | CategoriaApi["tipo"]>("todas");
   const [foco, setFoco] = useState<string | null>(null);
+  // A ordem das categorias é da pessoa, neste Cofre. O servidor já devolve `categorias` nessa ordem.
+  const ordem = useOrdemPessoal(categorias, async (ids) => { await vault.preferencias.salvarOrdem("ordem_categorias", ids); atualizar(); }, () => avisar("Não foi possível guardar a nova ordem das categorias."));
 
   useEffect(() => {
     let vivo = true;
@@ -161,7 +174,8 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
   const maxRanking = Math.max(1, ...stats.map((s) => s.total));
   const segmentos = stats.map((s) => ({ label: s.nome, valueCents: s.total, color: s.cor }));
 
-  const visiveis = categorias.filter((c) => (filtroTipo === "todas" || c.tipo === filtroTipo) && c.nome.toLowerCase().includes(busca.trim().toLowerCase()));
+  const visiveis = ordem.ordenados.filter((c) => (filtroTipo === "todas" || c.tipo === filtroTipo) && casaBusca(busca, c.nome));
+  const filtrando = busca.trim() !== "" || filtroTipo !== "todas";
 
   const lider = top3[0];
   const insight = lider
@@ -219,11 +233,13 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
             <div className="cofre-card cofre-cats-list" data-focando={foco ? "true" : undefined}>
               {visiveis.length === 0 && <p className="cofre-cats-none">Nenhuma categoria encontrada.</p>}
               {visiveis.map((c, i) => {
-                const Icone = resolverIcone(c.icone);
                 const s = statPorId.get(c.id);
                 return (
-                  <button key={c.id} type="button" className="cofre-cats-row" data-foco={foco === c.id ? "true" : undefined} style={estiloI(i)} onClick={() => setEditando(c)} onMouseEnter={() => setFoco(c.id)} onMouseLeave={() => setFoco(null)} onFocus={() => setFoco(c.id)} onBlur={() => setFoco(null)}>
-                    <span className="cofre-cats-icon" style={{ background: c.cor, color: corDoTexto(c.cor) }}><Icone size={16} /></span>
+                  <div key={c.id} role="button" tabIndex={0} aria-label={`Editar categoria ${c.nome}`} className="cofre-cats-row" data-ordem-linha data-foco={foco === c.id ? "true" : undefined} style={estiloI(i)} {...ordem.linha(c.id)}
+                    onClick={() => setEditando(c)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setEditando(c); } }}
+                    onMouseEnter={() => setFoco(c.id)} onMouseLeave={() => setFoco(null)} onFocus={() => setFoco(c.id)} onBlur={() => setFoco(null)}>
+                    <AlcaOrdem nome={c.nome} desativada={filtrando} {...ordem.alca(c.id)} />
+                    <CategoriaIcone categoria={c} />
                     <span className="cofre-cats-row-main">
                       <span className="cofre-cats-row-name"><b>{c.nome}</b>{c.padrao && <em>Padrão</em>}</span>
                       <small>{TIPO_ROTULO[c.tipo]}</small>
@@ -234,7 +250,7 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
                       <span className="cofre-cats-row-total muted">—</span>
                     )}
                     <Icons.Pencil size={13} className="cofre-cats-edit" aria-hidden />
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -504,7 +520,7 @@ export function CategoriaModal({ categoria, categorias, onClose, onSaved }: { ca
   return (
     <div className="cofre-cats-modal" data-saindo={saindo || undefined}>
       <div className="cofre-cats-backdrop" onClick={fechar} />
-      <form className="cofre-card cofre-cats-dialog" role="dialog" aria-modal="true" aria-label={categoria ? "Editar categoria" : "Nova categoria"} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
+      <form className="cofre-card cofre-cats-dialog cofre-categoria-dialog" role="dialog" aria-modal="true" aria-label={categoria ? "Editar categoria" : "Nova categoria"} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
         <header>
           <span className="cofre-cats-icon lg" style={{ background: cor, color: corDoTexto(cor) }}><Previa size={18} /></span>
           <div><p>{categoria ? "EDITAR CATEGORIA" : "NOVA CATEGORIA"}</p><h2>{nome.trim() || "Sem nome"}</h2></div>
@@ -527,6 +543,15 @@ export function CategoriaModal({ categoria, categorias, onClose, onSaved }: { ca
 
         {erro && <p className="cofre-launch-alert" role="alert">{erro}</p>}
 
+        <div className="cofre-contas-corpo cofre-categoria-corpo">
+          <div className="cofre-contas-esq">
+        <div className="cofre-cats-field">
+          <span>Ícone</span>
+          <Suspense fallback={<p className="cofre-cats-none">Carregando ícones…</p>}><IconPicker value={icone} onChange={setIcone} cor={cor} /></Suspense>
+        </div>
+
+          </div>
+          <div className="cofre-contas-dir">
         <label className="cofre-cats-field"><span>Nome</span><input ref={nomeRef} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Mercado" maxLength={40} /></label>
 
         <div className="cofre-cats-field">
@@ -536,16 +561,9 @@ export function CategoriaModal({ categoria, categorias, onClose, onSaved }: { ca
 
         <div className="cofre-cats-field">
           <span>Cor</span>
-          <div className="cofre-cats-swatches">
-            {CORES.map((c) => (
-              <button key={c} type="button" aria-label={`Cor ${c}`} aria-pressed={cor === c} style={{ background: c, color: corDoTexto(c) }} onClick={() => setCor(c)}>{cor === c && <Check size={13} strokeWidth={3} />}</button>
-            ))}
-          </div>
+          <SeletorCor valor={cor} onChange={setCor} />
         </div>
-
-        <div className="cofre-cats-field">
-          <span>Ícone</span>
-          <Suspense fallback={<p className="cofre-cats-none">Carregando ícones…</p>}><IconPicker value={icone} onChange={setIcone} cor={cor} /></Suspense>
+          </div>
         </div>
 
         {confirmando && categoria && (

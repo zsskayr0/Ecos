@@ -44,12 +44,19 @@ export function VaultWorkflow({ atualizar, recarregar }: {
     const count = modo === "month" ? new Date(start.getUTCFullYear(), start.getUTCMonth() + 1, 0).getDate() : modo === "week" ? 7 : modo === "timeline" ? 45 : 15;
     const dias = Array.from({ length: count }, (_, i) => new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10));
     const de = dias[0], ate = dias[dias.length - 1];
+    // Trocar de período esvazia o quadro e mostra "Carregando". Recarregar depois de concluir/agendar troca os dados no
+    // lugar, sem esvaziar: senão o quadro encolhe por um instante e a rolagem da página volta para o topo.
+    const faixaAnterior = useRef("");
     useEffect(() => {
         let vivo = true;
-        setCarregando(true);
+        const faixa = `${de}|${ate}`;
+        if (faixaAnterior.current !== faixa) {
+            faixaAnterior.current = faixa;
+            setCarregando(true);
+            setItems([]);
+            setEscolhido(null);
+        }
         setErro("");
-        setItems([]);
-        setEscolhido(null);
         async function carregar() {
             try {
                 const [pendencias, recorrencias] = await Promise.all([financeiro.pendencias.listar(), financeiro.ocorrencias({ data_de: de, data_ate: ate })]);
@@ -153,7 +160,7 @@ export function VaultWorkflow({ atualizar, recarregar }: {
     <h2 className="font-display text-xl">Fluxo financeiro</h2>
     <fieldset disabled={ocupado} className="cofre-flow-toolbar"><label className="sr-only" htmlFor="fluxo-visao">Visão</label><SeletorEcos ariaLabel="Visão do fluxo" classe="ecos-input" valor={modo} onChange={setModo} opcoes={[{ valor: "timeline", rotulo: "Timeline" }, { valor: "month", rotulo: "Mês" }, { valor: "week", rotulo: "Semana" }, { valor: "fortnight", rotulo: "Quinzena" }]} /><button className="ecos-input" aria-label="Período anterior" onClick={() => avancar(-1)}>‹</button><label className="sr-only" htmlFor="fluxo-data">Data de referência</label><input id="fluxo-data" className="ecos-input" type="date" value={ancora} onChange={e => {if(e.target.value){setAncora(e.target.value);setDiaAberto(e.target.value);}}}/><button className="ecos-input" aria-label="Próximo período" onClick={() => avancar(1)}>›</button><button className="ecos-input" onClick={() => {setAncora(hojeISO());setDiaAberto(hojeISO());}}>Hoje</button><button className="ecos-input" onClick={() => setVersao(v => v + 1)}>Atualizar</button></fieldset>
     {erro && <p role="alert" className="text-error">{erro}</p>}
-    {ocupado && <p role="status">Salvando alteração…</p>}
+    <p role="status" className="sr-only">{ocupado ? "Salvando alteração…" : ""}</p>
     {escolhido && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet p-3"><p>Agendar: {escolhido.descricao}</p><label>Data <input className="ecos-input" type="date" value={destino} onChange={e => setDestino(e.target.value)}/></label><button disabled={ocupado || !destino} className="ecos-input" onClick={() => void mover(escolhido, destino)}>{escolhido.kind === "transacao" ? "Reagendar" : "Concluir na data"}</button><button onClick={() => setEscolhido(null)}>Cancelar</button></div>}
     <div className="cofre-flow-layout">
       <aside className="space-y-3 rounded-2xl bg-surface-1 p-3"><h3 className="font-semibold">Pendências sem data</h3><details><summary className="cofre-new-pending">Nova pendência</summary><form onSubmit={e => { e.preventDefault(); void criar(); }} className="space-y-2"><input className="ecos-input w-full" aria-label="Descrição da pendência" placeholder="Descrição" value={descricao} onChange={e => setDescricao(e.target.value)} required/><input className="ecos-input w-full" aria-label="Valor da pendência em reais" placeholder="Valor: 123,45" value={valor} onChange={e => setValor(e.target.value)} required/><SeletorEcos ariaLabel="Tipo da pendência" classe="ecos-input w-full" valor={tipo} onChange={v => setTipo(v as typeof tipo)} opcoes={[{ valor: "saida", rotulo: "Despesa" }, { valor: "entrada", rotulo: "Receita" }]} /><button className="ecos-input" disabled={ocupado}>Criar pendência</button></form></details>{items.filter(i => !i.data).map(card)}</aside>

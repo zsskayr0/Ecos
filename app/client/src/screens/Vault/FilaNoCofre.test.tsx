@@ -58,7 +58,7 @@ it("com o Cofre aberto no Painel, um comprovante que chega leva direto à aba Co
   act(() => { enfileirarComprovantes([arquivo]); });
   await screen.findByLabelText("Buscar comprovante");
   await screen.findByRole("dialog", { name: "Revisar comprovante" });
-  expect(vault.comprovantes.receber).toHaveBeenCalledWith(arquivo);
+  expect(vault.comprovantes.receber).toHaveBeenCalledWith(arquivo, "comprovante");
   expect(quantosEsperando()).toBe(0);
 });
 
