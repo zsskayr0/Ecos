@@ -1,6 +1,6 @@
 [package]
 name = "ecos-client"
-version = "0.9.0-alpha"
+version = "0.10.0-alpha"
 description = "Ecos — desktop/mobile client (Tauri + React), see ecos-arquitetura-tecnica.md section 10"
 edition = "2021"
 publish = false

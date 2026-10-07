@@ -65,7 +65,7 @@ pub async fn lote(State(state): State<AppState>, Json(p): Json<Lote>) -> AppResu
     if p.ids.is_empty()
         || p.ids.len() > 1000
         || p.ids.iter().collect::<std::collections::HashSet<_>>().len() != p.ids.len()
-        || !["conciliar", "desconciliar", "excluir", "efetivar"].contains(&p.acao.as_str())
+        || !["conciliar", "desconciliar", "excluir", "efetivar", "previsto"].contains(&p.acao.as_str())
     {
         return Err(AppError::new(ErrorCode::ValidationError)
             .with_message("Escolha de 1 a 1000 lançamentos e uma ação válida"));
@@ -77,6 +77,13 @@ pub async fn lote(State(state): State<AppState>, Json(p): Json<Lote>) -> AppResu
             let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM transacao WHERE id=?1)",[id],|r|r.get(0))?;
             if !exists { errors.push(json!({"linha":i+1,"erro":"Lançamento não encontrado"})); }
         }
+        if p.acao=="efetivar" {
+            let limite=crate::routes::transacoes::limite_para_efetivar().to_string();
+            for (i,id) in p.ids.iter().enumerate() {
+                let futuro:bool=tx.query_row("SELECT COALESCE((SELECT data>?2 FROM transacao WHERE id=?1),0)",params![id,limite],|r|r.get(0))?;
+                if futuro { errors.push(json!({"linha":i+1,"erro":"Lançamento futuro só pode ficar como previsto"})); }
+            }
+        }
         if !errors.is_empty() { return Ok(json!({"aplicadas":0,"erros":errors})); }
         for id in &p.ids {
             if p.acao=="excluir" {
@@ -84,6 +91,8 @@ pub async fn lote(State(state): State<AppState>, Json(p): Json<Lote>) -> AppResu
                 tx.execute("DELETE FROM transacao WHERE id=?1",[id])?;
             } else if p.acao=="efetivar" {
                 tx.execute("UPDATE transacao SET status='efetivada',conciliada=1,atualizado_em=datetime('now') WHERE id=?1",[id])?;
+            } else if p.acao=="previsto" {
+                tx.execute("UPDATE transacao SET status='pendente',conciliada=0,atualizado_em=datetime('now') WHERE id=?1",[id])?;
             } else { tx.execute("UPDATE transacao SET conciliada=?1,atualizado_em=datetime('now') WHERE id=?2",params![p.acao=="conciliar",id])?; }
         }
         tx.commit()?;

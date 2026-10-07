@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Copy, FileX, Trash2 } from "lucide-react";
 import { ApiError, notas } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
+import { formatDataHoraCompleta } from "@/lib/format";
 import { descriptionTags } from "@/lib/task-fields";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
@@ -202,7 +203,7 @@ export function NoteEditorDesktop() {
           <CorpoEditor tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={14} layout="document" placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview />
 
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
-            <span>Editada <TempoEdicao iso={nota.atualizado_em} /></span>
+            <span>Criada em {formatDataHoraCompleta(nota.criado_em)} · Editada <TempoEdicao iso={nota.atualizado_em} /></span>
             <span className="flex items-center gap-3">
               {!nota.ultima_revisao_em && (
                 <button type="button" onClick={marcarRevisado} className="flex items-center gap-1 text-steel-300 hover:text-text-primary"><CheckCircle2 size={12} />Marcar revisado</button>

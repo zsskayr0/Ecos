@@ -220,6 +220,9 @@ pub async fn concluir(
     if p.valor_centavos.is_some_and(|v| v <= 0) {
         return Err(AppError::new(ErrorCode::TransactionInvalidAmount));
     }
+    if p.confirmar && p.data > crate::routes::transacoes::limite_para_efetivar() {
+        return Err(crate::routes::transacoes::erro_efetivar_futuro());
+    }
     let result = state.db.with(move |c| {
         let tx = c.unchecked_transaction()?;
         let original = p.data_ocorrencia.to_string();

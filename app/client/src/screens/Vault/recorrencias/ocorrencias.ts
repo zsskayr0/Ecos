@@ -87,21 +87,26 @@ export function baldesDoPeriodo(period: Period, de: string, ate: string): Balde[
 export interface TotalDoBalde {
   rotulo: string;
   de: string;
+  ate: string;
   entradas: number;
   saidas: number;
+  /** Quantas ocorrências caem neste balde. */
+  quantidade: number;
 }
 
 export function totaisPorBalde(linhas: LinhaRecorrencia[], baldes: Balde[]): TotalDoBalde[] {
   return baldes.map((b) => {
     let entradas = 0;
     let saidas = 0;
+    let quantidade = 0;
     for (const l of linhas) {
       const d = dataExibida(l);
       if (d < b.de || d > b.ate) continue;
+      quantidade++;
       if (l.regra.tipo === "entrada") entradas += l.valorCentavos;
       else saidas += l.valorCentavos;
     }
-    return { rotulo: b.rotulo, de: b.de, entradas, saidas };
+    return { rotulo: b.rotulo, de: b.de, ate: b.ate, entradas, saidas, quantidade };
   });
 }
 

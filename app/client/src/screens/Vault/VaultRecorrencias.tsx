@@ -27,7 +27,7 @@ function gravarPref(chave: string, valor: string) {
   try { localStorage.setItem(chave, valor); } catch { /* armazenamento indisponível: vale só nesta sessão */ }
 }
 
-type Painel = { tipo: "nova" } | { tipo: "editar"; regraId: string; linha?: LinhaRecorrencia };
+type Painel = { tipo: "nova"; modelo?: RecorrenciaApi } | { tipo: "editar"; regraId: string; linha?: LinhaRecorrencia };
 type Confirmacao = { titulo: string; mensagem: React.ReactNode; rotulo: string; acao: () => Promise<void> };
 
 export function VaultRecorrencias({ period, onPeriodChange, categorias, atualizar, recarregar }: {
@@ -109,7 +109,8 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   const concluir = (l: LinhaRecorrencia) => executar(() => financeiro.concluir(l.regra.id, l.data, dataExibida(l)), "Ocorrência concluída.");
   const concluirParcial = (l: LinhaRecorrencia, pago: number) => financeiro.concluir(l.regra.id, l.data, dataExibida(l), { valor_centavos: pago });
   const reagendar = (l: LinhaRecorrencia, data: string) => (l.transacaoId ? financeiro.reagendar(l.transacaoId, data) : financeiro.concluir(l.regra.id, l.data, data, { confirmar: false }));
-  const duplicar = (r: RecorrenciaApi) => executar(() => financeiro.duplicarRecorrencia(r.id), "Cópia criada.");
+  // Duplicar abre uma recorrência nova já preenchida; só é criada quando a pessoa salvar.
+  const duplicar = (r: RecorrenciaApi) => setPainel({ tipo: "nova", modelo: { ...r, descricao: `${r.descricao} (cópia)`, parcelas_geradas: 0, efetivadas: 0 } });
   const alternarAtiva = (r: RecorrenciaApi) => executar(() => financeiro.atualizarRecorrencia(r.id, payloadDaRegra(r, { ativa: !r.ativa })), r.ativa ? "Recorrência pausada." : "Recorrência reativada.");
   const apagarEsta = async (l: LinhaRecorrencia) => {
     if (l.transacaoId) await vault.transacoes.excluir(l.transacaoId);
@@ -164,11 +165,13 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   function acoesDe(regra: RecorrenciaApi, linha: LinhaRecorrencia | undefined, noPainel: boolean): AcoesDaOcorrencia {
     const fechar = noPainel ? () => setPainel(null) : undefined;
     const pendente = linha && !linha.efetivada;
+    // Efetivar o que ainda não venceu não faz sentido: fica como previsto até o dia.
+    const vencida = !!linha && dataExibida(linha) <= hojeLocalISO();
     return {
       onEditar: noPainel ? undefined : () => setPainel({ tipo: "editar", regraId: regra.id, linha }),
-      onDuplicar: () => void duplicar(regra),
-      onConcluir: pendente ? () => void concluir(linha).then((ok) => ok && fechar?.()) : undefined,
-      onConcluirParcial: pendente ? () => setParcial(linha) : undefined,
+      onDuplicar: () => duplicar(regra),
+      onConcluir: pendente && vencida ? () => void concluir(linha).then((ok) => ok && fechar?.()) : undefined,
+      onConcluirParcial: pendente && vencida ? () => setParcial(linha) : undefined,
       onReagendar: linha ? () => setReagendando(linha) : undefined,
       ativa: regra.ativa,
       onAlternarAtiva: () => void alternarAtiva(regra).then((ok) => ok && fechar?.()),
@@ -208,9 +211,11 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   const painelAberto = painel?.tipo === "nova" || !!regraDoPainel;
   const modalRegra = painelAberto ? (
     <RecorrenciaModal
+      modelo={painel?.tipo === "nova" ? painel.modelo : undefined}
       key={painel?.tipo === "editar" ? `${painel.regraId}:${painel.linha?.data ?? ""}:${regraDoPainel?.atualizado_em}` : "nova"}
       regra={regraDoPainel} categorias={categorias} contas={contas} beneficiarios={beneficiarios} inicioPadrao={mes ? de : hoje} fixo={modoFixo}
       acoes={regraDoPainel ? acoesDe(regraDoPainel, painel?.tipo === "editar" ? painel.linha : undefined, true) : undefined}
+      linha={painel?.tipo === "editar" ? painel.linha : undefined}
       contexto={painel?.tipo === "editar" && painel.linha ? `${rotuloDaRegra(painel.linha)} · vence em ${dataBR(painel.linha.data)} · ${painel.linha.efetivada ? "efetivada" : "pendente"}` : undefined}
       onClose={() => setPainel(null)} onSalvo={() => { recarregarTudo(); if (painel?.tipo === "nova") setPainel(null); }}
     />
@@ -282,14 +287,13 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
               <div className="cofre-rec-graficos">
                 <div className="cofre-card cofre-rec-grafico cofre-rec-grafico-calor cofre-rise" data-mes={mes || undefined} style={estiloI(2)}>
                   <h4>Intensidade de despesas</h4>
-                  <MapaDeIntensidade totais={totais} colunas={mes ? 10 : undefined} />
+                  <MapaDeIntensidade totais={totais} hoje={hoje} />
                 </div>
                 <div className="cofre-card cofre-rec-grafico cofre-rec-grafico-barras cofre-rise" style={estiloI(3)}>
                   <div className="cofre-rec-grafico-topo">
                     <h4>Por período</h4>
-                    <div className="cofre-legend"><span><i style={{ background: "var(--cofre-income)" }} />Receitas</span><span><i style={{ background: "var(--cofre-expense)" }} />Despesas</span></div>
                   </div>
-                  <BarrasPorPeriodo totais={totais} />
+                  <BarrasPorPeriodo totais={totais} hoje={hoje} />
                 </div>
               </div>
             )}

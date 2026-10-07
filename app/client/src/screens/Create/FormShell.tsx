@@ -45,7 +45,7 @@ export function FormShell({
               <X size={22} className="text-text-muted" />
             </button>
           )}
-          <SegmentedSlide ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />
+          <SegmentedSlide className="ecos-capture-slide" ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />
           <div className="w-12 shrink-0" />
         </div>}
         <div className="ecos-capture-content min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+16px)]">

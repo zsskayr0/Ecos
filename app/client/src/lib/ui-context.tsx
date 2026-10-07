@@ -1,4 +1,5 @@
 import { definirEspacoDoCofre } from "./api";
+import type { CapturaDraft } from "@/screens/Create/CreateFlow";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 export type TipoCaptura = "nota" | "tarefa" | "transacao";
@@ -10,7 +11,9 @@ interface AppUIState {
 
   /** null = no create popup/form open; string = the type being edited. */
   capturaAberta: TipoCaptura | "escolha" | null;
-  abrirCaptura: (inicial: TipoCaptura | "escolha", data?: string | null) => void;
+  abrirCaptura: (inicial: TipoCaptura | "escolha", data?: string | null, rascunho?: Partial<CapturaDraft> | null) => void;
+  /** Campos já preenchidos do próximo lançamento (ex.: a cópia de outro). */
+  rascunhoCaptura: Partial<CapturaDraft> | null;
   /** Data (AAAA-MM-DD) com que a próxima Transação nasce — ex.: o dia aberto no calendário do Cofre. */
   dataCaptura: string | null;
   /** Dia em foco no calendário do Cofre; o botão de criar usa como data padrão. */
@@ -38,6 +41,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
   const [dataCaptura, setDataCaptura] = useState<string | null>(null);
+  const [rascunhoCaptura, setRascunhoCaptura] = useState<Partial<CapturaDraft> | null>(null);
   const [diaCofre, setDiaCofre] = useState<string | null>(null);
   const [anexosDeCaptura, setAnexosDeCaptura] = useState<string[]>([]);
   const [filtroEquipeId, setFiltroEquipeId] = useState<string | null>(null);
@@ -53,12 +57,13 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       fecharDrawer: () => setDrawerAberto(false),
 
       capturaAberta,
-      abrirCaptura: (inicial, data = null) => { setDataCaptura(data); setCapturaAberta(inicial); },
+      abrirCaptura: (inicial, data = null, rascunho = null) => { setDataCaptura(data); setRascunhoCaptura(rascunho); setCapturaAberta(inicial); },
       dataCaptura,
+      rascunhoCaptura,
       diaCofre,
       setDiaCofre,
       trocarTipoCaptura: (tipo) => setCapturaAberta(tipo),
-      fecharCaptura: () => setCapturaAberta(null),
+      fecharCaptura: () => { setCapturaAberta(null); setRascunhoCaptura(null); },
       anexosDeCaptura,
       empilharAnexosDeCaptura: (linhas) => setAnexosDeCaptura((atual) => [...atual, ...linhas]),
       limparAnexosDeCaptura: () => setAnexosDeCaptura([]),
@@ -70,7 +75,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       intercalarEquipes,
       setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, dataCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
+    [drawerAberto, capturaAberta, dataCaptura, rascunhoCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;

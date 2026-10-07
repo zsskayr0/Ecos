@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Fingerprint, AlertTriangle } from "lucide-react";
+import { Fingerprint, AlertTriangle, ArrowLeft } from "lucide-react";
 import { ApiError } from "@/lib/api";
 
 /**
@@ -14,9 +14,15 @@ export function VaultLockScreen({
   onSubmeter,
   permitirLembrar = false,
   equipe,
+  onVoltar,
+  seletorEquipe,
 }: {
   /** Nome da equipe dona deste Cofre; ausente = o Cofre pessoal. */
   equipe?: string;
+  /** Volta ao feed sem digitar a senha. */
+  onVoltar?: () => void;
+  /** Troca de equipe ali mesmo (cada espaço tem o seu Cofre e a sua senha). */
+  seletorEquipe?: React.ReactNode;
   primeiraVez: boolean;
   /** `lembrar`: guardar a senha neste computador (só quando `permitirLembrar`). */
   onSubmeter: (senha: string, lembrar: boolean) => Promise<void>;
@@ -106,6 +112,18 @@ export function VaultLockScreen({
           {carregando ? "Um momento..." : primeiraVez ? "Ativar Cofre" : "Desbloquear"}
         </button>
       </form>
+
+      {(seletorEquipe || onVoltar) && (
+        <div className="flex w-full max-w-xs flex-col items-center gap-3 border-t border-border pt-4">
+          {seletorEquipe}
+          {onVoltar && (
+            <button type="button" onClick={onVoltar} className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary">
+              <ArrowLeft size={14} strokeWidth={1.75} />
+              Voltar ao feed
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

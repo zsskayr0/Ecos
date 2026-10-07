@@ -9,7 +9,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       ...o.vault,
       contas: { ...o.vault.contas, listar: vi.fn() },
       beneficiarios: { listar: vi.fn(), criarOuEncontrar: vi.fn() },
-      transacoes: { ...o.vault.transacoes, excluir: vi.fn() },
+      transacoes: { ...o.vault.transacoes, excluir: vi.fn(), atualizar: vi.fn() },
     },
     financeiro: {
       ...o.financeiro,
@@ -20,7 +20,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 import { financeiro, vault, type CategoriaApi, type OcorrenciaRecorrente, type RecorrenciaApi } from "@/lib/api";
 import { VaultRecorrencias } from "./VaultRecorrencias";
-import { escolher } from "@/test-helpers/escolher";
 
 const regra = (id: string, descricao: string, extra: Partial<RecorrenciaApi> = {}): RecorrenciaApi => ({
   id, tipo: "saida", descricao, valor_centavos: 5990, categoria_id: "cat", conta_id: null, beneficiario_id: "b1", forma_pagamento: null,
@@ -124,7 +123,8 @@ it("Reagendar uma ocorrência prevista agenda sem efetivar; já lançada só mud
   await menuDe("Netflix Premium");
   fireEvent.click(itemDoMenu("Reagendar"));
   let dialogo = await screen.findByRole("dialog", { name: "Reagendar" });
-  fireEvent.change(within(dialogo).getByLabelText("Nova data"), { target: { value: "2026-10-12" } });
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Nova data" }));
+  fireEvent.click(within(dialogo).getByRole("button", { name: "12" }));
   fireEvent.click(within(dialogo).getByRole("button", { name: "Reagendar" }));
   await waitFor(() => expect(financeiro.concluir).toHaveBeenCalledWith("r1", "2026-10-01", "2026-10-12", { confirmar: false }));
 
@@ -132,7 +132,8 @@ it("Reagendar uma ocorrência prevista agenda sem efetivar; já lançada só mud
   fireEvent.click(await screen.findByRole("button", { name: /^Mais ações: Financiamento do carro/ }));
   fireEvent.click(itemDoMenu("Reagendar"));
   dialogo = await screen.findByRole("dialog", { name: "Reagendar" });
-  fireEvent.change(within(dialogo).getByLabelText("Nova data"), { target: { value: "2026-10-09" } });
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Nova data" }));
+  fireEvent.click(within(dialogo).getByRole("button", { name: "9" }));
   fireEvent.click(within(dialogo).getByRole("button", { name: "Reagendar" }));
   await waitFor(() => expect(financeiro.reagendar).toHaveBeenCalledWith("t2", "2026-10-09"));
 });
@@ -170,12 +171,17 @@ it("Excluir esta e as próximas encerra a série; Excluir toda apaga só a regra
   await waitFor(() => expect(financeiro.excluirRecorrencia).toHaveBeenCalledWith("r1"));
 });
 
-it("Duplicar e Pausar chamam o servidor", async () => {
+it("Duplicar abre uma recorrência nova preenchida (sem salvar) e Pausar chama o servidor", async () => {
   abrir();
   await menuDe("Netflix Premium");
   fireEvent.click(itemDoMenu("Duplicar"));
-  await waitFor(() => expect(financeiro.duplicarRecorrencia).toHaveBeenCalledWith("r1"));
-  fireEvent.click(await screen.findByRole("button", { name: /^Mais ações: Netflix Premium/ }));
+  const nova = await screen.findByRole("dialog", { name: "Nova recorrência" });
+  expect(within(nova).getByLabelText("Descrição")).toHaveProperty("value", "Netflix Premium (cópia)");
+  expect(financeiro.duplicarRecorrencia).not.toHaveBeenCalled();
+  expect(financeiro.criarRecorrencia).not.toHaveBeenCalled();
+  fireEvent.click(within(nova).getByRole("button", { name: "Cancelar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Nova recorrência" })).toBeNull());
+  await menuDe("Netflix Premium");
   fireEvent.click(itemDoMenu("Pausar recorrência"));
   await waitFor(() => expect(financeiro.atualizarRecorrencia).toHaveBeenCalledWith("r1", expect.objectContaining({ ativa: false, descricao: "Netflix Premium", data_inicio: "2026-01-01" })));
 });
@@ -204,7 +210,36 @@ it("salvar a edição envia a regra completa, incluindo ativa", async () => {
   fireEvent.change(within(dialogo).getByLabelText("Valor"), { target: { value: "69,90" } });
   fireEvent.click(within(dialogo).getByLabelText(/Recorrência ativa/));
   fireEvent.click(within(dialogo).getByRole("button", { name: "Salvar alterações" }));
+  const escopo = await screen.findByRole("dialog", { name: "Aplicar a quais ocorrências?" });
+  fireEvent.click(within(escopo).getByLabelText(/^Todas/));
+  fireEvent.click(within(escopo).getByRole("button", { name: "Salvar alterações" }));
   await waitFor(() => expect(financeiro.atualizarRecorrencia).toHaveBeenCalledWith("r1", expect.objectContaining({ valor_centavos: 6990, ativa: false, beneficiario_id: "b9", tipo_recorrencia: "fixa" })));
+});
+
+it("editar só esta ocorrência agenda o lançamento e muda apenas ele", async () => {
+  abrir();
+  fireEvent.click(await screen.findByRole("button", { name: /Editar Netflix Premium/ }));
+  const dialogo = await screen.findByRole("dialog", { name: "Editar recorrência" });
+  fireEvent.change(within(dialogo).getByLabelText("Valor"), { target: { value: "10,00" } });
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Salvar alterações" }));
+  const escopo = await screen.findByRole("dialog", { name: "Aplicar a quais ocorrências?" });
+  fireEvent.click(within(escopo).getByRole("button", { name: "Salvar alterações" }));
+  await waitFor(() => expect(vault.transacoes.atualizar).toHaveBeenCalledWith("t", expect.objectContaining({ valor_centavos: 1000, data: "2026-10-01", status: "pendente" })));
+  expect(financeiro.concluir).toHaveBeenCalledWith("r1", "2026-10-01", "2026-10-01", { confirmar: false });
+  expect(financeiro.atualizarRecorrencia).not.toHaveBeenCalled();
+});
+
+it("editar esta e as próximas encerra a série daqui e cria outra a partir da data", async () => {
+  abrir();
+  fireEvent.click(await screen.findByRole("button", { name: /Editar Netflix Premium/ }));
+  const dialogo = await screen.findByRole("dialog", { name: "Editar recorrência" });
+  fireEvent.change(within(dialogo).getByLabelText("Valor"), { target: { value: "10,00" } });
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Salvar alterações" }));
+  const escopo = await screen.findByRole("dialog", { name: "Aplicar a quais ocorrências?" });
+  fireEvent.click(within(escopo).getByLabelText(/^Esta e as próximas/));
+  fireEvent.click(within(escopo).getByRole("button", { name: "Salvar alterações" }));
+  await waitFor(() => expect(financeiro.criarRecorrencia).toHaveBeenCalledWith(expect.objectContaining({ valor_centavos: 1000, data_inicio: "2026-10-01" })));
+  expect(financeiro.encerrarAPartir).toHaveBeenCalledWith("r1", "2026-10-01");
 });
 
 it("cria uma recorrência parcelada nova", async () => {
@@ -215,7 +250,8 @@ it("cria uma recorrência parcelada nova", async () => {
   fireEvent.change(within(dialogo).getByLabelText("Valor"), { target: { value: "250,00" } });
   fireEvent.click(within(dialogo).getByRole("button", { name: "Parcelada" }));
   fireEvent.change(within(dialogo).getByLabelText("Parcelas"), { target: { value: "10" } });
-  escolher("Frequência", "Semanal", dialogo);
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Frequência" }));
+  fireEvent.click(screen.getByRole("option", { name: "Semanal" }));
   fireEvent.click(within(dialogo).getByRole("button", { name: "Criar recorrência" }));
   await waitFor(() => expect(financeiro.criarRecorrencia).toHaveBeenCalledWith(expect.objectContaining({
     descricao: "Celular", valor_centavos: 25000, tipo_recorrencia: "parcelada", total_parcelas: 10, frequencia: "semanal", tipo: "saida", data_inicio: "2026-10-01",

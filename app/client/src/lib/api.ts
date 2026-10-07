@@ -1309,7 +1309,7 @@ export const financeiro = {
   /** Efetiva a ocorrência. `valor_centavos` menor que o cheio = conclusão parcial (o restante vira pendência); `confirmar: false` só agenda. */
   concluir: (id: string, data_ocorrencia: string, data: string, opcoes: {valor_centavos?: number; confirmar?: boolean} = {}) => post<{transacao_id: string}>(`/vault/recorrencias/${id}/concluir`, {data_ocorrencia, data, ...opcoes}),
   reagendar: (id: string, data: string) => patch<{ok: boolean}>(`/vault/transacoes/${id}/data`, {data}),
-  lote: (ids: string[], acao: "conciliar" | "desconciliar" | "excluir" | "efetivar") => post<{aplicadas: number; erros: {linha: number; erro: string}[]}>("/vault/financeiro/lote", {ids, acao}),
+  lote: (ids: string[], acao: "conciliar" | "desconciliar" | "excluir" | "efetivar" | "previsto") => post<{aplicadas: number; erros: {linha: number; erro: string}[]}>("/vault/financeiro/lote", {ids, acao}),
   importar: (linhas: LinhaImportacao[], dry_run: boolean) => post<RelatorioImportacao>("/vault/financeiro/importar", {linhas, dry_run}),
   exportar: (p: Periodo) => get<{csv: string}>(`/vault/financeiro/exportar${qs({...p})}`),
   pendencias: {

@@ -4,6 +4,7 @@ import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
+import { formatDataHoraCompleta } from "@/lib/format";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
@@ -19,6 +20,7 @@ interface NotaCompleta {
   id: string;
   titulo: string;
   tags: string[];
+  criado_em: string;
   atualizado_em: string;
   ultima_revisao_em: string | null;
   corpo: string;
@@ -177,7 +179,7 @@ function NoteDetailMobile() {
         <>
           <h1 className="mb-3 break-words font-display text-2xl text-text-primary">{nota.titulo}</h1>
           <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-            <span>Editada <TempoEdicao iso={nota.atualizado_em} /></span>
+            <span>Criada em {formatDataHoraCompleta(nota.criado_em)} · Editada <TempoEdicao iso={nota.atualizado_em} /></span>
             {!nota.ultima_revisao_em && (
               <button onClick={marcarRevisado} className="flex items-center gap-1 text-steel-300">
                 <CheckCircle2 size={12} />

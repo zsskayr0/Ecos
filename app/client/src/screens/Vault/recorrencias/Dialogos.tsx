@@ -1,3 +1,4 @@
+import { DatePicker } from "@/components/common/DatePicker";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { formatMoeda } from "@/lib/format";
@@ -85,7 +86,7 @@ export function ReagendarModal({ linha, atual, onClose, onConfirmar }: {
   return (
     <Casca titulo="Reagendar" sobre={linha.regra.descricao.toUpperCase()} onClose={onClose} ocupado={ocupado} onSubmit={enviar}>
       <p className="cofre-rec-dialogo-resumo">Vencimento original {dataBR(linha.data)}. A recorrência continua nos dias de sempre; só esta ocorrência muda.</p>
-      <label className="cofre-rec-campo"><span>Nova data</span><input className="ecos-input cofre-mono" type="date" value={data} autoFocus onChange={(e) => setData(e.target.value)} /></label>
+      <div className="cofre-launch-field cofre-launch-date"><span>Nova data</span><DatePicker ariaLabel="Nova data" value={data} onChange={setData} /></div>
       {erro && <p role="alert" className="cofre-rec-erro">{erro}</p>}
       <footer><button type="button" className="cofre-secondary" onClick={onClose} disabled={ocupado}>Cancelar</button><button className="cofre-solid" disabled={ocupado || !data}>{ocupado ? "Salvando…" : "Reagendar"}</button></footer>
     </Casca>
@@ -114,6 +115,45 @@ export function ConfirmarModal({ titulo, mensagem, rotuloConfirmar, perigo = tru
         <button type="button" className="cofre-secondary" onClick={onClose} disabled={ocupado} autoFocus>Cancelar</button>
         <button className={perigo ? "cofre-rec-perigo" : "cofre-solid"} disabled={ocupado}>{ocupado ? "Aguarde…" : rotuloConfirmar}</button>
       </footer>
+    </Casca>
+  );
+}
+
+export type EscopoEdicao = "esta" | "proximas" | "todas";
+
+/** Pergunta até onde vale a edição: só esta ocorrência, esta e as próximas, ou a recorrência inteira. */
+export function EscopoEdicaoModal({ descricao, dataOcorrencia, permitirProximas, onClose, onConfirmar }: {
+  descricao: string; dataOcorrencia: string; permitirProximas: boolean; onClose: () => void; onConfirmar: (escopo: EscopoEdicao) => Promise<void>;
+}) {
+  const [escopo, setEscopo] = useState<EscopoEdicao>("esta");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const opcoes: { valor: EscopoEdicao; rotulo: string; ajuda: string; ativa: boolean }[] = [
+    { valor: "esta", rotulo: "Só esta ocorrência", ajuda: `Muda apenas o lançamento de ${dataBR(dataOcorrencia)}; o resto continua como está.`, ativa: true },
+    { valor: "proximas", rotulo: "Esta e as próximas", ajuda: "A recorrência é dividida: as anteriores ficam como estão e daqui para a frente vale o novo jeito.", ativa: permitirProximas },
+    { valor: "todas", rotulo: "Todas", ajuda: "Muda a regra inteira. Lançamentos que já existem não são alterados.", ativa: true },
+  ];
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    setOcupado(true);
+    setErro(null);
+    try { await onConfirmar(escopo); }
+    catch (err) { setErro((err as Error).message); setOcupado(false); }
+  }
+
+  return (
+    <Casca titulo="Aplicar a quais ocorrências?" sobre={descricao.toUpperCase()} onClose={onClose} ocupado={ocupado} onSubmit={enviar}>
+      <div className="cofre-rec-escopos" role="radiogroup" aria-label="Alcance da edição">
+        {opcoes.filter((o) => o.ativa).map((o) => (
+          <label key={o.valor} className="cofre-rec-escopo" data-sel={escopo === o.valor || undefined}>
+            <input type="radio" name="escopo" value={o.valor} checked={escopo === o.valor} onChange={() => setEscopo(o.valor)} />
+            <span>{o.rotulo}<small>{o.ajuda}</small></span>
+          </label>
+        ))}
+      </div>
+      {erro && <p role="alert" className="cofre-rec-erro">{erro}</p>}
+      <footer><button type="button" className="cofre-secondary" onClick={onClose} disabled={ocupado}>Cancelar</button><button className="cofre-solid" disabled={ocupado}>{ocupado ? "Salvando…" : "Salvar alterações"}</button></footer>
     </Casca>
   );
 }

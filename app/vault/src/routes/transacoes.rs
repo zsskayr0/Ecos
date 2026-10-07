@@ -3,7 +3,7 @@
 
 use axum::extract::{Multipart, Path, Query, State};
 use axum::Json;
-use chrono::NaiveDate;
+use chrono::{Days, NaiveDate, Utc};
 use ecos_core::{new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
@@ -162,6 +162,15 @@ fn espaco_padrao() -> String {
     "pessoal".to_string()
 }
 
+/// Último dia em que ainda se pode efetivar algo (hoje, com um dia de folga para o fuso). Depois disso só "prevista".
+pub(crate) fn limite_para_efetivar() -> NaiveDate {
+    Utc::now().date_naive() + Days::new(1)
+}
+
+pub(crate) fn erro_efetivar_futuro() -> AppError {
+    AppError::new(ErrorCode::ValidationError).with_message("Lançamento futuro só pode ficar como previsto")
+}
+
 fn validar_transacao(payload: &TransacaoPayload) -> AppResult<()> {
     if !["entrada", "saida"].contains(&payload.tipo.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("tipo deve ser 'entrada' ou 'saida'"));
@@ -176,6 +185,9 @@ fn validar_transacao(payload: &TransacaoPayload) -> AppResult<()> {
     }
     if !["efetivada", "pendente"].contains(&payload.status.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("status deve ser 'efetivada' ou 'pendente'"));
+    }
+    if payload.status == "efetivada" && payload.data > limite_para_efetivar() {
+        return Err(erro_efetivar_futuro());
     }
     Ok(())
 }
@@ -327,8 +339,19 @@ pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<Stri
     }
     let afetadas = state
         .db
-        .with(move |conn| conn.execute("UPDATE transacao SET status = ?1, atualizado_em = datetime('now') WHERE id = ?2", rusqlite::params![payload.status, id]))
+        .with(move |conn| {
+            if payload.status == "efetivada" {
+                let data: Option<String> = conn.query_row("SELECT data FROM transacao WHERE id = ?1", [&id], |r| r.get(0)).optional()?;
+                if data.is_some_and(|d| d > limite_para_efetivar().to_string()) {
+                    return Ok(usize::MAX);
+                }
+            }
+            conn.execute("UPDATE transacao SET status = ?1, atualizado_em = datetime('now') WHERE id = ?2", rusqlite::params![payload.status, id])
+        })
         .await?;
+    if afetadas == usize::MAX {
+        return Err(erro_efetivar_futuro());
+    }
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::NotFound));
     }

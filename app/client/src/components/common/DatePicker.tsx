@@ -9,6 +9,10 @@ interface Props {
   /** Violet is exclusive to the Cofre (section 1.3) — Agenda/Tarefa
    * contexts use cyan instead, same accent as their own Feed cards. */
   accent?: "violet" | "cyan";
+  /** Mostra "Limpar" e aceita valor vazio (data opcional). */
+  limpavel?: boolean;
+  disabled?: boolean;
+  ariaLabel?: string;
 }
 
 /** Tailwind needs full literal class names to see them at build time —
@@ -57,15 +61,15 @@ function gerarDiasDoMes(referencia: Date) {
  * Cofre-context form (section 1.3: violet exclusively signals "Cofre") —
  * pass `accent="cyan"` for any other context (e.g. Tarefa/Agenda).
  */
-export function DatePicker({ value, onChange, className, accent = "violet" }: Props) {
+export function DatePicker({ value, onChange, className, accent = "violet", limpavel = false, disabled = false, ariaLabel }: Props) {
   const cor = CORES[accent];
   const [aberto, setAberto] = useState(false);
-  const [mesReferencia, setMesReferencia] = useState(() => paraData(value));
+  const [mesReferencia, setMesReferencia] = useState(() => (value ? paraData(value) : new Date()));
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!aberto) return;
-    setMesReferencia(paraData(value));
+    setMesReferencia(value ? paraData(value) : new Date());
     function aoClicarFora(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setAberto(false);
     }
@@ -93,10 +97,12 @@ export function DatePicker({ value, onChange, className, accent = "violet" }: Pr
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
+        disabled={disabled}
+        aria-label={ariaLabel}
         className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-1.5 font-mono-value text-sm text-text-primary"
       >
         <CalendarDays size={14} className={cor.icone} strokeWidth={1.75} />
-        {paraData(value).toLocaleDateString("pt-BR")}
+        {value ? paraData(value).toLocaleDateString("pt-BR") : "Sem data"}
       </button>
 
       {aberto && (
@@ -148,9 +154,12 @@ export function DatePicker({ value, onChange, className, accent = "violet" }: Pr
             })}
           </div>
 
-          <button type="button" onClick={irParaHoje} className={`mt-2 w-full rounded-xl py-1.5 text-center text-xs font-medium ${cor.hojeBtn}`}>
-            Hoje
-          </button>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {limpavel && <button type="button" onClick={() => { onChange(""); setAberto(false); }} className="flex-1 rounded-xl py-1.5 text-center text-xs font-medium text-text-muted hover:bg-surface-2">Limpar</button>}
+            <button type="button" onClick={irParaHoje} className={`flex-1 rounded-xl py-1.5 text-center text-xs font-medium ${cor.hojeBtn}`}>
+              Hoje
+            </button>
+          </div>
         </div>
       )}
     </div>

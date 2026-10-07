@@ -180,7 +180,7 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
         </header>}
         {erro && <p role="alert" className="cofre-notice">{erro}</p>}
         {fase !== "aberto" && esperando > 0 && <p role="status" className="cofre-notice">{esperando === 1 ? "1 comprovante está esperando" : `${esperando} comprovantes estão esperando`}: desbloqueie o Cofre para guardar. Se você sair antes, compartilhe de novo.</p>}
-        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
+        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} onVoltar={voltar} seletorEquipe={<TrocaDeEquipe/>} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
     </div>;
 }
 
@@ -284,4 +284,15 @@ export function VaultWorkspace() {
 function EquipeMenuItem({equipe,onClick}:{equipe:{id:string;nome:string};onClick:()=>void}) {
     const foto=useAvatarEquipe(equipe.id);
     return <button className="cofre-team-option" onClick={onClick}><Avatar nome={equipe.nome} tamanho={26} url={foto} corFundo={corDaEquipe(equipe.id)}/><span>{equipe.nome}</span></button>;
+}
+
+/** Troca de espaço direto na tela de bloqueio: cada equipe tem o seu Cofre, então a tela reabre pedindo a senha daquele. */
+function TrocaDeEquipe() {
+    const { espacoAtivo, setEspacoAtivo } = useAppUI();
+    const { equipes } = useMinhasEquipes();
+    if (!equipes.length) return null;
+    const opcoes = [{ id: "pessoal", nome: "Pessoal" }, ...equipes.map(e => ({ id: `equipe:${e.id}`, nome: e.nome }))];
+    return <div className="flex flex-wrap justify-center gap-1.5" role="group" aria-label="Trocar de equipe">
+        {opcoes.map(o => <button key={o.id} type="button" aria-pressed={o.id === espacoAtivo} onClick={() => setEspacoAtivo(o.id)} className={`rounded-full border px-3 py-1 text-xs ${o.id === espacoAtivo ? "border-violet text-text-primary" : "border-border text-text-muted hover:text-text-primary"}`}>{o.nome}</button>)}
+    </div>;
 }

@@ -112,6 +112,9 @@ interface Props {
  * (voltar, salvar, apagar): o histórico começa em ROTA_FECHAR, então voltar
  * cai nela e fecha a janela — nenhuma tela precisa saber que está numa janela.
  */
+/** No Modo Slide do lançamento a janela só fecha pelo X: o Esc não vale. */
+const modoSlideAtivo = (janela: HTMLElement | null) => !!janela?.querySelector("[data-modo-slide]");
+
 export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFocar, aoFixar, conteudo, titulo, cabecalhoNoConteudo: cabecalhoProp = false }: Props) {
   // Lançamentos (novo e edição) trazem o próprio cabeçalho dentro do formulário.
   const cabecalhoNoConteudo = cabecalhoProp || path.startsWith("/cofre/transacao/");
@@ -183,7 +186,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       if (dentro) return; // o onKeyDown da própria janela já trata
       if (foco && foco !== document.body) return; // foco em outra parte da interface
       const frente = [...janelasAbertas].sort((a, b) => b.z() - a.z())[0];
-      if (frente === registro) registro.fechar();
+      if (frente === registro && !modoSlideAtivo(janelaRef.current)) registro.fechar();
     }
     window.addEventListener("keydown", aoTeclar);
     return () => { janelasAbertas.delete(registro); window.removeEventListener("keydown", aoTeclar); };
@@ -283,7 +286,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
         onPointerMove={cabecalhoNoConteudo ? mover : undefined}
         onPointerUp={cabecalhoNoConteudo ? encerrar : undefined}
         onPointerCancel={cabecalhoNoConteudo ? encerrar : undefined}
-        onKeyDown={(e) => e.key === "Escape" && aoFechar()}
+        onKeyDown={(e) => e.key === "Escape" && !modoSlideAtivo(janelaRef.current) && aoFechar()}
         className={`${saindo ? (janelaDeConfiguracoes ? "ecos-configuracoes-saindo" : "ecos-janela-saindo") : "ecos-fade-in"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
           arrastando ? "border-cyan/60" : "border-border"
         }`}

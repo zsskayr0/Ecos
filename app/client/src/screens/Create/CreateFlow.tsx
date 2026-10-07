@@ -135,7 +135,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   pastaContexto?: PastaContexto | null;
   contextoDesktop?: "ecos" | "cofre";
 }) {
-  const { capturaAberta, dataCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
+  const { capturaAberta, dataCaptura, rascunhoCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -171,6 +171,11 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   useEffect(() => {
     if (capturaAberta === "transacao" && dataCaptura) setDraft((d) => ({ ...d, dataTransacao: dataCaptura }));
   }, [capturaAberta, dataCaptura]);
+
+  // Cópia de outro lançamento: já nasce preenchida, para editar antes de salvar.
+  useEffect(() => {
+    if (capturaAberta === "transacao" && rascunhoCaptura) setDraft((d) => ({ ...d, ...rascunhoCaptura }));
+  }, [capturaAberta, rascunhoCaptura]);
 
   // Anexos que chegam de fora (imagens compartilhadas com o app) entram no corpo da nota/tarefa aberta.
   useEffect(() => {
