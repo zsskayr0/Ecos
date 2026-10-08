@@ -24,7 +24,7 @@ import { ProfileScreen } from "@/screens/Profile/ProfileScreen";
 import { RotinaScreen } from "@/screens/Profile/RotinaScreen";
 import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen";
 import { EditarPerfilScreen } from "@/screens/Profile/EditarPerfilScreen";
-import { CofreConfigScreen } from "@/screens/Settings/CofreConfigScreen";
+import { ABAS_COFRE, CofreConfigScreen } from "@/screens/Settings/CofreConfigScreen";
 import { ConfiguracoesLayout } from "@/screens/Settings/ConfiguracoesLayout";
 import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
 import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
@@ -97,7 +97,8 @@ export const screenRoutes = (
       <Route path="servidor" element={<ServerConfigScreen />} />
       <Route path="sync" element={<Navigate to="/configuracoes/servidor" replace />} />
       <Route path="privacidade" element={<PrivacyVaultScreen />} />
-      <Route path="cofre" element={<CofreConfigScreen />} />
+      <Route path="cofre" element={<Navigate to="/configuracoes/cofre/seguranca" replace />} />
+      {ABAS_COFRE.map(({ id }) => <Route key={id} path={`cofre/${id}`} element={<CofreConfigScreen aba={id} />} />)}
       <Route path="conta" element={<ContaDadosScreen />} />
       <Route path="aparencia" element={<AparenciaScreen />} />
       <Route path="calendario" element={<CalendarPreferencesScreen />} />

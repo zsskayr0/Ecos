@@ -1,7 +1,8 @@
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Bell, CalendarClock, CalendarDays, DatabaseBackup, FolderTree, Info, Lock, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
+import { Bell, CalendarClock, CalendarDays, DatabaseBackup, FolderTree, Info, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAuth } from "@/lib/auth-context";
+import { ABAS_COFRE } from "./CofreConfigScreen";
 
 export interface Aba { para: string; rotulo: string; Icone: LucideIcon; fim?: boolean }
 
@@ -22,7 +23,7 @@ export const GRUPOS: { titulo: string; abas: Aba[] }[] = [
     { para: "/configuracoes/conta", rotulo: "Conta e dados", Icone: DatabaseBackup },
     { para: "/configuracoes/notificacoes", rotulo: "Notificações", Icone: Bell },
   ] },
-  { titulo: "Cofre", abas: [{ para: "/configuracoes/cofre", rotulo: "Configurações do Cofre", Icone: Lock }] },
+  { titulo: "Cofre", abas: ABAS_COFRE.map(({ id, rotulo, Icone }) => ({ para: `/configuracoes/cofre/${id}`, rotulo, Icone })) },
   { titulo: "Ecos", abas: [{ para: "/configuracoes/sobre", rotulo: "Sobre", Icone: Info }] },
 ];
 

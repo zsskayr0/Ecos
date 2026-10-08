@@ -116,6 +116,7 @@ fn validar(payload: &RecorrenciaPayload) -> AppResult<()> {
 
 pub async fn criar(State(state): State<AppState>, Json(payload): Json<RecorrenciaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar(&payload)?;
+    super::formas_pagamento::checar(&state, &payload.forma_pagamento).await?;
     let id = new_id();
     let autor = crate::db::autor_atual();
     state
@@ -165,6 +166,7 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
 
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<RecorrenciaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar(&payload)?;
+    super::formas_pagamento::checar(&state, &payload.forma_pagamento).await?;
     // 0 = não existe, 1 = ok, 2 = tentou mexer na âncora de uma série que já gerou lançamentos.
     let resultado = state
         .db

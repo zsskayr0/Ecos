@@ -1,19 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import * as Icons from "lucide-react";
-import { Check, ChevronDown, Coins, Copy, GalleryHorizontal, Plus, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Coins, Copy, GalleryHorizontal, Plus, Send, Trash2, X } from "lucide-react";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { DatePicker } from "@/components/common/DatePicker";
 import { formatMoeda } from "@/lib/format";
-import { vault, FORMAS_PAGAMENTO, type CategoriaApi, type ContaApi, type FormaPagamento } from "@/lib/api";
+import { vault, type CategoriaApi, type ContaApi } from "@/lib/api";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
+import { opcoesDoSeletor } from "@/lib/formas-pagamento";
 import { SeloConta } from "@/screens/Vault/contas/SeloConta";
 import type { CapturaDraft, SetDraft } from "./CreateFlow";
 import { CampoValor } from "./CampoValor";
 
-interface Props { slideChave?:string; slideDir?:"next"|"prev"; /** Liga/desliga o Modo Slide (andar pelos lançamentos da lista); só no editor de um lançamento. */ modoSlide?:{ativo:boolean;alternar:()=>void}; /** Faixa de navegação do Modo Slide, logo abaixo do cabeçalho. */ barraSlide?:ReactNode; draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; /** Cria uma cópia (só na edição). */ onDuplicar?:()=>void; /** Nome de quem lançou (só em Cofre de equipe com mais de uma pessoa). Somente leitura. */ criadoPor?:string; /** Container de anexos, logo abaixo de Observações (o editor passa os anexos do lançamento; a criação, os pendentes). */ anexos?:React.ReactNode; }
-const LABEL_FORMA:Record<FormaPagamento,string>={pix:"Pix",pix_automatico:"Pix Automático",ted:"TED",cartao:"Cartão",dinheiro:"Dinheiro",boleto:"Boleto",outro:"Outro"};
+interface Props { slideChave?:string; slideDir?:"next"|"prev"; /** Liga/desliga o Modo Slide (andar pelos lançamentos da lista); só no editor de um lançamento. */ modoSlide?:{ativo:boolean;alternar:()=>void}; /** Faixa de navegação do Modo Slide, logo abaixo do cabeçalho. */ barraSlide?:ReactNode; draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; /** Cria uma cópia (só na edição). */ onDuplicar?:()=>void; /** Abre o envio para o Cofre de outra equipe (só na edição). */ onEnviar?:()=>void; /** Nome de quem lançou (só em Cofre de equipe com mais de uma pessoa). Somente leitura. */ criadoPor?:string; /** Container de anexos, logo abaixo de Observações (o editor passa os anexos do lançamento; a criação, os pendentes). */ anexos?:React.ReactNode; }
 
-export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir,onDuplicar,criadoPor,anexos,modoSlide,barraSlide,slideChave,slideDir}:Props) {
+export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir,onDuplicar,onEnviar,criadoPor,anexos,modoSlide,barraSlide,slideChave,slideDir}:Props) {
   const [confirmandoExcluir,setConfirmandoExcluir]=useState(false);
+  const formas=useFormasPagamento();
+  const opcoesForma=opcoesDoSeletor(formas.lista,draft.formaPagamento);
+  // A forma atual do rascunho foi excluída por outra pessoa: o rascunho fica, mas não dá para salvar até escolher outra.
+  const formaExcluida=!formas.indisponivel&&!!draft.formaPagamento&&!formas.porCodigo.has(draft.formaPagamento);
   const [categorias,setCategorias]=useState<CategoriaApi[]>([]),[contas,setContas]=useState<ContaApi[]>([]);
   useEffect(()=>{vault.categorias.listar().then(setCategorias).catch(()=>setCategorias([]));vault.contas.listar().then(lista=>{setContas(lista);const padrao=lista.find(c=>c.padrao)??lista[0];if(padrao&&!draft.contaId&&!onExcluir)setDraft(d=>({...d,contaId:padrao.id}));}).catch(()=>setContas([]));},[]); // eslint-disable-line react-hooks/exhaustive-deps
   const categoriasVisiveis=categorias.filter(c=>c.tipo==="ambos"||c.tipo===draft.tipoTransacao);
@@ -21,12 +26,12 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
   const hojeISO=(()=>{const h=new Date();return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,"0")}-${String(h.getDate()).padStart(2,"0")}`;})(),futuro=draft.dataTransacao>hojeISO;
   function mudarData(data:string){setDraft(d=>({...d,dataTransacao:data,...(data>hojeISO?{statusTransacao:"pendente" as const}:{})}));}
   useEffect(()=>{if(futuro&&draft.statusTransacao==="efetivada")setDraft(d=>({...d,statusTransacao:"pendente"}));},[futuro]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [lancando,setLancando]=useState(false),pode=!!draft.texto.trim()&&draft.valorCentavos>0;
+  const [lancando,setLancando]=useState(false),pode=!!draft.texto.trim()&&draft.valorCentavos>0&&!formaExcluida;
   function lancar(){if(lancando||salvando||!pode)return;if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){onSalvar();return;}setLancando(true);window.setTimeout(()=>{onSalvar();setLancando(false);},780);}
   const valor=draft.valorCentavos>0?`${draft.tipoTransacao==="entrada"?"+":"−"}${formatMoeda(draft.valorCentavos)}`:"";
   async function adicionarCategoria(nome:string){const criada=await vault.categorias.criar({nome,tipo:draft.tipoTransacao,cor:draft.tipoTransacao==="entrada"?"#86d7ad":"#f29a9f",icone:draft.tipoTransacao==="entrada"?"TrendingUp":"ShoppingBag"});const lista=await vault.categorias.listar();setCategorias(lista);setDraft(d=>({...d,categoriaId:criada.id}));}
   return <form className="cofre-launch-form" onSubmit={e=>{e.preventDefault();lancar();}}>
-    <header className="cofre-launch-header" data-window-drag-handle><div><p>{eyebrow}</p><h2>{titulo}</h2></div><div className="cofre-launch-header-actions">{modoSlide&&<button type="button" className="cofre-slide-toggle" data-ativo={modoSlide.ativo||undefined} aria-label="Modo Slide" aria-pressed={modoSlide.ativo} title={modoSlide.ativo?"Sair do Modo Slide":"Modo Slide: passar pelos lançamentos com as setas"} onClick={modoSlide.alternar}><GalleryHorizontal size={15}/></button>}{onDuplicar&&<button type="button" aria-label="Duplicar" title="Duplicar" disabled={salvando} onClick={onDuplicar}><Copy size={15}/></button>}{onExcluir&&<button type="button" aria-label="Apagar" title="Apagar" onClick={()=>setConfirmandoExcluir(true)}><Trash2 size={15}/></button>}<button type="button" aria-label="Fechar" title="Fechar" onClick={onFechar}><X size={16}/></button></div></header>
+    <header className="cofre-launch-header" data-window-drag-handle><div><p>{eyebrow}</p><h2>{titulo}</h2></div><div className="cofre-launch-header-actions">{modoSlide&&<button type="button" className="cofre-slide-toggle" data-ativo={modoSlide.ativo||undefined} aria-label="Modo Slide" aria-pressed={modoSlide.ativo} title={modoSlide.ativo?"Sair do Modo Slide":"Modo Slide: passar pelos lançamentos com as setas"} onClick={modoSlide.alternar}><GalleryHorizontal size={15}/></button>}{onEnviar&&<button type="button" aria-label="Enviar para outra equipe" title="Enviar para outra equipe" disabled={salvando} onClick={onEnviar}><Send size={15}/></button>}{onDuplicar&&<button type="button" aria-label="Duplicar" title="Duplicar" disabled={salvando} onClick={onDuplicar}><Copy size={15}/></button>}{onExcluir&&<button type="button" aria-label="Apagar" title="Apagar" onClick={()=>setConfirmandoExcluir(true)}><Trash2 size={15}/></button>}<button type="button" aria-label="Fechar" title="Fechar" onClick={onFechar}><X size={16}/></button></div></header>
     {barraSlide}
     <div className="cofre-launch-body" key={slideChave} data-slide-dir={slideChave?slideDir:undefined}>
       {criadoPor&&<p className="cofre-launch-author" aria-label="Criado por">Criado por <b>{criadoPor}</b></p>}
@@ -41,7 +46,7 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
         <Campo label="Descrição"><input value={draft.texto} onChange={e=>setDraft(d=>({...d,texto:e.target.value}))} placeholder="Ex.: Mercado Extra"/></Campo>
         <Campo label="Pagador / Recebedor"><input value={draft.beneficiarioNome} onChange={e=>setDraft(d=>({...d,beneficiarioNome:e.target.value}))} placeholder="Ex.: Mercado Extra Ltda"/></Campo>
         <Campo label="Categoria"><MenuSelecao value={draft.categoriaId??""} placeholder="Sem categoria" options={categoriasVisiveis.map(c=>({value:c.id,label:c.nome,cor:c.cor,icone:c.icone}))} onChange={value=>setDraft(d=>({...d,categoriaId:value||null}))} onAdd={adicionarCategoria}/></Campo>
-        <div className="cofre-launch-grid"><Campo label="Conta"><MenuSelecao value={draft.contaId??""} placeholder="Sem conta" options={contas.map(c=>({value:c.id,label:c.nome,cor:c.cor,selo:<SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} codigoBanco={c.codigo_banco} sigla={c.sigla} tamanho="xs"/>}))} onChange={value=>setDraft(d=>({...d,contaId:value||null}))}/></Campo><Campo label="Forma de pagamento"><MenuSelecao value={draft.formaPagamento??""} placeholder="Não informada" options={FORMAS_PAGAMENTO.map(f=>({value:f,label:LABEL_FORMA[f]}))} onChange={value=>setDraft(d=>({...d,formaPagamento:(value||null) as FormaPagamento|null}))}/></Campo></div>
+        <div className="cofre-launch-grid"><Campo label="Conta"><MenuSelecao value={draft.contaId??""} placeholder="Sem conta" options={contas.map(c=>({value:c.id,label:c.nome,cor:c.cor,selo:<SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} codigoBanco={c.codigo_banco} sigla={c.sigla} tamanho="xs"/>}))} onChange={value=>setDraft(d=>({...d,contaId:value||null}))}/></Campo><Campo label="Forma de pagamento"><MenuSelecao value={draft.formaPagamento??""} placeholder="Não informada" options={opcoesForma.map(o=>{const f=formas.porCodigo.get(o.codigo);return {value:o.codigo,label:o.inativa?`${o.nome} (inativa)`:o.nome,cor:f?.cor,icone:f?.icone};})} onChange={value=>setDraft(d=>({...d,formaPagamento:value||null}))}/>{formaExcluida&&<small className="cofre-launch-alert" role="alert">A forma “{draft.formaPagamento}” não existe mais. Escolha outra para salvar.</small>}</Campo></div>
         <Campo label="Observações"><textarea rows={3} value={draft.observacoesTransacao} onChange={e=>setDraft(d=>({...d,observacoesTransacao:e.target.value}))} placeholder="Opcional"/></Campo>
         {anexos}
       </div>

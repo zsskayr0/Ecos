@@ -47,7 +47,7 @@ async function listarPeriodo(de: string, ate: string): Promise<TransacaoApi[]> {
 }
 
 /** Sacados: quem pagou ou recebeu nos lançamentos. Lista com análise por período e uma tela de conciliação para juntar cadastros duplicados. */
-export function VaultSacados({ period, onPeriodChange, atualizar }: { period: Period; onPeriodChange: (p: Period) => void; atualizar: () => void }) {
+export function VaultSacados({ period, onPeriodChange, atualizar, irParaCadastros }: { period: Period; onPeriodChange: (p: Period) => void; atualizar: () => void; /** Atalho para gerenciar sacados na tela Cadastros. */ irParaCadastros?: () => void }) {
   const range = periodRange(period);
   const [visao, setVisao] = useState<Visao>("painel");
   const [cadastros, setCadastros] = useState<BeneficiarioApi[] | null>(null);
@@ -115,6 +115,7 @@ export function VaultSacados({ period, onPeriodChange, atualizar }: { period: Pe
       <div className="cofre-cats-top cofre-rise" style={estiloI(0)}>
         <h1>Sacados</h1>
         <div className="cofre-cats-actions">
+          {irParaCadastros && <button type="button" className="cofre-secondary cad-link" onClick={irParaCadastros}>Gerenciar cadastros</button>}
           <SegmentedSlide className="cofre-launch-slide cofre-slide" tamanho="lg" ariaLabel="Visão de sacados" value={visao} onChange={setVisao} opcoes={[
             { value: "painel", label: <span className="inline-flex items-center gap-1.5"><Users size={14} aria-hidden />Análise</span>, cor: "cofre-blue", ariaLabel: "Análise" },
             { value: "conciliacao", label: <span className="inline-flex items-center gap-1.5"><GitMerge size={14} aria-hidden />Conciliação{pendentes.length > 0 && <b className="cofre-sacados-contagem">{pendentes.length}</b>}</span>, cor: "cofre-pink", ariaLabel: "Conciliação" },

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, FileText, Rotat
 import { useMemo, useRef, useState } from "react";
 import { financeiro } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { VaultCsvRecorrencias } from "./VaultCsvRecorrencias";
 import { baixarCsv, campos, modeloCsv, preparar, sugerirMapa, tokenizar, type Mapeamento } from "./csv";
 import type { Periodo, RelatorioImportacao } from "./types";
@@ -28,7 +29,8 @@ export function VaultCsv({ periodo, atualizar }: {
     catch (e) {
         return { rows: [], erro: (e as Error).message };
     } }, [texto, separador]);
-    const previa = useMemo(() => preparar(parsed.rows, mapa), [parsed.rows, mapa]);
+    const formas = useFormasPagamento();
+    const previa = useMemo(() => preparar(parsed.rows, mapa, formas.indisponivel ? null : formas.lista), [parsed.rows, mapa, formas.indisponivel, formas.lista]);
     const faltando = OBRIGATORIOS.filter(c => mapa[c as keyof Mapeamento] === undefined);
     function carregar(text: string, sep: string) { setTexto(text); setSeparador(sep); setRelatorio(null); try {
         setMapa(sugerirMapa(tokenizar(text, sep)[0] ?? []));

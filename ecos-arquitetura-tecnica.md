@@ -249,7 +249,7 @@ Campos e decisões, mapeados 1:1 ao pedido:
 - **Efetivada ou não** → `status IN ('efetivada','pendente')`. Uma transação `pendente` conta nos dashboards de "a pagar/a receber" mas não entra no saldo consolidado da Conta até virar `efetivada` (o cálculo de saldo é `SUM(valor_centavos) WHERE status='efetivada'`).
 - **Descrição** → `descricao`, obrigatória (mesmo padrão do Nexus).
 - **Categoria** → `categoria_id`, com `categoria.tipo` restringindo quais categorias aparecem no formulário conforme `transacao.tipo`.
-- **Forma de pagamento** → `forma_pagamento`, mesmo enum fechado do Nexus (`pix, pix_automatico, ted, cartao, dinheiro, boleto, outro`) — reaproveitado tal qual, já validado em uso real.
+- **Forma de pagamento** → `forma_pagamento` guarda o `codigo` de uma linha da tabela `forma_pagamento` (migração 0010: a pessoa cria, renomeia e desativa; as sete de fábrica não se apagam). O texto abaixo descreve o enum original do Nexus, que hoje é só a semente dessa tabela e o `CHECK` das duas tabelas foi removido: o enum fechado do Nexus (`pix, pix_automatico, ted, cartao, dinheiro, boleto, outro`) — reaproveitado tal qual, já validado em uso real.
 - **Observações** → `observacoes`, texto livre opcional, distinto de `descricao` (que é o rótulo curto do lançamento).
 - **Recorrente ou não** → `transacao_recorrente_id` não-nulo indica que este lançamento foi gerado por uma recorrência (ver tabela `transacao_recorrente` abaixo); uma transação avulsa tem esse campo `null`.
 - **"etc." coberto:** `conta_id` (de qual conta saiu/entrou), `beneficiario_id` (quem pagou/recebeu, reconciliável entre lançamentos), `origem` + campos de OCR (a tela de Onboarding do Ecos já prevê "permissão de câmera" — ver handoff de front-end seção 4 — o que sugere o mesmo fluxo do Nexus: foto de comprovante → OCR heurístico → rascunho de Transação pré-preenchido, revisado pelo usuário antes de salvar), e anexos permanentes (tabela `anexo` abaixo).
@@ -968,6 +968,7 @@ Sem `:id` — pasta é caminho, não entidade (seção 1.3/1.5). Toda rota receb
 | GET | `/vault/config` | `cofre_ativado`, saldo consolidado por Conta |
 | GET/POST/PATCH/DELETE | `/vault/contas[/:id]` | |
 | GET/POST/PATCH/DELETE | `/vault/categorias[/:id]` | |
+| GET/POST/PATCH/DELETE | `/vault/formas-pagamento[/:codigo]` | Formas de pagamento cadastráveis; `GET /:codigo/uso` mostra o que depende dela antes de apagar (migração 0010) |
 | GET/POST | `/vault/beneficiarios` | POST é find-or-create por nome |
 | GET | `/vault/transacoes` | `?conta_id=&categoria_id=&status=&data_de=&data_ate=&cursor=` |
 | POST | `/vault/transacoes` | Ver schema completo seção 1.3 |

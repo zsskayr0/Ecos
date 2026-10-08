@@ -1,6 +1,7 @@
 // Portado de Nexus/packages/core/src/csv-import.ts: aliases e contrato brasileiro.
 // Tokenização estrita e mapeamento explícito impedem importações silenciosamente corrompidas.
-import { FORMAS_PAGAMENTO } from "@/lib/api";
+import type { FormaPagamentoApi } from "@/lib/api";
+import { resolverFormaCsv } from "@/lib/formas-pagamento";
 import type { LinhaImportacao } from "./types";
 export const campos = ["data", "descricao", "tipo", "valor", "categoria", "beneficiario", "conta", "forma_pagamento", "observacoes", "conciliada", "status"] as const;
 export type Campo = typeof campos[number];
@@ -78,7 +79,8 @@ export function dataBR(raw: string): string | null {
     const date = new Date(`${iso}T12:00:00Z`);
     return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
 }
-export function preparar(rows: string[][], mapa: Mapeamento) {
+/** `formas` é o cadastro carregado; sem ele (`null`) nenhum pagamento é aceito, nunca "qualquer código". */
+export function preparar(rows: string[][], mapa: Mapeamento, formas: FormaPagamentoApi[] | null) {
     const erros: {
         linha: number;
         erro: string;
@@ -92,10 +94,12 @@ export function preparar(rows: string[][], mapa: Mapeamento) {
         const valor = valorBR(get("valor"));
         const data = dataBR(get("data"));
         const descricao = get("descricao");
-        const forma = get("forma_pagamento").toLowerCase();
+        const formaTexto = get("forma_pagamento");
+        const formaResolvida = formaTexto ? (formas ? resolverFormaCsv(formas, formaTexto) : { erro: "Formas de pagamento ainda não carregadas" }) : null;
+        const forma = formaResolvida && "codigo" in formaResolvida ? formaResolvida.codigo : "";
         const status = get("status") || "efetivada";
         const reconciliada = normalizar(get("conciliada"));
-        const problemas = [!tipo && "Tipo inválido", !valor && "Valor brasileiro inválido", !data && "Data inválida", !descricao && "Descrição obrigatória", row.length !== rows[0].length && "Número de colunas divergente", forma && !FORMAS_PAGAMENTO.some(f => f === forma) && "Pagamento inválido", !["efetivada", "pendente"].includes(status) && "Status inválido", !["", "sim", "nao", "true", "false", "1", "0"].includes(reconciliada) && "Conciliação inválida"].filter(Boolean);
+        const problemas = [!tipo && "Tipo inválido", !valor && "Valor brasileiro inválido", !data && "Data inválida", !descricao && "Descrição obrigatória", row.length !== rows[0].length && "Número de colunas divergente", formaResolvida && "erro" in formaResolvida && formaResolvida.erro,!["efetivada", "pendente"].includes(status) && "Status inválido", !["", "sim", "nao", "true", "false", "1", "0"].includes(reconciliada) && "Conciliação inválida"].filter(Boolean);
         if (problemas.length) {
             erros.push({ linha, erro: problemas.join("; ") });
             continue;

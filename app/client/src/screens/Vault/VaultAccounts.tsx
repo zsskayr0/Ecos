@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowDown, ArrowUp, Download, Landmark, Pencil, Plus, RefreshCw, Search, CloudOff, Star, Wallet, X } from "lucide-react";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { vault, financeiro, ApiError, type CategoriaApi, type ContaApi, type TipoConta, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { DonutChart } from "./nexus/DonutChart";
@@ -27,7 +28,6 @@ const SEM_CONTA = "__sem__";
 const COR_SEM_CATEGORIA = "#6b6c72";
 const COR_ENTRADA = "var(--cofre-income)";
 const COR_SAIDA = "var(--cofre-expense)";
-const FORMAS: Record<string, string> = { pix: "Pix", pix_automatico: "Pix Automático", ted: "TED", cartao: "Cartão", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" };
 const EIXOS = ["Entradas", "Saídas", "Lançamentos", "Ticket médio"];
 
 const estiloI = (i: number) => ({ "--i": i }) as CSSProperties;
@@ -97,12 +97,15 @@ function descricaoConta(c: ContaApi): string {
   return [banco, dados || ROTULO_TIPO[c.tipo]].filter(Boolean).join(" · ") || ROTULO_TIPO[c.tipo];
 }
 
-export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }: {
+export function VaultAccounts({ period, onPeriodChange, categorias, atualizar, irParaCadastros }: {
+  /** Atalho para gerenciar contas na tela Cadastros. */
+  irParaCadastros?: () => void;
   period: Period;
   onPeriodChange: (p: Period) => void;
   categorias: CategoriaApi[];
   atualizar: () => void;
 }) {
+  const formas = useFormasPagamento();
   const range = periodRange(period);
   const [contas, setContas] = useState<ContaApi[] | null>(null);
   const [saldos, setSaldos] = useState<Map<string, number>>(new Map());
@@ -203,7 +206,7 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
   const formasCard = (
     <div className="cofre-card cofre-cats-card cofre-rise" style={estiloI(9)}>
       <h4>Formas de pagamento</h4>
-      <HorizontalBarChart items={porForma.map((g) => ({ label: FORMAS[g.chave ?? ""] ?? "Não informada", valueCents: g.valor }))} color={COR_SAIDA} />
+      <HorizontalBarChart items={porForma.map((g) => ({ label: formas.rotulo(g.chave) || "Não informada", valueCents: g.valor }))} color={COR_SAIDA} />
     </div>
   );
 
@@ -235,6 +238,7 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar }:
         <h1>Contas</h1>
         <div className="cofre-cats-actions">
           <PeriodPicker value={period} onChange={onPeriodChange} />
+          {irParaCadastros && <button type="button" className="cofre-secondary cad-link" onClick={irParaCadastros}>Gerenciar cadastros</button>}
           <button type="button" className="cofre-new-button" onClick={() => setEditando("nova")}><Plus size={14} />Nova conta</button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { DonutChart } from "./nexus/DonutChart";
 import { HorizontalBarChart } from "./nexus/HorizontalBarChart";
 import { useState } from "react";
 import { formatMoeda } from "@/lib/format";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import type { CategoriaApi } from "@/lib/api";
 import type { Painel, Periodo } from "./types";
 export type Filtro = {
@@ -23,6 +24,7 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
     onFluxo?: () => void;
 }) {
     const [previsao, setPrevisao] = useState(false);
+    const formas = useFormasPagamento();
     const pontos = new Map<string, {
         data: string;
         receitas: number;
@@ -64,7 +66,6 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
     }));
     const palette=["#38bdf8","#a78bfa","#f59e0b","#34d399","#f472b6","#fb923c","#60a5fa","#2dd4bf"];
     const segments=p.categorias.map((g,i)=>({label:categorias.find(c=>c.id===g.chave)?.nome??"Sem categoria",valueCents:g.valor,color:categorias.find(c=>c.id===g.chave)?.cor??palette[i%palette.length]}));
-    const pagamentos:Record<string,string>={pix:"Pix",pix_automatico:"Pix automático",ted:"Transferência",cartao:"Cartão",dinheiro:"Dinheiro",boleto:"Boleto",outro:"Outro"};
     return <div className="cofre-dashboard">
         <div className="cofre-kpis">
             <KpiCard label="Saldo total (histórico)" value={formatMoeda(p.saldo)} icon={<Wallet size={14}/>}/>
@@ -82,7 +83,7 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         </div>
         <div className="cofre-charts-grid">
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Gastos por categoria</h3><span className="cofre-caption">{formatMoeda(p.despesas)}</span></div><DonutChart segments={segments} onSelect={i=>drill({categoria:p.categorias[i].chave,tipo:"saida"})}/></section>
-            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Formas de pagamento</h3></div><HorizontalBarChart items={p.pagamentos.map(g=>({label:pagamentos[g.chave??""]??"Não informado",valueCents:g.valor}))} color={cores[1]} onSelect={i=>drill({pagamento:p.pagamentos[i].chave,tipo:"saida"})}/></section>
+            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Formas de pagamento</h3></div><HorizontalBarChart items={p.pagamentos.map(g=>({label:formas.rotulo(g.chave)||"Não informado",valueCents:g.valor}))} color={cores[1]} onSelect={i=>drill({pagamento:p.pagamentos[i].chave,tipo:"saida"})}/></section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Maiores despesas</h3><ArrowDownLeft size={16}/></div><HorizontalBarChart items={p.maiores_saidas.map(t=>({label:t.descricao,valueCents:t.valor}))} color={cores[1]} onSelect={i=>abrir(p.maiores_saidas[i].id)}/></section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Maiores receitas</h3><ArrowUpRight size={16}/></div><HorizontalBarChart items={p.maiores_entradas.map(t=>({label:t.descricao,valueCents:t.valor}))} color={cores[0]} onSelect={i=>abrir(p.maiores_entradas[i].id)}/></section>
         </div>

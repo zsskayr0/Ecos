@@ -20,21 +20,26 @@ const COR_PADRAO = "#94a3b8";
 
 export { SeloConta };
 
-export function ContaModal({ conta, contas, onClose, onSaved }: { conta?: ContaApi; contas: ContaApi[]; onClose: () => void; onSaved: (id?: string) => void }) {
-  const bancoInicial = conta ? (bancoPorCodigo(conta.codigo_banco) ? conta.codigo_banco! : conta.banco || conta.tipo !== "carteira" ? PERSONALIZADO : "") : "";
+/** Banco já escolhido ao abrir uma conta nova ("Adicionar conta neste banco"). Do catálogo (`codigo`) ou personalizado (`nome`). */
+export interface BancoPreSelecionado { codigo?: string | null; nome?: string | null; sigla?: string | null }
+
+export function ContaModal({ conta, contas, banco, onClose, onSaved }: { conta?: ContaApi; contas: ContaApi[]; banco?: BancoPreSelecionado; onClose: () => void; onSaved: (id?: string) => void }) {
+  const preCatalogo = !conta && banco?.codigo ? bancoPorCodigo(banco.codigo) : undefined;
+  const prePersonalizado = !conta && !preCatalogo && !!banco?.nome;
+  const bancoInicial = conta ? (bancoPorCodigo(conta.codigo_banco) ? conta.codigo_banco! : conta.banco || conta.tipo !== "carteira" ? PERSONALIZADO : "") : preCatalogo ? preCatalogo.codigo : prePersonalizado ? PERSONALIZADO : "";
   const [escolhido, setEscolhido] = useState<string>(bancoInicial);
   const [busca, setBusca] = useState("");
   const [modoBancos, setModoBancos] = useState<ModoBancos>(lerModoBancos);
-  const [bancoNome, setBancoNome] = useState(conta?.banco ?? "");
-  const [codigo, setCodigo] = useState(conta?.codigo_banco ?? "");
-  const [sigla, setSigla] = useState(conta?.sigla ?? "");
-  const [nome, setNome] = useState(conta?.nome ?? "");
+  const [bancoNome, setBancoNome] = useState(conta?.banco ?? preCatalogo?.curto ?? (prePersonalizado ? banco!.nome! : ""));
+  const [codigo, setCodigo] = useState(conta?.codigo_banco ?? preCatalogo?.codigo ?? (prePersonalizado ? banco?.codigo ?? "" : ""));
+  const [sigla, setSigla] = useState(conta?.sigla ?? (prePersonalizado ? banco?.sigla ?? "" : ""));
+  const [nome, setNome] = useState(conta?.nome ?? preCatalogo?.curto ?? "");
   const [nomeEditado, setNomeEditado] = useState(!!conta);
   const [tipo, setTipo] = useState<TipoConta>(conta?.tipo ?? "corrente");
   const [agencia, setAgencia] = useState(conta?.agencia ?? "");
   const [numero, setNumero] = useState(conta?.numero_conta ?? "");
   const [saldo, setSaldo] = useState(centavosParaCampo(conta?.saldo_inicial_centavos ?? 0));
-  const [cor, setCor] = useState(conta?.cor ?? COR_PADRAO);
+  const [cor, setCor] = useState(conta?.cor ?? preCatalogo?.cor ?? COR_PADRAO);
   const [ocupado, setOcupado] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [uso, setUso] = useState<ContaUsoApi | null>(null);

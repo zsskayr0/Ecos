@@ -4,13 +4,14 @@ import { Copy, X } from "lucide-react";
 import { DatePicker } from "@/components/common/DatePicker";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { MenuSelecao } from "@/screens/Create/TransactionForm";
-import { financeiro, FORMAS_PAGAMENTO, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type RecorrenciaApi, type RecorrenciaPayload } from "@/lib/api";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
+import { opcoesDoSeletor } from "@/lib/formas-pagamento";
+import { financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type RecorrenciaApi, type RecorrenciaPayload } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { EscopoEdicaoModal, type EscopoEdicao } from "./Dialogos";
 import { MenuOcorrencia, type AcoesDaOcorrencia } from "./MenuOcorrencia";
 import { centavosDoCampo, centavosParaCampo, dataExibida, type LinhaRecorrencia } from "./ocorrencias";
 
-const ROTULO_FORMA: Record<string, string> = { pix: "Pix", pix_automatico: "Pix Automático", ted: "TED", cartao: "Cartão", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" };
 const FREQUENCIAS = [{ valor: "semanal", rotulo: "Semanal" }, { valor: "mensal", rotulo: "Mensal" }, { valor: "anual", rotulo: "Anual" }] as const;
 
 interface Props {
@@ -70,7 +71,11 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
   const centavos = centavosDoCampo(valor);
   const opcoesCategoria = useMemo(() => categorias.filter((c) => c.tipo === tipo || c.tipo === "ambos").map((c) => ({ value: c.id, label: c.nome, cor: c.cor, icone: c.icone })), [categorias, tipo]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ value: c.id, label: c.nome, cor: c.cor, selo: <SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} codigoBanco={c.codigo_banco} sigla={c.sigla} tamanho="xs" /> })), [contas]);
-  const opcoesForma = useMemo(() => FORMAS_PAGAMENTO.map((f) => ({ value: f, label: ROTULO_FORMA[f] ?? f })), []);
+  const formas = useFormasPagamento();
+  const opcoesForma = useMemo(() => opcoesDoSeletor(formas.lista, forma || null).map((o) => {
+    const f = formas.porCodigo.get(o.codigo);
+    return { value: o.codigo, label: o.inativa ? `${o.nome} (inativa)` : o.nome, cor: f?.cor, icone: f?.icone };
+  }), [formas.lista, formas.porCodigo, forma]);
   const opcoesFrequencia = FREQUENCIAS.map((f) => ({ value: f.valor, label: f.rotulo }));
 
   async function salvar(e: FormEvent) {

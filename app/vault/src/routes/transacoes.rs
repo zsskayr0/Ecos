@@ -11,7 +11,6 @@ use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-const FORMAS_PAGAMENTO: &[&str] = &["pix", "pix_automatico", "ted", "cartao", "dinheiro", "boleto", "outro"];
 
 #[derive(Debug, Deserialize)]
 pub struct ListarQuery {
@@ -178,11 +177,6 @@ fn validar_transacao(payload: &TransacaoPayload) -> AppResult<()> {
     if payload.valor_centavos <= 0 {
         return Err(AppError::new(ErrorCode::TransactionInvalidAmount));
     }
-    if let Some(fp) = &payload.forma_pagamento {
-        if !FORMAS_PAGAMENTO.contains(&fp.as_str()) {
-            return Err(AppError::new(ErrorCode::PaymentMethodInvalid));
-        }
-    }
     if !["efetivada", "pendente"].contains(&payload.status.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("status deve ser 'efetivada' ou 'pendente'"));
     }
@@ -192,7 +186,8 @@ fn validar_transacao(payload: &TransacaoPayload) -> AppResult<()> {
     Ok(())
 }
 
-async fn checar_referencias(state: &AppState, categoria_id: &Option<String>, conta_id: &Option<String>) -> AppResult<()> {
+async fn checar_referencias(state: &AppState, categoria_id: &Option<String>, conta_id: &Option<String>, forma_pagamento: &Option<String>) -> AppResult<()> {
+    super::formas_pagamento::checar(state, forma_pagamento).await?;
     if let Some(id) = categoria_id {
         let id = id.clone();
         let existe: Option<i64> = state.db.with(move |conn| conn.query_row("SELECT 1 FROM categoria WHERE id = ?1", [&id], |r| r.get(0)).optional()).await?;
@@ -249,7 +244,7 @@ pub(crate) fn validar(payload: &TransacaoPayload) -> AppResult<()> {
 }
 
 pub(crate) async fn validar_referencias(state: &AppState, payload: &TransacaoPayload) -> AppResult<()> {
-    checar_referencias(state, &payload.categoria_id, &payload.conta_id).await
+    checar_referencias(state, &payload.categoria_id, &payload.conta_id, &payload.forma_pagamento).await
 }
 
 pub async fn criar(State(state): State<AppState>, Json(mut payload): Json<TransacaoPayload>) -> AppResult<Json<serde_json::Value>> {
@@ -259,7 +254,7 @@ pub async fn criar(State(state): State<AppState>, Json(mut payload): Json<Transa
         }
     }
     validar_transacao(&payload)?;
-    checar_referencias(&state, &payload.categoria_id, &payload.conta_id).await?;
+    checar_referencias(&state, &payload.categoria_id, &payload.conta_id, &payload.forma_pagamento).await?;
 
     let id = new_id();
     // A autoria vem do pedido autenticado, nunca do corpo: não dá para lançar em nome de outra pessoa.
@@ -285,7 +280,7 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
 
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<TransacaoPayload>) -> AppResult<Json<serde_json::Value>> {
     validar_transacao(&payload)?;
-    checar_referencias(&state, &payload.categoria_id, &payload.conta_id).await?;
+    checar_referencias(&state, &payload.categoria_id, &payload.conta_id, &payload.forma_pagamento).await?;
 
     let afetadas = state
         .db

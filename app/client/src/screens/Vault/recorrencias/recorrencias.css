@@ -194,16 +194,19 @@
 .cofre-rec-painel .cofre-launch-slide .ecos-slide-botao[data-ativo="true"] { color:#1a0d10 !important; }
 .cofre-rec-painel .cofre-launch-slide .ecos-slide-botao[data-ativo="false"] { color:var(--text-muted); }
 
-.cofre-selo-recorrencia { display:inline-flex; flex:none; align-items:center; gap:4px; white-space:nowrap; }
-.cofre-selo-recorrencia svg { flex:none; }
+i.cofre-via-anexo.cofre-selo-recorrencia { display:inline-flex; flex:none; flex-direction:row; align-items:center; gap:4px; white-space:nowrap; }
+.cofre-selo-recorrencia svg { display:block; flex:none; margin:0; }
 
 .cofre-launch-dica-futuro { margin:8px 2px 0; color:var(--text-faint); font-size:11px; }
 /* Fechar do mesmo tamanho do menu "…" */
 .cofre-rec-painel header .cofre-cats-iconbtn,.cofre-rec-dialogo header .cofre-cats-iconbtn { width:30px; height:30px; border-radius:9px; }
 .cofre-rec-painel header .cofre-cats-header-acoes,.cofre-rec-dialogo header .cofre-cats-header-acoes { align-items:center; gap:6px; }
+.cofre-status-grupo { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:4px; }
+.cofre-status-grupo > .cofre-status { order:-1; }
+.cofre-status-grupo i.cofre-via-anexo.cofre-selo-recorrencia { --selo-azul:#5b9dff; width:max-content; min-height:23px; margin:0; padding:3px 7px; border-color:color-mix(in srgb,var(--selo-azul) 35%,var(--border)); color:var(--selo-azul); font-size:9px; font-weight:700; letter-spacing:.03em; line-height:1; text-transform:uppercase; }
 .cofre-transaction-titulo { display:flex; min-width:0; align-items:center; gap:8px; }
 .cofre-transaction-titulo > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cofre-transaction-titulo .cofre-selo-recorrencia { flex:none; margin:0; white-space:nowrap; padding:2px 8px; font-size:9.5px; line-height:1.3; }
+.cofre-transaction-titulo .cofre-selo-recorrencia { flex:none; align-items:center; margin:0; white-space:nowrap; padding:2px 8px; font-size:9.5px; line-height:1; }
 
 .cofre-rec-escopos { display:flex; flex-direction:column; gap:8px; }
 .cofre-rec-escopo { display:flex; align-items:flex-start; gap:10px; padding:11px 13px; border:1px solid var(--border); border-radius:11px; background:var(--panel-elevated); color:var(--text); font-size:13px; font-weight:600; cursor:pointer; transition:border-color .16s ease,background .16s ease; }

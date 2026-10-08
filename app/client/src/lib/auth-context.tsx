@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, auth, prepararConteudoOffline } from "./api";
+import { ApiError, auth, definirUsuarioDoCofre, prepararConteudoOffline } from "./api";
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline } from "./offline-store";
@@ -88,6 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     recarregarPerfil();
   }, [recarregarPerfil]);
+
+  // Cadastros em cache (formas de pagamento…) pertencem a quem está autenticado.
+  useEffect(() => { definirUsuarioDoCofre(perfil?.id ?? null); }, [perfil?.id]);
 
   const login = useCallback(async (usuario: string, senha: string) => {
     setErro(null);

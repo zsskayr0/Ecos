@@ -5,6 +5,7 @@ import { formatMoeda } from "@/lib/format";
 
 /** O painel entra um pouco por baixo da quina arredondada do formulário, para as duas peças formarem uma superfície só (sem fresta nos cantos). */
 const SOBREPOSICAO = 18;
+const ALTURA_MINIMA = 500;
 const LIMITE_CENTAVOS = 999_999_999;
 const OPERADORES = ["+", "−", "×", "÷"];
 const ehOperador = (t: string) => OPERADORES.includes(t);
@@ -81,16 +82,17 @@ export function CampoValor({ centavos, aoMudar, autoFocus }: { centavos: number;
       const alvo = raiz.current?.closest(".cofre-launch-form") ?? raiz.current;
       const r = alvo?.getBoundingClientRect();
       if (r) {
-        const largura = Math.round(Math.min(Math.max(r.width, 300), 420)), altura = Math.round(r.height) + 2;
+        // Em telas baixas (notebook) o formulário é mais baixo do que as teclas precisam: o painel cresce até o mínimo (sem passar da janela) em vez de espremer o "0" embaixo dos botões.
+        const largura = Math.round(Math.min(Math.max(r.width, 300), 420)), altura = Math.min(Math.max(Math.round(r.height) + 2, ALTURA_MINIMA), window.innerHeight - 16);
         const lado = r.right + largura + 4 <= window.innerWidth ? "direita" : r.left - largura - 4 >= 0 ? "esquerda" : "baixo";
         // A borda do modal fica 1px fora do formulário: o painel sobe 1px e cresce 2px para as bordas e a linha do cabeçalho coincidirem.
-        const top = Math.round(r.top) - 1;
+        const top = Math.max(8, Math.min(Math.round(r.top) - 1, window.innerHeight - altura - 8));
         // Altura do cabeçalho copiada do formulário: a linha divisória das duas peças fica exatamente na mesma altura.
         const cabecalho = alvo?.querySelector(".cofre-launch-header")?.getBoundingClientRect();
         const cabeca = cabecalho ? Math.round(cabecalho.bottom) - top - 1 : 70;
         const proxima = lado === "direita" ? { top, left: Math.round(r.right) - SOBREPOSICAO, width: largura + SOBREPOSICAO, height: altura, cabeca, lado } as const
           : lado === "esquerda" ? { top, left: Math.round(r.left - largura), width: largura + SOBREPOSICAO, height: altura, cabeca, lado } as const
-          : { top: Math.max(8, Math.min(top, window.innerHeight - 520)), left: Math.max(8, Math.round(r.right - largura)), width: largura, height: Math.min(altura, 520), cabeca, lado } as const;
+          : { top, left: Math.max(8, Math.round(r.right - largura)), width: largura, height: altura, cabeca, lado } as const;
         setPosicao((atual) => (atual && atual.top === proxima.top && atual.left === proxima.left && atual.width === proxima.width && atual.height === proxima.height && atual.cabeca === proxima.cabeca && atual.lado === proxima.lado ? atual : proxima));
       }
       quadro = window.requestAnimationFrame(medir);

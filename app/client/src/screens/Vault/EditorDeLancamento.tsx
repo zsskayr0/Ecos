@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Receipt } from "lucide-react";
-import { vault, ApiError, type TransacaoApi, type FormaPagamento } from "@/lib/api";
+import { vault, ApiError, enviarLancamentoParaEspaco, type TransacaoApi, type FormaPagamento } from "@/lib/api";
+import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
@@ -30,7 +31,10 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
   comComprovantes?: boolean;
 }) {
   const { notificar } = useRefreshBus();
-  const { abrirCaptura } = useAppUI();
+  const { abrirCaptura, espacoAtivo } = useAppUI();
+  const { equipes } = useMinhasEquipes();
+  const [enviando, setEnviando] = useState<{ destino: string; mover: boolean; ocupado: boolean } | null>(null);
+  const destinos = [...(espacoAtivo !== "pessoal" ? [{ espaco: "pessoal", nome: "Pessoal" }] : []), ...equipes.filter((e) => `equipe:${e.id}` !== espacoAtivo).map((e) => ({ espaco: `equipe:${e.id}`, nome: e.nome }))];
   const autoria = useAutoriaDoCofre();
   const raiz = useRef<HTMLDivElement>(null);
   const lista = useListaDeLancamentos();
@@ -169,6 +173,26 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
     }
   }
 
+  /** Copia (ou move) o lançamento para o Cofre de outra equipe. Os dois Cofres precisam estar destrancados por esta pessoa. */
+  async function enviar() {
+    if (!tx || !enviando?.destino) return;
+    const alvo = destinos.find((d) => d.espaco === enviando.destino);
+    setEnviando({ ...enviando, ocupado: true });
+    setErro(null);
+    try {
+      const r = await enviarLancamentoParaEspaco(tx, enviando.destino, { mover: enviando.mover });
+      notificar();
+      setEnviando(null);
+      if (r.anexosFalharam > 0) { setErro(`Enviado para ${alvo?.nome}, mas ${r.anexosFalharam} anexo(s) não foram copiados; o original foi mantido.`); return; }
+      if (enviando.mover) aoExcluir();
+    } catch (e) {
+      setEnviando(null);
+      setErro(e instanceof ApiError && e.status === 423 || (e instanceof ApiError && e.code === "VAULT_LOCKED")
+        ? `Desbloqueie o Cofre de ${alvo?.nome ?? "destino"} (com a senha dele) e tente de novo.`
+        : e instanceof ApiError ? e.message : "Não foi possível enviar.");
+    }
+  }
+
   async function excluir() {
     if (!id) return;
     setSalvando(true);
@@ -204,6 +228,17 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
 
   return (
     <div ref={raiz} data-modo-slide={slide || undefined} className={aninhado ? "cofre-capture-scope" : "cofre-app cofre-capture-scope"}>
+      {enviando && <div role="dialog" aria-modal="true" aria-label="Enviar para outra equipe" style={{ position: "fixed", inset: 0, zIndex: 60, display: "grid", placeItems: "center", background: "rgba(0,0,0,.45)" }}>
+        <div className="cofre-launch-alert" style={{ width: "min(92vw, 380px)", display: "grid", gap: 12, padding: 18, background: "var(--cofre-surface, #fff)", color: "inherit", borderRadius: 12 }}>
+          <b>Enviar para outra equipe</b>
+          <label style={{ display: "grid", gap: 4 }}>Equipe de destino
+            <select value={enviando.destino} disabled={enviando.ocupado} onChange={(e) => setEnviando({ ...enviando, destino: e.target.value })}>{destinos.map((d) => <option key={d.espaco} value={d.espaco}>{d.nome}</option>)}</select>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={enviando.mover} disabled={enviando.ocupado} onChange={(e) => setEnviando({ ...enviando, mover: e.target.checked })} />Mover (apagar daqui depois de enviar)</label>
+          <p style={{ margin: 0, fontSize: 12, opacity: .75 }}>Categoria, conta e pagador são casados pelo nome no Cofre de destino. Comprovantes vão junto. O Cofre de destino precisa estar destrancado.</p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" disabled={enviando.ocupado} onClick={() => setEnviando(null)}>Cancelar</button><button type="button" disabled={enviando.ocupado} onClick={() => void enviar()}>{enviando.ocupado ? "Enviando…" : enviando.mover ? "Mover" : "Copiar"}</button></div>
+        </div>
+      </div>}
       <TransactionForm
         draft={draft}
         setDraft={setDraft}
@@ -220,6 +255,7 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
         erro={erro}
         onExcluir={() => { void excluir(); }}
         onDuplicar={duplicar}
+        onEnviar={destinos.length ? () => setEnviando({ destino: destinos[0].espaco, mover: false, ocupado: false }) : undefined}
         criadoPor={autoria.nomeDe(tx.criado_por)}
         anexos={comComprovantes ? <div className="cofre-anexos-par"><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="nota_fiscal" /></div> : undefined}
       />

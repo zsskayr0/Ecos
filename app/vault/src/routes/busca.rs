@@ -20,18 +20,6 @@ pub struct BuscaQuery {
     pub limit: Option<usize>,
 }
 
-fn forma_pagamento(codigo: &str) -> &'static str {
-    match codigo {
-        "pix" => "Pix",
-        "pix_automatico" => "Pix automático",
-        "ted" => "Transferência TED",
-        "cartao" => "Cartão",
-        "dinheiro" => "Dinheiro",
-        "boleto" => "Boleto",
-        _ => "Outro",
-    }
-}
-
 pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) -> AppResult<Json<serde_json::Value>> {
     let Some(consulta) = q.q.as_deref().and_then(Consulta::nova) else {
         return Ok(Json(serde_json::json!({ "items": [] })));
@@ -45,8 +33,10 @@ pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) 
                 "SELECT t.id, t.descricao, t.observacoes, t.valor_centavos, t.data, t.forma_pagamento, t.ocr_texto_bruto, \
                         c.nome, b.nome, ct.nome, \
                         (SELECT group_concat(a.nome_arquivo, ' ') FROM anexo a WHERE a.transacao_id = t.id), \
-                        (SELECT group_concat(a.ocr_texto, ' ') FROM anexo a WHERE a.transacao_id = t.id) \
+                        (SELECT group_concat(a.ocr_texto, ' ') FROM anexo a WHERE a.transacao_id = t.id), \
+                        fp.nome \
                  FROM transacao t \
+                 LEFT JOIN forma_pagamento fp ON fp.codigo = t.forma_pagamento \
                  LEFT JOIN categoria c ON c.id = t.categoria_id \
                  LEFT JOIN beneficiario b ON b.id = t.beneficiario_id \
                  LEFT JOIN conta ct ON ct.id = t.conta_id \
@@ -60,13 +50,13 @@ pub async fn buscar(State(state): State<AppState>, Query(q): Query<BuscaQuery>) 
                 let (reais, centavos) = (valor.abs() / 100, valor.abs() % 100);
                 let data: String = r.get(4)?;
                 let data_br = data.split('-').rev().collect::<Vec<_>>().join("/");
-                let forma = r.get::<_, Option<String>>(5)?.map(|f| forma_pagamento(&f)).unwrap_or("");
                 let texto = |i: usize| r.get::<_, Option<String>>(i).map(Option::unwrap_or_default);
+                let forma = texto(12)?;
                 let (descricao, observacoes, categoria, pagador, conta, arquivos) = (texto(1)?, texto(2)?, texto(7)?, texto(8)?, texto(9)?, texto(10)?);
                 let valor_txt = format!("{reais},{centavos:02} {reais}.{centavos:02}");
                 let datas = format!("{data} {data_br}");
                 let (ocr_anexos, ocr_transacao) = (texto(11)?, texto(6)?);
-                let campos = [descricao.as_str(), observacoes.as_str(), categoria.as_str(), pagador.as_str(), conta.as_str(), forma, valor_txt.as_str(), datas.as_str(), arquivos.as_str()];
+                let campos = [descricao.as_str(), observacoes.as_str(), categoria.as_str(), pagador.as_str(), conta.as_str(), forma.as_str(), valor_txt.as_str(), datas.as_str(), arquivos.as_str()];
                 if let Some(a) = consulta.avaliar(&campos, &[ocr_anexos.as_str(), ocr_transacao.as_str()]) {
                     achados.push((a.pontuacao, id, a.so_no_anexo));
                 }

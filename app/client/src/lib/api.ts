@@ -29,7 +29,32 @@ const BASE = apiBase;
 let geracaoCofre = 0;
 /** Espaço (`pessoal` / `equipe:<id>`) cujo Cofre as chamadas `/vault/*` usam; o servidor confere se a pessoa é membro. */
 let espacoDoCofre = "pessoal";
-export function definirEspacoDoCofre(espaco: string) { espacoDoCofre = espaco || "pessoal"; }
+/** Quem está autenticado; entra na identidade do contexto do Cofre para que nada de outra conta reapareça. */
+let usuarioDoCofre: string | null = null;
+const ouvintesContextoCofre = new Set<() => void>();
+function emitirContextoCofre() { ouvintesContextoCofre.forEach((cb) => cb()); }
+export function definirEspacoDoCofre(espaco: string) {
+  const novo = espaco || "pessoal";
+  if (novo === espacoDoCofre) return;
+  espacoDoCofre = novo;
+  emitirContextoCofre();
+}
+export function definirUsuarioDoCofre(id: string | null) {
+  if (id === usuarioDoCofre) return;
+  usuarioDoCofre = id;
+  emitirContextoCofre();
+}
+/** Servidor + usuário + espaço: dados em cache só valem para a mesma identidade. */
+export function chaveContextoCofre(): string {
+  return `${obterServidorBaseUrl() ?? ""}|${usuarioDoCofre ?? ""}|${espacoDoCofre}`;
+}
+/** Avisa quando o contexto muda (espaço, usuário) ou o Cofre é bloqueado. Devolve o cancelamento. */
+export function assinarContextoCofre(cb: () => void): () => void {
+  ouvintesContextoCofre.add(cb);
+  window.addEventListener("ecos:cofre-bloqueado", cb);
+  return () => { ouvintesContextoCofre.delete(cb); window.removeEventListener("ecos:cofre-bloqueado", cb); };
+}
+export function geracaoDoCofre(): number { return geracaoCofre; }
 const canalCofre = typeof window.BroadcastChannel === "function" ? new BroadcastChannel("ecos-cofre-bloqueio") : null;
 let recebendoBloqueio = false;
 window.addEventListener("ecos:cofre-bloqueado", () => {
@@ -223,7 +248,8 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
   const body = ehJson ? await resp.json().catch(() => null) : null;
   if (path.startsWith("/vault/") && path !== "/vault/bloquear" && geracao !== geracaoCofre) throw new ApiError("VAULT_LOCKED", "Cofre bloqueado.", 401);
   if (path.startsWith("/vault/") && body?.error === "VAULT_LOCKED") {
-    window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
+    // Cofre de outro espaço (envio entre equipes) trancado não tranca a tela do Cofre aberto.
+    if (!(init?.headers as Record<string, string> | undefined)?.["x-ecos-espaco"]) window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
     throw new ApiError("VAULT_LOCKED", "O Cofre está bloqueado. Desbloqueie para continuar.", resp.status);
   }
 
@@ -1042,9 +1068,27 @@ export interface BeneficiarioApi {
   transacoes?: number;
 }
 
-/** Matches `FORMAS_PAGAMENTO` in `app/vault/src/routes/transacoes.rs` — a closed enum, not free text. */
-export const FORMAS_PAGAMENTO = ["pix", "pix_automatico", "ted", "cartao", "dinheiro", "boleto", "outro"] as const;
-export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number];
+/** Código de uma forma de pagamento (`"pix"`, `"cartao_de_debito"`…): vem do cadastro `/vault/formas-pagamento`, nunca é montado no cliente. */
+export type FormaPagamento = string;
+
+/** Uma forma de pagamento cadastrada. `padrao` = de fábrica (não se apaga); `usos` = lançamentos + recorrências que a usam. */
+export interface FormaPagamentoApi {
+  codigo: string;
+  nome: string;
+  icone: string | null;
+  cor: string | null;
+  padrao: boolean;
+  ativa: boolean;
+  ordem: number;
+  criado_por: string | null;
+  usos: number;
+}
+
+export interface FormaPagamentoUsoApi {
+  transacoes: number;
+  recorrencias: number;
+  amostra: { id: string; data: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number }[];
+}
 
 /** O que usa uma categoria (para mostrar antes de apagá-la). `tipos` são os tipos dos itens que a usam. */
 export interface CategoriaUsoApi {
@@ -1159,6 +1203,18 @@ export const vault = {
     excluir: (id: string, destino?: { mover_para: string } | { sem_categoria: true }) => del<{ ok: true; movidos?: number }>(`/vault/categorias/${id}`, destino),
     uso: (id: string) => get<CategoriaUsoApi>(`/vault/categorias/${id}/uso`),
   },
+  formasPagamento: {
+    listar: () => get<FormaPagamentoApi[]>("/vault/formas-pagamento"),
+    /** O `codigo` é gerado no servidor. */
+    criar: (payload: { nome: string; icone?: string; cor?: string }) => post<{ codigo: string }>("/vault/formas-pagamento", payload),
+    /** Campo omitido não muda; `icone: null` e `cor: null` limpam. */
+    atualizar: (codigo: string, payload: { nome?: string; icone?: string | null; cor?: string | null; ativa?: boolean }) =>
+      patch<{ ok: true }>(`/vault/formas-pagamento/${encodeURIComponent(codigo)}`, payload),
+    uso: (codigo: string) => get<FormaPagamentoUsoApi>(`/vault/formas-pagamento/${encodeURIComponent(codigo)}/uso`),
+    /** Com itens usando a forma, o servidor exige o destino: outra forma ou `sem_forma`. As de fábrica não se apagam. */
+    excluir: (codigo: string, destino?: { mover_para: string } | { sem_forma: true }) =>
+      del<{ ok: true; movidos?: number }>(`/vault/formas-pagamento/${encodeURIComponent(codigo)}`, destino),
+  },
   beneficiarios: {
     listar: () => get<BeneficiarioApi[]>("/vault/beneficiarios"),
     /** `POST` is find-or-create by name (see `beneficiarios.rs`). */
@@ -1229,6 +1285,68 @@ export const vault = {
     },
   },
 };
+
+export interface ResultadoEnvio { id: string; anexosCopiados: number; anexosFalharam: number; categoriaCriada: boolean }
+
+/**
+ * Envia um lançamento do Cofre aberto para o Cofre de outro espaço (`equipe:<id>` ou `pessoal`). Os dois precisam estar
+ * destrancados por esta pessoa (o servidor confere cada um). Categoria, conta e pagador não existem entre Cofres: casam por
+ * nome (a categoria é criada se faltar; conta e forma de pagamento sem equivalente ficam em branco). Com `mover`, o original
+ * só é apagado depois que a cópia e os anexos chegaram.
+ */
+export async function enviarLancamentoParaEspaco(origem: TransacaoApi, destino: string, opcoes: { mover: boolean }): Promise<ResultadoEnvio> {
+  if (!destino || destino === espacoDoCofre) throw new ApiError("VALIDATION_ERROR", "Escolha outro espaço de destino.", 400);
+  const cab = { headers: { "x-ecos-espaco": destino } };
+  const no = <T>(path: string, metodo: string, corpo?: unknown) => req<T>(path, { method: metodo, body: corpo !== undefined ? JSON.stringify(corpo) : undefined, ...cab });
+  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+
+  // Lê o que o destino já tem antes de gravar qualquer coisa: se estiver trancado, falha aqui sem efeito colateral.
+  const [categorias, contas, formas] = await Promise.all([
+    no<CategoriaApi[]>("/vault/categorias", "GET"), no<ContaApi[]>("/vault/contas", "GET"), no<FormaPagamentoApi[]>("/vault/formas-pagamento", "GET").catch(() => [] as FormaPagamentoApi[]),
+  ]);
+  const [catsOrigem, contasOrigem, bensOrigem] = await Promise.all([
+    origem.categoria_id ? vault.categorias.listar() : Promise.resolve([] as CategoriaApi[]),
+    origem.conta_id ? vault.contas.listar() : Promise.resolve([] as ContaApi[]),
+    origem.beneficiario_id ? vault.beneficiarios.listar() : Promise.resolve([] as BeneficiarioApi[]),
+  ]);
+
+  let categoriaCriada = false;
+  let categoria_id: string | undefined;
+  const cat = catsOrigem.find((c) => c.id === origem.categoria_id);
+  if (cat) {
+    const igual = categorias.find((c) => norm(c.nome) === norm(cat.nome) && (c.tipo === "ambos" || c.tipo === origem.tipo));
+    if (igual) categoria_id = igual.id;
+    else {
+      categoria_id = (await no<{ id: string }>("/vault/categorias", "POST", { nome: cat.nome, tipo: cat.tipo, icone: cat.icone ?? undefined, cor: cat.cor })).id;
+      categoriaCriada = true;
+    }
+  }
+  const nomeConta = contasOrigem.find((c) => c.id === origem.conta_id)?.nome;
+  const conta_id = nomeConta ? contas.find((c) => norm(c.nome) === norm(nomeConta))?.id : undefined;
+  const nomeBen = bensOrigem.find((b) => b.id === origem.beneficiario_id)?.nome;
+  const beneficiario_id = nomeBen ? (await no<{ id: string }>("/vault/beneficiarios", "POST", { nome: nomeBen })).id : undefined;
+  const forma_pagamento = origem.forma_pagamento && formas.some((f) => f.codigo === origem.forma_pagamento) ? origem.forma_pagamento : undefined;
+
+  const criada = await no<TransacaoApi>("/vault/transacoes", "POST", {
+    tipo: origem.tipo, valor_centavos: origem.valor_centavos, data: origem.data, descricao: origem.descricao,
+    categoria_id, conta_id, beneficiario_id, forma_pagamento, status: origem.status, observacoes: origem.observacoes ?? undefined,
+  });
+
+  let anexosCopiados = 0, anexosFalharam = 0;
+  for (const a of await vault.anexos.listar(origem.id).catch(() => [] as AnexoApi[])) {
+    try {
+      const blob = await vault.anexos.conteudo(a.id);
+      if (!blob) throw new Error("sem conteúdo");
+      const dados = new FormData();
+      dados.append("arquivo", new File([blob], a.nome_arquivo, { type: a.mime_type }));
+      await req(`/vault/transacoes/${criada.id}/anexos${a.tipo === "comprovante" ? "" : `?tipo=${a.tipo}`}`, { method: "POST", body: dados, ...cab });
+      anexosCopiados++;
+    } catch { anexosFalharam++; }
+  }
+  // Mover só apaga o original se nada ficou para trás.
+  if (opcoes.mover && anexosFalharam === 0) await vault.transacoes.excluir(origem.id);
+  return { id: criada.id, anexosCopiados, anexosFalharam, categoriaCriada };
+}
 
 /** Regra de recorrência (fixa ou parcelada) do Cofre. */
 export interface RecorrenciaApi {

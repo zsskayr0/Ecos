@@ -7,7 +7,7 @@
 pub mod meta;
 
 use rusqlite::Connection;
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{HookResult, Migrations, M};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -38,7 +38,11 @@ pub fn id_de_usuario_valido(id: &str) -> bool {
 }
 
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("../../migrations/0001_init_up.sql"))
+    Migrations::new(lista_de_migracoes())
+}
+
+fn lista_de_migracoes() -> Vec<M<'static>> {
+    vec![M::up(include_str!("../../migrations/0001_init_up.sql"))
         .down(include_str!("../../migrations/0001_init_down.sql")),
         M::up(include_str!("../../migrations/0002_financeiro.sql")),
         M::up(include_str!("../../migrations/0003_categorias_nexus.sql")),
@@ -47,7 +51,56 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0006_ocr_miniatura.sql")),
         M::up(include_str!("../../migrations/0007_conta_detalhes.sql")),
         M::up(include_str!("../../migrations/0008_preferencias_nota_fiscal.sql")),
-        M::up(include_str!("../../migrations/0009_conta_sigla.sql"))])
+        M::up(include_str!("../../migrations/0009_conta_sigla.sql")),
+        M::up_with_hook(include_str!("../../migrations/0010_formas_pagamento.sql"), soltar_lista_fixa_de_formas)]
+}
+
+/// Tira de `transacao` e `transacao_recorrente` o `CHECK (forma_pagamento IN (...))` com as sete formas fixas: a lista
+/// agora é a tabela `forma_pagamento`, validada pelas rotas. SQLite não tem `DROP CONSTRAINT`; recriar as tabelas
+/// arriscaria os anexos (BLOBs), então se edita o texto do schema pelo procedimento oficial (`writable_schema` +
+/// `schema_version`), que não toca nos dados. Idempotente: se já não houver o CHECK, não faz nada.
+fn soltar_lista_fixa_de_formas(tx: &rusqlite::Transaction) -> HookResult {
+    tx.execute_batch("PRAGMA writable_schema = ON")?;
+    let mut mudou = false;
+    for tabela in ["transacao", "transacao_recorrente"] {
+        let sql: String = tx.query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1", [tabela], |r| r.get(0))?;
+        if let Some(novo) = sem_check_de_forma(&sql) {
+            tx.execute("UPDATE sqlite_master SET sql = ?1 WHERE type = 'table' AND name = ?2", rusqlite::params![novo, tabela])?;
+            mudou = true;
+        }
+    }
+    if mudou {
+        let versao: i64 = tx.query_row("PRAGMA schema_version", [], |r| r.get(0))?;
+        tx.execute_batch(&format!("PRAGMA schema_version = {}", versao + 1))?;
+    }
+    tx.execute_batch("PRAGMA writable_schema = OFF")?;
+    Ok(())
+}
+
+/// `CREATE TABLE ...` sem o `CHECK (forma_pagamento IN (...))`; `None` se ele não existe.
+fn sem_check_de_forma(sql: &str) -> Option<String> {
+    for (inicio, _) in sql.match_indices("CHECK") {
+        let resto = &sql[inicio + "CHECK".len()..];
+        let abre = resto.find('(')?;
+        if !resto[..abre].trim().is_empty() || !resto[abre + 1..].trim_start().starts_with("forma_pagamento") {
+            continue;
+        }
+        let mut nivel = 0;
+        for (i, c) in resto[abre..].char_indices() {
+            match c {
+                '(' => nivel += 1,
+                ')' => {
+                    nivel -= 1;
+                    if nivel == 0 {
+                        let fim = inicio + "CHECK".len() + abre + i + 1;
+                        return Some(format!("{}{}", sql[..inicio].trim_end(), &sql[fim..]));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -196,5 +249,33 @@ mod testes_cifra {
         errada.pragma_update(None, "key", format!("x'{}'", "00".repeat(32))).unwrap();
         assert!(errada.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)).is_err(), "chave errada não abre");
         let _ = std::fs::remove_dir_all(raiz);
+    }
+}
+
+#[cfg(test)]
+mod testes_de_migracao {
+    use super::*;
+
+    /// Banco já na versão 9 (com dados e um anexo) sobe para a última: nada se perde e a lista fixa de formas some.
+    #[test]
+    fn formas_de_pagamento_livres_sem_perder_dados() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        Migrations::new(lista_de_migracoes()[..9].to_vec()).to_latest(&mut conn).unwrap();
+        conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, forma_pagamento, espaco, criado_por) VALUES ('t1','saida',1000,'2026-10-01','Mercado','pix','pessoal','ana')", []).unwrap();
+        conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES ('a1','t1','x.png','image/png',3,'abc',x'010203')", []).unwrap();
+        assert!(conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, forma_pagamento, espaco, criado_por) VALUES ('t2','saida',1,'2026-10-01','X','debito','pessoal','ana')", []).is_err(), "antes da migração a lista é fixa");
+
+        migrations().to_latest(&mut conn).unwrap();
+
+        let (forma, anexos): (String, i64) = conn.query_row("SELECT t.forma_pagamento, (SELECT COUNT(*) FROM anexo WHERE transacao_id = t.id) FROM transacao t WHERE t.id = 't1'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((forma.as_str(), anexos), ("pix", 1));
+        let fabrica: i64 = conn.query_row("SELECT COUNT(*) FROM forma_pagamento WHERE padrao = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(fabrica, 7);
+        conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, forma_pagamento, espaco, criado_por) VALUES ('t2','saida',1,'2026-10-01','X','debito','pessoal','ana')", []).expect("forma livre depois da migração");
+        conn.execute("INSERT INTO transacao_recorrente (id, tipo, descricao, valor_centavos, forma_pagamento, tipo_recorrencia, data_inicio, espaco) VALUES ('r1','saida','Aluguel',1,'debito','fixa','2026-10-01','pessoal')", []).expect("recorrência com forma livre");
+        // O resto do schema segue valendo (outros CHECKs e a integridade do arquivo).
+        assert!(conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, espaco, criado_por) VALUES ('t3','invalido',1,'2026-10-01','X','pessoal','ana')", []).is_err());
+        let integridade: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(integridade, "ok");
     }
 }

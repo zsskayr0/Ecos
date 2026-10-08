@@ -171,7 +171,7 @@ pub async fn importar(
         let mut erros=Vec::new(); let mut duplicadas=Vec::new(); let mut validas=Vec::new();
         let mut vistas=std::collections::HashSet::new();
         for l in p.linhas {
-            if !["entrada","saida"].contains(&l.tipo.as_str()) || l.valor_centavos<=0 || l.valor_centavos>9_000_000_000_000 || !NaiveDate::parse_from_str(&l.data,"%Y-%m-%d").map(|d| d.to_string()==l.data).unwrap_or(false) || l.descricao.trim().is_empty() || l.descricao.len()>2000 || !["efetivada","pendente"].contains(&l.status.as_str()) || l.forma_pagamento.as_ref().is_some_and(|f| !["pix","pix_automatico","ted","cartao","dinheiro","boleto","outro"].contains(&f.as_str())) {
+            if !["entrada","saida"].contains(&l.tipo.as_str()) || l.valor_centavos<=0 || l.valor_centavos>9_000_000_000_000 || !NaiveDate::parse_from_str(&l.data,"%Y-%m-%d").map(|d| d.to_string()==l.data).unwrap_or(false) || l.descricao.trim().is_empty() || l.descricao.len()>2000 || !["efetivada","pendente"].contains(&l.status.as_str()) || l.forma_pagamento.as_ref().is_some_and(|f| !super::formas_pagamento::existe(&tx,f)) {
                 erros.push(json!({"linha":l.linha,"erro":"Data, valor, descrição, tipo, status ou pagamento inválido"})); continue;
             }
             let chave=(l.data.clone(),l.tipo.clone(),l.valor_centavos,l.descricao.trim().to_lowercase(),l.conta.clone());

@@ -19,6 +19,9 @@ pub mod reset;
 pub mod transacoes;
 pub mod financeiro;
 pub mod fluxo;
+pub mod formas_pagamento;
+#[cfg(test)]
+mod formas_pagamento_testes;
 
 use crate::db::{id_de_usuario_valido, AUTOR, USUARIO};
 use crate::error::AppError;
@@ -68,6 +71,9 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/categorias", get(categorias::listar).post(categorias::criar))
         .route("/vault/categorias/:id", patch(categorias::atualizar).delete(categorias::excluir))
         .route("/vault/categorias/:id/uso", get(categorias::uso))
+        .route("/vault/formas-pagamento", get(formas_pagamento::listar).post(formas_pagamento::criar))
+        .route("/vault/formas-pagamento/:codigo", patch(formas_pagamento::atualizar).delete(formas_pagamento::excluir))
+        .route("/vault/formas-pagamento/:codigo/uso", get(formas_pagamento::uso))
         .route("/vault/beneficiarios", get(beneficiarios::listar).post(beneficiarios::criar_ou_encontrar))
         .route("/vault/beneficiarios/mesclar", post(beneficiarios::mesclar))
         .route("/vault/beneficiarios/:id", patch(beneficiarios::renomear))

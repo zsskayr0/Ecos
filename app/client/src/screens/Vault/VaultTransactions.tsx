@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Columns3, Grid2X2, List, Plus, RefreshCw, Repeat, Search, Table2, Tag, Trash2, X } from "lucide-react";
-import { financeiro, vault, type CategoriaApi, type ContaApi, type TransacaoApi } from "@/lib/api";
+import { financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { publicarListaDeLancamentos } from "@/lib/lista-lancamentos";
 import { casaBusca } from "@/lib/texto-busca";
 import { useAppUI } from "@/lib/ui-context";
 import { useAutoriaDoCofre } from "@/lib/use-autoria-cofre";
+import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import type { Periodo } from "./types";
 import type { Filtro } from "./VaultDashboard";
 import { PeriodPicker } from "./nexus/PeriodPicker";
@@ -22,7 +23,6 @@ type Origem = "todas" | "recorrente" | "pontual";
 type Ordem = "data" | "descricao" | "pagador" | "categoria" | "pagamento" | "valor";
 type Gesto = Pick<MouseEvent | KeyboardEvent, "shiftKey" | "ctrlKey" | "metaKey">;
 
-const PAGAMENTOS: Record<string, string> = { pix: "Pix", pix_automatico: "Pix automático", ted: "Transferência", cartao: "Cartão", dinheiro: "Dinheiro", boleto: "Boleto", outro: "Outro" };
 const LIMITE_SELECAO = 1000;
 /** Segurar o dedo numa linha por este tempo (toque) começa a seleção: no celular não há "passar o mouse". */
 const TEMPO_TOQUE_LONGO_MS = 450;
@@ -55,6 +55,8 @@ interface Contexto {
   categorias: Map<string, CategoriaApi>;
   pagadores: Map<string, string>;
   contas: Map<string, ContaApi>;
+  /** Nome da forma de pagamento pelo cadastro (cai para o código se não achar; vazio se não há forma). */
+  forma: (codigo: string | null | undefined) => string;
   /** Nome de quem lançou; `undefined` fora de Cofre de equipe com mais de uma pessoa. */
   autor?: (id?: string | null) => string | undefined;
   selecionando: boolean;
@@ -78,6 +80,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
 }) {
   const { abrirCaptura } = useAppUI();
   const autoria = useAutoriaDoCofre();
+  const formas = useFormasPagamento();
   const secao = useRef<HTMLElement>(null);
   const [rows, setRows] = useState<TransacaoApi[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -192,7 +195,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
 
   const textoDe = (t: TransacaoApi) => {
     const centavos = t.valor_centavos;
-    return [t.descricao, t.observacoes, categoriasPorId.get(t.categoria_id ?? "")?.nome, pagadores.get(t.beneficiario_id ?? ""), PAGAMENTOS[t.forma_pagamento ?? ""],
+    return [t.descricao, t.observacoes, categoriasPorId.get(t.categoria_id ?? "")?.nome, pagadores.get(t.beneficiario_id ?? ""), formas.rotulo(t.forma_pagamento),
       `${Math.floor(centavos / 100)},${String(centavos % 100).padStart(2, "0")}`, t.data, dataBr(t.data)].join(" ");
   };
 
@@ -212,20 +215,23 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
     }
     const texto = (t: TransacaoApi) => ordem.chave === "categoria" ? categoriasPorId.get(t.categoria_id ?? "")?.nome ?? ""
       : ordem.chave === "pagador" ? pagadores.get(t.beneficiario_id ?? "") ?? ""
-      : ordem.chave === "pagamento" ? PAGAMENTOS[t.forma_pagamento ?? ""] ?? ""
+      : ordem.chave === "pagamento" ? formas.rotulo(t.forma_pagamento)
       : ordem.chave === "descricao" ? t.descricao : t.data;
     const ordenadas = [...lista].sort((a, b) => ordem.dir * (ordem.chave === "valor" ? a.valor_centavos - b.valor_centavos : collator.compare(texto(a), texto(b))));
     return { exibidas: ordenadas, viaComprovante: via };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, previstas, filtro, tipo, status, origem, catsSel, q, achados, ordem, categoriasPorId, pagadores]);
 
-  const idsVisiveis = useMemo(() => exibidas.map((t) => t.id).filter((id) => !ehPrevista(id)), [exibidas]);
+  // Dias futuros de recorrência são selecionáveis (só na tela, para somar e exportar), mas não existem no banco.
+  const idsVisiveis = useMemo(() => exibidas.map((t) => t.id), [exibidas]);
+  const idsReais = useMemo(() => idsVisiveis.filter((id) => !ehPrevista(id)), [idsVisiveis]);
   useEffect(() => {
     let pagar = 0, receber = 0;
     for (const t of exibidas) if (t.status === "pendente") { if (t.tipo === "saida") pagar += t.valor_centavos; else receber += t.valor_centavos; }
-    publicarListaDeLancamentos(idsVisiveis, { pagar, receber });
-  }, [idsVisiveis, exibidas]);
+    publicarListaDeLancamentos(idsReais, { pagar, receber });
+  }, [idsReais, exibidas]);
   const marcados = useMemo(() => new Set(selecionados), [selecionados]);
+  const temFuturo = selecionados.some(ehPrevista);
 
   async function mais() {
     if (!cursor) return;
@@ -268,8 +274,26 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   function exportarPdf() {
     const alvos = exibidas.filter((t) => marcados.has(t.id));
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const linhas = alvos.map((t) => `<tr><td>${dataBr(t.data)}</td><td>${esc(t.descricao)}</td><td>${esc(categoriasPorId.get(t.categoria_id ?? "")?.nome ?? "")}</td><td>${esc(pagadores.get(t.beneficiario_id ?? "") ?? "")}</td><td>${esc(contas.get(t.conta_id ?? "")?.nome ?? "")}</td><td>${esc(PAGAMENTOS[t.forma_pagamento ?? ""] ?? "")}</td><td>${t.status === "efetivada" ? "Efetivada" : "Prevista"}</td><td class="v">${t.tipo === "entrada" ? "" : "-"}${esc(formatMoeda(t.valor_centavos))}</td></tr>`).join("");
-    const html = `<!doctype html><meta charset="utf-8"><title>Transações</title><style>body{font:12px sans-serif;margin:24px}h1{font-size:16px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #ccc;padding:4px 6px;text-align:left}.v{text-align:right;white-space:nowrap}</style><h1>Transações (${alvos.length}) · saldo ${esc(formatMoeda(saldoSelecionado))}</h1><table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Pagador</th><th>Conta</th><th>Pagamento</th><th>Status</th><th class="v">Valor</th></tr></thead><tbody>${linhas}</tbody></table>`;
+    const COR = { efetivada: "#15803d", vencendo: "#c2410c", atrasada: "#b91c1c", prevista: "#475569" };
+    let entradas = 0, saidas = 0;
+    for (const t of alvos) { if (t.tipo === "entrada") entradas += t.valor_centavos; else saidas += t.valor_centavos; }
+    const linhas = alvos.map((t) => {
+      const sit = situacaoDe(t);
+      const cor = t.status === "efetivada" ? COR.efetivada : sit.prazo ? COR[sit.prazo] : COR.prevista;
+      return `<tr><td class="n">${dataBr(t.data)}</td><td><b>${esc(t.descricao)}</b>${t.transacao_recorrente_id ? ' <i>recorrente</i>' : ""}<small>${esc(pagadores.get(t.beneficiario_id ?? "") ?? "Sem pagador")}</small></td><td>${esc(categoriasPorId.get(t.categoria_id ?? "")?.nome ?? "Sem categoria")}</td><td>${esc(contas.get(t.conta_id ?? "")?.nome ?? "—")}</td><td>${esc(formas.rotulo(t.forma_pagamento) || "—")}</td><td><span class="st" style="color:${cor};border-color:${cor}">${sit.rotulo}</span></td><td class="v ${t.tipo}">${t.tipo === "entrada" ? "+" : "−"}${esc(formatMoeda(t.valor_centavos))}</td></tr>`;
+    }).join("");
+    const de = alvos.reduce((m, t) => t.data < m ? t.data : m, alvos[0]?.data ?? ""), ate = alvos.reduce((m, t) => t.data > m ? t.data : m, alvos[0]?.data ?? "");
+    const css = `@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;padding:14mm 14mm 12mm;font:11px/1.35 "Segoe UI",system-ui,sans-serif;color:#0f172a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:12px;border-bottom:2px solid #0f172a}header p{margin:0 0 2px;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#64748b}h1{margin:0;font-size:22px;letter-spacing:-.01em}header span{color:#64748b;font-size:10px;text-align:right}
+.resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.resumo div{padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}.resumo small{display:block;color:#64748b;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.resumo b{display:block;margin-top:3px;font-size:16px;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse}th{padding:7px 8px;border-bottom:1px solid #0f172a;color:#475569;font-size:9px;font-weight:700;letter-spacing:.08em;text-align:left;text-transform:uppercase}td{padding:7px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr{break-inside:avoid}tbody tr:nth-child(even) td{background:#f8fafc}thead{display:table-header-group}
+td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-left:4px;padding:1px 5px;border:1px solid #93c5fd;border-radius:99px;color:#1d4ed8;font-size:8px;font-style:normal;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.n,.v{white-space:nowrap;font-variant-numeric:tabular-nums}th.v,td.v{text-align:right}.v{font-weight:700}.v.entrada{color:#15803d}.v.saida{color:#b91c1c}
+.st{display:inline-block;padding:1px 7px;border:1px solid;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}footer{margin-top:12px;color:#94a3b8;font-size:9px;text-align:right}`;
+    const html = `<!doctype html><meta charset="utf-8"><title>Ecos · Transações</title><style>${css}</style>
+<header><div><p>Ecos · Cofre</p><h1>Transações</h1></div><span>${de ? `${dataBr(de)} a ${dataBr(ate)}<br>` : ""}Gerado em ${new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span></header>
+<section class="resumo"><div><small>Lançamentos</small><b>${alvos.length}</b></div><div><small>Movimentação</small><b>${esc(formatMoeda(entradas + saidas))}</b></div><div><small>Entradas</small><b style="color:#15803d">+${esc(formatMoeda(entradas))}</b></div><div><small>Saídas</small><b style="color:#b91c1c">−${esc(formatMoeda(saidas))}</b></div></section>
+<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Pagamento</th><th>Status</th><th class="v">Valor</th></tr></thead><tbody>${linhas}</tbody></table><footer>Ecos · ${alvos.length} lançamento${alvos.length === 1 ? "" : "s"}</footer>`;
     const quadro = document.createElement("iframe");
     quadro.style.cssText = "position:fixed;width:0;height:0;border:0;right:0;bottom:0";
     document.body.appendChild(quadro);
@@ -295,14 +319,13 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
     } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
 
-  const saldoSelecionado = useMemo(() => rows.reduce((s, t) => marcados.has(t.id) ? s + (t.tipo === "entrada" ? t.valor_centavos : -t.valor_centavos) : s, 0), [rows, marcados]);
+  const saldoSelecionado = useMemo(() => exibidas.reduce((s, t) => marcados.has(t.id) ? s + (t.tipo === "entrada" ? t.valor_centavos : -t.valor_centavos) : s, 0), [exibidas, marcados]);
   const aoAnexar = () => { setVersao((v) => v + 1); atualizar(); };
 
   function sairDaSelecao() { setSelecionados([]); ancora.current = null; }
 
   /** Marca/desmarca uma linha. Com Shift, seleciona a faixa entre a última marcada e esta (Ctrl+Shift soma à seleção). */
   function alternar(id: string, gesto?: Gesto) {
-    if (ehPrevista(id)) return;
     const de = ancora.current ? idsVisiveis.indexOf(ancora.current) : -1;
     if (gesto?.shiftKey && de >= 0) {
       const ate = idsVisiveis.indexOf(id);
@@ -322,9 +345,21 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
       alternar(t.id, e);
       return;
     }
-    // Lançamento gerado por recorrência: só se edita na tela de Recorrências.
-    if (t.transacao_recorrente_id) return;
+    // Ocorrência futura que ainda não virou lançamento: cria o lançamento previsto daquele dia e abre. A edição vale só para ele.
+    if (ehPrevista(t.id) && t.transacao_recorrente_id) { void abrirOcorrencia(t); return; }
     abrir(t.id);
+  }
+
+  async function abrirOcorrencia(t: TransacaoApi) {
+    if (ocupado) return;
+    setOcupado(true);
+    setErro("");
+    try {
+      const { transacao_id } = await financeiro.concluir(t.transacao_recorrente_id!, t.data_ocorrencia ?? t.data, t.data, { confirmar: false });
+      setVersao((v) => v + 1);
+      atualizar();
+      abrir(transacao_id);
+    } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
 
   // Ctrl+A seleciona tudo o que está na lista; Esc sai da seleção. Ignora quando a pessoa digita, quando há uma janela
@@ -350,7 +385,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
 
   const ordenar = (chaveOrdem: Ordem) => setOrdem((o) => o.chave === chaveOrdem ? { chave: chaveOrdem, dir: o.dir === 1 ? -1 : 1 } : { chave: chaveOrdem, dir: 1 });
   const contexto: Contexto = {
-    categorias: categoriasPorId, pagadores, contas, autor: autoria.ativo ? autoria.nomeDe : undefined,
+    categorias: categoriasPorId, pagadores, contas, forma: formas.rotulo, autor: autoria.ativo ? autoria.nomeDe : undefined,
     selecionando: selecionados.length > 0, selecionados: marcados, viaComprovante, clicar, alternar, aoAnexar,
   };
 
@@ -386,11 +421,11 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
     {erro && <p role="alert" className="cofre-transactions-error">{erro}</p>}{feedback && <p role="status" className="cofre-transactions-feedback">{feedback}</p>}
     {selecionados.length > 0 && <div className="cofre-selection-bar">
       <b>{selecionados.length} selecionado{selecionados.length > 1 ? "s" : ""}</b><ContadorSaldo centavos={saldoSelecionado} /><span className="cofre-selection-dica">Esc para sair</span>
-      <button disabled={ocupado} onClick={() => void lote("efetivar")}>Efetivar</button><button disabled={ocupado} onClick={() => void lote("previsto")}>Previsto</button>
-      <button disabled={ocupado} onClick={() => setEditando(true)}>Editar em bloco</button><button disabled={ocupado} onClick={exportarPdf}>Exportar PDF</button>
-      <button className="danger" disabled={ocupado} onClick={() => void lote("excluir")}><Trash2 size={13} />Excluir</button><button onClick={sairDaSelecao}>Cancelar</button>
+      <button disabled={ocupado || temFuturo} title={dicaFuturo} onClick={() => void lote("efetivar")}>Efetivar</button><button disabled={ocupado || temFuturo} title={dicaFuturo} onClick={() => void lote("previsto")}>Previsto</button>
+      <button disabled={ocupado || temFuturo} title={dicaFuturo} onClick={() => setEditando(true)}>Editar em bloco</button><button disabled={ocupado} onClick={exportarPdf}>Exportar PDF</button>
+      <button className="danger" disabled={ocupado || temFuturo} title={dicaFuturo} onClick={() => void lote("excluir")}><Trash2 size={13} />Excluir</button><button onClick={sairDaSelecao}>Cancelar</button>
     </div>}
-    {editando && selecionados.length > 0 && <EdicaoEmBloco total={selecionados.length} pagadores={pagadores} contas={contas} categorias={categorias} ocupado={ocupado} aoSalvar={(m) => void editarEmBloco(m)} aoCancelar={() => setEditando(false)} />}
+    {editando && selecionados.length > 0 && <EdicaoEmBloco total={selecionados.length} pagadores={pagadores} contas={contas} categorias={categorias} formas={formas.ativas} ocupado={ocupado} aoSalvar={(m) => void editarEmBloco(m)} aoCancelar={() => setEditando(false)} />}
     <div className="cofre-transactions-card" data-selecionando={contexto.selecionando || undefined} data-autoria={contexto.autor ? "" : undefined}>
       {carregando ? <p className="cofre-table-empty">Carregando lançamentos…</p>
         : !exibidas.length ? <p className="cofre-table-empty" role="status">{buscando ? "Buscando…" : q ? `Nada encontrado para “${q}”.` : "Nenhum lançamento encontrado."}</p>
@@ -426,8 +461,8 @@ function ContadorSaldo({ centavos }: { centavos: number }) {
 interface Mudancas { beneficiario_id?: string; conta_id?: string; categoria_id?: string; forma_pagamento?: string; valor_centavos?: number; data?: string }
 
 /** Painel de edição em bloco: só os campos preenchidos mudam; os vazios ficam como estão em cada lançamento. */
-function EdicaoEmBloco({ total, pagadores, contas, categorias, ocupado, aoSalvar, aoCancelar }: {
-  total: number; pagadores: Map<string, string>; contas: Map<string, ContaApi>; categorias: CategoriaApi[]; ocupado: boolean;
+function EdicaoEmBloco({ total, pagadores, contas, categorias, formas, ocupado, aoSalvar, aoCancelar }: {
+  total: number; pagadores: Map<string, string>; contas: Map<string, ContaApi>; categorias: CategoriaApi[]; formas: FormaPagamentoApi[]; ocupado: boolean;
   aoSalvar: (m: Mudancas) => void; aoCancelar: () => void;
 }) {
   const [m, setM] = useState({ beneficiario_id: "", conta_id: "", categoria_id: "", forma_pagamento: "", valor: "", data: "" });
@@ -446,7 +481,7 @@ function EdicaoEmBloco({ total, pagadores, contas, categorias, ocupado, aoSalvar
     <label>Pagador <select value={m.beneficiario_id} onChange={mudar("beneficiario_id")}>{opcoes([...pagadores])}</select></label>
     <label>Conta <select value={m.conta_id} onChange={mudar("conta_id")}>{opcoes([...contas.values()].map((c) => [c.id, c.nome]))}</select></label>
     <label>Categoria <select value={m.categoria_id} onChange={mudar("categoria_id")}>{opcoes(categorias.map((c) => [c.id, c.nome]))}</select></label>
-    <label>Pagamento <select value={m.forma_pagamento} onChange={mudar("forma_pagamento")}>{opcoes(Object.entries(PAGAMENTOS))}</select></label>
+    <label>Pagamento <select value={m.forma_pagamento} onChange={mudar("forma_pagamento")}>{opcoes(formas.map((f) => [f.codigo, f.nome]))}</select></label>
     <label>Valor <input value={m.valor} onChange={mudar("valor")} placeholder="Manter" inputMode="decimal" size={8} aria-invalid={valorInvalido || undefined} /></label>
     <label>Data <input type="date" value={m.data} onChange={mudar("data")} /></label>
     <button disabled={ocupado || vazio || valorInvalido} onClick={salvar}>Aplicar</button><button onClick={aoCancelar}>Cancelar</button>
@@ -461,10 +496,13 @@ function FiltroChip({ ativo, onClick, icone, children }: { ativo: boolean; onCli
 const PREFIXO_PREVISTA = "rec:";
 const ehPrevista = (id: string) => id.startsWith(PREFIXO_PREVISTA);
 
+const dicaFuturo = "A seleção inclui dias futuros de recorrência, que ainda não são lançamentos. Abra-os para criar o lançamento, ou desmarque-os.";
+
 function Inicio({ t, categoria, ctx }: { t: TransacaoApi; categoria?: CategoriaApi; ctx: Contexto }) {
-  return <span className="cofre-row-lead">
+  // Clicar no ícone da categoria (onde a caixa aparece) equivale a Ctrl+clique: marca/desmarca em vez de abrir.
+  return <span className="cofre-row-lead" onClick={(e) => { e.stopPropagation(); ctx.alternar(t.id, e); }}>
     <CategoriaIcone categoria={categoria} tamanho={15} className="cofre-cats-icon" />
-    {!ehPrevista(t.id) && <CaixaEcos marcada={ctx.selecionados.has(t.id)} rotulo={`Selecionar ${t.descricao}`} aoAlternar={(e) => ctx.alternar(t.id, e)} />}
+    {<CaixaEcos marcada={ctx.selecionados.has(t.id)} rotulo={`Selecionar ${t.descricao}`} aoAlternar={(e) => ctx.alternar(t.id, e)} />}
   </span>;
 }
 
@@ -481,11 +519,21 @@ function Autor({ t, ctx, comNome }: { t: TransacaoApi; ctx: Contexto; comNome?: 
 }
 
 function SeloRecorrencia({ t }: { t: TransacaoApi }) {
-  return t.transacao_recorrente_id ? <i className="cofre-via-anexo cofre-selo-recorrencia" title="Gerado por uma recorrência. Edite em Recorrências."><Repeat size={9} />Recorrência</i> : null;
+  return t.transacao_recorrente_id ? <i className="cofre-via-anexo cofre-selo-recorrencia" title="Gerado por uma recorrência. Editar aqui vale só para este dia; para mudar a série, use Recorrências."><Repeat size={9} />Recorrência</i> : null;
+}
+
+/** Prevista que chegou na data vira "Vencendo"; que passou da data, "Pendente". */
+function situacaoDe(t: TransacaoApi): { prazo: "vencendo" | "atrasada" | null; rotulo: string } {
+  const d = new Date();
+  const hoje = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const prazo = t.status !== "pendente" || t.data > hoje ? null : t.data === hoje ? "vencendo" : "atrasada";
+  return { prazo, rotulo: t.status === "efetivada" ? "Efetivada" : prazo === "vencendo" ? "Vencendo" : prazo === "atrasada" ? "Pendente" : "Prevista" };
 }
 
 function Status({ t }: { t: TransacaoApi }) {
-  return <span className={`cofre-status ${t.status}`}>{t.status === "efetivada" ? "Efetivada" : "Prevista"}</span>;
+  const { prazo, rotulo } = situacaoDe(t);
+  const status = <span className={`cofre-status ${t.status}`} data-prazo={prazo ?? undefined}>{rotulo}</span>;
+  return t.transacao_recorrente_id ? <span className="cofre-status-grupo"><SeloRecorrencia t={t} />{status}</span> : status;
 }
 
 function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
@@ -508,10 +556,10 @@ function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
   >
     <Inicio t={t} categoria={categoria} ctx={ctx} />
     <span className="cofre-transaction-description">
-      <span className="cofre-transaction-titulo"><b>{t.descricao}</b><SeloRecorrencia t={t} /></span>
+      <span className="cofre-transaction-titulo"><b>{t.descricao}</b></span>
       <small data-vazio={pagador ? undefined : ""}>{pagador ?? "Sem pagador"}{ctx.viaComprovante.has(t.id) && <i className="cofre-via-anexo">achado no comprovante</i>}</small>
     </span>
-    <span className="cofre-transaction-category"><span>{categoria?.nome ?? "Sem categoria"}</span><small>{PAGAMENTOS[t.forma_pagamento ?? ""] ?? "Pagamento não informado"}</small></span>
+    <span className="cofre-transaction-category"><span>{categoria?.nome ?? "Sem categoria"}</span><small>{ctx.forma(t.forma_pagamento) || "Pagamento não informado"}</small></span>
     <time>{dataBr(t.data)}</time>
     <strong data-tipo={t.tipo}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</strong>
     <Anexos t={t} ctx={ctx} />
@@ -528,7 +576,7 @@ const COLUNAS: ColunaTabela[] = [
   { id: "data", nome: "Data", largura: 100, ordem: "data", padrao: true, celula: (t) => dataBr(t.data) },
   { id: "descricao", nome: "Descrição", largura: 300, ordem: "descricao", padrao: true, celula: (t, ctx) => <><b>{t.descricao}</b>{ctx.viaComprovante.has(t.id) && <i className="cofre-via-anexo">achado no comprovante</i>}</> },
   { id: "pagador", nome: "Pagador", largura: 170, ordem: "pagador", padrao: true, celula: (t, ctx) => ctx.pagadores.get(t.beneficiario_id ?? "") ?? VAZIO },
-  { id: "pagamento", nome: "Pagamento", largura: 120, ordem: "pagamento", padrao: true, celula: (t) => PAGAMENTOS[t.forma_pagamento ?? ""] ?? VAZIO },
+  { id: "pagamento", nome: "Pagamento", largura: 120, ordem: "pagamento", padrao: true, celula: (t, ctx) => ctx.forma(t.forma_pagamento) || VAZIO },
   { id: "valor", nome: "Valor", largura: 130, ordem: "valor", padrao: true, celula: (t) => <strong data-tipo={t.tipo}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</strong> },
   { id: "anexos", nome: "Anexos", largura: 90, padrao: true, celula: (t, ctx) => <Anexos t={t} ctx={ctx} /> },
   { id: "status", nome: "Status", largura: 100, padrao: true, celula: (t) => <Status t={t} /> },

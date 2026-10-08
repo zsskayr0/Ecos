@@ -12,6 +12,9 @@ vi.mock("@/lib/api", () => ({
   notas: { criar, atualizar }, tarefas: { criar, atualizar }, vault: {},
   ApiError: class extends Error {},
 }));
+vi.mock("@/lib/formas-pagamento-store", () => ({
+  useFormasPagamento: () => ({ lista: [], ativas: [], porCodigo: new Map(), carregando: false, indisponivel: false, erro: null, rotulo: (c?: string | null) => c ?? "", recarregar: vi.fn() }),
+}));
 vi.mock("@/lib/toast", () => ({ avisar }));
 vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ notificar: vi.fn() }) }));
 vi.mock("@/lib/ui-context", () => ({

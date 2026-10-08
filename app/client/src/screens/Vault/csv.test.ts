@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { dataBR, detectarSeparador, modeloCsv, modeloRecorrenciasCsv, prepararRecorrencias, valorBR, tokenizar, preparar, sugerirMapa } from "./csv";
+import { dataBR, detectarSeparador, modeloCsv, modeloRecorrenciasCsv, prepararRecorrencias, valorBR, tokenizar, preparar as prepararCom, sugerirMapa, type Mapeamento } from "./csv";
+import type { FormaPagamentoApi } from "@/lib/api";
+const forma = (codigo: string, nome: string, extra: Partial<FormaPagamentoApi> = {}): FormaPagamentoApi => ({ codigo, nome, icone: null, cor: null, padrao: true, ativa: true, ordem: 1, criado_por: null, usos: 0, ...extra });
+const FABRICA = [forma("pix", "Pix"), forma("ted", "TED"), forma("cartao", "Cartão"), forma("boleto", "Boleto"), forma("dinheiro", "Dinheiro")];
+const preparar = (rows: string[][], mapa: Mapeamento, formas: FormaPagamentoApi[] | null = FABRICA) => prepararCom(rows, mapa, formas);
 describe("CSV migrado do Nexus", () => {
     it("valida valores brasileiros sem arredondar lixo", () => {
         expect(valorBR("R$ 1.234,56")).toBe(123456);
@@ -30,6 +34,23 @@ describe("CSV migrado do Nexus", () => {
         const rows = tokenizar('Quando,Histórico,Tipo,Quantia\n31/02/2026,Foo,Despesa,abc', ",");
         expect(preparar(rows, { data: 0, descricao: 1, tipo: 2, valor: 3 }).erros[0]).toEqual({ linha: 2, erro: "Valor brasileiro inválido; Data inválida" });
     });
+});
+describe("forma de pagamento no CSV", () => {
+    const base = 'Data;Descrição;Tipo;Valor;Forma de pagamento\n30/09/2026;Mercado;Despesa;10,00;';
+    const rodar = (texto: string, formas: FormaPagamentoApi[] | null = [...FABRICA, forma("cartao_de_debito", "Cartão de Débito", { padrao: false })]) => {
+        const rows = tokenizar(`${base}${texto}\n`);
+        return preparar(rows, sugerirMapa(rows[0]), formas);
+    };
+    it("aceita o código exato", () => expect(rodar("pix").linhas[0].forma_pagamento).toBe("pix"));
+    it("aceita o nome, sem acento nem caixa, e devolve o código", () => expect(rodar("cartao de debito").linhas[0].forma_pagamento).toBe("cartao_de_debito"));
+    it("aceita célula vazia", () => expect(rodar("").linhas[0].forma_pagamento).toBeNull());
+    it("recusa pagamento inexistente", () => expect(rodar("cheque").erros[0].erro).toContain("Pagamento inválido"));
+    it("recusa nome ambíguo em vez de escolher em silêncio", () => {
+        const formas = [forma("credito", "Crédito"), forma("credito_2", "Credito", { padrao: false })];
+        expect(rodar("credito", formas).linhas[0]?.forma_pagamento).toBe("credito"); // código exato vence
+        expect(rodar("CRÉDITO", formas).erros[0].erro).toContain("ambíguo");
+    });
+    it("sem o cadastro carregado nunca aceita qualquer código", () => expect(rodar("pix", null).erros[0].erro).toContain("não carregadas"));
 });
 describe("CSV de recorrências", () => {
     it("lê planilha com título antes do cabeçalho e rodapé solto", () => {

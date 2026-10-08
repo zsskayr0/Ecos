@@ -275,6 +275,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
 
   return (
     <div className="pointer-events-none fixed inset-0" style={{ zIndex: 50 + z }}>
+      {/* Configurações (do Ecos e do Cofre) desfocam o fundo; o painel antigo do Cofre tinha este véu e foi unificado aqui. */}
+      {janelaDeConfiguracoes && <div aria-hidden className="absolute inset-0 bg-black/45 backdrop-blur-[6px] transition-opacity duration-200" style={{ opacity: saindo ? 0 : 1 }} />}
       {/* `transform` faz os elementos `fixed` das telas (botão flutuante de salvar) ancorarem na janela, não no app. */}
       <div
         ref={janelaRef}
