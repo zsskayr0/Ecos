@@ -114,6 +114,7 @@ export function tituloDaRota(path: string): string {
       servidor: "Servidor",
       sync: "Sincronização",
       privacidade: "Privacidade",
+      cofre: "Configurações do Cofre",
       conta: "Conta e dados",
       aparencia: "Aparência",
       organizacao: "Organização",
