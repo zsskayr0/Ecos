@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Só para ler o QR code de convite (EscanearQrScreen); a permissão é pedida ao abrir essa tela, não na instalação. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Biometria para abrir o Cofre com a senha guardada no Keystore (CofreSenhaBridge). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- AndroidTV support -->

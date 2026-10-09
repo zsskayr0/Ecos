@@ -29,7 +29,7 @@ import { useFotoPerfil } from "@/lib/profile-avatar";
 import { corDaEquipe } from "@/lib/team-color";
 import { useAvatarEquipe } from "@/lib/team-avatar";
 import { useComprovantesEsperando } from "@/lib/fila-comprovantes";
-import { bloqueioManual, chaveDoCofre, esquecerSenha, lembrarSenha, lembrarSenhaSuportado, lerSenhaLembrada, limparBloqueioManual, marcarBloqueioManual } from "@/lib/cofre-lembrado";
+import { bloqueioManual, chaveDoCofre, esquecerSenha, lembradaExigeConfirmacao, lembrarSenha, lembrarSenhaSuportado, lerSenhaLembrada, temSenhaLembrada, limparBloqueioManual, marcarBloqueioManual } from "@/lib/cofre-lembrado";
 type Fase = "carregando" | "desativado" | "ativar" | "bloqueado" | "aberto";
 function saudacao(nome:string) {
     const agora=new Date(), hora=agora.getHours(), dia=agora.getDay();
@@ -91,17 +91,24 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
     useEffect(() => { let v = true; void lembrarSenhaSuportado().then((ok) => { if (v) setPodeLembrar(ok); }); return () => { v = false; }; }, []);
     const ultimaTentativa = useRef(0);
     const tentando = useRef(false);
-    /** Tenta abrir o Cofre com a senha lembrada. Nunca depois de um "Bloquear" de propósito; no máximo a cada 15 s. */
-    async function tentarDestrancarLembrada(): Promise<boolean> {
+    // Onde cada leitura pede biometria (Android), quem cancela não deve ser perguntado de novo a cada foco/30 s: só pelo botão.
+    const pausadaPorCancelamento = useRef(false);
+    const [temLembrada, setTemLembrada] = useState(false);
+    /** Tenta abrir o Cofre com a senha lembrada. Nunca depois de um "Bloquear" de propósito; no máximo a cada 15 s (exceto pedido da pessoa). */
+    async function tentarDestrancarLembrada(pedidoDaPessoa = false): Promise<boolean> {
         const k = chaveRef.current;
-        if (!k || tentando.current || bloqueioManual(k) || Date.now() - ultimaTentativa.current < 15000)
+        if (!k || tentando.current || (!pedidoDaPessoa && (bloqueioManual(k) || pausadaPorCancelamento.current || Date.now() - ultimaTentativa.current < 15000)))
             return false;
         tentando.current = true;
         ultimaTentativa.current = Date.now();
         try {
             const senha = await lerSenhaLembrada(k);
-            if (!senha)
+            if (!senha) {
+                if (lembradaExigeConfirmacao())
+                    pausadaPorCancelamento.current = true;
                 return false;
+            }
+            pausadaPorCancelamento.current = false;
             await vault.desbloquear(senha);
             return true;
         }
@@ -167,6 +174,20 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
         void verificar(true);
         return () => { vivo = false; clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("ecos:cofre-bloqueado", bloquear); window.removeEventListener("ecos:solicitar-bloqueio", bloquearManual); window.removeEventListener("ecos:bloqueio-manual", marcarManual); };
     }, [versao, chave]); // `chave` só passa de nula a definida uma vez (quando o perfil chega): aí a senha lembrada pode ser usada
+    // Mostra o botão "Desbloquear com biometria" quando há senha guardada neste aparelho e o Cofre está trancado.
+    useEffect(() => {
+        let v = true;
+        if (fase !== "bloqueado" || !chave) { setTemLembrada(false); return; }
+        void temSenhaLembrada(chave).then((ok) => { if (v) setTemLembrada(ok); });
+        return () => { v = false; };
+    }, [fase, chave]);
+    async function destrancarComLembrada() {
+        if (await tentarDestrancarLembrada(true)) {
+            if (chaveRef.current) limparBloqueioManual(chaveRef.current);
+            setErro("");
+            setVersao(v => v + 1);
+        }
+    }
     async function bloquear() { setFase("bloqueado"); try {
         await vault.bloquear();
     }
@@ -180,7 +201,7 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
         </header>}
         {erro && <p role="alert" className="cofre-notice">{erro}</p>}
         {fase !== "aberto" && esperando > 0 && <p role="status" className="cofre-notice">{esperando === 1 ? "1 comprovante está esperando" : `${esperando} comprovantes estão esperando`}: desbloqueie o Cofre para guardar. Se você sair antes, compartilhe de novo.</p>}
-        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} onVoltar={voltar} seletorEquipe={<TrocaDeEquipe/>} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
+        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} onVoltar={voltar} seletorEquipe={<TrocaDeEquipe/>} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onBiometria={temLembrada && lembradaExigeConfirmacao() ? destrancarComLembrada : undefined} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
     </div>;
 }
 

@@ -16,6 +16,7 @@ const arquivos = [
   ["AndroidManifest.xml", join(main, "AndroidManifest.xml")],
   ["MainActivity.kt", join(main, "java", "app", "ecos", "client", "MainActivity.kt")],
   ["CompartilharBridge.kt", join(main, "java", "app", "ecos", "client", "CompartilharBridge.kt")],
+  ["CofreSenhaBridge.kt", join(main, "java", "app", "ecos", "client", "CofreSenhaBridge.kt")],
 ];
 for (const [nome, destino] of arquivos) {
   cpSync(join(origem, nome), destino);

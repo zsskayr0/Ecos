@@ -113,3 +113,44 @@ it("sair da conta esquece a senha e o bloqueio manual de cada Cofre dela (pessoa
   expect(m.bloqueioManual("http://ecos.local:8080|u1|pessoal")).toBe(false);
   expect(m.bloqueioManual("http://ecos.local:8080|u2|pessoal")).toBe(true);
 });
+
+// ---- Android: Keystore + biometria pela ponte `window.EcosCofreSenha` ------------------------------------------------
+type Ponte = {
+  suportado: () => boolean; tem: (c: string) => boolean; esquecer: (c: string) => void;
+  salvar: (p: number, c: string, s: string) => void; ler: (p: number, c: string) => void;
+};
+function instalarPonteAndroid(resposta: { estado: string; valor?: string }) {
+  const guardado = new Map<string, string>();
+  const ponte: Ponte = {
+    suportado: () => true,
+    tem: (c) => guardado.has(c),
+    esquecer: (c) => { guardado.delete(c); },
+    salvar: (p, c, s) => { if (resposta.estado === "ok") guardado.set(c, s); queueMicrotask(() => (window as any).__ecosCofreSenha(p, JSON.stringify({ estado: resposta.estado }))); },
+    ler: (p, c) => queueMicrotask(() => (window as any).__ecosCofreSenha(p, JSON.stringify(resposta.estado === "ok" ? { estado: "ok", valor: guardado.get(c) } : { estado: resposta.estado }))),
+  };
+  (window as any).EcosCofreSenha = ponte;
+  return guardado;
+}
+afterEach(() => { delete (window as any).EcosCofreSenha; delete (window as any).__ecosCofreSenha; });
+
+it("Android: guarda e lê a senha pela ponte do Keystore, sem passar pelos comandos do Tauri", async () => {
+  instalarPonteAndroid({ estado: "ok" });
+  const m = await carregar();
+  expect(await m.lembrarSenhaSuportado()).toBe(true);
+  expect(m.lembradaExigeConfirmacao()).toBe(true);
+  expect(await m.lembrarSenha("k", "senha-forte-com-25-caracteres")).toBe(true);
+  expect(await m.temSenhaLembrada("k")).toBe(true);
+  expect(await m.lerSenhaLembrada("k")).toBe("senha-forte-com-25-caracteres");
+  await m.esquecerSenha("k");
+  expect(await m.temSenhaLembrada("k")).toBe(false);
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it("Android: biometria cancelada não guarda nem devolve senha", async () => {
+  const guardado = instalarPonteAndroid({ estado: "cancelado" });
+  const m = await carregar();
+  expect(await m.lembrarSenha("k", "senha")).toBe(false);
+  expect(guardado.size).toBe(0);
+  guardado.set("k", "senha");
+  expect(await m.lerSenhaLembrada("k")).toBeNull();
+});

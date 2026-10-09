@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Fingerprint, AlertTriangle, ArrowLeft } from "lucide-react";
 import { ApiError } from "@/lib/api";
+import { lembradaExigeConfirmacao } from "@/lib/cofre-lembrado";
 
 /**
  * Lock screen before any Vault content (section 3.5) — a password is the
@@ -13,6 +14,7 @@ export function VaultLockScreen({
   primeiraVez,
   onSubmeter,
   permitirLembrar = false,
+  onBiometria,
   equipe,
   onVoltar,
   seletorEquipe,
@@ -28,12 +30,15 @@ export function VaultLockScreen({
   onSubmeter: (senha: string, lembrar: boolean) => Promise<void>;
   /** Mostra "Lembrar a senha neste computador" (Windows). */
   permitirLembrar?: boolean;
+  /** Abre o Cofre com a senha guardada neste aparelho (pede biometria); ausente = não há senha guardada. */
+  onBiometria?: () => Promise<void>;
 }) {
   const [senha, setSenha] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [lembrar, setLembrar] = useState(false);
+  // Marcado por padrão: quem tem onde guardar com segurança quase sempre quer não digitar de novo (e só vale neste aparelho).
+  const [lembrar, setLembrar] = useState(true);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,9 +73,33 @@ export function VaultLockScreen({
         </p>
       </div>
 
+      {onBiometria && !primeiraVez && (
+        <button
+          type="button"
+          onClick={() => { setErro(null); void onBiometria(); }}
+          className="inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl border border-violet/50 py-3 text-center font-body text-[15px] font-semibold text-violet"
+        >
+          <Fingerprint size={18} strokeWidth={1.75} />
+          Desbloquear com biometria
+        </button>
+      )}
+
       <form onSubmit={onSubmit} className="flex w-full max-w-xs flex-col gap-3">
+        {/* Usuário escondido para o gerenciador de senhas do navegador salvar e preencher a senha de cada Cofre. */}
+        <input
+          type="text"
+          name="username"
+          autoComplete="username"
+          value={`Cofre Ecos${equipe ? ` · ${equipe}` : ""}`}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className="sr-only"
+        />
         <input
           type="password"
+          name="password"
+          autoComplete={primeiraVez ? "new-password" : "current-password"}
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
           placeholder="Senha do Cofre"
@@ -91,8 +120,12 @@ export function VaultLockScreen({
           <label className="flex items-start gap-2 text-left text-xs text-text-secondary">
             <input type="checkbox" className="mt-0.5" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} />
             <span>
-              Lembrar a senha neste computador
-              <span className="block text-text-muted">Fica no Gerenciador de Credenciais do Windows, só neste usuário. “Bloquear” continua pedindo a senha.</span>
+              {lembradaExigeConfirmacao() ? "Lembrar a senha neste aparelho" : "Lembrar a senha neste computador"}
+              <span className="block text-text-muted">
+                {lembradaExigeConfirmacao()
+                  ? "Fica protegida pelo Keystore do Android e só abre com sua biometria. “Bloquear” continua pedindo a senha."
+                  : "Fica no Gerenciador de Credenciais do Windows, só neste usuário. “Bloquear” continua pedindo a senha."}
+              </span>
             </span>
           </label>
         )}

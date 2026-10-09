@@ -17,6 +17,7 @@ const lembrado = vi.hoisted(() => ({
 vi.mock("@/lib/cofre-lembrado", () => ({
   chaveDoCofre: (usuario: string, espaco: string) => `http://srv|${usuario}|${espaco}`,
   lembrarSenhaSuportado: () => lembrado.suportado(),
+  lembradaExigeConfirmacao: () => false,
   lerSenhaLembrada: (k: string) => lembrado.ler(k),
   lembrarSenha: (k: string, s: string) => lembrado.lembrar(k, s),
   esquecerSenha: (k: string) => lembrado.esquecer(k),
@@ -129,7 +130,7 @@ it("desbloquear à mão marcando “Lembrar” guarda a senha e libera o desbloq
   render(tela());
   await screen.findByText("O Cofre está bloqueado");
   fireEvent.change(screen.getByPlaceholderText("Senha do Cofre"), { target: { value: "minha-senha" } });
-  fireEvent.click(screen.getByLabelText(/Lembrar a senha neste computador/));
+  expect((screen.getByLabelText(/Lembrar a senha neste computador/) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Desbloquear" }));
   await screen.findByLabelText("Navegação do Cofre");
   expect(vault.desbloquear).toHaveBeenCalledWith("minha-senha");
@@ -137,11 +138,12 @@ it("desbloquear à mão marcando “Lembrar” guarda a senha e libera o desbloq
   expect(lembrado.limpar).toHaveBeenCalledWith(CHAVE);
 });
 
-it("desbloquear à mão SEM marcar não guarda nada, mas tira o bloqueio manual", async () => {
+it("desbloquear à mão DESMARCANDO “Lembrar” não guarda nada, mas tira o bloqueio manual", async () => {
   servidorTrancado();
   render(tela());
   await screen.findByText("O Cofre está bloqueado");
   fireEvent.change(screen.getByPlaceholderText("Senha do Cofre"), { target: { value: "minha-senha" } });
+  fireEvent.click(screen.getByLabelText(/Lembrar a senha neste computador/));
   fireEvent.click(screen.getByRole("button", { name: "Desbloquear" }));
   await screen.findByLabelText("Navegação do Cofre");
   expect(lembrado.lembrar).not.toHaveBeenCalled();
