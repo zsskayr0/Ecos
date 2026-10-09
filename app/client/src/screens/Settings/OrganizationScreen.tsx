@@ -12,6 +12,7 @@ import { Toggle } from "@/components/common/Toggle";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { avisar } from "@/lib/toast";
 
+import { TagsOrganizacao } from "./TagsOrganizacao";
 type Tipo = "nota" | "tarefa";
 
 /** Administração global de diretórios. A navegação de conteúdo permanece em
@@ -72,10 +73,10 @@ export function OrganizationScreen() {
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
     <header className="mb-5">
-      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie as pastas sem sair do espaço certo.</p>
+      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie pastas e tags sem sair do espaço certo.</p>
     </header>
 
-    <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas">
+    <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas e tags">
       <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Tipo</p>
@@ -109,6 +110,8 @@ export function OrganizationScreen() {
     </>}
 
     <section className="mt-8">
+    <TagsOrganizacao espaco={espaco} />
+
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Links</p>
       <div className="overflow-visible rounded-2xl border border-border bg-surface-1">
         <LinhaPreferencia Icone={Link2} titulo="Formato para links novos" descricao="Define como os links internos serão gerados.">

@@ -476,7 +476,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 ],
             )?;
 
-            for tag in &fm.tags {
+            // O índice guarda o nome canônico; o arquivo mantém a grafia original até a pessoa renomear.
+            for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
                 tx.execute("INSERT OR IGNORE INTO nota_tag (nota_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
             }
 
@@ -541,7 +542,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 ],
             )?;
 
-            for tag in &fm.tags {
+            for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
                 tx.execute("INSERT OR IGNORE INTO tarefa_tag (tarefa_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
             }
 

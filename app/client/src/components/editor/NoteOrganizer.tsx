@@ -1,7 +1,9 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Folder, Plus, X } from "lucide-react";
-import { ApiError, notas, pastas } from "@/lib/api";
+import { ApiError, pastas } from "@/lib/api";
+import { canonicaTag } from "@/lib/tags";
+import { useCatalogoTags } from "@/lib/use-catalogo-tags";
 import { useIsMobile } from "@/lib/use-viewport";
 
 interface Props {
@@ -17,7 +19,7 @@ interface Props {
   disabled?: boolean;
 }
 
-const normalizarTag = (bruta: string) => bruta.trim().replace(/^#+/, "").replace(/\s+/g, "-").toLowerCase();
+const normalizarTag = (bruta: string) => canonicaTag(bruta) ?? "";
 
 /**
  * Pasta e tags da nota numa faixa só, sem abrir painel lateral: a pasta é um
@@ -32,8 +34,11 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
   const [criando, setCriando] = useState(false);
   const [erroPasta, setErroPasta] = useState<string | null>(null);
   const [novaTag, setNovaTag] = useState("");
-  const [frequentes, setFrequentes] = useState<string[]>([]);
+  // Catálogo único do espaço (notas + tarefas): o que nasce em uma é sugerido na outra.
+  const { tags: catalogo } = useCatalogoTags(espaco ?? "pessoal");
+  const frequentes = catalogo.map((t) => t.tag);
   const raiz = useRef<HTMLDivElement>(null);
+  const listaId = useId();
 
   const carregarPastas = () =>
     pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
@@ -41,15 +46,6 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
   useEffect(() => {
     let vivo = true;
     pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
-    notas
-      .listar({ limit: 100 })
-      .then((r) => {
-        if (!vivo) return;
-        const contagem = new Map<string, number>();
-        for (const n of r.items) for (const t of n.tags) contagem.set(t, (contagem.get(t) ?? 0) + 1);
-        setFrequentes([...contagem.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t));
-      })
-      .catch(() => undefined);
     return () => { vivo = false; };
   }, [espaco]);
 
@@ -153,6 +149,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
       })}
 
       <input
+        list={listaId}
         value={novaTag}
         disabled={disabled}
         onChange={(e) => setNovaTag(e.target.value)}
@@ -166,6 +163,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
         className="h-8 w-24 rounded-lg bg-transparent px-2 text-sm text-text-primary outline-none transition-[width] placeholder:text-text-muted focus:w-40 focus:bg-surface-2"
       />
 
+      <datalist id={listaId}>{frequentes.filter((t) => !todas.includes(t)).map((t) => <option key={t} value={t} />)}</datalist>
       {sugestoes.map((tag) => (
         <button key={tag} type="button" disabled={disabled} onClick={() => adicionarTag(tag)} className="h-8 rounded-lg border border-dashed border-border px-2.5 text-sm text-text-muted hover:border-steel-500/60 hover:text-text-primary">
           #{tag}
