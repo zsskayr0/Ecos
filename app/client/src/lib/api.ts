@@ -726,6 +726,18 @@ export const busca = {
     ),
 };
 
+// --- Tags (catálogo único de notas e tarefas) -----------------------------------
+
+export interface TagCatalogo { tag: string; notas: number; tarefas: number; total: number; espacos: { espaco: string; notas: number; tarefas: number }[] }
+export interface AfetadosTag { notas: number; tarefas: number }
+
+export const tagsApi = {
+  listar: (espaco?: string) => get<TagCatalogo[]>(`/tags${qs({ espaco })}`),
+  renomear: (payload: { espaco: string; de: string; para: string }) => patch<{ tag: string; afetados: AfetadosTag }>("/tags", payload),
+  mesclar: (payload: { espaco: string; origens: string[]; destino: string }) => post<{ tag: string; afetados: AfetadosTag }>("/tags/mesclar", payload),
+  remover: (payload: { espaco: string; tag: string }) => del<{ afetados: AfetadosTag }>(`/tags${qs(payload)}`),
+};
+
 // --- Teams (section 11.10) ----------------------------------------------
 
 export interface BlocoRotina { id: string; tipo: string; hora_inicio: string; hora_fim: string; dias_semana: string; classificacao: string }
@@ -1017,6 +1029,10 @@ export interface CategoriaApi {
   padrao: boolean;
   espaco: string;
   criado_por?: string | null;
+  /** Categoria-mãe. Só há um nível: quem tem `pai_id` é subcategoria e não tem filhas. */
+  pai_id?: string | null;
+  /** Arquivada: some dos seletores de lançamento, mas segue valendo no histórico. */
+  arquivada?: boolean;
 }
 
 export interface ContaApi {
@@ -1095,6 +1111,8 @@ export interface CategoriaUsoApi {
   transacoes: number;
   recorrencias: number;
   pendencias: number;
+  /** Subcategorias da categoria; ao apagar a mãe elas viram categorias principais. */
+  subcategorias?: number;
   tipos: ("entrada" | "saida")[];
   /** Os lançamentos mais recentes (até 100). */
   amostra: { id: string; data: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number }[];
@@ -1197,10 +1215,12 @@ export const vault = {
   },
   categorias: {
     listar: () => get<CategoriaApi[]>("/vault/categorias"),
-    criar: (payload: { nome: string; tipo?: string; icone?: string; cor?: string; espaco?: string }) => post<{ id: string }>("/vault/categorias", payload),
-    atualizar: (id: string, payload: { nome: string; tipo: string; icone?: string | null; cor: string }) => patch<{ ok: true }>(`/vault/categorias/${id}`, payload),
+    criar: (payload: { nome: string; tipo?: string; icone?: string; cor?: string; espaco?: string; pai_id?: string | null; arquivada?: boolean }) => post<{ id: string }>("/vault/categorias", payload),
+    atualizar: (id: string, payload: { nome: string; tipo: string; icone?: string | null; cor: string; pai_id?: string | null; arquivada?: boolean }) => patch<{ ok: true }>(`/vault/categorias/${id}`, payload),
     /** Com itens usando a categoria, o servidor exige o destino: outra categoria ou `sem_categoria`. */
-    excluir: (id: string, destino?: { mover_para: string } | { sem_categoria: true }) => del<{ ok: true; movidos?: number }>(`/vault/categorias/${id}`, destino),
+    excluir: (id: string, destino?: { mover_para: string; filhas_para_destino?: boolean } | { sem_categoria: true }) => del<{ ok: true; movidos?: number }>(`/vault/categorias/${id}`, destino),
+    /** Categoria mais usada com o mesmo pagador (ou a mesma descrição); `categoria_id: null` se não há histórico. */
+    sugestao: (params: { beneficiario?: string; descricao?: string; tipo?: "entrada" | "saida" }) => get<{ categoria_id: string | null; motivo?: "pagador" | "descricao"; usos?: number }>(`/vault/categorias/sugestao?${new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as [string, string][]).toString()}`),
     uso: (id: string) => get<CategoriaUsoApi>(`/vault/categorias/${id}/uso`),
   },
   formasPagamento: {
@@ -1227,7 +1247,7 @@ export const vault = {
   },
   transacoes: {
     /** `espaco` força o Cofre de outro espaço só nesta chamada (ex.: a Agenda filtrada por equipe). */
-    listar: (params: { conta_id?: string; categoria_id?: string; tipo?: string; forma_pagamento?: string; sem_categoria?: boolean; sem_pagamento?: boolean; status?: string; data_de?: string; data_ate?: string; cursor?: string; limit?: number } = {}, espaco?: string) =>
+    listar: (params: { conta_id?: string; categoria_id?: string; com_subcategorias?: boolean; tipo?: string; forma_pagamento?: string; sem_categoria?: boolean; sem_pagamento?: boolean; status?: string; data_de?: string; data_ate?: string; cursor?: string; limit?: number } = {}, espaco?: string) =>
       req<{ items: TransacaoApi[]; next_cursor: string | null }>(`/vault/transacoes${qs(params)}`, espaco ? { headers: { "x-ecos-espaco": espaco } } : undefined),
     obter: (id: string) => get<TransacaoApi>(`/vault/transacoes/${id}`),
     criar: (payload: {

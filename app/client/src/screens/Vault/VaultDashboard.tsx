@@ -8,10 +8,13 @@ import { formatMoeda } from "@/lib/format";
 import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import type { CategoriaApi } from "@/lib/api";
+import { montarHierarquia, somarPorCategoria } from "@/lib/categorias-hierarquia";
 import type { Painel, Periodo } from "./types";
 export type Filtro = {
     tipo?: "entrada" | "saida";
     categoria?: string | null;
+    /** Com `categoria`: inclui as subcategorias dela (gráfico agrupado na categoria-mãe). */
+    comSubcategorias?: boolean;
     pagamento?: string | null;
     data_de?: string;
     data_ate?: string;
@@ -25,6 +28,10 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
     onFluxo?: () => void;
 }) {
     const [previsao, setPrevisao] = useState(false);
+    // Ligado (padrão): cada subcategoria é uma categoria à parte. Desligado: o gráfico fecha em bloco na categoria-mãe.
+    const [subs, setSubs] = useState(() => { try { return localStorage.getItem("ecos.cofre.painel.subcategorias") !== "agrupadas"; } catch { return true; } });
+    const alternarSubs = () => setSubs(v => { try { localStorage.setItem("ecos.cofre.painel.subcategorias", v ? "agrupadas" : "separadas"); } catch { /* vale só nesta sessão */ } return !v; });
+    const temSubs = categorias.some(c => c.pai_id);
     const formas = useFormasPagamento();
     const pontos = new Map<string, {
         data: string;
@@ -68,7 +75,9 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         incomeForecastCents:s.prevReceitas, expenseForecastCents:s.prevDespesas,
     }));
     const palette=["#38bdf8","#a78bfa","#f59e0b","#34d399","#f472b6","#fb923c","#60a5fa","#2dd4bf"];
-    const segments=p.categorias.map((g,i)=>({label:categorias.find(c=>c.id===g.chave)?.nome??"Sem categoria",valueCents:g.valor,color:categorias.find(c=>c.id===g.chave)?.cor??palette[i%palette.length]}));
+    const porId=montarHierarquia(categorias).porId;
+    const grupos=somarPorCategoria(p.categorias,porId,!subs);
+    const segments=grupos.map((g,i)=>({label:(g.chave?porId.get(g.chave)?.nome:undefined)??"Sem categoria",valueCents:g.valor,color:(g.chave?porId.get(g.chave)?.cor:undefined)??palette[i%palette.length]}));
     return <div className="cofre-dashboard">
         <div className="cofre-kpis">
             <KpiCard label="Saldo total (histórico)" value={formatMoeda(p.saldo)} icon={<Wallet size={14}/>} modo={modoValor} numero={p.saldo} max={maxKpi}/>
@@ -78,14 +87,14 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         </div>
         <div className="cofre-chart-toolbar"><h2>Seu período em gráficos</h2></div>
         <div className="cofre-hero-grid">
-            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Receitas × despesas</h3><div className="cofre-chart-actions"><div className="cofre-legend"><span><i style={{background:cores[0]}}/>Receitas</span><span><i style={{background:cores[1]}}/>Despesas</span></div><button className="cofre-forecast" aria-label="Incluir previsões" aria-pressed={previsao} onClick={()=>setPrevisao(v=>!v)}>Previsões {previsao?"ligadas":"desligadas"}</button></div></div>
+            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Receitas × despesas</h3><div className="cofre-chart-actions"><div className="cofre-legend"><span><i style={{background:cores[0]}}/>Receitas</span><span><i style={{background:cores[1]}}/>Despesas</span></div><button className="cofre-forecast" aria-label="Incluir previsões" aria-pressed={previsao} onClick={()=>setPrevisao(v=>!v)}>Previsões {previsao?"ligadas":"desligadas"}</button>{temSubs&&<button className="cofre-forecast" aria-label="Mostrar subcategorias separadas nos gráficos de categoria" aria-pressed={subs} title="Ligado: cada subcategoria aparece como categoria própria. Desligado: o gráfico por categoria soma as subcategorias na categoria-mãe." onClick={alternarSubs}>Subcategorias {subs?"ligadas":"desligadas"}</button>}</div></div>
                 <ComposedAreaChart points={points} showForecast={previsao} incomeColor={cores[0]} expenseColor={cores[1]} onSelect={i=>abrirData(series[i].data)}/>
                 <p className="cofre-chart-caption">Confirmado: lançamentos efetivados (ou conciliados). Previsão: pendentes e recorrências.</p>
             </section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Próximas ocorrências</h3><span className="cofre-count">{p.previsoes.length}</span></div><div className="cofre-upcoming">{p.previsoes.length?p.previsoes.slice(0,6).map(o=><button key={`${o.recorrencia_id}:${o.data}`} onClick={onFluxo}><span className="cofre-date-tile">{o.data.slice(8)}<small>{new Date(`${o.data}T12:00:00`).toLocaleDateString("pt-BR",{month:"short"})}</small></span><span><b>{o.descricao}</b><small>{o.tipo==="entrada"?"A receber":"A pagar"}</small></span><strong>{formatMoeda(o.valor_centavos)}</strong></button>):<div className="cofre-chart-empty"><TrendingUp size={25}/><span>Nenhuma ocorrência prevista</span><small>Cadastre recorrências nas configurações ou acompanhe o fluxo financeiro.</small></div>}</div></section>
         </div>
         <div className="cofre-charts-grid">
-            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Gastos por categoria</h3><span className="cofre-caption">{formatMoeda(p.despesas)}</span></div><DonutChart segments={segments} onSelect={i=>drill({categoria:p.categorias[i].chave,tipo:"saida"})}/></section>
+            <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Gastos por categoria</h3><span className="cofre-caption">{formatMoeda(p.despesas)}</span></div><DonutChart segments={segments} onSelect={i=>drill({categoria:grupos[i].chave,tipo:"saida",...(!subs&&grupos[i].chave?{comSubcategorias:true}:{})})}/></section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Formas de pagamento</h3></div><HorizontalBarChart items={p.pagamentos.map(g=>({label:formas.rotulo(g.chave)||"Não informado",valueCents:g.valor}))} color={cores[1]} onSelect={i=>drill({pagamento:p.pagamentos[i].chave,tipo:"saida"})}/></section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Maiores despesas</h3><ArrowDownLeft size={16}/></div><HorizontalBarChart items={p.maiores_saidas.map(t=>({label:t.descricao,valueCents:t.valor}))} color={cores[1]} onSelect={i=>abrir(p.maiores_saidas[i].id)}/></section>
             <section className="cofre-card cofre-chart-card"><div className="cofre-card-heading"><h3>Maiores receitas</h3><ArrowUpRight size={16}/></div><HorizontalBarChart items={p.maiores_entradas.map(t=>({label:t.descricao,valueCents:t.valor}))} color={cores[0]} onSelect={i=>abrir(p.maiores_entradas[i].id)}/></section>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Columns3, Grid2X2, List, Plus, RefreshCw, Repeat, Search, Table2, Tag, Trash2, X } from "lucide-react";
 import { financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
@@ -10,12 +10,15 @@ import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { definirMaxLancamentos, maiorValor, useModoValor, type ModoValor } from "@/lib/exibicao-valores";
 import { ValorComIndicador } from "./nexus/IndicadorValor";
 import { VaultEmptyState } from "./VaultEmptyState";
+import { FiltroCategoriasMenu } from "./FiltroCategoriasMenu";
 import type { Periodo } from "./types";
 import type { Filtro } from "./VaultDashboard";
 import { PeriodPicker } from "./nexus/PeriodPicker";
 import type { Period } from "./nexus/period";
 import { BotaoAnexos } from "./comprovantes/BotaoAnexos";
 import { CategoriaIcone } from "./VaultCategories";
+import { SEM_CATEGORIA_ID as SEM_CATEGORIA } from "./SeletorCategoriaLateral";
+import { caminhoCompleto } from "@/lib/categorias-hierarquia";
 import { CaixaEcos } from "./CaixaEcos";
 import { AvatarAutor } from "./AvatarAutor";
 
@@ -114,7 +117,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   }, [view, ordem, tipo, status, origem, catsSel, filtro.tipo, vistaInicial.tipo]);
   const ancora = useRef<string | null>(null);
   const categoriasPorId = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
-  const params = { ...periodo, tipo: filtro.tipo, limit: 100, ...(filtro.categoria === null ? { sem_categoria: true } : filtro.categoria ? { categoria_id: filtro.categoria } : {}), ...(filtro.pagamento === null ? { sem_pagamento: true } : filtro.pagamento ? { forma_pagamento: filtro.pagamento } : {}), ...(filtro.data_de ? { data_de: filtro.data_de } : {}), ...(filtro.data_ate ? { data_ate: filtro.data_ate } : {}) };
+  const params = { ...periodo, tipo: filtro.tipo, limit: 100, ...(filtro.categoria === null ? { sem_categoria: true } : filtro.categoria ? { categoria_id: filtro.categoria, ...(filtro.comSubcategorias ? { com_subcategorias: true } : {}) } : {}), ...(filtro.pagamento === null ? { sem_pagamento: true } : filtro.pagamento ? { forma_pagamento: filtro.pagamento } : {}), ...(filtro.data_de ? { data_de: filtro.data_de } : {}), ...(filtro.data_ate ? { data_ate: filtro.data_ate } : {}) };
   const chave = JSON.stringify(params);
 
   // Carga da lista. Trocar período/filtro esvazia e mostra "Carregando"; já recarregar depois de concluir, anexar ou
@@ -208,7 +211,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   const { exibidas, viaComprovante } = useMemo(() => {
     const collator = new Intl.Collator("pt-BR");
     const via = new Set<string>();
-    const previstasDoFiltro = previstas.filter((t) => (filtro.categoria === undefined || (t.categoria_id ?? null) === filtro.categoria) && (filtro.pagamento === undefined || (t.forma_pagamento ?? null) === filtro.pagamento) && (!filtro.tipo || t.tipo === filtro.tipo));
+    const previstasDoFiltro = previstas.filter((t) => (filtro.categoria === undefined || (t.categoria_id ?? null) === filtro.categoria || (!!filtro.comSubcategorias && !!filtro.categoria && categoriasPorId.get(t.categoria_id ?? "")?.pai_id === filtro.categoria)) && (filtro.pagamento === undefined || (t.forma_pagamento ?? null) === filtro.pagamento) && (!filtro.tipo || t.tipo === filtro.tipo));
     let lista = [...rows, ...previstasDoFiltro].filter((t) => (tipo === "todos" || t.tipo === tipo) && (status === "todos" || t.status === status) && (origem === "todas" || (origem === "recorrente") === !!t.transacao_recorrente_id) && (catsSel.size === 0 || catsSel.has(t.categoria_id ?? SEM_CATEGORIA)));
     if (q) {
       const ids = achados?.q === q ? achados.ids : null;
@@ -493,7 +496,7 @@ function EdicaoEmBloco({ total, pagadores, contas, categorias, formas, ocupado, 
     <b>Editar {total} em bloco</b>
     <label>Pagador <select value={m.beneficiario_id} onChange={mudar("beneficiario_id")}>{opcoes([...pagadores])}</select></label>
     <label>Conta <select value={m.conta_id} onChange={mudar("conta_id")}>{opcoes([...contas.values()].map((c) => [c.id, c.nome]))}</select></label>
-    <label>Categoria <select value={m.categoria_id} onChange={mudar("categoria_id")}>{opcoes(categorias.map((c) => [c.id, c.nome]))}</select></label>
+    <label>Categoria <select value={m.categoria_id} onChange={mudar("categoria_id")}>{opcoes(categorias.filter((c) => !c.arquivada).map((c) => [c.id, c.nome]))}</select></label>
     <label>Pagamento <select value={m.forma_pagamento} onChange={mudar("forma_pagamento")}>{opcoes(formas.map((f) => [f.codigo, f.nome]))}</select></label>
     <label>Valor <input value={m.valor} onChange={mudar("valor")} placeholder="Manter" inputMode="decimal" size={8} aria-invalid={valorInvalido || undefined} /></label>
     <label>Data <input type="date" value={m.data} onChange={mudar("data")} /></label>
@@ -659,33 +662,21 @@ function Pendencias({ lista }: { lista: TransacaoApi[] }) {
   </div>;
 }
 
-const SEM_CATEGORIA = "__sem_categoria__";
 /** Filtro por categoria (várias de uma vez): botão no estilo dos chips, com a lista de categorias num menu. */
 function MenuCategorias({ categorias, selecionadas, aoMudar }: { categorias: CategoriaApi[]; selecionadas: Set<string>; aoMudar: (s: Set<string>) => void }) {
   const [aberto, setAberto] = useState(false);
-  const raiz = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!aberto) return;
-    const fora = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) setAberto(false); };
-    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setAberto(false); };
-    document.addEventListener("pointerdown", fora); document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", fora); document.removeEventListener("keydown", esc); };
-  }, [aberto]);
-  const ordenadas = useMemo(() => [...categorias].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")), [categorias]);
-  const alternar = (id: string) => { const n = new Set(selecionadas); if (n.has(id)) n.delete(id); else n.add(id); aoMudar(n); };
+  const fechar = useCallback(() => setAberto(false), []);
   const n = selecionadas.size;
-  return <div className="cofre-cat-filter" ref={raiz}>
-    <button type="button" className="cofre-filter-chip" data-ativo={n > 0 || undefined} aria-pressed={n > 0} aria-haspopup="listbox" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
-      <Tag size={14} />{n === 0 ? "Categorias" : n === 1 ? (selecionadas.has(SEM_CATEGORIA) ? "Sem categoria" : categorias.find((c) => selecionadas.has(c.id))?.nome ?? "1 categoria") : `${n} categorias`}<ChevronDown size={13} />
+  return <div className="cofre-cat-filter">
+    <button type="button" className="cofre-filter-chip" data-ativo={n > 0 || undefined} aria-pressed={n > 0} aria-haspopup="dialog" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
+      <Tag size={14} />{n === 0 ? "Categorias" : n === 1 ? (selecionadas.has(SEM_CATEGORIA) ? "Sem categoria" : categoriasPorId(categorias, selecionadas)) : `${n} categorias`}<ChevronDown size={13} />
     </button>
-    {aberto && <div className="cofre-cat-list" role="listbox" aria-multiselectable aria-label="Filtrar por categoria">
-      <div className="cofre-cat-list-topo"><span>Categorias</span>{n > 0 && <button type="button" onClick={() => aoMudar(new Set())}>Limpar</button>}</div>
-      <div className="cofre-cat-list-itens">
-        {ordenadas.map((c) => <label key={c.id} role="option" aria-selected={selecionadas.has(c.id)}><input type="checkbox" checked={selecionadas.has(c.id)} onChange={() => alternar(c.id)} /><CategoriaIcone categoria={c} tamanho={13} className="cofre-cats-icon" /><span>{c.nome}</span></label>)}
-        <label role="option" aria-selected={selecionadas.has(SEM_CATEGORIA)}><input type="checkbox" checked={selecionadas.has(SEM_CATEGORIA)} onChange={() => alternar(SEM_CATEGORIA)} /><span className="cofre-cat-sem"><X size={13} /></span><span>Sem categoria</span></label>
-      </div>
-    </div>}
+    {aberto && <FiltroCategoriasMenu categorias={categorias} selecionadas={selecionadas} aoMudar={aoMudar} aoFechar={fechar} />}
   </div>;
+}
+function categoriasPorId(categorias: CategoriaApi[], sel: Set<string>): string {
+  const c = categorias.find((x) => sel.has(x.id));
+  return c ? caminhoCompleto(c, new Map(categorias.map((x) => [x.id, x]))) : "1 categoria";
 }
 
 /** Escolha do campo de ordenação da lista, num menu próprio (o seletor nativo do navegador destoa do resto do Cofre). */

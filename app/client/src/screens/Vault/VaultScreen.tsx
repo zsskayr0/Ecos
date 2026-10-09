@@ -294,7 +294,7 @@ export function VaultWorkspace() {
             {secao==="fluxo"&&<VaultWorkflow recarregar={externa} atualizar={atualizar}/>}
             {secao==="recorrencias"&&valido&&<VaultRecorrencias period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} recarregar={externa}/>}
             {secao==="contas"&&valido&&<VaultAccounts period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} irParaCadastros={()=>navigate("/cofre/cadastros?aba=contas")}/>}
-            {secao==="categorias"&&valido&&<VaultCategories period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar}/>}
+            {secao==="categorias"&&valido&&<VaultCategories period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} aoVerLancamentos={(id,comSubs)=>{setFiltro({categoria:id,comSubcategorias:comSubs});navigate("/cofre/lancamentos");}}/>}
             {secao==="sacados"&&valido&&<VaultSacados period={period} onPeriodChange={setPeriod} atualizar={atualizar} irParaCadastros={()=>navigate("/cofre/cadastros?aba=sacados")}/>}
             {secao==="cadastros"&&<VaultCadastros atualizar={atualizar}/>}
             {secao==="transacao"&&<TransactionDetailScreen/>}

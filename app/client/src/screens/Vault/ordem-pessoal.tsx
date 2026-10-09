@@ -58,8 +58,10 @@ export function useOrdemPessoal<T extends { id: string }>(itens: T[], persistir:
   return {
     ordenados,
     arrastando,
+    moverPara,
+    deslocar,
     /** Props da linha que recebe o arrasto. */
-    linha: (id: string) => ({
+    linha: (id: string, eixo: "x" | "y" = "y") => ({
       "data-arrastando": arrastando === id || undefined,
       "data-solto": recemMovido === id || undefined,
       "data-alvo": alvo?.id === id && arrastando && arrastando !== id ? (alvo.depois ? "depois" : "antes") : undefined,
@@ -68,7 +70,7 @@ export function useOrdemPessoal<T extends { id: string }>(itens: T[], persistir:
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const depois = e.clientY > r.top + r.height / 2;
+        const depois = eixo === "x" ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2;
         setAlvo((a) => (a?.id === id && a.depois === depois ? a : { id, depois }));
       },
       onDrop: (e: DragEvent) => {

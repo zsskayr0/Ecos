@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Pin, X } from "lucide-react";
 import { screenRoutes } from "@/routes/screen-routes";
-import { AjusteJanelaContext, FecharDocumentoContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
+import { AjusteJanelaContext, FecharDocumentoContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
 import { moduloDaRota, tituloDaRota } from "./modules";
 import { DURACAO_SAIDA_JANELA_MS, reduzMovimento } from "./movimento";
 
@@ -137,6 +137,13 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [arrastando, setArrastando] = useState(false);
   const [ajustando, setAjustando] = useState(false);
   const [tituloDinamico, setTituloDinamico] = useState("");
+  const rectRef = useRef(rect);
+  rectRef.current = rect;
+  const [painelPx, setPainelPx] = useState(0);
+  const painelPxRef = useRef(0);
+  const [larguraConteudo, setLarguraConteudo] = useState(0);
+  const [montagem, setMontagem] = useState<HTMLElement | null>(null);
+  const [animandoPainel, setAnimandoPainel] = useState(false);
   const jaAjustou = useRef(false);
   const usuarioMexeu = useRef(false);
   const janelaRef = useRef<HTMLDivElement>(null);
@@ -233,6 +240,36 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     [ordem],
   );
 
+  // Painel lateral (categorias): a janela se alarga, centralizada, e o painel vira parte dela.
+  const animarPainel = useCallback(() => {
+    setAnimandoPainel(true);
+    window.setTimeout(() => setAnimandoPainel(false), 500);
+  }, []);
+  const abrirPainel = useCallback((largura: number) => {
+    const r = rectRef.current;
+    if (painelPxRef.current) return painelPxRef.current;
+    const folga = window.innerWidth - MARGEM * 2;
+    const w = Math.min(r.w + largura, folga);
+    const concedida = Math.floor(w - r.w);
+    if (concedida < 280) return 0;
+    painelPxRef.current = concedida;
+    animarPainel();
+    setLarguraConteudo(r.w);
+    setPainelPx(concedida);
+    setRect({ ...r, w, x: Math.min(Math.max(MARGEM, r.x - concedida / 2), window.innerWidth - MARGEM - w) });
+    return concedida;
+  }, [animarPainel]);
+  const fecharPainel = useCallback(() => {
+    const g = painelPxRef.current;
+    if (!g) return;
+    const r = rectRef.current;
+    painelPxRef.current = 0;
+    animarPainel();
+    setPainelPx(0);
+    setRect({ ...r, w: Math.max(LARGURA_MIN, r.w - g), x: Math.max(MARGEM, Math.min(r.x + g / 2, window.innerWidth - MARGEM - (r.w - g))) });
+  }, [animarPainel]);
+  const painelJanela = useMemo(() => (cabecalhoNoConteudo ? { abrir: abrirPainel, fechar: fecharPainel, montagem } : null), [cabecalhoNoConteudo, abrirPainel, fecharPainel, montagem]);
+
   function iniciar(e: PointerEvent<HTMLElement>, tipo: "mover" | Direcao) {
     usuarioMexeu.current = true;
     if (cabecalhoNoConteudo) { const n = medirConteudo(); if (n) alturaMinRef.current = Math.min(n, window.innerHeight - MARGEM * 2); }
@@ -273,6 +310,12 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     }
   }
 
+  const corpo = conteudo ? <MemoryRouter>{conteudo}</MemoryRouter> : (
+    <MemoryRouter initialEntries={[ROTA_FECHAR, path]} initialIndex={1}>
+      <Routes><Route path={ROTA_FECHAR} element={<Fechar aoFechar={aoFechar} />} />{screenRoutes}</Routes>
+    </MemoryRouter>
+  );
+
   return (
     <div className="pointer-events-none fixed inset-0" style={{ zIndex: 50 + z }}>
       {/* Configurações (do Ecos e do Cofre) desfocam o fundo; o painel antigo do Cofre tinha este véu e foi unificado aqui. */}
@@ -298,7 +341,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           width: rect.w,
           height: rect.h,
           transform: "translateZ(0)",
-          transition: ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : undefined,
+          transition: ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : animandoPainel ? "left 450ms cubic-bezier(.22,1,.36,1), width 450ms cubic-bezier(.22,1,.36,1)" : undefined,
         }}
       >
         {!cabecalhoNoConteudo&&<header
@@ -340,13 +383,18 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           </button>
         </header>}
 
-        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "rounded-2xl overflow-hidden" : "rounded-b-2xl"} ${cabecalhoNoConteudo ? "" : "overflow-y-auto"}`}>
+        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
           <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
           <TituloJanelaContext.Provider value={setTituloDinamico}>
           <FecharDocumentoContext.Provider value={aoFechar}>
-            {conteudo ? <MemoryRouter>{conteudo}</MemoryRouter> : <MemoryRouter initialEntries={[ROTA_FECHAR, path]} initialIndex={1}>
-              <Routes><Route path={ROTA_FECHAR} element={<Fechar aoFechar={aoFechar} />} />{screenRoutes}</Routes>
-            </MemoryRouter>}
+          <PainelJanelaContext.Provider value={painelJanela}>
+            {cabecalhoNoConteudo ? (
+              <>
+                <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}>{corpo}</div>
+                <div ref={setMontagem} aria-hidden={!painelPx} className="h-full min-w-0 overflow-hidden border-border bg-surface-1" style={{ flex: painelPx ? "1 1 0" : "0 0 0", borderLeftWidth: painelPx ? 1 : 0 }} />
+              </>
+            ) : corpo}
+          </PainelJanelaContext.Provider>
           </FecharDocumentoContext.Provider>
           </TituloJanelaContext.Provider>
           </AjusteJanelaContext.Provider>

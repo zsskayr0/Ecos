@@ -14,12 +14,14 @@ interface Props<T extends string> {
   buscar?: boolean;
   /** Classe extra da lista suspensa. */
   classeMenu?: string;
+  /** Largura mínima (px) da lista suspensa. */
+  larguraMin?: number;
 }
 
 /** Substituto direto do `<select>` nativo: botão com seta + MenuSuspenso do Ecos. */
-export function SeletorEcos<T extends string>({ valor, opcoes, onChange, ariaLabel, classe = "ecos-input", alinhar, disabled, buscar = false, classeMenu }: Props<T>) {
+export function SeletorEcos<T extends string>({ valor, opcoes, onChange, ariaLabel, classe = "ecos-input", alinhar, disabled, buscar = false, classeMenu, larguraMin }: Props<T>) {
   return (
-    <MenuSuspenso fixo buscar={buscar} largo={buscar} classeMenu={classeMenu} valor={valor} opcoes={opcoes} onChange={onChange} ariaLabel={ariaLabel} alinhar={alinhar}
+    <MenuSuspenso fixo buscar={buscar} largo={buscar} larguraMin={larguraMin} classeMenu={classeMenu} valor={valor} opcoes={opcoes} onChange={onChange} ariaLabel={ariaLabel} alinhar={alinhar}
       classeGatilho={`${classe} flex items-center justify-between gap-2 text-left ${disabled ? "pointer-events-none opacity-50" : ""}`}
       gatilho={({ aberto, atual }) => <>{atual?.visual && <span className="shrink-0">{atual.visual}</span>}<span className="min-w-0 flex-1 truncate">{atual?.rotulo}</span><ChevronDown size={14} className={`shrink-0 text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
   );

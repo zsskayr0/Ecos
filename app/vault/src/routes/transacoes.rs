@@ -19,6 +19,7 @@ pub struct ListarQuery {
     pub tipo: Option<String>,
     pub forma_pagamento: Option<String>,
     pub sem_categoria: Option<bool>,
+    pub com_subcategorias: Option<bool>,
     pub sem_pagamento: Option<bool>,
     pub status: Option<String>,
     pub data_de: Option<NaiveDate>,
@@ -76,7 +77,13 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
                 params.push(Box::new(v.clone()));
             }
             if let Some(v) = &q.categoria_id {
-                condicoes.push("categoria_id = ?".to_string());
+                if q.com_subcategorias == Some(true) {
+                    // Categoria-mãe e as suas subcategorias (um nível só).
+                    condicoes.push("categoria_id IN (SELECT id FROM categoria WHERE id = ? OR pai_id = ?)".to_string());
+                    params.push(Box::new(v.clone()));
+                } else {
+                    condicoes.push("categoria_id = ?".to_string());
+                }
                 params.push(Box::new(v.clone()));
             }
             if let Some(v) = &q.tipo { condicoes.push("tipo = ?".into()); params.push(Box::new(v.clone())); }

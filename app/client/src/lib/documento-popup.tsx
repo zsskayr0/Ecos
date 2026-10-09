@@ -42,3 +42,15 @@ export const AjusteJanelaContext = createContext<((ajuste: AjusteDeJanela) => vo
 export function useAjustarJanela() {
   return useContext(AjusteJanelaContext);
 }
+
+/**
+ * Painel lateral da janela flutuante do lançamento: o seletor de categorias pede `abrir(largura)` e a janela se alarga
+ * (mantendo-se centralizada) para encaixar o painel dentro dela, sem emenda entre os dois. Devolve a largura concedida
+ * (0 = sem espaço: quem pediu usa outro jeito). `montagem` é onde o painel é desenhado. `null` fora dessas janelas.
+ */
+export interface PainelDeJanela {
+  abrir: (largura: number) => number;
+  fechar: () => void;
+  montagem: HTMLElement | null;
+}
+export const PainelJanelaContext = createContext<PainelDeJanela | null>(null);

@@ -628,7 +628,7 @@
 
 .cofre-cats-modal { position:fixed; inset:0; z-index:80; display:grid; place-items:center; padding:16px; }
 .cofre-cats-backdrop { position:absolute; inset:0; background:rgb(0 0 0 / .62); animation:ecos-backdrop-in .2s ease both; }
-.cofre-cats-dialog { position:relative; display:flex; width:min(440px,100%); max-height:calc(100dvh - 32px); flex-direction:column; gap:16px; overflow-y:auto; padding:20px; border-radius:18px; animation:ecos-modal-in .26s cubic-bezier(.2,.8,.2,1) both; }
+.cofre-cats-dialog { position:relative; display:flex; width:min(440px,100%); max-height:calc(100dvh - 32px); flex-direction:column; gap:16px; overflow-y:auto; padding:20px; border-radius:18px; animation:ecos-modal-in .26s cubic-bezier(.2,.8,.2,1) backwards; }
 .cofre-cats-modal[data-saindo] .cofre-cats-dialog { animation:ecos-modal-out .16s ease both; }
 .cofre-cats-modal[data-saindo] .cofre-cats-backdrop { animation:ecos-backdrop-out .16s ease both; }
 .cofre-cats-dialog header { display:flex; align-items:center; gap:12px; }
@@ -1467,3 +1467,17 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 .cofre-sort-dir { transition:transform .28s cubic-bezier(.34,1.4,.64,1); }
 .cofre-sort-dir[data-desc] { transform:rotate(180deg); }
 @media (prefers-reduced-motion:reduce) { .cofre-sort-dir,.cofre-sort-trigger svg,.cofre-filter-chip > svg:last-child { transition:none; } }
+.cofre-catmenu { position:absolute; top:calc(100% + 6px); left:0; z-index:40; display:grid; gap:4px; width:min(380px,calc(100vw - 24px)); transform-origin:top left; animation:cofre-menu-in .18s cubic-bezier(.2,.9,.3,1.1); }
+.cofre-catmenu-lista { display:grid; gap:1px; max-height:min(320px,50dvh); overflow:auto; }
+.cofre-catmenu-item { display:flex; align-items:center; gap:9px; height:36px; padding:0 10px; border:1px solid transparent; border-radius:8px; color:var(--text-secondary); font-size:13px; text-align:left; transition:background .12s ease,border-color .12s ease,color .12s ease; }
+.cofre-catmenu-item[data-sub] { margin-left:18px; }
+.cofre-catmenu-item:hover,.cofre-catmenu-item:focus-visible { outline:none; border-color:var(--border-strong); background:var(--panel); color:var(--text); }
+.cofre-catmenu-item[aria-selected="true"] { color:var(--text); }
+.cofre-catmenu-nome { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cofre-catmenu-check { display:grid; width:16px; height:16px; flex:0 0 auto; place-items:center; border:1px solid var(--border-strong); border-radius:4px; font-style:normal; color:#fff; transition:background .15s ease,border-color .15s ease; }
+.cofre-catmenu-item[aria-selected="true"] .cofre-catmenu-check { border-color:var(--accent); background:var(--accent); }
+.cofre-catmenu-vazio { padding:14px 8px; color:var(--text-muted); font-size:12px; text-align:center; }
+.cofre-catmenu-rodape { display:flex; align-items:center; justify-content:space-between; padding:4px 8px 2px; border-top:1px solid var(--border); color:var(--text-muted); font-size:11.5px; }
+.cofre-catmenu-rodape button { padding:5px 8px; border-radius:8px; color:var(--text-secondary); font-size:12px; font-weight:600; }
+.cofre-catmenu-rodape button:hover:not(:disabled) { background:var(--panel); color:var(--text); }
+.cofre-catmenu-rodape button:disabled { opacity:.4; }

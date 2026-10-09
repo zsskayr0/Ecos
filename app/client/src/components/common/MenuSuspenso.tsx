@@ -48,6 +48,8 @@ interface Props<T extends string> {
   buscar?: boolean;
   /** Lista mais larga e mais alta que o gatilho (com `fixo`). */
   largo?: boolean;
+  /** Largura mínima (px) da lista suspensa quando `fixo`; sobrepõe o padrão. */
+  larguraMin?: number;
   /** Classe extra da lista (ex.: o desenho do Cofre). */
   classeMenu?: string;
   /** Avisa quando o menu abre ou fecha (ex.: trocar o painel ao lado enquanto se escolhe). */
@@ -55,7 +57,7 @@ interface Props<T extends string> {
 }
 
 /** Menu suspenso do Ecos, no lugar do `<select>` nativo. Anima entrada e saída, fecha com Esc/clique fora e navega por setas. */
-export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, buscar = false, largo = false, classeMenu = "", onAbrirChange }: Props<T>) {
+export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, buscar = false, largo = false, larguraMin, classeMenu = "", onAbrirChange }: Props<T>) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
@@ -87,7 +89,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       const preciso = Math.min(alturaMax, opcoes.length * ALTURA_ITEM + 10 + (buscar ? 44 : 0));
       // Abre para o lado que comporta a lista; se nenhum comporta, para o que tem mais espaço (nunca só a barra de pesquisa).
       const subir = abaixo < preciso && acima > abaixo;
-      const largura = Math.min(Math.max(r.width, largo ? 320 : 176), window.innerWidth - 16);
+      const largura = Math.min(Math.max(r.width, larguraMin ?? (largo ? 320 : 176)), window.innerWidth - 16);
       setPosicao({
         position: "fixed", marginTop: 0, width: largura, minWidth: 0,
         left: Math.max(8, Math.min(alinhar === "dir" ? r.right - largura : r.left, window.innerWidth - largura - 8)),
@@ -155,7 +157,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
           {buscar && (
             <label className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 flex h-11 items-center gap-2 bg-surface-1 px-3.5 text-text-muted focus-within:text-text-primary">
               <Search size={14} className="shrink-0" aria-hidden />
-              <input data-busca value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar…" aria-label={`Pesquisar: ${ariaLabel}`} autoComplete="off"
+              <input data-busca style={{ outline: "none", boxShadow: "none", border: 0, background: "transparent", padding: 0, borderRadius: 0, appearance: "none" }} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar…" aria-label={`Pesquisar: ${ariaLabel}`} autoComplete="off"
                 className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted" />
             </label>
           )}

@@ -52,7 +52,9 @@ fn lista_de_migracoes() -> Vec<M<'static>> {
         M::up(include_str!("../../migrations/0007_conta_detalhes.sql")),
         M::up(include_str!("../../migrations/0008_preferencias_nota_fiscal.sql")),
         M::up(include_str!("../../migrations/0009_conta_sigla.sql")),
-        M::up_with_hook(include_str!("../../migrations/0010_formas_pagamento.sql"), soltar_lista_fixa_de_formas)]
+        M::up_with_hook(include_str!("../../migrations/0010_formas_pagamento.sql"), soltar_lista_fixa_de_formas),
+        M::up(include_str!("../../migrations/0011_subcategorias.sql")),
+        M::up(include_str!("../../migrations/0012_categoria_arquivada.sql"))]
 }
 
 /// Tira de `transacao` e `transacao_recorrente` o `CHECK (forma_pagamento IN (...))` com as sete formas fixas: a lista

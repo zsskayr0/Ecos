@@ -4,6 +4,7 @@ import { Copy, X } from "lucide-react";
 import { DatePicker } from "@/components/common/DatePicker";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { MenuSelecao } from "@/screens/Create/TransactionForm";
+import { CampoCategoria } from "../CampoCategoria";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { opcoesDoSeletor } from "@/lib/formas-pagamento";
 import { financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type RecorrenciaApi, type RecorrenciaPayload } from "@/lib/api";
@@ -69,7 +70,7 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
   // Depois que a série gerou lançamentos, mudar o início ou o tipo bagunçaria o que já foi lançado.
   const travada = !!regra && regra.parcelas_geradas > 0;
   const centavos = centavosDoCampo(valor);
-  const opcoesCategoria = useMemo(() => categorias.filter((c) => c.tipo === tipo || c.tipo === "ambos").map((c) => ({ value: c.id, label: c.nome, cor: c.cor, icone: c.icone })), [categorias, tipo]);
+  const categoriasDoTipo = useMemo(() => categorias.filter((c) => c.tipo === tipo || c.tipo === "ambos"), [categorias, tipo]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ value: c.id, label: c.nome, cor: c.cor, selo: <SeloConta nome={c.nome} cor={c.cor} tipo={c.tipo} codigoBanco={c.codigo_banco} sigla={c.sigla} tamanho="xs" /> })), [contas]);
   const formas = useFormasPagamento();
   const opcoesForma = useMemo(() => opcoesDoSeletor(formas.lista, forma || null).map((o) => {
@@ -167,7 +168,7 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
 
       <div className="cofre-launch-grid">
         <Campo rotulo="Valor"><input className="cofre-mono" value={valor} inputMode="decimal" placeholder="0,00" autoFocus={!fixo && !editando} aria-label="Valor" onChange={(e) => setValor(e.target.value)} /></Campo>
-        <Campo rotulo="Categoria"><MenuSelecao ariaLabel="Categoria" value={categoriaId} placeholder="Sem categoria" options={opcoesCategoria} onChange={setCategoriaId} /></Campo>
+        <Campo rotulo="Categoria"><CampoCategoria categorias={categoriasDoTipo} valor={categoriaId || null} onChange={(id) => setCategoriaId(id ?? "")} /></Campo>
       </div>
       <Campo rotulo="Descrição"><input value={descricao} placeholder="Ex.: Aluguel, Netflix, Financiamento do carro" aria-label="Descrição" onChange={(e) => setDescricao(e.target.value)} /></Campo>
       <div className="cofre-launch-grid">

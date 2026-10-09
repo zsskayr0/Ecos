@@ -69,6 +69,7 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/contas/:id", patch(contas::atualizar).delete(contas::excluir))
         .route("/vault/contas/:id/uso", get(contas::uso))
         .route("/vault/categorias", get(categorias::listar).post(categorias::criar))
+        .route("/vault/categorias/sugestao", get(categorias::sugestao))
         .route("/vault/categorias/:id", patch(categorias::atualizar).delete(categorias::excluir))
         .route("/vault/categorias/:id/uso", get(categorias::uso))
         .route("/vault/formas-pagamento", get(formas_pagamento::listar).post(formas_pagamento::criar))
