@@ -4,6 +4,9 @@ import { useAbrirDocumento } from "@/lib/documento-popup";
 import { ChevronLeft, Search as SearchIcon, Clock, Sparkles } from "lucide-react";
 import { busca, vault, ApiError, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
+import { EmptyState } from "@/components/common/EmptyState";
 
 const ATALHOS = ["Notas órfãs", "Tarefas de hoje", "Transações desse mês"];
 
@@ -21,6 +24,7 @@ export function SearchScreen() {
   const [debounced, setDebounced] = useState("");
   const [resultados, setResultados] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [recentes, setRecentes] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem("ecos-buscas-recentes") ?? "[]");
@@ -70,7 +74,7 @@ export function SearchScreen() {
     return () => {
       vivo = false;
     };
-  }, [debounced]);
+  }, [debounced, tentativa]);
 
   const totalResultados = useMemo(
     () => (resultados ? resultados.notas.length + resultados.tarefas.length + resultados.transacoes.length : 0),
@@ -95,7 +99,7 @@ export function SearchScreen() {
         </div>
       </div>
 
-      {erro && <p className="mb-4 text-sm text-error">{erro}</p>}
+      {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       {!debounced ? (
         <div className="flex flex-col gap-6">
@@ -124,10 +128,10 @@ export function SearchScreen() {
             </div>
           </div>
         </div>
-      ) : !resultados ? (
-        <p className="py-10 text-center text-sm text-text-muted">Buscando...</p>
+      ) : erro ? null : !resultados ? (
+        <EstadoCarregando texto="Buscando…" />
       ) : totalResultados === 0 ? (
-        <p className="py-10 text-center text-sm text-text-muted">Nada encontrado pra "{debounced}".</p>
+        <EmptyState icon={SearchIcon} title={`Nada encontrado pra "${debounced}".`} subtitle="Tente outra palavra ou um trecho menor." />
       ) : (
         <div className="flex flex-col gap-6 pb-nav-safe">
           <Grupo titulo="Notas" vazio={resultados.notas.length === 0}>

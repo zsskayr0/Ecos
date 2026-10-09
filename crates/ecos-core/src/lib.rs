@@ -13,6 +13,7 @@ pub mod frontmatter;
 pub mod ids;
 pub mod naming;
 pub mod ranking;
+pub mod tags;
 pub mod recurrence;
 pub mod types;
 pub mod wikilink;

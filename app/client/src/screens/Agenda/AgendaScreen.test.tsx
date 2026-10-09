@@ -519,6 +519,15 @@ describe("o popup do dia só abre pelo NÚMERO", () => {
     expect(await screen.findByRole("dialog", { name: /Tarefas de/ })).toBeTruthy();
   });
 
+  it("Esc fecha o popup do dia", async () => {
+    await abrirAgenda();
+    await screen.findByRole("button", { name: /^Relatório,/ });
+    fireEvent.click(document.querySelector("[data-cabecalho-dia='2026-09-22'] button")!);
+    await screen.findByRole("dialog", { name: /Tarefas de/ });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull());
+  });
+
   it("mês: clicar na célula não abre; o número dentro dela abre", async () => {
     await abrirAgenda({ modo: "mes", blocos: [] });
     const celula = await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-15']"); expect(c).toBeTruthy(); return c!; });

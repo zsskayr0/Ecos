@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, ExternalLink, Minus, Plus } from "lucide-react";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -166,7 +167,7 @@ export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: A
         {erro ? (
           <p role="alert" className="py-16 text-center text-sm text-error">Não foi possível ler este PDF. Ele pode estar corrompido ou protegido por senha.</p>
         ) : !pdf || !base ? (
-          <p className="py-16 text-center text-sm text-text-muted">Carregando PDF…</p>
+          <EstadoCarregando texto="Carregando PDF…" />
         ) : (
           Array.from({ length: pdf.numPages }, (_, i) => <PaginaPdf key={i + 1} pdf={pdf} numero={i + 1} escala={escala} base={base} raiz={rolagem} />)
         )}

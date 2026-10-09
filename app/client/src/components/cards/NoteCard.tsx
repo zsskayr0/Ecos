@@ -1,3 +1,4 @@
+import { avisar } from "@/lib/toast";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Nota } from "@/lib/types";
@@ -46,12 +47,12 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
     const anterior = corpo;
     const novo = alternarChecklist(corpo, indice);
     setCorpo(novo);
-    try { await notas.atualizar(nota.id, { corpo: novo }); notificar(); } catch { setCorpo(anterior); }
+    try { await notas.atualizar(nota.id, { corpo: novo }); notificar(); } catch { setCorpo(anterior); avisar("Não foi possível salvar a nota.", "erro"); }
   }
   async function mover(caminho: string | null) {
     const anterior = pasta;
     setPasta(caminho); setMenuPasta(false);
-    try { await notas.atualizar(nota.id, { pasta: caminho ?? "" }); notificar(); } catch { setPasta(anterior); }
+    try { await notas.atualizar(nota.id, { pasta: caminho ?? "" }); notificar(); } catch { setPasta(anterior); avisar("Não foi possível mover a nota.", "erro"); }
   }
   const abrir = (e: React.MouseEvent) => abrirDocumento(`/notas/nota/${nota.id}`, e);
 

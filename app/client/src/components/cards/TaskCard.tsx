@@ -1,3 +1,4 @@
+import { avisar } from "@/lib/toast";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, Circle, Flag, FlagTriangleRight, Flame, FolderInput, ListChecks, SquareArrowOutUpRight } from "lucide-react";
@@ -56,24 +57,24 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
     const anterior = detalhe;
     const proximas = detalhe.subtarefas.map((s) => s.id === id ? { ...s, concluida: !s.concluida } : s);
     setDetalhe({ ...detalhe, subtarefas: proximas });
-    try { await tarefas.atualizar(tarefa.id, { subtarefas: proximas.map(({ id: sid, titulo, concluida: c }) => ({ id: sid, titulo, concluida: c })) }); } catch { setDetalhe(anterior); }
+    try { await tarefas.atualizar(tarefa.id, { subtarefas: proximas.map(({ id: sid, titulo, concluida: c }) => ({ id: sid, titulo, concluida: c })) }); } catch { setDetalhe(anterior); avisar("Não foi possível salvar a tarefa.", "erro"); }
   }
   async function alternarChecklistCorpo(indice: number) {
     if (!detalhe) return;
     const anterior = detalhe;
     const novo = alternarChecklist(detalhe.corpo, indice);
     setDetalhe({ ...detalhe, corpo: novo });
-    try { await tarefas.atualizar(tarefa.id, { corpo: novo }); } catch { setDetalhe(anterior); }
+    try { await tarefas.atualizar(tarefa.id, { corpo: novo }); } catch { setDetalhe(anterior); avisar("Não foi possível salvar a tarefa.", "erro"); }
   }
   async function mudarPrioridade(p: PrioridadeTarefa) {
     const anterior = prioridade;
     setPrioridade(p); setMenu(null);
-    try { await tarefas.atualizar(tarefa.id, { prioridade: p }); notificar(); } catch { setPrioridade(anterior); }
+    try { await tarefas.atualizar(tarefa.id, { prioridade: p }); notificar(); } catch { setPrioridade(anterior); avisar("Não foi possível mudar a prioridade.", "erro"); }
   }
   async function mover(caminho: string | null) {
     const anterior = pasta;
     setPasta(caminho); setMenu(null);
-    try { await tarefas.atualizar(tarefa.id, { pasta: caminho ?? "" }); notificar(); } catch { setPasta(anterior); }
+    try { await tarefas.atualizar(tarefa.id, { pasta: caminho ?? "" }); notificar(); } catch { setPasta(anterior); avisar("Não foi possível mover a tarefa.", "erro"); }
   }
 
   return (

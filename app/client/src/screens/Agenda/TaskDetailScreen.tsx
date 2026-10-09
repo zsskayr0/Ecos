@@ -1,3 +1,5 @@
+import { avisar } from "@/lib/toast";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Copy, Loader2 } from "lucide-react";
@@ -120,7 +122,7 @@ export function TaskDetailScreen() {
   async function excluir() {
     if (!id || salvando) return;
     setSalvando(true); setErro(null);
-    try { await tarefas.excluir(id); removerRascunho(id); notificar(); navigate(-1); }
+    try { await tarefas.excluir(id); removerRascunho(id); notificar(); avisar("Tarefa apagada.", "sucesso"); navigate(-1); }
     catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível apagar."); setSalvando(false); }
   }
   async function duplicar() {
@@ -135,7 +137,7 @@ export function TaskDetailScreen() {
 
   const conteudo = <div className="ecos-detail-content">
     {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
-    {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? <p className="py-10 text-sm text-text-secondary">{erro ? "Volte e tente abrir a tarefa novamente." : "Carregando..."}</p> : <>
+    {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? (erro ? <p className="py-10 text-sm text-text-secondary">Volte e tente abrir a tarefa novamente.</p> : <EstadoCarregando texto="Carregando…" />) : <>
       <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta tarefa?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir} />
       {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}
       <TaskComposer key={id} itemId={id} editing createdAt={tarefa.criado_em} editedAt={tarefa.atualizado_em ?? tarefa.criado_em} completedAt={tarefa.status === "concluida" ? tarefa.concluida_em : null} dirty={sujo} value={value} onChange={(patch) => setValue((previous) => ({ ...previous, ...patch }))} onSave={sincronizar} saving={salvando && !confirmandoDelete} floatingSave={false} showPriority={!desktop} onUploadingChange={setEnviandoArquivo} timePanel={<><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-text-primary">Tempo</h2><p className="text-sm text-text-secondary">Planejado {timeEntries.filter((e) => e.tipo === "planejado").reduce((n, e) => n + e.duracao_min, 0)} min · Realizado {timeEntries.filter((e) => e.tipo === "real").reduce((n, e) => n + e.duracao_min, 0)} min</p></div><div className="flex gap-2"><button type="button" onClick={() => adicionarTempo("planejado")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-steel-400 px-3 text-sm text-steel-300 disabled:opacity-40">Planejar {value.duracao} min</button><button type="button" onClick={() => adicionarTempo("real")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-success px-3 text-sm text-success disabled:opacity-40">Registrar tempo</button></div></div>{timeEntries.length > 0 && <div className="overflow-hidden rounded-lg border border-border">{timeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-sm last:border-0"><span className="text-text-secondary">{new Date(entry.inicio_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span><span className={entry.tipo === "planejado" ? "text-steel-300" : "text-success"}>{entry.tipo === "planejado" ? "Planejado" : "Real"} · {entry.duracao_min} min</span></div>)}</div>}</>} titleActions={desktop && <div className="flex shrink-0 items-center gap-2">

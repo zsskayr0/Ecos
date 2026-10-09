@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, ChevronLeft } from "lucide-react";
@@ -87,7 +88,7 @@ export function NotificationsScreen() {
       {erro && <p className="mb-4 text-sm text-error">{erro}</p>}
 
       {itens === null ? (
-        <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
+        <EstadoCarregando texto="Carregando…" />
       ) : itens.length === 0 ? (
         <EmptyState
           icon={Bell}

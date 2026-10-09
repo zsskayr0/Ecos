@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, AlertTriangle } from "lucide-react";
@@ -105,7 +106,7 @@ export function FeedScreen() {
         )}
 
         {itens === null ? (
-          <p className="py-10 text-center text-sm text-text-muted">Carregando Feed...</p>
+          <EstadoCarregando texto="Carregando Feed…" />
         ) : itens.length === 0 && !erro ? (
           <EmptyState
             icon={Rss}

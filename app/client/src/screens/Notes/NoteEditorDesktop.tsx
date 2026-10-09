@@ -1,3 +1,5 @@
+import { avisar } from "@/lib/toast";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Copy, FileX, Trash2 } from "lucide-react";
@@ -155,6 +157,7 @@ export function NoteEditorDesktop() {
     setSalvando(true);
     try {
       await notas.excluir(id);
+      avisar("Nota apagada.", "sucesso");
       removerRascunho(id);
       notificar();
       navigate(-1);
@@ -176,7 +179,7 @@ export function NoteEditorDesktop() {
   const mudar = (patch: Partial<CamposNota>) => setValor((v) => (v ? { ...v, ...patch } : v));
 
   if (naoEncontrada) return <div className="ecos-detail-content"><EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." /></div>;
-  if (!nota || !valor) return <div className="ecos-detail-content"><p className="py-10 text-center text-sm text-text-muted">Carregando...</p></div>;
+  if (!nota || !valor) return <div className="ecos-detail-content"><EstadoCarregando texto="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";

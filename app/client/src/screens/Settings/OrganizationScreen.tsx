@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState, type MouseEvent } from "react";
 import { ChevronDown, Folder, FolderPlus, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +12,7 @@ import { useAbrirDocumento } from "@/lib/documento-popup";
 import { Toggle } from "@/components/common/Toggle";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { avisar } from "@/lib/toast";
+import { TagsOrganizacao } from "./TagsOrganizacao";
 
 type Tipo = "nota" | "tarefa";
 
@@ -72,10 +74,10 @@ export function OrganizationScreen() {
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
     <header className="mb-5">
-      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie as pastas sem sair do espaço certo.</p>
+      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie pastas e tags sem sair do espaço certo.</p>
     </header>
 
-    <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas">
+    <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas e tags">
       <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Tipo</p>
@@ -95,7 +97,7 @@ export function OrganizationScreen() {
     </section>
 
     {erro && <p role="alert" className="mb-4 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error">{erro}</p>}
-    {lista === null ? <p className="py-8 text-center text-sm text-text-muted">Carregando pastas…</p> : <>
+    {lista === null ? <EstadoCarregando texto="Carregando pastas…" /> : <>
       <nav aria-label="Caminho da pasta" className="mb-3 flex min-h-9 items-center gap-1 overflow-x-auto rounded-xl bg-surface-1 px-2 text-sm"><button type="button" onClick={() => setPastaAtual("")} className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 ${pastaAtual ? "text-text-secondary hover:bg-surface-2" : "text-text-primary"}`}><Folder size={15} className="text-steel-300" />Raiz</button>{pastaAtual.split("/").filter(Boolean).map((parte, indice, partes) => { const caminho = partes.slice(0, indice + 1).join("/"); return <span key={caminho} className="flex shrink-0 items-center gap-1"><span className="text-text-muted">/</span><button type="button" onClick={() => setPastaAtual(caminho)} className="rounded-lg px-1.5 py-1.5 text-text-secondary hover:bg-surface-2">{parte}</button></span>; })}</nav>
       <div className={`relative transition-[opacity,filter,transform] duration-200 ease-out ${atualizando ? "pointer-events-none opacity-55 blur-[1px]" : ""}`} aria-busy={atualizando}>
         <div key={versaoLista} className="ecos-item-entra">
@@ -107,6 +109,8 @@ export function OrganizationScreen() {
         {atualizando && <div aria-hidden className="absolute inset-x-0 top-7 h-px overflow-hidden bg-border"><span className="block h-full w-1/3 animate-pulse bg-cyan" /></div>}
       </div>
     </>}
+
+    <TagsOrganizacao espaco={espaco} />
 
     <section className="mt-8">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Links</p>

@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 ﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { EventoLocal } from "@/lib/eventos-locais";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
@@ -216,9 +217,24 @@ export function AgendaScreen() {
     } catch { /* cache indisponível */ }
   }, [modo, diaAtual]);
 
+  // Abrir um dia não espera a rede: mostra na hora o que já está carregado (cache do dia ou o que a visão do período já trouxe)
+  // e atualiza em segundo plano quando as respostas chegam. O cache é por dia e espaço; qualquer mudança de dados (versão) o invalida.
+  const cacheDia = useRef(new Map<string, { blocos: TarefaResumo[]; capacidade: Capacidade }>());
+  const periodoRef = useRef(itensDoPeriodo);
+  periodoRef.current = itensDoPeriodo;
+  const diaAnterior = useRef<string | null>(null);
+  const versaoDoCache = useRef(versao);
   useEffect(() => {
     let vivo = true;
     setErro(null);
+    if (versaoDoCache.current !== versao) { cacheDia.current.clear(); versaoDoCache.current = versao; }
+    const chaveCache = `${espaco}|${dataStr}`;
+    if (diaAnterior.current !== dataStr) {
+      const guardado = cacheDia.current.get(chaveCache);
+      if (guardado) { setBlocos(guardado.blocos); setCapacidade(guardado.capacidade); }
+      else setBlocos(periodoRef.current.filter((t) => itensDaTarefa(t, { mostrarPrazos: true }).some((i) => i.dia === dataStr)));
+      diaAnterior.current = dataStr;
+    }
     // O servidor guarda horários em UTC: ele precisa do fuso para saber onde o dia começa e termina.
     const [a, m, d] = dataStr.split("-").map(Number);
     const tz = -new Date(a, m - 1, d, 12).getTimezoneOffset();
@@ -228,6 +244,7 @@ export function AgendaScreen() {
     ])
       .then(([t, c]) => {
         if (!vivo) return;
+        cacheDia.current.set(chaveCache, { blocos: t.items, capacidade: c });
         setBlocos(t.items);
         setCapacidade(c);
       })
@@ -523,6 +540,14 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
     if (dia) onAlocarTarefa(e.tarefa, dia);
   });
   const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  // Agrupa por dia uma única vez por mudança de dados: antes cada uma das 42 células refazia flatMap/filter sobre tudo.
+  const { tarefasPorDia, eventosPorDia } = useMemo(() => {
+    const tarefasPorDia = new Map<string, ItemAgenda[]>();
+    for (const t of itens) for (const i of itensDaTarefa(t, { mostrarPrazos })) { const l = tarefasPorDia.get(i.dia); if (l) l.push(i); else tarefasPorDia.set(i.dia, [i]); }
+    const eventosPorDia = new Map<string, EventoLocal[]>();
+    for (const e of eventos) { const l = eventosPorDia.get(e.inicio); if (l) l.push(e); else eventosPorDia.set(e.inicio, [e]); }
+    return { tarefasPorDia, eventosPorDia };
+  }, [itens, eventos, mostrarPrazos]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
@@ -539,9 +564,9 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
           if (numeroDoDia < 1 || numeroDoDia > totalDias) return <div key={`vazio-${indice}`} className="border-b border-r border-border bg-surface-1 last:border-r-0" />;
           const data = new Date(ano, mes, numeroDoDia);
           // Mesma regra da grade: agendada = um cartão; prazo (se ligado) = marca, e no mesmo dia do agendamento vai no próprio cartão.
-          const tarefasDoDia = itens.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })).filter((i) => i.dia === paraISO(data));
+          const tarefasDoDia = tarefasPorDia.get(paraISO(data)) ?? [];
           // Eventos (os do Google e os só do Ecos) primeiro: dia inteiro, depois por horário; então tarefas e prazos.
-          const eventosDoDia = eventos.filter((e) => e.inicio === paraISO(data)).sort((a, b) => (a.minutos ?? -1) - (b.minutos ?? -1) || a.titulo.localeCompare(b.titulo, "pt-BR")).map(itemDoEvento);
+          const eventosDoDia = (eventosPorDia.get(paraISO(data)) ?? []).slice().sort((a, b) => (a.minutos ?? -1) - (b.minutos ?? -1) || a.titulo.localeCompare(b.titulo, "pt-BR")).map(itemDoEvento);
           // Ordem fixa: eventos, tarefas e, por último, lançamentos do Cofre.
           const itensDoDia = [...eventosDoDia.filter((i) => !i.transacao), ...tarefasDoDia, ...eventosDoDia.filter((i) => i.transacao)];
           const cabem = itensDoDia.length <= 3 ? 3 : 2; // com mais que 3, sobra espaço para o "+N itens"
@@ -567,8 +592,12 @@ function VisaoTempo({ concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNave
   const quantidade = modo === "dia" ? 1 : modo === "tres_dias" ? 3 : modo === "quinzenal" ? 14 : 7;
   const inicio = modo === "dia" || modo === "tres_dias" ? diaAtual : inicioDaSemana(diaAtual);
   const rotulo = `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, quantidade - 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
-  const dias = Array.from({ length: quantidade }, (_, indice) => somarDiasISO(paraISO(inicio), indice));
-  const itens = [...tarefas.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocos.map(itemDoBloco), ...eventos.map(itemDoEvento)].filter((i) => dias.includes(i.dia));
+  const inicioISO = paraISO(inicio);
+  const dias = useMemo(() => Array.from({ length: quantidade }, (_, indice) => somarDiasISO(inicioISO, indice)), [quantidade, inicioISO]);
+  const itens = useMemo(() => {
+    const doPeriodo = new Set(dias);
+    return [...tarefas.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocos.map(itemDoBloco), ...eventos.map(itemDoEvento)].filter((i) => doPeriodo.has(i.dia));
+  }, [dias, tarefas, blocos, eventos, mostrarPrazos]);
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
@@ -582,8 +611,11 @@ function VisaoTempo({ concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNave
 
 function VisaoPeriodos({ modo, diaAtual, hoje, itens, concluidas, onMudarModo, onHoje, onNavegar, onAbrirEvento, onSelecionar, onAbrirMes }: { modo: ModoAgenda; diaAtual: Date; hoje: Date; itens: ItemAgenda[]; concluidas: Map<string, TarefaResumo[]>; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAbrirMes: (mes: Date) => void }) {
   const meses = Array.from({ length: modo === "anual" ? 12 : 6 }, (_, indice) => new Date(diaAtual.getFullYear(), (modo === "anual" ? 0 : diaAtual.getMonth()) + indice, 1));
-  const porDia = new Map<string, ItemAgenda[]>();
-  itens.forEach((item) => porDia.set(item.dia, [...(porDia.get(item.dia) ?? []), item]));
+  const porDia = useMemo(() => {
+    const mapa = new Map<string, ItemAgenda[]>();
+    for (const item of itens) { const lista = mapa.get(item.dia); if (lista) lista.push(item); else mapa.set(item.dia, [item]); }
+    return mapa;
+  }, [itens]);
   const totalPeriodo = itens.filter((item) => {
     const primeiro = paraISO(meses[0]);
     const ultimoMes = meses[meses.length - 1];
@@ -650,7 +682,7 @@ function ListaDeTarefas({ blocos, abrirDocumento, dia, concluidas, temEventos = 
   const vazio = textoDiaVazio(dia, paraISO(new Date()), concluidas);
   return (
     <div className="flex flex-col gap-2.5">
-      {blocos === null ? <p className="py-10 text-center text-sm text-text-muted">Carregando...</p> : blocos.length === 0 ? (
+      {blocos === null ? <EstadoCarregando texto="Carregando…" /> : blocos.length === 0 ? (
         vazio && !temEventos && <EmptyState icon={CalendarClock} title={vazio.title} subtitle={vazio.subtitle} />
       ) : blocos.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")).map((t) => <CartaoTarefa key={t.id} tarefa={t} abrirDocumento={abrirDocumento} />)}
     </div>
@@ -755,21 +787,43 @@ function PopupJanela({ onMaximizar, ancora, dia, blocos, concluidasDoDia, capaci
   const [rect, setRect] = useState({ left: 16, top: 16, width: 360, height: 500 });
   const gesto = useRef<{ tipo: "mover" | "redimensionar"; x: number; y: number; rect: typeof rect } | null>(null);
 
-  useLayoutEffect(() => {
+  // O popup cabe sempre na parte VISÍVEL do painel (interseção com a janela do navegador), não só no painel: com a página
+  // rolada ou a janela redimensionada o painel pode passar do viewport. Recalcula ao redimensionar.
+  const limitesVisiveis = () => {
     const pai = janelaRef.current?.parentElement?.getBoundingClientRect();
-    if (!pai) return;
+    if (!pai) return null;
+    const esquerda = Math.max(0, -pai.left), topo = Math.max(0, -pai.top);
+    const direita = Math.min(pai.width, window.innerWidth - pai.left), base = Math.min(pai.height, window.innerHeight - pai.top);
+    return { esquerda, topo, largura: Math.max(0, direita - esquerda), altura: Math.max(0, base - topo) };
+  };
+  const posicionar = () => {
+    const v = limitesVisiveis();
+    if (!v) return;
     const margem = 12;
-    const largura = Math.max(0, Math.min(380, pai.width - margem * 2));
-    const altura = Math.max(0, Math.min(540, pai.height - margem * 2));
-    const limiteEsquerda = Math.max(margem, pai.width - largura - margem);
-    // Alinhado à coluna clicada: centralizar o painel deslocava o foco visual
-    // para longe do dia que originou a ação.
-    const esquerda = ancora ? Math.min(Math.max(margem, ancora.left), limiteEsquerda) : limiteEsquerda;
-    const cabeAbaixo = !!ancora && ancora.top + ancora.height + altura + margem <= pai.height;
-    const topoDesejado = ancora ? (cabeAbaixo ? ancora.top + ancora.height + 10 : ancora.top - altura - 10) : 56;
-    const topo = Math.min(Math.max(margem, topoDesejado), Math.max(margem, pai.height - altura - margem));
-    setRect({ left: esquerda, top: topo, width: largura, height: altura });
-  }, [ancora, dia]);
+    const largura = Math.max(0, Math.min(380, v.largura - margem * 2));
+    const altura = Math.max(0, Math.min(540, v.altura - margem * 2));
+    const minEsq = v.esquerda + margem, maxEsq = Math.max(minEsq, v.esquerda + v.largura - largura - margem);
+    const minTopo = v.topo + margem, maxTopo = Math.max(minTopo, v.topo + v.altura - altura - margem);
+    // Alinhado à coluna clicada: centralizar o painel deslocava o foco visual para longe do dia que originou a ação.
+    const esquerda = ancora ? Math.min(Math.max(minEsq, ancora.left), maxEsq) : maxEsq;
+    const cabeAbaixo = !!ancora && ancora.top + ancora.height + altura + margem <= v.topo + v.altura;
+    const topoDesejado = ancora ? (cabeAbaixo ? ancora.top + ancora.height + 10 : ancora.top - altura - 10) : v.topo + 56;
+    setRect({ left: esquerda, top: Math.min(Math.max(minTopo, topoDesejado), maxTopo), width: largura, height: altura });
+  };
+  useLayoutEffect(posicionar, [ancora, dia]);
+  useEffect(() => {
+    if (maximizado) return;
+    window.addEventListener("resize", posicionar);
+    return () => window.removeEventListener("resize", posicionar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ancora, dia, maximizado]);
+  // Teclado: Esc fecha o popup (quando não está maximizado, que tem o próprio Esc).
+  useEffect(() => {
+    if (maximizado) return;
+    const tecla = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onFechar(); };
+    document.addEventListener("keydown", tecla);
+    return () => document.removeEventListener("keydown", tecla);
+  }, [onFechar, maximizado]);
 
   // A posição contextual precisa estar aplicada antes da primeira animação;
   // caso contrário o browser usa a posição inicial (canto do painel) como origem.
@@ -781,7 +835,7 @@ function PopupJanela({ onMaximizar, ancora, dia, blocos, concluidasDoDia, capaci
       if (!el || !ancora || typeof el.animate !== "function" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
       el.animate(
         [{ opacity: 0, transform: "scale(0.85)" }, { opacity: 1, transform: "scale(1)" }],
-        { duration: 220, easing: "ease-out" },
+        { duration: 140, easing: "ease-out" },
       );
     });
     return () => cancelAnimationFrame(quadro);

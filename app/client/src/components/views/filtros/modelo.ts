@@ -1,4 +1,5 @@
 import type { FeedItem } from "@/lib/types";
+import { canonicaTag } from "@/lib/tags";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 /** Filtros simples da lista, mais a ordem. Prioridade, "Atrasadas" e "Concluídas" só existem em tarefas. */
@@ -52,7 +53,7 @@ export const normalizarBusca = (texto: string): string => texto.normalize("NFD")
 
 /** Todos os termos digitados precisam aparecer, cada um em qualquer campo: título, tags, pasta, dono, equipe e, em notas, o texto. */
 function correspondeBusca(item: FeedItem, termos: string[]): boolean {
-  const campos = [item.titulo, ...(item.tags ?? []), pastaDoItem(item), item.dono.nome, item.origemEquipe?.nome ?? "", item.tipo === "nota" ? `${item.preview} ${item.corpo ?? ""}` : ""];
+  const campos = [item.titulo, ...(item.tags ?? []), ...(item.tags ?? []).map((t) => canonicaTag(t) ?? t), pastaDoItem(item), item.dono.nome, item.origemEquipe?.nome ?? "", item.tipo === "nota" ? `${item.preview} ${item.corpo ?? ""}` : ""];
   const palheiro = normalizarBusca(campos.join("\n"));
   return termos.every((termo) => palheiro.includes(termo));
 }
@@ -64,7 +65,7 @@ export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
     if (termos.length && !correspondeBusca(item, termos)) return false;
     if (e.equipe !== "todas" && item.espaco !== e.equipe) return false;
     if (e.pastas.length && !e.pastas.includes(pastaDoItem(item))) return false;
-    if (e.tags.length && !e.tags.some((tag) => (item.tags ?? []).some((tagDoItem) => tagDoItem.trim().localeCompare(tag, "pt-BR", { sensitivity: "accent" }) === 0))) return false;
+    if (e.tags.length && !e.tags.some((tag) => (item.tags ?? []).some((tagDoItem) => (canonicaTag(tagDoItem) ?? tagDoItem) === (canonicaTag(tag) ?? tag)))) return false;
     if (e.donos.length && !e.donos.includes(chaveDoDono(item))) return false;
     // Notas não têm prioridade nem conclusão: escolher uma delas mostra só tarefas. "Pendentes" mantém as notas.
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;

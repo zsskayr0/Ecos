@@ -1,3 +1,5 @@
+import { avisar } from "@/lib/toast";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
@@ -122,6 +124,7 @@ function NoteDetailMobile() {
     try {
       await notas.excluir(id);
       notificar();
+      avisar("Nota apagada.", "sucesso");
       navigate(-1);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");
@@ -145,7 +148,7 @@ function NoteDetailMobile() {
       <div className="ecos-detail-page">
         <DetailHeader onBack={() => navigate(-1)} />
         <div className="ecos-detail-content">
-        <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
+        <EstadoCarregando texto="Carregando…" />
         </div>
       </div>
     );

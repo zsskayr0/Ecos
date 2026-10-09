@@ -1,3 +1,4 @@
+import { avisar } from "@/lib/toast";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { NoteCard } from "@/components/cards/NoteCard";
 import { NoteListRow } from "@/components/cards/NoteListRow";
@@ -12,6 +13,7 @@ import { ApiError, equipes, pastas, tarefas, notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
+import { canonicaTag } from "@/lib/tags";
 import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
 import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
@@ -119,6 +121,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
         else await tarefas.atualizar(item.id, { pasta: pasta ?? "" });
       }
       setSelecionados(new Set()); ancora.current = null; notificar();
+      avisar(`${itensSelecionados.length === 1 ? "Item movido" : `${itensSelecionados.length} itens movidos`}.`, "sucesso");
     } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível mover os itens selecionados."); }
     finally { setProcessando(false); setMenuMoverAberto(false); }
   }
@@ -128,6 +131,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     try {
       for (const item of tarefasSelecionadas) await tarefas.atualizar(item.id, { prioridade });
       notificar();
+      avisar("Prioridade alterada.", "sucesso");
     } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível alterar a prioridade."); }
     finally { setProcessando(false); setMenuPrioridadeAberto(false); }
   }
@@ -140,6 +144,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
         else await tarefas.atualizar(item.id, { espaco });
       }
       setSelecionados(new Set()); ancora.current = null; notificar();
+      avisar("Equipe alterada.", "sucesso");
     } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível alterar a equipe."); }
     finally { setProcessando(false); setMenuEquipeAberto(false); }
   }
@@ -196,9 +201,8 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     const porNome = new Map<string, string>();
     for (const item of itens) {
       for (const tag of item.tags ?? []) {
-        const rotulo = tag.trim();
-        const chave = rotulo.toLocaleLowerCase("pt-BR");
-        if (rotulo && !porNome.has(chave)) porNome.set(chave, rotulo);
+        const canonica = canonicaTag(tag);
+        if (canonica && !porNome.has(canonica)) porNome.set(canonica, canonica);
       }
     }
     return [...porNome.values()].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));

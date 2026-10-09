@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, CalendarClock, CalendarDays, ChevronDown, Folder, Search, Timer, X } from "lucide-react";
 import { ApiError, tarefas as tarefasApi, type TarefaResumo } from "@/lib/api";
@@ -184,7 +185,7 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
 
           {/* Tarefas: mini lista com busca, filtros e ordenação (direita no desktop; primeiro no celular) */}
           <div className="order-1 flex min-h-0 min-w-0 w-full flex-col lg:order-2">
-            {lista === null ? <p className="text-sm text-text-muted">Carregando tarefas…</p> : lista.length === 0 ? <p className="text-sm text-text-muted">Não há tarefas pendentes para alocar.</p> : (
+            {lista === null ? <EstadoCarregando texto="Carregando tarefas…" /> : lista.length === 0 ? <p className="text-sm text-text-muted">Não há tarefas pendentes para alocar.</p> : (
               <section aria-label="Tarefa" className="flex min-h-0 min-w-0 w-full flex-1 flex-col">
                 <div className="ecos-cascata mb-1.5 flex items-center justify-between" style={{ ["--i" as string]: 0 }}>
                   <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Tarefa</p>

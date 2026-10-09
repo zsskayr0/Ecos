@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -106,7 +107,7 @@ export function EventosScreen() {
       {aba === "tempo"
         ? <TempoPorCategoria de={de} ate={ate} versao={versao + recarga} espaco={espaco} onEscolherCategoria={(id) => { setFiltroCategoria(id ?? "sem"); setAba("lista"); }} />
         : lista === null
-          ? <p className="py-10 text-center text-sm text-text-muted">Carregando eventos...</p>
+          ? <EstadoCarregando texto="Carregando eventos…" />
           : grupos.length === 0 && !erro
             ? <EmptyState icon={CalendarClock} title="Nenhum evento neste período." subtitle="Crie um evento privado (só no Ecos) ou sincronizado com o Google Calendar." action={<button type="button" onClick={() => setEditando({ id: null })} className="rounded-xl bg-cyan px-4 py-2 text-sm font-semibold text-black">Novo evento</button>} />
             : <div className="flex flex-col gap-6">

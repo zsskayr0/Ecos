@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
@@ -68,7 +69,7 @@ export function TaskFoldersRootScreen() {
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Todas as tarefas</p>
       <div>
         {tarefas === null ? (
-          <p className="py-6 text-center text-sm text-text-muted">Carregando...</p>
+          <EstadoCarregando texto="Carregando…" />
         ) : tarefas.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">
             Nenhuma tarefa criada ainda.

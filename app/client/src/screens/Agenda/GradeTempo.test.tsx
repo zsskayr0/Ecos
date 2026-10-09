@@ -1040,3 +1040,17 @@ describe("o nome do bloco acompanha a rolagem", () => {
     expect(rotulo().style.transform).toBe("");
   });
 });
+
+describe("acessibilidade e ordem de leitura", () => {
+  it("os blocos de um dia ficam no DOM em ordem temporal, qualquer que seja a ordem de entrada (Tab e leitor de tela seguem o relógio)", () => {
+    montar([item({ id: "tarde", inicioMin: 900 }), item({ id: "cedo", inicioMin: 480 }), item({ id: "meio", inicioMin: 600 })]);
+    const ordem = [...document.querySelectorAll<HTMLElement>("[data-coluna-dia] [data-item]")].map((n) => n.dataset.item);
+    expect(ordem).toEqual(["bloco:cedo", "bloco:meio", "bloco:tarde"]);
+  });
+
+  it("a grade é uma região rotulada e focável, para rolar com o teclado", () => {
+    montar([]);
+    const regiao = screen.getByRole("region", { name: "Grade de horários" });
+    expect(regiao.getAttribute("tabindex")).toBe("0");
+  });
+});

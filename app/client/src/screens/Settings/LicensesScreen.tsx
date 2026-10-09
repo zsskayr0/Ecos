@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, Search } from "lucide-react";
@@ -72,7 +73,7 @@ export function LicensesScreen() {
       </label>
 
       {erro && <p role="alert" className="mt-6 text-sm text-red-400">Não foi possível carregar a lista de licenças.</p>}
-      {!erro && !dados && <p role="status" className="mt-6 text-sm text-text-muted">Carregando…</p>}
+      {!erro && !dados && <EstadoCarregando texto="Carregando…" />}
       {dados && (
         <>
           <p className="mt-3 text-xs text-text-muted">{dados.total} pacotes · gerado em {dados.geradoEm}</p>

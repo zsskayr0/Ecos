@@ -90,7 +90,7 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
         : <ul className="divide-y divide-border/60">
           {visiveis.map((t) => <li key={t.tag} className="flex items-center gap-2 py-1.5">
             <input type="checkbox" checked={marcadas.includes(t.tag)} onChange={(e) => setMarcadas((atual) => e.target.checked ? [...atual, t.tag] : atual.filter((x) => x !== t.tag))} aria-label={`Selecionar #${t.tag} para mesclar`} className="h-5 w-5 shrink-0 accent-[var(--color-cyan,#22d3ee)]" />
-            <Tag size={15} className="shrink-0 text-violet-400" aria-hidden />
+            <Tag size={15} className="shrink-0 text-violet" aria-hidden />
             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-text-primary">#{t.tag}</span><span className="block text-xs text-text-muted">{resumoUso(t)}</span></span>
             <button type="button" disabled={ocupado} onClick={() => { setNome(t.tag); setFalha(null); setAcao({ tipo: "renomear", tag: t.tag }); }} aria-label={`Renomear #${t.tag}`} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><Pencil size={16} /></button>
             <button type="button" disabled={ocupado} onClick={() => setRemovendo(t)} aria-label={`Remover #${t.tag}`} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-error"><Trash2 size={16} /></button>

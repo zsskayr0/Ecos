@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState } from "react";
 import { TIPOS_DE_EQUIPE, rotuloDoTipoDeEquipe, type TipoEquipe } from "@/lib/tipo-equipe";
 import { useNavigate, useParams } from "react-router-dom";
@@ -118,7 +119,7 @@ export function TeamProfileScreen() {
         <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
-        <p className="py-10 text-center text-sm text-text-muted">Carregando...</p>
+        <EstadoCarregando texto="Carregando…" />
       </div>
     );
   }

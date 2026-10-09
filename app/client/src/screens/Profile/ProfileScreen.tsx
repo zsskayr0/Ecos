@@ -10,6 +10,9 @@ import type { Cargo } from "@/lib/types";
 import { ApiError, auth, avatarPerfil, equipes as equipesApi, notas, tarefas } from "@/lib/api";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
+import { avisar } from "@/lib/toast";
 
 /**
  * Personal Profile — same visual structure as a Team's profile (section
@@ -20,19 +23,22 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 export function ProfileScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { perfil, recarregarPerfil } = useAuth();
+  const { perfil, status, recarregarPerfil } = useAuth();
   const { equipes } = useMinhasEquipes();
   const { notificar } = useRefreshBus();
   const [novaEquipe, setNovaEquipe] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [dialogoEquipe, setDialogoEquipe] = useState<{ tipo: "editar" | "excluir"; id: string; nome: string } | null>(null);
   const [metricas, setMetricas] = useState<{ notas: number; tarefas: number; palavras: number; caracteres: number; primeiraNota: string | null }>({ notas: 0, tarefas: 0, palavras: 0, caracteres: 0, primeiraNota: null });
+  const [carregandoMetricas, setCarregandoMetricas] = useState(true);
+  const [erroMetricas, setErroMetricas] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const { url: urlFoto } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
-  useEffect(() => { let vivo = true; Promise.all([notas.listar({ limit: 500 }), tarefas.listar({ limit: 500 })]).then(([paginaNotas, paginaTarefas]) => { if (!vivo) return; const texto = paginaNotas.items.map((nota) => `${nota.titulo} ${nota.corpo}`).join(" "); const primeira = paginaNotas.items.map((nota) => nota.criado_em).sort()[0] ?? null; setMetricas({ notas: paginaNotas.items.length, tarefas: paginaTarefas.items.length, palavras: texto.trim() ? texto.trim().split(/\s+/).length : 0, caracteres: texto.length, primeiraNota: primeira }); }).catch(() => undefined); return () => { vivo = false; }; }, []);
-  async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); } finally { setOcupado(false); } }
-  async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); } finally { setOcupado(false); } }
+  useEffect(() => { let vivo = true; setCarregandoMetricas(true); setErroMetricas(null); Promise.all([notas.listar({ limit: 500 }), tarefas.listar({ limit: 500 })]).then(([paginaNotas, paginaTarefas]) => { if (!vivo) return; const texto = paginaNotas.items.map((nota) => `${nota.titulo} ${nota.corpo}`).join(" "); const primeira = paginaNotas.items.map((nota) => nota.criado_em).sort()[0] ?? null; setMetricas({ notas: paginaNotas.items.length, tarefas: paginaTarefas.items.length, palavras: texto.trim() ? texto.trim().split(/\s+/).length : 0, caracteres: texto.length, primeiraNota: primeira }); }).catch(() => { if (vivo) setErroMetricas("Não foi possível carregar o resumo do seu espaço."); }).finally(() => { if (vivo) setCarregandoMetricas(false); }); return () => { vivo = false; }; }, [tentativa]);
+  async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); avisar("Equipe criada.", "sucesso"); } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível criar a equipe.", "erro"); } finally { setOcupado(false); } }
+  async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); avisar(dialogoEquipe.tipo === "editar" ? "Equipe renomeada." : "Equipe excluída.", "sucesso"); } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível concluir a ação.", "erro"); } finally { setOcupado(false); } }
   async function escolherFoto(arquivo?: File) {
     if (!arquivo || !perfil || salvandoFoto) return;
     setMensagemPerfil(null);
@@ -45,11 +51,12 @@ export function ProfileScreen() {
       await recarregarPerfil();
       notificarFotoPerfilAtualizada(perfil.id);
       setMensagemPerfil({ tipo: "sucesso", texto: "Foto atualizada." });
+      avisar("Foto atualizada.", "sucesso");
     } catch (e) {
       setMensagemPerfil({ tipo: "erro", texto: e instanceof Error ? e.message : "Não foi possível guardar a imagem." });
     } finally { setSalvandoFoto(false); }
   }
-  if (!perfil) return null;
+  if (!perfil) return status === "carregando" ? <EstadoCarregando texto="Carregando perfil…" /> : null;
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -86,7 +93,8 @@ export function ProfileScreen() {
       </button>
 
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Seu espaço</p>
-      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas.toLocaleString("pt-BR")} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas.toLocaleString("pt-BR")} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras.toLocaleString("pt-BR")} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres.toLocaleString("pt-BR")} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">Primeira nota</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>
+      {erroMetricas && <EstadoErro mensagem={erroMetricas} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
+      {carregandoMetricas ? <EstadoCarregando texto="Carregando seu espaço…" /> : !erroMetricas && <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas.toLocaleString("pt-BR")} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas.toLocaleString("pt-BR")} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras.toLocaleString("pt-BR")} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres.toLocaleString("pt-BR")} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">Primeira nota</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>}
 
     </div>
   );

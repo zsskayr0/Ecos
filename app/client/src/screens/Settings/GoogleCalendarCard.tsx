@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, CheckCircle2, ExternalLink, Link2, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { ApiError, calendario, type CalendarioConectado, type ResumoSyncCalendario } from "@/lib/api";
@@ -117,7 +118,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
         {conectado && !conectado.precisa_reconectar && <CheckCircle2 size={18} className="shrink-0 text-success" aria-label="Conectado" />}
       </div>
 
-      {config === null && !erro && <p className="mt-3 text-xs text-text-muted">Carregando...</p>}
+      {config === null && !erro && <EstadoCarregando texto="Carregando…" />}
       {config && !config.configurado && !conectado && (
         <p className="mt-3 text-xs text-text-muted">Este servidor ainda não tem as credenciais do Google. Defina <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> no <code>.env</code> e reinicie.</p>
       )}

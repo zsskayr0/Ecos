@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FileText } from "lucide-react";
@@ -63,7 +64,7 @@ export function FileViewerScreen() {
               aoMedirPagina={(p) => ajustarJanela?.({ larguraNatural: p.w, alturaNatural: p.h, extraLargura: 32 + RECUO_LATERAL, extraAltura: 46 + 32 + 12, ampliar: 1.3 })}
             />
           ) : (
-            <p className="p-10 text-center text-sm text-text-muted">Carregando PDF…</p>
+            <EstadoCarregando texto="Carregando PDF…" />
           )
         ) : tipo === "imagem" ? (
           <div className="flex h-full items-center justify-center overflow-auto bg-surface-2 p-3">

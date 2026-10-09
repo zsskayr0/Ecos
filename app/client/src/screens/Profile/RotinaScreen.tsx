@@ -1,3 +1,4 @@
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Briefcase, ChevronDown, ChevronLeft, Clock3, Moon, Sun, Utensils, Car, Sparkles, Coffee } from "lucide-react";
@@ -99,7 +100,7 @@ export function RotinaScreen() {
   }, []);
 
   const sair = () => navigate(primeiraVez ? "/feed" : location.pathname.startsWith("/configuracoes") ? "/configuracoes" : "/perfil");
-  if (!estado) return <p className="px-4 py-10 text-center text-sm text-text-muted">Carregando...</p>;
+  if (!estado) return <EstadoCarregando texto="Carregando…" />;
 
   const atualizar = (patch: Partial<Estado>) => setEstado((e) => (e ? { ...e, ...patch } : e));
   const valido = janelaValida(estado.sono)

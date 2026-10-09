@@ -163,7 +163,8 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
   }, [selecao?.dia, selecao?.inicioMin]);
 
   const gridTemplateColumns = `56px repeat(${dias.length}, minmax(120px, 1fr))`;
-  const horarios = useMemo(() => itens.filter((i) => i.inicioMin !== null), [itens]);
+  // Ordem temporal no DOM: Tab e leitores de tela percorrem cada dia do mais cedo para o mais tarde.
+  const horarios = useMemo(() => itens.filter((i) => i.inicioMin !== null).sort((a, b) => (a.inicioMin as number) - (b.inicioMin as number)), [itens]);
   // Ordem fixa na faixa: eventos, tarefas (e prazos) e, por último, lançamentos.
   const diaTodo = useMemo(() => {
     const grupo = (i: ItemAgenda) => (i.transacao ? 2 : i.tipo === "evento" ? 0 : 1);
@@ -615,7 +616,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
       </div>
 
       {/* `isolate`: os z-index das linhas fixas (cabeçalho dos dias, "O dia todo") valem só aqui dentro; sem isso eles passam por cima do popup do dia e de qualquer outra camada da Agenda. */}
-      <div ref={rolagemRef} data-testid="grade-rolagem" onScroll={ajustarRotulos} className="isolate min-h-0 flex-1 overflow-auto">
+      <div ref={rolagemRef} data-testid="grade-rolagem" role="region" aria-label="Grade de horários" tabIndex={0} onScroll={ajustarRotulos} className="isolate min-h-0 flex-1 overflow-auto">
         <div className="relative min-w-[680px]">
           <div className="sticky top-0 z-30 grid bg-surface-1" style={{ gridTemplateColumns, height: ALTURA_CABECALHO }}>
             <div className="sticky left-0 z-30 border-b border-r border-border/35 bg-surface-1" />
@@ -628,7 +629,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
                     type="button"
                     aria-label={`Ver tarefas de ${d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`}
                     onClick={(e) => onSelecionarDia(dia, e.currentTarget.closest<HTMLElement>("[data-cabecalho-dia]") ?? e.currentTarget)}
-                    className={`peer flex h-8 w-8 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${dia === hoje ? "bg-steel-500 font-semibold text-white hover:bg-steel-400" : "text-text-primary hover:bg-surface-3"}`}
+                    className={`peer flex h-8 w-8 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 motion-reduce:transform-none motion-reduce:transition-none ${dia === hoje ? "bg-steel-500 font-semibold text-white hover:bg-steel-400" : "text-text-primary hover:bg-surface-3"}`}
                   >
                     {d.getDate()}
                   </button>
