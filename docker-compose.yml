@@ -13,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: app/server/Dockerfile
-    image: ecos/app:${ECOS_VERSION:-local}
+    image: ${ECOS_REGISTRY:-docker.io}/ecos/app:${ECOS_VERSION:-local}
     restart: unless-stopped
     environment:
       - ECOS_VAULT_ENABLED=${ECOS_VAULT_ENABLED:-false}
@@ -45,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: app/vault/Dockerfile
-    image: ecos/vault-db:${ECOS_VERSION:-local}
+    image: ${ECOS_REGISTRY:-docker.io}/ecos/vault-db:${ECOS_VERSION:-local}
     restart: unless-stopped
     networks: [internal]
     volumes:

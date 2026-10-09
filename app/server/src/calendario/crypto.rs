@@ -1,4 +1,4 @@
-//! Cifra dos tokens do Google em repouso (AES-256-GCM). A chave mora em `<notes_root>/.ecos/chave-calendario`,
+//! Cifra dos tokens do Google em repouso (AES-256-GCM). A chave mora na pasta de segredos (`segredos.rs`, fora das notas),
 //! gerada no primeiro uso (mesmo padrão do `segredo-sessao`): quem levar só o `index.db` não leva os tokens.
 
 use aes_gcm::aead::{Aead, KeyInit};
@@ -13,26 +13,26 @@ pub struct Cofre {
 }
 
 impl Cofre {
-    /// Lê a chave (criando-a se ainda não existe). Arquivo com tamanho errado é erro, nunca regenerado em
-    /// silêncio: regenerar deixaria os tokens já gravados ilegíveis sem ninguém perceber.
+    /// Chave desta instância: na pasta de segredos (fora das notas), migrando a antiga de `<notas>/.ecos`.
+    pub fn da_config(config: &crate::config::Config) -> anyhow::Result<Self> {
+        Self::em(&config.dir_segredos(), &crate::segredos::dir_legado(&config.notes_root))
+    }
+
+    /// Lê a chave sob `<notes_root>/.ecos` (criando-a se ainda não existe).
     pub fn carregar(notes_root: &Path) -> anyhow::Result<Self> {
-        let dir = notes_root.join(".ecos");
-        std::fs::create_dir_all(&dir)?;
+        let dir = crate::segredos::dir_legado(notes_root);
+        Self::em(&dir, &dir)
+    }
+
+    /// Arquivo com tamanho errado é erro, nunca regenerado em silêncio: regenerar deixaria os tokens já
+    /// gravados ilegíveis sem ninguém perceber.
+    fn em(dir: &Path, legado: &Path) -> anyhow::Result<Self> {
         let caminho = dir.join("chave-calendario");
-        let chave = if caminho.exists() {
-            std::fs::read(&caminho)?
-        } else {
-            let mut nova = vec![0u8; 32];
-            rand::thread_rng().fill_bytes(&mut nova);
-            std::fs::write(&caminho, &nova)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&caminho, std::fs::Permissions::from_mode(0o600))?;
-            }
+        let existia = caminho.exists() || legado.join("chave-calendario").exists();
+        let (chave, _) = crate::segredos::ler_ou_criar(dir, legado, "chave-calendario", 32)?;
+        if !existia {
             tracing::info!(path = %caminho.display(), "chave de cifra do calendário gerada");
-            nova
-        };
+        }
         if chave.len() != 32 {
             anyhow::bail!("{} deve ter exatamente 32 bytes (tem {})", caminho.display(), chave.len());
         }

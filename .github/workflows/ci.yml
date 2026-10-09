@@ -1,0 +1,53 @@
+name: CI
+
+# A cada push e pull request: se o login, as permissões ou o cliente quebrarem, o CI falha antes de chegar a alguém.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  servidor:
+    name: Servidor (cargo test --workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Testes (unitários e de integração em app/server/tests)
+        run: cargo test --workspace --locked
+
+  cliente:
+    name: Cliente (tsc -b e npm test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/client/package-lock.json
+      - run: npm ci
+      - name: Tipos
+        run: npx tsc -b
+      - name: Testes
+        run: npm test
+
+  versoes:
+    name: Versões em sincronia
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/verificar-versoes.mjs

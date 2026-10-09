@@ -2,7 +2,6 @@
 //! 2), com bootstrap do segredo de sessão quando ausente (seção 5.4:
 //! "segredo de sessão nunca ausente em produção").
 
-use rand::RngCore;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,38 +97,33 @@ fn env_u64(key: &str, default: u64) -> u64 {
 }
 
 /// Lê `ECOS_SESSION_SECRET` se presente; senão gera 32 bytes aleatórios e
-/// persiste em `<notes_root>/.ecos/segredo-sessao` (criado no primeiro
-/// boot) — nunca sobe sem segredo, mesmo padrão do `NEXUS_API_KEY`
-/// ([[ecos-vault-nexus-reuse-policy]]).
-fn bootstrap_session_secret(notes_root: &Path) -> anyhow::Result<Vec<u8>> {
+/// persiste em `<pasta de segredos>/segredo-sessao` (ver `segredos.rs`: fora
+/// da pasta de notas) no primeiro boot — nunca sobe sem segredo, mesmo padrão
+/// do `NEXUS_API_KEY` ([[ecos-vault-nexus-reuse-policy]]). Um segredo que
+/// ainda esteja em `<notas>/.ecos/` é movido para lá.
+fn bootstrap_session_secret(notes_root: &Path, index_db_path: &Path) -> anyhow::Result<Vec<u8>> {
     if let Ok(from_env) = std::env::var("ECOS_SESSION_SECRET") {
         if !from_env.trim().is_empty() {
             return Ok(from_env.into_bytes());
         }
     }
-
-    let ecos_dir = notes_root.join(".ecos");
-    std::fs::create_dir_all(&ecos_dir)?;
-    let secret_path = ecos_dir.join("segredo-sessao");
-
-    if secret_path.exists() {
-        let existing = std::fs::read(&secret_path)?;
-        if !existing.is_empty() {
-            return Ok(existing);
-        }
+    let dir = crate::segredos::resolver_dir(notes_root, index_db_path);
+    let (segredo, criado) = crate::segredos::ler_ou_criar(&dir, &crate::segredos::dir_legado(notes_root), "segredo-sessao", 32)?;
+    if criado {
+        tracing::warn!(
+            path = %dir.join("segredo-sessao").display(),
+            "ECOS_SESSION_SECRET ausente — segredo de sessão gerado e persistido no primeiro boot"
+        );
     }
-
-    let mut secret = vec![0u8; 32];
-    rand::thread_rng().fill_bytes(&mut secret);
-    std::fs::write(&secret_path, &secret)?;
-    tracing::warn!(
-        path = %secret_path.display(),
-        "ECOS_SESSION_SECRET ausente — segredo de sessão gerado e persistido no primeiro boot"
-    );
-    Ok(secret)
+    Ok(segredo)
 }
 
 impl Config {
+    /// Pasta dos segredos desta instância (chave do calendário etc.), fora das notas. Ver `segredos.rs`.
+    pub fn dir_segredos(&self) -> PathBuf {
+        crate::segredos::resolver_dir(&self.notes_root, &self.index_db_path)
+    }
+
     pub fn from_env() -> anyhow::Result<Self> {
         let ambiente = match std::env::var("ECOS_ENV").as_deref() {
             Ok("staging") => Ambiente::Staging,
@@ -150,7 +144,7 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| notes_root.join(".ecos").join("index.db"));
 
-        let session_secret = bootstrap_session_secret(&notes_root)?;
+        let session_secret = bootstrap_session_secret(&notes_root, &index_db_path)?;
 
         Ok(Self {
             ambiente,

@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(app.clone().call(sair("u1")).await.unwrap().status(), StatusCode::OK);
         let restam: i64 = state.db.with(|c| c.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = 'EQ'", [], |r| r.get(0))).await.unwrap();
         assert_eq!(restam, 1);
-        assert_eq!(app.clone().call(sair("u1")).await.unwrap().status(), StatusCode::FORBIDDEN, "quem já saiu não é membro");
+        assert_eq!(app.clone().call(sair("u1")).await.unwrap().status(), StatusCode::NOT_FOUND, "quem já saiu não é membro (e a equipe nem aparece para ela)");
         assert_eq!(app.clone().call(sair("u2")).await.unwrap().status(), StatusCode::CONFLICT, "única pessoa deve excluir a equipe");
         let _ = std::fs::remove_dir_all(&temp);
     }

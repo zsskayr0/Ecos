@@ -220,7 +220,7 @@ async fn executar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str) -> R<R
     if linha.precisa_reconectar {
         return Err(SyncErro::PrecisaReconectar);
     }
-    let cofre = Cofre::carregar(&state.config.notes_root)?;
+    let cofre = Cofre::da_config(&state.config)?;
     let access = token_de_acesso(state, cfg, &cofre, usuario_id, &linha).await?;
     let calendar_id = linha.calendar_id.clone().unwrap_or_else(|| "primary".into());
     let fuso = linha.fuso.clone().unwrap_or_else(|| "UTC".into());

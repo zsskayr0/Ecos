@@ -215,7 +215,7 @@ async fn concluir_conexao(state: &AppState, cfg: &crate::config::GoogleConfig, u
     let refresh = tokens.refresh_token.clone().ok_or("o Google não devolveu refresh token (revogue o acesso do Ecos em myaccount.google.com/permissions e conecte de novo)")?;
     let primario = google::calendario_primario(&state.http, cfg, &tokens.access_token).await.map_err(|e| e.to_string())?;
 
-    let cofre = Cofre::carregar(&state.config.notes_root).map_err(|e| e.to_string())?;
+    let cofre = Cofre::da_config(&state.config).map_err(|e| e.to_string())?;
     let access_cifrado = cofre.cifrar(tokens.access_token.as_bytes()).map_err(|e| e.to_string())?;
     let refresh_cifrado = cofre.cifrar(refresh.as_bytes()).map_err(|e| e.to_string())?;
     let expira = (Utc::now() + Duration::seconds(tokens.expires_in.unwrap_or(3600))).to_rfc3339();
@@ -259,7 +259,7 @@ pub async fn desconectar(State(state): State<AppState>, Extension(usuario): Exte
         let soltos = sync::desvincular_eventos(&state, &usuario.0, calendar_id.as_deref()).await.map_err(erro_de_sync)?;
         tracing::info!(eventos_desvinculados = soltos, "Google Calendar desconectado");
         if let (Some(cfg), Some(blob)) = (state.config.google.as_ref(), refresh) {
-            if let Ok(claro) = Cofre::carregar(&state.config.notes_root).and_then(|c| c.decifrar(&blob)) {
+            if let Ok(claro) = Cofre::da_config(&state.config).and_then(|c| c.decifrar(&blob)) {
                 google::revogar(&state.http, cfg, &String::from_utf8_lossy(&claro)).await;
             }
         }

@@ -3,25 +3,11 @@
 //! passa por aqui em modo local puro (seção 0.1) — isso é papel do cliente
 //! Tauri (fora de escopo deste binário).
 
-mod admin;
-mod auth;
-mod calendario;
-mod config;
-mod conta;
-mod db;
-mod error;
-mod eventos_fs;
-mod espacos;
-mod jobs;
-mod middleware;
-mod routes;
-mod state;
-mod zip;
-
-use config::Config;
-use db::IndexDb;
-use middleware::{rate_limit::RateLimitLayer, security_headers};
-use state::AppState;
+use ecos_app::config::Config;
+use ecos_app::db::{self, IndexDb};
+use ecos_app::middleware::{self, rate_limit::RateLimitLayer, security_headers};
+use ecos_app::state::AppState;
+use ecos_app::{espacos, jobs, routes};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
