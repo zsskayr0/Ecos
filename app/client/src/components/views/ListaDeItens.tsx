@@ -13,6 +13,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
 import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
+import { canonicaTag } from "@/lib/tags";
 import { TabelaItens } from "./TabelaItens";
 import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
 
@@ -196,9 +197,8 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     const porNome = new Map<string, string>();
     for (const item of itens) {
       for (const tag of item.tags ?? []) {
-        const rotulo = tag.trim();
-        const chave = rotulo.toLocaleLowerCase("pt-BR");
-        if (rotulo && !porNome.has(chave)) porNome.set(chave, rotulo);
+        const canonica = canonicaTag(tag);
+        if (canonica && !porNome.has(canonica)) porNome.set(canonica, canonica);
       }
     }
     return [...porNome.values()].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));

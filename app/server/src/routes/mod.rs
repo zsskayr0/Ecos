@@ -15,6 +15,8 @@ mod eventos_testes;
 mod isolamento_testes;
 #[cfg(test)]
 mod admin_testes;
+#[cfg(test)]
+mod tags_testes;
 pub mod feed;
 pub mod health;
 pub mod media;
@@ -25,6 +27,7 @@ pub mod pagination;
 pub mod pastas;
 pub mod rotina;
 pub mod sync;
+pub mod tags;
 pub mod tarefas;
 pub mod vault_proxy;
 
@@ -114,6 +117,8 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/agenda/blocos", get(tarefas::listar_blocos))
         .route("/feed", get(feed::obter))
         .route("/busca", get(busca::buscar))
+        .route("/tags", get(tags::listar).patch(tags::renomear).delete(tags::remover))
+        .route("/tags/mesclar", post(tags::mesclar))
         .route("/rotina/blocos", get(rotina::listar).post(rotina::criar))
         .route("/rotina/blocos/:id", patch(rotina::atualizar).delete(rotina::excluir))
         .route("/equipes", get(equipes::listar_minhas).post(equipes::criar))

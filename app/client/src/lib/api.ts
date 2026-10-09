@@ -726,6 +726,18 @@ export const busca = {
     ),
 };
 
+// --- Tags (catálogo único de notas e tarefas) -----------------------------------
+
+export interface TagCatalogo { tag: string; notas: number; tarefas: number; total: number; espacos: { espaco: string; notas: number; tarefas: number }[] }
+export interface AfetadosTag { notas: number; tarefas: number }
+
+export const tagsApi = {
+  listar: (espaco?: string) => get<TagCatalogo[]>(`/tags${qs({ espaco })}`),
+  renomear: (payload: { espaco: string; de: string; para: string }) => patch<{ tag: string; afetados: AfetadosTag }>("/tags", payload),
+  mesclar: (payload: { espaco: string; origens: string[]; destino: string }) => post<{ tag: string; afetados: AfetadosTag }>("/tags/mesclar", payload),
+  remover: (payload: { espaco: string; tag: string }) => del<{ afetados: AfetadosTag }>(`/tags${qs(payload)}`),
+};
+
 // --- Teams (section 11.10) ----------------------------------------------
 
 export interface BlocoRotina { id: string; tipo: string; hora_inicio: string; hora_fim: string; dias_semana: string; classificacao: string }
