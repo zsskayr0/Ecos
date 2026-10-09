@@ -76,7 +76,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             if let Some(tag) = &q.tag {
                 sql.push_str(" JOIN nota_tag nt ON nt.nota_id = n.id");
                 condicoes.push("nt.tag = ?".into());
-                params.push(Box::new(tag.clone()));
+                params.push(Box::new(ecos_core::tags::canonica(tag).unwrap_or_else(|| tag.clone())));
             }
             if let Some(pasta) = &q.pasta {
                 condicoes.push("n.pasta_id = ?".into());
@@ -208,6 +208,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
+    crate::espacos::validar_pasta(pasta_relativa)?;
     crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
     let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Notas").await?;
     let dir = match pasta_relativa {
@@ -226,7 +227,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         modo: payload.modo.unwrap_or_default(),
         criado_em: agora,
         atualizado_em: agora,
-        tags: payload.tags,
+        tags: ecos_core::tags::normalizar_lista(&payload.tags),
         pasta_id: pasta_relativa.map(str::to_string),
         espaco,
         tarefa_vinculada_id: None,
@@ -267,11 +268,7 @@ pub struct ImportarNotaPayload {
 /// completa o front-matter que faltar e nunca mexe no corpo.
 pub async fn importar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ImportarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
-    if let Some(p) = pasta_relativa {
-        if p.contains("..") || p.starts_with('/') || p.starts_with('\\') ||p.contains(':') {
-            return Err(AppError::validation(vec![CampoInvalido { campo: "pasta".into(), motivo: "caminho inválido".into() }]));
-        }
-    }
+    crate::espacos::validar_pasta(pasta_relativa)?;
     let nome = payload.nome.trim().trim_end_matches(".md").trim_end_matches(".MD");
     if nome.is_empty() {
         return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
@@ -353,6 +350,7 @@ pub struct AtualizarNotaPayload {
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
+    crate::espacos::validar_pasta(payload.pasta.as_deref())?;
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
@@ -367,7 +365,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         fm.espaco = espaco.parse().map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     }
     if let Some(tags) = payload.tags {
-        fm.tags = tags;
+        fm.tags = ecos_core::tags::atualizar_preservando(&fm.tags, &tags);
     }
     if let Some(novo_corpo) = payload.corpo {
         corpo = novo_corpo;
@@ -544,6 +542,10 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
 /// da sessão já exigida por `rotas_protegidas` (seção 11.1).
 pub async fn obter_anexo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path((id, nome_arquivo)): Path<(String, String)>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
     let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
+    // O nome chega decodificado (`%2F` vira `/`): sem esta checagem, `../../..` alcança arquivos de outro espaço.
+    if !crate::espacos::nome_de_arquivo_seguro(&nome_arquivo) {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
     let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
     if !caminho.is_file() {
         return Err(AppError::new(ErrorCode::NotFound));

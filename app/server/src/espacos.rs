@@ -55,15 +55,40 @@ pub fn visivel_chave_sql(alias: &str, usuario_id: &str) -> String {
     format!("({p}espaco = {chave} OR ({p}espaco LIKE 'equipe:%' AND substr({p}espaco, 8) IN (SELECT equipe_id FROM membro_equipe WHERE usuario_id = {uid})))")
 }
 
+/// Cargo da pessoa na equipe; `None` quando ela não participa (ou a equipe não existe). É a única consulta
+/// de participação do servidor: toda rota que recebe `equipe_id` ou `espaco=equipe:<id>` passa por aqui.
+pub async fn cargo_na_equipe(state: &AppState, equipe_id: &str, usuario_id: &str) -> AppResult<Option<String>> {
+    let (uid, eid) = (usuario_id.to_string(), equipe_id.to_string());
+    Ok(state
+        .db
+        .with(move |conn| conn.query_row("SELECT cargo FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", [&eid, &uid], |r| r.get::<_, String>(0)).optional())
+        .await?)
+}
+
 /// Recusa (403) escrever em espaço de equipe de que o usuário não é membro. `pessoal` é sempre do próprio usuário.
 pub async fn exigir_acesso(state: &AppState, usuario_id: &str, espaco: &str) -> AppResult<()> {
     let Some(equipe_id) = espaco.strip_prefix("equipe:") else { return Ok(()) };
-    let (uid, eid) = (usuario_id.to_string(), equipe_id.to_string());
-    let membro = state
-        .db
-        .with(move |conn| conn.query_row("SELECT EXISTS(SELECT 1 FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2)", [&eid, &uid], |r| r.get::<_, bool>(0)))
-        .await?;
-    if membro { Ok(()) } else { Err(crate::error::AppError::new(ecos_core::ErrorCode::Forbidden)) }
+    if cargo_na_equipe(state, equipe_id, usuario_id).await?.is_some() { Ok(()) } else { Err(crate::error::AppError::new(ecos_core::ErrorCode::Forbidden)) }
+}
+
+/// Caminho relativo vindo do cliente que só desce a partir da raiz: sem `..`, sem barra inicial, sem unidade (`C:`).
+/// Sem isso, `raiz.join(caminho)` sai da pasta do espaço e alcança a de outra pessoa.
+pub fn caminho_relativo_seguro(caminho: &str) -> bool {
+    use std::path::Component;
+    Path::new(caminho).components().all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// `pasta` opcional de um payload (vazia = raiz do espaço): recusa (422) o que sairia da raiz.
+pub fn validar_pasta(pasta: Option<&str>) -> AppResult<()> {
+    match pasta {
+        Some(p) if !p.is_empty() && !caminho_relativo_seguro(p) => Err(crate::error::AppError::validation(vec![crate::error::CampoInvalido { campo: "pasta".into(), motivo: "caminho inválido".into() }])),
+        _ => Ok(()),
+    }
+}
+
+/// Nome de um único arquivo (sem separador, sem `..`), como o `nome_arquivo` das rotas de anexo.
+pub fn nome_de_arquivo_seguro(nome: &str) -> bool {
+    !nome.is_empty() && !nome.contains(['/', '\\']) && caminho_relativo_seguro(nome)
 }
 
 /// Chaves físicas que o usuário pode ler: a pessoal dele e as equipes de que é membro.

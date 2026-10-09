@@ -92,7 +92,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     Ok(Json(serde_json::json!({ "id": id })))
 }
 
-pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<BlocoPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<BlocoPayload>) -> AppResult<Json<serde_json::Value>> {
     validar_bloco(&payload)?;
     let afetadas = state
         .db
@@ -100,8 +100,8 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
             let id = id.clone();
             move |conn| {
                 conn.execute(
-                    "UPDATE bloco_rotina SET tipo = ?1, hora_inicio = ?2, hora_fim = ?3, dias_semana = ?4, classificacao = ?5 WHERE id = ?6",
-                    rusqlite::params![payload.tipo, payload.hora_inicio, payload.hora_fim, payload.dias_semana, payload.classificacao, id],
+                    "UPDATE bloco_rotina SET tipo = ?1, hora_inicio = ?2, hora_fim = ?3, dias_semana = ?4, classificacao = ?5 WHERE id = ?6 AND usuario_id = ?7",
+                    rusqlite::params![payload.tipo, payload.hora_inicio, payload.hora_fim, payload.dias_semana, payload.classificacao, id, usuario.0],
                 )
             }
         })
@@ -112,8 +112,8 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     Ok(Json(serde_json::json!({ "id": id })))
 }
 
-pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let afetadas = state.db.with(move |conn| conn.execute("DELETE FROM bloco_rotina WHERE id = ?1", [&id])).await?;
+pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let afetadas = state.db.with(move |conn| conn.execute("DELETE FROM bloco_rotina WHERE id = ?1 AND usuario_id = ?2", [&id, &usuario.0])).await?;
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::NotFound));
     }

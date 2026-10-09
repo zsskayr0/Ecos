@@ -15,27 +15,25 @@ use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
 async fn cargo_do_usuario(state: &AppState, equipe_id: &str, usuario_id: &str) -> AppResult<Option<String>> {
-    let (equipe_id, usuario_id) = (equipe_id.to_string(), usuario_id.to_string());
-    let cargo: Option<String> = state
-        .db
-        .with(move |conn| {
-            conn.query_row(
-                "SELECT cargo FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2",
-                rusqlite::params![equipe_id, usuario_id],
-                |r| r.get(0),
-            )
-            .optional()
-        })
-        .await?;
-    Ok(cargo)
+    crate::espacos::cargo_na_equipe(state, equipe_id, usuario_id).await
 }
 
+/// Quem não participa da equipe recebe 404 (não se confirma nem que ela existe); quem participa sem o cargo exigido, 403.
 fn exigir_cargo(cargo: &Option<String>, permitidos: &[&str]) -> AppResult<()> {
     match cargo {
         Some(c) if permitidos.contains(&c.as_str()) => Ok(()),
         Some(_) => Err(AppError::new(ErrorCode::Forbidden)),
-        None => Err(AppError::new(ErrorCode::Forbidden)),
+        None => Err(AppError::new(ErrorCode::NotFound)),
     }
+}
+
+/// Só o dono mexe no cargo (ou na permanência) de outro dono; admin da equipe não rebaixa nem remove quem é dono.
+async fn proteger_dono(state: &AppState, equipe_id: &str, quem_pede: &Option<String>, alvo: &str) -> AppResult<Option<String>> {
+    let cargo_alvo = cargo_do_usuario(state, equipe_id, alvo).await?.ok_or(AppError::new(ErrorCode::NotFound))?;
+    if cargo_alvo == "dono" && quem_pede.as_deref() != Some("dono") {
+        return Err(AppError::new(ErrorCode::Forbidden));
+    }
+    Ok(Some(cargo_alvo))
 }
 
 pub async fn listar_minhas(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
@@ -200,13 +198,21 @@ pub async fn trocar_cargo(
     Path((equipe_id, usuario_alvo)): Path<(String, String)>,
     Json(payload): Json<TrocarCargoPayload>,
 ) -> AppResult<Json<serde_json::Value>> {
-    exigir_cargo(&cargo_do_usuario(&state, &equipe_id, &usuario.0).await?, &["dono", "admin"])?;
+    let meu_cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
+    exigir_cargo(&meu_cargo, &["dono", "admin"])?;
     if !["dono", "admin", "membro"].contains(&payload.cargo.as_str()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "cargo".into(), motivo: "inválido".into() }]));
     }
     // Só quem é dono passa a propriedade (um cargo "admin" da equipe não se promove a dono).
-    if payload.cargo == "dono" && cargo_do_usuario(&state, &equipe_id, &usuario.0).await?.as_deref() != Some("dono") {
+    if payload.cargo == "dono" && meu_cargo.as_deref() != Some("dono") {
         return Err(AppError::new(ErrorCode::Forbidden));
+    }
+    let cargo_alvo = proteger_dono(&state, &equipe_id, &meu_cargo, &usuario_alvo).await?;
+    if cargo_alvo.as_deref() == Some("dono") && payload.cargo != "dono" {
+        let donos: i64 = state.db.with({ let id = equipe_id.clone(); move |conn| conn.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1 AND cargo = 'dono'", [&id], |r| r.get(0)) }).await?;
+        if donos <= 1 {
+            return Err(AppError::new(ErrorCode::Conflict).with_message("A equipe precisa de ao menos um dono. Passe a propriedade para outra pessoa antes."));
+        }
     }
     state
         .db
@@ -225,7 +231,9 @@ pub async fn remover_membro(
     Extension(usuario): Extension<UsuarioAutenticado>,
     Path((equipe_id, usuario_alvo)): Path<(String, String)>,
 ) -> AppResult<Json<serde_json::Value>> {
-    exigir_cargo(&cargo_do_usuario(&state, &equipe_id, &usuario.0).await?, &["dono", "admin"])?;
+    let meu_cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
+    exigir_cargo(&meu_cargo, &["dono", "admin"])?;
+    proteger_dono(&state, &equipe_id, &meu_cargo, &usuario_alvo).await?;
     state
         .db
         .with(move |conn| conn.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario_alvo]))

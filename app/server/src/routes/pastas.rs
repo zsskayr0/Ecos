@@ -20,6 +20,16 @@ async fn raiz_da_arvore(state: &AppState, usuario_id: &str, tipo: &str, espaco: 
     crate::espacos::raiz(state, &crate::espacos::fisica(espaco, usuario_id), arvore).await
 }
 
+/// O caminho vem do cliente e é juntado à raiz do espaço: `..`, barra inicial ou unidade o levariam à pasta de outra pessoa.
+/// `pode_ser_vazio` só vale para `pasta_pai` (vazio = raiz); renomear/excluir a própria raiz nunca é permitido.
+fn caminho_dentro_da_raiz(campo: &str, caminho: &str, pode_ser_vazio: bool) -> AppResult<()> {
+    let vazio_ok = caminho.is_empty() && pode_ser_vazio;
+    if vazio_ok || (!caminho.trim().is_empty() && crate::espacos::caminho_relativo_seguro(caminho)) {
+        return Ok(());
+    }
+    Err(AppError::validation(vec![CampoInvalido { campo: campo.into(), motivo: "caminho inválido".into() }]))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListarQuery {
     #[serde(default)]
@@ -150,6 +160,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         }]));
     }
     let nome = ecos_core::naming::sanitizar_nome_arquivo(&payload.nome);
+    caminho_dentro_da_raiz("pasta_pai", payload.pasta_pai.as_deref().unwrap_or(""), true)?;
     let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     let dir = match &payload.pasta_pai {
         Some(p) if !p.is_empty() => raiz.join(p).join(&nome),
@@ -172,6 +183,8 @@ pub struct RenomearPastaPayload {
 }
 
 pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<RenomearPastaPayload>) -> AppResult<Json<serde_json::Value>> {
+    caminho_dentro_da_raiz("caminho_atual", &payload.caminho_atual, false)?;
+    caminho_dentro_da_raiz("novo_caminho", &payload.novo_caminho, false)?;
     let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     let de = raiz.join(&payload.caminho_atual);
     let para = raiz.join(&payload.novo_caminho);
@@ -196,6 +209,7 @@ pub struct ExcluirPastaPayload {
 }
 
 pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ExcluirPastaPayload>) -> AppResult<Json<serde_json::Value>> {
+    caminho_dentro_da_raiz("caminho", &payload.caminho, false)?;
     let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     let dir = raiz.join(&payload.caminho);
     if !dir.is_dir() {

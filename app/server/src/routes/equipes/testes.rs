@@ -21,7 +21,7 @@ async fn membros_da_equipe_so_para_membros_e_so_com_id_cargo_e_nome() {
     let token = session::emitir_access_token("u1", SEGREDO).unwrap();
 
     let (status, _) = chamar(&state, "GET", "/api/v1/equipes/B/membros", Some(&token), Value::Null).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "quem não é da Equipe não vê os membros");
+    assert_eq!(status, StatusCode::NOT_FOUND, "quem não é da Equipe não vê os membros nem confirma que ela existe");
 
     let (status, corpo) = chamar(&state, "GET", "/api/v1/equipes/A/membros", Some(&token), Value::Null).await;
     assert_eq!(status, StatusCode::OK);

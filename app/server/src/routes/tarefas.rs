@@ -71,6 +71,8 @@ pub struct ListarQuery {
     pub tz: Option<i32>,
     pub status: Option<String>,
     pub espaco: Option<String>,
+    /// Tag (qualquer grafia: é canonizada antes de comparar).
+    pub tag: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
 }
@@ -241,6 +243,10 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                 condicoes.push("t.espaco = ?".to_string());
                 params.push(Box::new(espaco.clone()));
             }
+            if let Some(tag) = &q.tag {
+                condicoes.push("EXISTS (SELECT 1 FROM tarefa_tag tt WHERE tt.tarefa_id = t.id AND tt.tag = ?)".to_string());
+                params.push(Box::new(ecos_core::tags::canonica(tag).unwrap_or_else(|| tag.clone())));
+            }
             if let Some(data_de) = q.data_de {
                 condicoes.push(format!("COALESCE(date(datetime(t.scheduled_at, '{tz_mod}')), date(t.due_date)) >= date(?)"));
                 params.push(Box::new(data_de.to_string()));
@@ -346,6 +352,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         .map_err(|motivo: String| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
 
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
+    crate::espacos::validar_pasta(pasta_relativa)?;
     crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
     let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Tarefas").await?;
     let dir = match pasta_relativa {
@@ -365,7 +372,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         scheduled_at: payload.scheduled_at,
         duration_min: Some(payload.duration_min.unwrap_or(5)),
         due_date: payload.due_date,
-        tags: payload.tags,
+        tags: ecos_core::tags::normalizar_lista(&payload.tags),
         prioridade: payload.prioridade.unwrap_or(TarefaPrioridade::Baixa),
         subtarefas: subtarefas_de_payload(payload.subtarefas),
         espaco,
@@ -492,6 +499,7 @@ pub struct AtualizarTarefaPayload {
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
+    crate::espacos::validar_pasta(payload.pasta.as_deref())?;
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
@@ -519,7 +527,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         fm.due_date = due_date;
     }
     if let Some(tags) = payload.tags {
-        fm.tags = tags;
+        fm.tags = ecos_core::tags::atualizar_preservando(&fm.tags, &tags);
     }
     if let Some(prioridade) = payload.prioridade {
         fm.prioridade = prioridade;
@@ -667,6 +675,10 @@ pub async fn obter_anexo(
     Extension(usuario): Extension<UsuarioAutenticado>, Path((id, nome_arquivo)): Path<(String, String)>,
 ) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
     let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
+    // O nome chega decodificado (`%2F` vira `/`): sem esta checagem, `../../..` alcança arquivos de outro espaço.
+    if !crate::espacos::nome_de_arquivo_seguro(&nome_arquivo) {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
     let caminho = anexos_dir(&state, &id, &caminho_relativo).join(&nome_arquivo);
     if !caminho.is_file() {
         return Err(AppError::new(ErrorCode::NotFound));
@@ -749,10 +761,13 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
         .with({
             let data_str = data_str.clone();
             let tz_mod = tz_mod.clone();
+            // O cache externo não tem dono próprio: só conta o que está ligado a uma tarefa que esta pessoa enxerga.
+            let visivel = crate::espacos::visivel_sql("t", &usuario.0);
             move |conn| {
                 conn.query_row(
-                    &format!("SELECT COALESCE(SUM((strftime('%s', fim) - strftime('%s', inicio)) / 60), 0) \
-                     FROM evento_externo_cache WHERE date(datetime(inicio, '{tz_mod}')) = date(?1)"),
+                    &format!("SELECT COALESCE(SUM((strftime('%s', e.fim) - strftime('%s', e.inicio)) / 60), 0) \
+                     FROM evento_externo_cache e JOIN tarefa t ON t.id = e.tarefa_id \
+                     WHERE date(datetime(e.inicio, '{tz_mod}')) = date(?1) AND {visivel}"),
                     [&data_str],
                     |r| r.get(0),
                 )

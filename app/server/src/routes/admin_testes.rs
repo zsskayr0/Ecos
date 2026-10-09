@@ -148,7 +148,7 @@ async fn equipe_convite_por_qr_code_e_menu_de_administracao() {
     // Só quem é da equipe a enxerga; o convite (QR code) só sai de dono/admin da equipe.
     assert_eq!(chamar(&app, "GET", "/api/v1/equipes/EQ", Some(&fora), None).await.0, StatusCode::NOT_FOUND);
     assert_eq!(chamar(&app, "GET", "/api/v1/equipes/EQ", Some(&mem), None).await.0, StatusCode::OK);
-    assert_eq!(chamar(&app, "POST", "/api/v1/equipes/EQ/convites", Some(&fora), None).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(chamar(&app, "POST", "/api/v1/equipes/EQ/convites", Some(&fora), None).await.0, StatusCode::NOT_FOUND, "quem não é da equipe não sabe que ela existe");
     assert_eq!(chamar(&app, "POST", "/api/v1/equipes/EQ/convites", Some(&mem), None).await.0, StatusCode::FORBIDDEN, "membro comum não convida");
     let (st, convite) = chamar(&app, "POST", "/api/v1/equipes/EQ/convites", Some(&dona), None).await;
     assert_eq!(st, StatusCode::OK, "{convite}");

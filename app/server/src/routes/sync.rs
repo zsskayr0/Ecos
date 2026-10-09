@@ -115,7 +115,7 @@ pub struct AtualizarDispositivoPayload {
 
 /// Troca de dispositivo primário é sempre explícita (seção 6.2) — nunca
 /// automática/heurística; este endpoint é exatamente essa ação explícita.
-pub async fn atualizar_dispositivo(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<AtualizarDispositivoPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar_dispositivo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarDispositivoPayload>) -> AppResult<Json<serde_json::Value>> {
     if let Some(papel) = &payload.papel {
         if !["primario", "espelho"].contains(&papel.as_str()) {
             return Err(AppError::validation(vec![CampoInvalido { campo: "papel".into(), motivo: "deve ser 'primario' ou 'espelho'".into() }]));
@@ -125,8 +125,8 @@ pub async fn atualizar_dispositivo(State(state): State<AppState>, Path(id): Path
         .db
         .with(move |conn| {
             conn.execute(
-                "UPDATE dispositivo SET papel = COALESCE(?1, papel), nome = COALESCE(?2, nome) WHERE id = ?3",
-                rusqlite::params![payload.papel, payload.nome, id],
+                "UPDATE dispositivo SET papel = COALESCE(?1, papel), nome = COALESCE(?2, nome) WHERE id = ?3 AND usuario_id = ?4",
+                rusqlite::params![payload.papel, payload.nome, id, usuario.0],
             )
         })
         .await?;
@@ -136,8 +136,8 @@ pub async fn atualizar_dispositivo(State(state): State<AppState>, Path(id): Path
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-pub async fn excluir_dispositivo(State(state): State<AppState>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let afetadas = state.db.with(move |conn| conn.execute("DELETE FROM dispositivo WHERE id = ?1", [&id])).await?;
+pub async fn excluir_dispositivo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let afetadas = state.db.with(move |conn| conn.execute("DELETE FROM dispositivo WHERE id = ?1 AND usuario_id = ?2", [&id, &usuario.0])).await?;
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::NotFound));
     }
@@ -173,7 +173,7 @@ pub struct PushPayload {
     pub push_endpoint: Option<String>,
 }
 
-pub async fn atualizar_push(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<PushPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar_push(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<PushPayload>) -> AppResult<Json<serde_json::Value>> {
     if !["unifiedpush", "fcm", "nenhum"].contains(&payload.push_tipo.as_str()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "push_tipo".into(), motivo: "inválido".into() }]));
     }
@@ -181,8 +181,8 @@ pub async fn atualizar_push(State(state): State<AppState>, Path(id): Path<String
         .db
         .with(move |conn| {
             conn.execute(
-                "UPDATE dispositivo SET push_tipo = ?1, push_endpoint = ?2 WHERE id = ?3",
-                rusqlite::params![payload.push_tipo, payload.push_endpoint, id],
+                "UPDATE dispositivo SET push_tipo = ?1, push_endpoint = ?2 WHERE id = ?3 AND usuario_id = ?4",
+                rusqlite::params![payload.push_tipo, payload.push_endpoint, id, usuario.0],
             )
         })
         .await?;
