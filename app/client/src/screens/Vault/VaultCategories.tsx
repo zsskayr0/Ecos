@@ -5,6 +5,8 @@ import * as Icons from "lucide-react";
 import { ArrowDown, ArrowUp, Check, Download, LayoutGrid, Plus, RefreshCw, Search, Tag, X } from "lucide-react";
 import { vault, financeiro, ApiError, type CategoriaApi, type CategoriaUsoApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
+import { TotalDaLinha } from "./nexus/IndicadorValor";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { DonutChart } from "./nexus/DonutChart";
 import { PeriodPicker } from "./nexus/PeriodPicker";
@@ -168,6 +170,8 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
   }, [despesas, anteriores, recorrencias, porId]);
 
   const statPorId = useMemo(() => new Map(stats.map((s) => [s.id, s])), [stats]);
+  const modoValor = useModoValor("categorias");
+  const maxValor = useMemo(() => maiorValor(stats.map((s) => s.total)), [stats]);
   const top3 = stats.slice(0, 3);
   const totalGeral = stats.reduce((s, c) => s + c.total, 0);
   const totalLancamentos = stats.reduce((s, c) => s + c.count, 0);
@@ -245,7 +249,7 @@ export function VaultCategories({ period, onPeriodChange, categorias, atualizar 
                       <small>{TIPO_ROTULO[c.tipo]}</small>
                     </span>
                     {s ? (
-                      <span className="cofre-cats-row-total"><b className="cofre-mono">{formatMoeda(s.total)}</b><i><u style={{ width: `${Math.max(4, s.share)}%`, background: c.cor }} /></i></span>
+                      <span className="cofre-cats-row-total"><TotalDaLinha modo={modoValor} valor={s.total} max={maxValor} cor={c.cor} texto={formatMoeda(s.total)} /></span>
                     ) : (
                       <span className="cofre-cats-row-total muted">—</span>
                     )}

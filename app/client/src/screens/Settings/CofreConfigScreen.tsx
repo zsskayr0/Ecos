@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ExternalLink, FileSpreadsheet, Github, HelpCircle, Lock, ShieldCheck, type LucideIcon } from "lucide-react";
+import { CircleDashed, ExternalLink, FileSpreadsheet, Github, HelpCircle, Lock, ShieldCheck, type LucideIcon } from "lucide-react";
 import { vault } from "@/lib/api";
 import { useAppUI } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -11,8 +11,34 @@ import { SenhaLembrada } from "@/screens/Vault/SenhaLembrada";
 import { VaultCsv } from "@/screens/Vault/VaultCsv";
 import { PeriodPicker } from "@/screens/Vault/nexus/PeriodPicker";
 import { defaultPeriod, periodRange, type Period } from "@/screens/Vault/nexus/period";
+import { TELAS_VALORES, salvarModoValor, useExibicaoValores, type ModoValor } from "@/lib/exibicao-valores";
+import { IndicadorValor } from "@/screens/Vault/nexus/IndicadorValor";
 
-export type Aba = "seguranca" | "csv" | "github" | "ajuda";
+const MODOS_VALOR: { id: ModoValor; rotulo: string }[] = [{ id: "numero", rotulo: "Número" }, { id: "barra", rotulo: "Barra" }, { id: "anel", rotulo: "Anel" }];
+
+/** Escolha por tela de como o valor aparece: só o número, com barra ou com anel. Fica neste dispositivo; não depende do Cofre estar aberto. */
+function ExibicaoValores() {
+  const atual = useExibicaoValores();
+  return (
+    <div className="mt-5 flex flex-col gap-2.5">
+      <p className="text-sm text-text-muted">Barra e anel mostram o valor em relação ao maior valor da tela no período selecionado.</p>
+      {TELAS_VALORES.map((t) => (
+        <Linha key={t.id} titulo={t.rotulo}>
+          <div role="radiogroup" aria-label={`Exibição de valores em ${t.rotulo}`} className="flex gap-1.5">
+            {MODOS_VALOR.map((m) => (
+              <button key={m.id} type="button" role="radio" aria-checked={atual[t.id] === m.id} className="cofre-config-btn" data-ativa={atual[t.id] === m.id || undefined}
+                style={atual[t.id] === m.id ? { outline: "2px solid var(--cofre-accent, #3b82f6)" } : undefined} onClick={() => salvarModoValor(t.id, m.id)}>
+                {m.id === "numero" ? "42" : <IndicadorValor modo={m.id} valor={60} max={100} />}{m.rotulo}
+              </button>
+            ))}
+          </div>
+        </Linha>
+      ))}
+    </div>
+  );
+}
+
+export type Aba = "seguranca" | "valores" | "csv" | "github" | "ajuda";
 type Estado = "carregando" | "desativado" | "ativar" | "bloqueado" | "aberto";
 
 /** Endereço do repositório do Ecos. Vazio enquanto ele não é publicado: a aba GitHub mostra o aviso em vez de um link quebrado. */
@@ -20,6 +46,7 @@ const REPOSITORIO_URL = "";
 
 export const ABAS_COFRE: { id: Aba; rotulo: string; Icone: LucideIcon }[] = [
   { id: "seguranca", rotulo: "Segurança", Icone: ShieldCheck },
+  { id: "valores", rotulo: "Exibição de valores", Icone: CircleDashed },
   { id: "csv", rotulo: "Backup & CSV", Icone: FileSpreadsheet },
   { id: "github", rotulo: "GitHub", Icone: Github },
   { id: "ajuda", rotulo: "Ajuda & Suporte", Icone: HelpCircle },
@@ -85,9 +112,10 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
       <div className="px-6 pb-8 pt-6">
         <h1 className="font-display text-xl text-text-primary">{ABAS_COFRE.find((a) => a.id === aba)?.rotulo}{nomeEquipe ? ` · ${nomeEquipe}` : ""}</h1>
         
-        {estado === "carregando" && <p className="mt-8 text-sm text-text-muted" role="status">Verificando Cofre…</p>}
-        {estado === "desativado" && <p className="mt-8 text-sm text-text-muted">O módulo Cofre não está ativado nesta conta ou no servidor.</p>}
-        {(estado === "bloqueado" || estado === "ativar") && (
+        {aba === "valores" && <ExibicaoValores />}
+        {aba !== "valores" && estado === "carregando" && <p className="mt-8 text-sm text-text-muted" role="status">Verificando Cofre…</p>}
+        {aba !== "valores" && estado === "desativado" && <p className="mt-8 text-sm text-text-muted">O módulo Cofre não está ativado nesta conta ou no servidor.</p>}
+        {aba !== "valores" && (estado === "bloqueado" || estado === "ativar") && (
           <VaultLockScreen
             equipe={nomeEquipe}
             primeiraVez={estado === "ativar"}
@@ -101,7 +129,7 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
           />
         )}
 
-        {estado === "aberto" && (
+        {aba !== "valores" && estado === "aberto" && (
           <div className="mt-5">
             {aba === "csv" && <div className="mb-3"><PeriodPicker value={period} onChange={setPeriod} /></div>}
             <div className="flex flex-col gap-2.5">

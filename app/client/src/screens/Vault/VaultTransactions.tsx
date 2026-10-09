@@ -7,6 +7,8 @@ import { casaBusca } from "@/lib/texto-busca";
 import { useAppUI } from "@/lib/ui-context";
 import { useAutoriaDoCofre } from "@/lib/use-autoria-cofre";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
+import { definirMaxLancamentos, maiorValor, useModoValor, type ModoValor } from "@/lib/exibicao-valores";
+import { ValorComIndicador } from "./nexus/IndicadorValor";
 import type { Periodo } from "./types";
 import type { Filtro } from "./VaultDashboard";
 import { PeriodPicker } from "./nexus/PeriodPicker";
@@ -66,6 +68,9 @@ interface Contexto {
   clicar: (t: TransacaoApi, e: MouseEvent) => void;
   alternar: (id: string, gesto?: Gesto) => void;
   aoAnexar: () => void;
+  modoValor: ModoValor;
+  /** Maior valor do período atual: o 100% da barra/anel. */
+  maxValor: number;
 }
 
 export function VaultTransactions({ recarregar, periodo, period, onPeriodChange, filtro, categorias, abrir, atualizar }: {
@@ -383,13 +388,18 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [idsVisiveis, selecionados.length]);
 
+  const modoValor = useModoValor("lancamentos");
+  // O "100%" da barra/anel é o maior lançamento do período selecionado (antes dos filtros da lista).
+  const maxValor = useMemo(() => maiorValor([...rows, ...previstas].map((t) => t.valor_centavos)), [rows, previstas]);
+  useEffect(() => { definirMaxLancamentos(maxValor); }, [maxValor]);
   const ordenar = (chaveOrdem: Ordem) => setOrdem((o) => o.chave === chaveOrdem ? { chave: chaveOrdem, dir: o.dir === 1 ? -1 : 1 } : { chave: chaveOrdem, dir: 1 });
   const contexto: Contexto = {
     categorias: categoriasPorId, pagadores, contas, forma: formas.rotulo, autor: autoria.ativo ? autoria.nomeDe : undefined,
     selecionando: selecionados.length > 0, selecionados: marcados, viaComprovante, clicar, alternar, aoAnexar,
+    modoValor, maxValor,
   };
 
-  return <section className="cofre-transactions" ref={secao}>
+  return <section className="cofre-transactions" ref={secao} data-valor={modoValor}>
     <div className="cofre-transactions-top"><h1>Transações</h1><div className="cofre-transactions-actions">
       <label className="cofre-search"><Search size={15} /><input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar transação…" aria-label="Buscar transação" />{consulta && <button type="button" className="cofre-search-limpar" aria-label="Limpar busca" onClick={() => setConsulta("")}><X size={13} /></button>}</label>
       <PeriodPicker value={period} onChange={onPeriodChange} />
@@ -554,14 +564,13 @@ function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
     }}
     onPointerUp={cancelarToque} onPointerLeave={cancelarToque} onPointerCancel={cancelarToque}
   >
-    <Inicio t={t} categoria={categoria} ctx={ctx} />
+    <span className="cofre-transaction-lead"><Inicio t={t} categoria={categoria} ctx={ctx} /><span className="cofre-transaction-category" style={categoria?.cor ? { color: categoria.cor } : undefined} title={categoria?.nome ?? "Sem categoria"}>{categoria?.nome ?? "Sem categoria"}</span></span>
     <span className="cofre-transaction-description">
       <span className="cofre-transaction-titulo"><b>{t.descricao}</b></span>
       <small data-vazio={pagador ? undefined : ""}>{pagador ?? "Sem pagador"}{ctx.viaComprovante.has(t.id) && <i className="cofre-via-anexo">achado no comprovante</i>}</small>
     </span>
-    <span className="cofre-transaction-category"><span>{categoria?.nome ?? "Sem categoria"}</span><small>{ctx.forma(t.forma_pagamento) || "Pagamento não informado"}</small></span>
     <time>{dataBr(t.data)}</time>
-    <strong data-tipo={t.tipo}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</strong>
+    <strong data-tipo={t.tipo}><ValorComIndicador modo={ctx.modoValor} valor={t.valor_centavos} max={ctx.maxValor} cor={t.tipo === "entrada" ? "var(--cofre-income)" : "var(--cofre-expense)"}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</ValorComIndicador></strong>
     <Anexos t={t} ctx={ctx} />
     <Status t={t} />
     {ctx.autor && <Autor t={t} ctx={ctx} />}
@@ -577,7 +586,7 @@ const COLUNAS: ColunaTabela[] = [
   { id: "descricao", nome: "Descrição", largura: 300, ordem: "descricao", padrao: true, celula: (t, ctx) => <><b>{t.descricao}</b>{ctx.viaComprovante.has(t.id) && <i className="cofre-via-anexo">achado no comprovante</i>}</> },
   { id: "pagador", nome: "Pagador", largura: 170, ordem: "pagador", padrao: true, celula: (t, ctx) => ctx.pagadores.get(t.beneficiario_id ?? "") ?? VAZIO },
   { id: "pagamento", nome: "Pagamento", largura: 120, ordem: "pagamento", padrao: true, celula: (t, ctx) => ctx.forma(t.forma_pagamento) || VAZIO },
-  { id: "valor", nome: "Valor", largura: 130, ordem: "valor", padrao: true, celula: (t) => <strong data-tipo={t.tipo}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</strong> },
+  { id: "valor", nome: "Valor", largura: 130, ordem: "valor", padrao: true, celula: (t, ctx) => <strong data-tipo={t.tipo}><ValorComIndicador modo={ctx.modoValor} valor={t.valor_centavos} max={ctx.maxValor} cor={t.tipo === "entrada" ? "var(--cofre-income)" : "var(--cofre-expense)"}>{t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</ValorComIndicador></strong> },
   { id: "anexos", nome: "Anexos", largura: 90, padrao: true, celula: (t, ctx) => <Anexos t={t} ctx={ctx} /> },
   { id: "status", nome: "Status", largura: 100, padrao: true, celula: (t) => <Status t={t} /> },
   { id: "autor", nome: "Lançado por", largura: 170, padrao: true, celula: (t, ctx) => <Autor t={t} ctx={ctx} comNome /> },
@@ -727,7 +736,7 @@ function Tabela({ rows, ctx, ordem, ordenar, visiveis }: { rows: TransacaoApi[];
   const arraste = useRef<{ id: string; x: number; largura: number } | null>(null);
   const posicao = (id: string) => { const i = ordemIds.indexOf(id); return i < 0 ? ordemIds.length + COLUNAS.findIndex((c) => c.id === id) : i; };
   const colunas = COLUNAS.filter((c) => (c.id === "descricao" || visiveis.has(c.id)) && (c.id !== "autor" || ctx.autor)).sort((a, b) => posicao(a.id) - posicao(b.id));
-  const larguraDe = (c: ColunaTabela) => larguras[c.id] ?? c.largura;
+  const larguraDe = (c: ColunaTabela) => (larguras[c.id] ?? c.largura) + (c.id === "valor" ? ({ numero: 0, barra: 66, anel: 34 })[ctx.modoValor] : 0);
   const total = colunas.reduce((soma, c) => soma + larguraDe(c), 0);
   /** Onde cada coluna fica durante o arrasto: a arrastada segue o ponteiro (só na horizontal) e as vizinhas abrem espaço. */
   function layoutArrasto() {

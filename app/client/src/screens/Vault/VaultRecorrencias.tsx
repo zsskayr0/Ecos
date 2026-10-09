@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { ArrowDown, ArrowUp, Check, CloudOff, LayoutGrid, List, PanelRight, Pause, Play, Plus, Repeat2, Table2, Trash2 } from "lucide-react";
 import { financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type OcorrenciaRecorrente, type RecorrenciaApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
+import { ValorComIndicador } from "./nexus/IndicadorValor";
 import "./recorrencias/recorrencias.css";
 import { CategoriaIcone } from "./VaultCategories";
 import { PeriodPicker } from "./nexus/PeriodPicker";
@@ -80,6 +82,8 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   const beneficiariosPorId = useMemo(() => new Map(beneficiarios.map((b) => [b.id, b])), [beneficiarios]);
   const todas = useMemo(() => montarLinhas(regras ?? [], ocorrencias), [regras, ocorrencias]);
   const linhas = useMemo(() => filtrarPorTipo(todas, filtro), [todas, filtro]);
+  const modoValor = useModoValor("recorrencias");
+  const maxValor = useMemo(() => maiorValor(todas.map((l) => l.valorCentavos)), [todas]);
   const porChave = useMemo(() => new Map(linhas.map((l) => [l.chave, l])), [linhas]);
   const pausadas = useMemo(() => (regras ?? []).filter((r) => !r.ativa), [regras]);
   const baldes = useMemo(() => baldesDoPeriodo(period, de, ate), [period, de, ate]);
@@ -317,7 +321,7 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
                       {dataBR(dataExibida(l))}{l.reagendadaPara && <small title={`Vencimento original ${dataBR(l.data)}`}>reagendada</small>}
                     </div>
                     <Status efetivada={l.efetivada} />
-                    <b className="cofre-rec-valor cofre-mono" data-tipo={l.regra.tipo}>{l.regra.tipo === "entrada" ? "+" : "−"}{formatMoeda(l.valorCentavos)}</b>
+                    <b className="cofre-rec-valor cofre-mono" data-tipo={l.regra.tipo} data-modo={modoValor}><ValorComIndicador modo={modoValor} valor={l.valorCentavos} max={maxValor} cor={l.regra.tipo === "entrada" ? "var(--cofre-income)" : "var(--cofre-expense)"}>{l.regra.tipo === "entrada" ? "+" : "−"}{formatMoeda(l.valorCentavos)}</ValorComIndicador></b>
                     <MenuOcorrencia acoes={acoesDe(l.regra, l, false)} rotulo={`${l.regra.descricao}, ${dataBR(l.data)}`} />
                   </div>
                 );
@@ -335,7 +339,7 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
                             <td><button type="button" className="cofre-rec-titulo" aria-label={`Editar ${l.regra.descricao}, vencimento ${dataBR(l.data)}`}>{l.regra.descricao}</button><small>{rotuloDaRegra(l)}</small></td>
                             <td><span className="cofre-rec-cat">{cat && <CategoriaIcone categoria={cat} tamanho={11} className="cofre-cats-icon sm" />}{cat?.nome ?? "—"}</span></td>
                             <td><Status efetivada={l.efetivada} /></td>
-                            <td className="num cofre-mono" data-tipo={l.regra.tipo}>{l.regra.tipo === "entrada" ? "+" : "−"}{formatMoeda(l.valorCentavos)}</td>
+                            <td className="num cofre-mono" data-tipo={l.regra.tipo}><ValorComIndicador modo={modoValor} valor={l.valorCentavos} max={maxValor} cor={l.regra.tipo === "entrada" ? "var(--cofre-income)" : "var(--cofre-expense)"}>{l.regra.tipo === "entrada" ? "+" : "−"}{formatMoeda(l.valorCentavos)}</ValorComIndicador></td>
                             <td className="acoes"><MenuOcorrencia acoes={acoesDe(l.regra, l, false)} rotulo={`${l.regra.descricao}, ${dataBR(l.data)}`} /></td>
                           </tr>
                         );

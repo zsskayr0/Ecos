@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Receipt } from "lucide-react";
 import { vault, ApiError, enviarLancamentoParaEspaco, type TransacaoApi, type FormaPagamento } from "@/lib/api";
+import { SeletorDestino } from "./SeletorDestino";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -228,15 +229,13 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
 
   return (
     <div ref={raiz} data-modo-slide={slide || undefined} className={aninhado ? "cofre-capture-scope" : "cofre-app cofre-capture-scope"}>
-      {enviando && <div role="dialog" aria-modal="true" aria-label="Enviar para outra equipe" style={{ position: "fixed", inset: 0, zIndex: 60, display: "grid", placeItems: "center", background: "rgba(0,0,0,.45)" }}>
-        <div className="cofre-launch-alert" style={{ width: "min(92vw, 380px)", display: "grid", gap: 12, padding: 18, background: "var(--cofre-surface, #fff)", color: "inherit", borderRadius: 12 }}>
-          <b>Enviar para outra equipe</b>
-          <label style={{ display: "grid", gap: 4 }}>Equipe de destino
-            <select value={enviando.destino} disabled={enviando.ocupado} onChange={(e) => setEnviando({ ...enviando, destino: e.target.value })}>{destinos.map((d) => <option key={d.espaco} value={d.espaco}>{d.nome}</option>)}</select>
-          </label>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={enviando.mover} disabled={enviando.ocupado} onChange={(e) => setEnviando({ ...enviando, mover: e.target.checked })} />Mover (apagar daqui depois de enviar)</label>
-          <p style={{ margin: 0, fontSize: 12, opacity: .75 }}>Categoria, conta e pagador são casados pelo nome no Cofre de destino. Comprovantes vão junto. O Cofre de destino precisa estar destrancado.</p>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><button type="button" disabled={enviando.ocupado} onClick={() => setEnviando(null)}>Cancelar</button><button type="button" disabled={enviando.ocupado} onClick={() => void enviar()}>{enviando.ocupado ? "Enviando…" : enviando.mover ? "Mover" : "Copiar"}</button></div>
+      {enviando && <div className="cofre-envio-backdrop" role="dialog" aria-modal="true" aria-label="Enviar para outra equipe" onMouseDown={(e) => { if (e.target === e.currentTarget && !enviando.ocupado) setEnviando(null); }}>
+        <div className="cofre-envio-card">
+          <h2>Enviar para outra equipe</h2>
+          <div className="cofre-envio-campo"><span>Equipe de destino</span><SeletorDestino destinos={destinos} valor={enviando.destino} desabilitado={enviando.ocupado} aoMudar={(destino) => setEnviando({ ...enviando, destino })} /></div>
+          <label className="cofre-envio-mover"><input type="checkbox" checked={enviando.mover} disabled={enviando.ocupado} onChange={(e) => setEnviando({ ...enviando, mover: e.target.checked })} />Mover (apagar daqui depois de enviar)</label>
+          <p>Categoria, conta e pagador são casados pelo nome no Cofre de destino. Comprovantes vão junto. O Cofre de destino precisa estar destrancado.</p>
+          <div className="cofre-envio-acoes"><button type="button" disabled={enviando.ocupado} onClick={() => setEnviando(null)}>Cancelar</button><button type="button" className="primario" disabled={enviando.ocupado} onClick={() => void enviar()}>{enviando.ocupado ? "Enviando…" : enviando.mover ? "Mover" : "Copiar"}</button></div>
         </div>
       </div>}
       <TransactionForm

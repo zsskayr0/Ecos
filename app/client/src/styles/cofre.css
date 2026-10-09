@@ -261,7 +261,7 @@
 .cofre-selection-bar .danger { color:var(--cofre-expense); }
 .cofre-transactions-card { min-width:0; overflow:hidden; border:1px solid var(--border); border-radius:15px; background:var(--panel); box-shadow:var(--shadow-card); }
 .cofre-table-empty { display:grid; min-height:250px; place-items:center; color:var(--text-muted); font-size:13px; }
-.cofre-transaction-list-row { display:grid; grid-template-columns:34px minmax(180px,1fr) 150px 88px 112px 70px 96px; align-items:center; gap:14px; min-height:66px; padding:10px 16px; border-bottom:1px solid var(--border); color:var(--text-secondary); font-size:12px; cursor:pointer; transition:background .14s ease; }
+.cofre-transaction-list-row { display:grid; grid-template-columns:142px minmax(180px,1fr) 88px var(--col-valor) 70px 96px; align-items:center; gap:14px; min-height:66px; padding:10px 16px; border-bottom:1px solid var(--border); color:var(--text-secondary); font-size:12px; cursor:pointer; transition:background .14s ease; }
 .cofre-transaction-list-row:last-child { border-bottom:0; }
 .cofre-transaction-list-row:hover,.cofre-transaction-list-row.selected,.cofre-transactions-table tbody tr:hover,.cofre-transactions-table tbody tr.selected { background:var(--panel-elevated); }
 .cofre-transactions input[type="checkbox"] { width:15px; height:15px; accent-color:var(--accent); cursor:pointer; }
@@ -917,7 +917,7 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 
 /* ===== Lista de transações: início da linha (ícone da categoria ⇄ caixa de seleção), pagador, anexos, autor ===== */
 .cofre-transaction-list-row,.cofre-transactions-table tbody tr { user-select:none; }
-.cofre-transactions-card[data-autoria] .cofre-transaction-list-row { grid-template-columns:34px minmax(180px,1fr) 150px 88px 112px 70px 96px 34px; }
+.cofre-transactions-card[data-autoria] .cofre-transaction-list-row { grid-template-columns:142px minmax(180px,1fr) 88px var(--col-valor) 70px 96px 34px; }
 .cofre-row-lead { position:relative; display:grid; width:34px; height:34px; place-items:center; }
 .cofre-row-lead > * { grid-area:1/1; transition:opacity .16s ease,transform .2s cubic-bezier(.34,1.4,.64,1); }
 .cofre-row-lead .cofre-cats-icon { width:32px; height:32px; border-radius:10px; }
@@ -1242,7 +1242,15 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 
 /* Calculadora do campo de valor */
 .cofre-valor-wrap { position:relative; }
-.cofre-valor-wrap > input { width:100%; padding-right:42px; }
+.cofre-valor-wrap > input { width:100%; padding-right:42px; transition:padding-left .4s cubic-bezier(.2,.8,.2,1); }
+/* Anel/barra à esquerda do valor: o texto desliza para dar espaço (Configurações › Cofre › Exibição de valores). */
+.cofre-valor-ind { position:absolute; top:50%; left:14px; display:flex; align-items:center; overflow:hidden; width:0; opacity:0; transform:translateY(-50%); pointer-events:none; transition:width .4s cubic-bezier(.2,.8,.2,1), opacity .3s ease; }
+.cofre-valor-wrap[data-modo="anel"] .cofre-valor-ind { width:20px; opacity:1; }
+.cofre-valor-wrap[data-modo="barra"] .cofre-valor-ind { width:44px; opacity:1; }
+.cofre-valor-wrap[data-modo="anel"] > input { padding-left:42px; }
+.cofre-valor-wrap[data-modo="barra"] > input { padding-left:70px; }
+.cofre-valor-ind .cofre-ind-barra { width:44px; }
+@media (prefers-reduced-motion:reduce) { .cofre-valor-ind, .cofre-valor-wrap > input { transition:none; } }
 .cofre-valor-calc { position:absolute; top:50%; right:7px; display:grid; width:28px; height:28px; place-items:center; border-radius:8px; color:var(--text-muted); opacity:0; transform:translateY(-50%) scale(.8); transition:opacity .16s ease,transform .22s cubic-bezier(.34,1.4,.64,1),background .15s ease,color .15s ease; }
 .cofre-valor-wrap:hover .cofre-valor-calc,.cofre-valor-wrap:focus-within .cofre-valor-calc,.cofre-valor-wrap[data-aberta] .cofre-valor-calc { opacity:1; transform:translateY(-50%) scale(1); }
 .cofre-valor-calc:hover,.cofre-valor-wrap[data-aberta] .cofre-valor-calc { background:var(--panel-elevated); color:var(--text); }
@@ -1371,3 +1379,57 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 .cofre-slide-falta b { color:var(--cofre-expense); font-size:12px; font-variant-numeric:tabular-nums; }
 
 @media (max-height:760px) { .cofre-calc-usar,.cofre-calc-somar { height:38px; } .cofre-calc-corpo { gap:8px; padding:12px 18px 14px; } .cofre-calc-tela { min-height:62px; padding:9px 14px; } .cofre-calc-expressao { font-size:18px; } }
+
+/* Envio de lançamento para outra equipe */
+.cofre-envio-backdrop { position:fixed; inset:0; z-index:80; display:grid; place-items:center; padding:16px; background:rgb(0 0 0 / .45); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); animation:ecos-backdrop-in .2s ease both; }
+.cofre-envio-card { display:flex; width:min(100%,360px); flex-direction:column; gap:12px; padding:18px 20px 16px; border:1px solid var(--border-strong,var(--border)); border-radius:16px; background:var(--panel); color:var(--text); box-shadow:0 24px 70px rgb(0 0 0 / .5); animation:ecos-modal-in .18s ease-out both; }
+.cofre-envio-card h2 { margin:0 0 2px; font-size:15px; font-weight:800; line-height:1.25; }
+.cofre-envio-card p { margin:0; padding:0; color:var(--text-muted); font-size:11.5px; line-height:1.5; }
+.cofre-envio-campo { display:flex; flex-direction:column; gap:6px; font-size:11.5px; font-weight:700; color:var(--text-muted); }
+.cofre-envio-select { position:relative; }
+.cofre-envio-select > button { display:flex; width:100%; min-height:42px; align-items:center; gap:10px; padding:0 11px; border:1px solid var(--border); border-radius:11px; background:var(--panel-elevated); color:var(--text); font-size:13px; font-weight:600; text-align:left; transition:border-color .18s ease,box-shadow .18s ease; }
+.cofre-envio-select > button:hover,.cofre-envio-select > button[aria-expanded="true"] { border-color:var(--border-strong,var(--border)); }
+.cofre-envio-select > button[aria-expanded="true"] { box-shadow:0 0 0 3px color-mix(in srgb,var(--ecos-steel-300) 10%,transparent); }
+.cofre-envio-select > button:focus-visible,.cofre-envio-lista button:focus-visible { outline:2px solid var(--ecos-steel-300,currentColor); outline-offset:2px; }
+.cofre-envio-select > button > span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cofre-envio-select > button > svg { color:var(--text-muted); }
+.cofre-envio-lista { position:absolute; z-index:5; top:calc(100% + 6px); left:0; right:0; max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; padding:5px; border:1px solid var(--border); border-radius:12px; background:color-mix(in srgb,var(--panel) 96%,transparent); box-shadow:0 16px 45px rgb(0 0 0 / .38); backdrop-filter:blur(18px); animation:cofre-select-in .16s ease-out; }
+.cofre-envio-lista button { display:flex; width:100%; min-height:40px; align-items:center; gap:10px; padding:0 9px; border-radius:8px; color:var(--text-secondary,var(--text)); font-size:12.5px; font-weight:600; text-align:left; transition:background .14s ease,color .14s ease; }
+.cofre-envio-lista button:hover,.cofre-envio-lista button[aria-selected="true"] { background:var(--panel-elevated); color:var(--text); }
+.cofre-envio-lista button > span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cofre-envio-mover { display:flex; align-items:center; gap:9px; margin:0; font-size:12.5px; line-height:1.3; color:var(--text); cursor:pointer; user-select:none; }
+.cofre-envio-mover input { appearance:none; -webkit-appearance:none; display:grid; flex:0 0 auto; width:18px; height:18px; margin:0; place-content:center; border:1.5px solid var(--border-strong,var(--border)); border-radius:6px; background:var(--panel-elevated); cursor:pointer; transition:background .15s ease,border-color .15s ease; }
+.cofre-envio-mover input::after { content:""; width:9px; height:5px; margin-top:-2px; border-left:2px solid #fff; border-bottom:2px solid #fff; opacity:0; transform:rotate(-45deg) scale(.6); transition:opacity .15s ease,transform .15s ease; }
+.cofre-envio-mover input:checked { border-color:var(--danger); background:var(--danger); }
+.cofre-envio-mover input:checked::after { opacity:1; transform:rotate(-45deg) scale(1); }
+.cofre-envio-mover input:focus-visible { outline:2px solid var(--ecos-steel-300,currentColor); outline-offset:2px; }
+.cofre-envio-mover input:disabled { opacity:.55; cursor:not-allowed; }
+.cofre-envio-acoes { display:flex; gap:8px; margin-top:4px; }
+.cofre-envio-acoes button { flex:1; min-height:36px; padding:0 14px; border-radius:10px; background:var(--panel-elevated); color:var(--text); font-size:12.5px; font-weight:700; line-height:1; }
+.cofre-envio-acoes button.primario { background:var(--danger); color:#fff; }
+.cofre-envio-acoes button:disabled { opacity:.6; cursor:not-allowed; }
+@media (prefers-reduced-motion:reduce) { .cofre-envio-backdrop,.cofre-envio-card { animation:none !important; } }
+
+/* Indicador ao lado do valor (número / barra / anel): Configurações › Cofre › Exibição de valores.
+   A coluna de valor cresce (e a barra/anel entra deslizando) quando o modo muda, empurrando as demais colunas. */
+.cofre-transactions { --col-valor:112px; }
+.cofre-transactions[data-valor="barra"] { --col-valor:176px; }
+.cofre-transactions[data-valor="anel"] { --col-valor:144px; }
+.cofre-transaction-list-row { transition:background .14s ease, grid-template-columns .45s cubic-bezier(.2,.8,.2,1); }
+.cofre-ind-valor { display:flex; align-items:center; justify-content:flex-end; white-space:nowrap; }
+.cofre-ind-num { display:inline-block; text-align:right; }
+.cofre-ind-linha { gap:8px; }
+.cofre-ind-slot { flex:none; display:inline-flex; align-items:center; justify-content:flex-start; overflow:hidden; width:0; margin-left:0; opacity:0; transition:width .45s cubic-bezier(.2,.8,.2,1), margin-left .45s cubic-bezier(.2,.8,.2,1), opacity .3s ease; }
+.cofre-ind-slot[data-modo="barra"] { width:52px; margin-left:10px; opacity:1; }
+.cofre-ind-slot[data-modo="anel"] { width:20px; margin-left:10px; opacity:1; }
+.cofre-ind-barra { display:block; width:52px; height:5px; overflow:hidden; border-radius:99px; background:color-mix(in srgb,var(--text) 14%,transparent); flex:none; }
+.cofre-ind-barra u { display:block; height:100%; border-radius:99px; text-decoration:none; transition:width .6s cubic-bezier(.2,.8,.2,1); }
+.cofre-ind-anel { flex:none; color:var(--text); }
+.cofre-ind-anel circle:last-child { transition:stroke-dasharray .6s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion:reduce) { .cofre-ind-slot, .cofre-transaction-list-row { transition:none; } }
+
+/* Visão de lista: a categoria (na cor dela) fica junto do ícone, sem a forma de pagamento. */
+.cofre-transaction-lead { display:flex; align-items:center; gap:8px; min-width:0; }
+.cofre-transaction-lead .cofre-transaction-category { display:block; font-weight:600; font-size:12px; }
+
+.cofre-transaction-list-row strong:has(> .cofre-ind-valor), .cofre-transactions-table strong:has(> .cofre-ind-valor) { display:block; }

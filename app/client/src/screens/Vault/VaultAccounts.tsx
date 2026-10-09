@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUp, Download, Landmark, Pencil, Plus, RefreshCw, Search
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { vault, financeiro, ApiError, type CategoriaApi, type ContaApi, type TipoConta, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
+import { TotalDaLinha } from "./nexus/IndicadorValor";
 import { DonutChart } from "./nexus/DonutChart";
 import { HorizontalBarChart } from "./nexus/HorizontalBarChart";
 import { ComposedAreaChart } from "./nexus/ComposedAreaChart";
@@ -195,6 +197,8 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar, i
     return atual && !base.some((l) => l.id === atual.id) ? [atual, ...base.slice(0, 2)] : base;
   }, [linhas, atual]);
   const saldoPositivoTotal = linhas.reduce((s, l) => s + Math.max(0, l.saldo), 0);
+  const modoValor = useModoValor("contas");
+  const maxSaldo = maiorValor(linhas.map((l) => l.saldo));
   const segmentosSaldo = linhas.filter((l) => l.saldo > 0).sort((a, b) => b.saldo - a.saldo).map((l) => ({ label: l.nome, valueCents: l.saldo, color: l.cor }));
 
   const visiveis = ordem.ordenados.filter((c) => (filtroTipo === "todas" || c.tipo === filtroTipo) && casaBusca(busca, c.nome, c.banco, c.codigo_banco, c.agencia, c.numero_conta));
@@ -281,7 +285,6 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar, i
               {!carregando && visiveis.length === 0 && <p className="cofre-cats-none">Nenhuma conta encontrada.</p>}
               {visiveis.map((c, i) => {
                 const l = linhas.find((x) => x.id === c.id);
-                const share = saldoPositivoTotal > 0 && l ? Math.max(0, l.saldo) / saldoPositivoTotal * 100 : 0;
                 return (
                   <div key={c.id} role="button" tabIndex={0} aria-pressed={sel === c.id} aria-label={`Conta ${c.nome}`} className="cofre-cats-row" data-ordem-linha data-ativa={sel === c.id || undefined} data-foco={foco === c.id ? "true" : undefined} style={estiloI(i)} {...ordem.linha(c.id)}
                     onClick={() => setSel(c.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSel(c.id); } }}
@@ -293,8 +296,7 @@ export function VaultAccounts({ period, onPeriodChange, categorias, atualizar, i
                       <small>{descricaoConta(c)}</small>
                     </span>
                     <span className="cofre-cats-row-total">
-                      <b className="cofre-mono" data-neg={(l?.saldo ?? 0) < 0 || undefined}>{formatMoeda(l?.saldo ?? c.saldo_inicial_centavos)}</b>
-                      <i><u style={{ width: `${Math.max(share > 0 ? 4 : 0, share)}%`, background: c.cor }} /></i>
+                      <TotalDaLinha modo={modoValor} valor={l?.saldo ?? c.saldo_inicial_centavos} max={maxSaldo} cor={c.cor} negativo={(l?.saldo ?? 0) < 0} texto={formatMoeda(l?.saldo ?? c.saldo_inicial_centavos)} />
                     </span>
                     <button type="button" className="cofre-conta-padrao" data-ativa={c.padrao || undefined} aria-pressed={c.padrao} aria-label={c.padrao ? `${c.nome} é a sua conta padrão. Remover` : `Tornar ${c.nome} a sua conta padrão`} title={c.padrao ? "Sua conta padrão (clique para remover)" : "Tornar conta padrão"} onClick={(e) => { e.stopPropagation(); void alternarPadrao(c); }}><Star size={13} /></button>
                     <button type="button" className="cofre-conta-editar" aria-label={`Editar ${c.nome}`} title="Editar conta" onClick={(e) => { e.stopPropagation(); setEditando(c); }}><Pencil size={13} /></button>

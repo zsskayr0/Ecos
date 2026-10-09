@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { ArrowDownLeft, ArrowUpRight, Check, GitMerge, Pencil, RefreshCw, Search, Users, X } from "lucide-react";
 import { vault, ApiError, type BeneficiarioApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
+import { TotalDaLinha } from "./nexus/IndicadorValor";
 import { casaBusca } from "@/lib/texto-busca";
 import { avisar } from "@/lib/toast";
 import { SegmentedSlide } from "@/components/common/SegmentedSlide";
@@ -85,6 +87,8 @@ export function VaultSacados({ period, onPeriodChange, atualizar, irParaCadastro
   const semSacado = useMemo(() => (transacoes ?? []).filter((t) => !t.beneficiario_id).length, [transacoes]);
   const valorDe = useCallback((s: Stat) => (papel === "pagador" ? s.recebido : papel === "recebedor" ? s.pago : s.recebido + s.pago), [papel]);
 
+  const modoValor = useModoValor("sacados");
+  const maxValor = useMemo(() => maiorValor(stats.map(valorDe)), [stats, valorDe]);
   const lista = useMemo(() => stats
     .filter((s) => casaBusca(busca, s.nome) && (papel === "todos" || valorDe(s) > 0))
     .sort((a, b) => valorDe(b) - valorDe(a) || a.nome.localeCompare(b.nome, "pt-BR")), [stats, busca, papel, valorDe]);
@@ -160,7 +164,7 @@ export function VaultSacados({ period, onPeriodChange, atualizar, irParaCadastro
                         <span className="cofre-cats-row-name"><b>{s.nome}</b></span>
                         <small>{s.recebido > 0 && s.pago > 0 ? "Pagador e recebedor" : s.recebido > 0 ? "Pagador" : s.pago > 0 ? "Recebedor" : "Sem movimento no período"}</small>
                       </span>
-                      <span className="cofre-cats-row-total">{v > 0 ? <b className="cofre-mono">{formatMoeda(v)}</b> : <span className="muted">—</span>}</span>
+                      <span className="cofre-cats-row-total">{v > 0 ? <TotalDaLinha modo={modoValor} valor={v} max={maxValor} texto={formatMoeda(v)} /> : <span className="muted">—</span>}</span>
                     </div>
                   );
                 })}

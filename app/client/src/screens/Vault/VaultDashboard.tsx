@@ -5,6 +5,7 @@ import { DonutChart } from "./nexus/DonutChart";
 import { HorizontalBarChart } from "./nexus/HorizontalBarChart";
 import { useState } from "react";
 import { formatMoeda } from "@/lib/format";
+import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import type { CategoriaApi } from "@/lib/api";
 import type { Painel, Periodo } from "./types";
@@ -51,6 +52,8 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
         }
     }
     const series = [...pontos.values()];
+    const modoValor = useModoValor("painel");
+    const maxKpi = maiorValor([p.saldo, p.receitas, p.despesas]);
     const cores = ["var(--cofre-income)", "var(--cofre-expense)"];
 
     const faixa = (data: string): Periodo => data.length === 7 ? { data_de: `${data}-01` < periodo.data_de ? periodo.data_de : `${data}-01`, data_ate: new Date(Number(data.slice(0, 4)), Number(data.slice(5, 7)), 0, 12).toLocaleDateString("sv-SE") } : { data_de: data, data_ate: data };
@@ -68,9 +71,9 @@ export function VaultDashboard({ painel: p, categorias, periodo, drill, abrir, o
     const segments=p.categorias.map((g,i)=>({label:categorias.find(c=>c.id===g.chave)?.nome??"Sem categoria",valueCents:g.valor,color:categorias.find(c=>c.id===g.chave)?.cor??palette[i%palette.length]}));
     return <div className="cofre-dashboard">
         <div className="cofre-kpis">
-            <KpiCard label="Saldo total (histórico)" value={formatMoeda(p.saldo)} icon={<Wallet size={14}/>}/>
-            <KpiCard label="Receitas do período" value={formatMoeda(p.receitas)} icon={<ArrowUpRight size={14}/>} tone="income"/>
-            <KpiCard label="Despesas do período" value={formatMoeda(p.despesas)} icon={<ArrowDownLeft size={14}/>} tone="expense"/>
+            <KpiCard label="Saldo total (histórico)" value={formatMoeda(p.saldo)} icon={<Wallet size={14}/>} modo={modoValor} numero={p.saldo} max={maxKpi}/>
+            <KpiCard label="Receitas do período" value={formatMoeda(p.receitas)} icon={<ArrowUpRight size={14}/>} tone="income" modo={modoValor} numero={p.receitas} max={maxKpi}/>
+            <KpiCard label="Despesas do período" value={formatMoeda(p.despesas)} icon={<ArrowDownLeft size={14}/>} tone="expense" modo={modoValor} numero={p.despesas} max={maxKpi}/>
             <KpiCard label="Taxa de economia" value={p.taxa_economia===null?"—":`${p.taxa_economia.toLocaleString("pt-BR",{maximumFractionDigits:1,minimumFractionDigits:1})}%`} icon={<TrendingUp size={14}/>}/>
         </div>
         <div className="cofre-chart-toolbar"><h2>Seu período em gráficos</h2></div>
