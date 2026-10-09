@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -87,6 +88,15 @@ export const DRAFT_VAZIO: CapturaDraft = {
   tagsNota: [],
 };
 
+let cacheVazio: { chave: string; draft: CapturaDraft } | null = null;
+/** Rascunho em branco já com a prioridade e a duração padrão das preferências. Estável enquanto elas não mudam (a identidade é comparada). */
+export function rascunhoVazio(): CapturaDraft {
+  const p = lerPreferenciasAplicativo();
+  const chave = `${p.tarefaPrioridade}|${p.tarefaDuracaoMin}`;
+  if (!cacheVazio || cacheVazio.chave !== chave) cacheVazio = { chave, draft: { ...DRAFT_VAZIO, prioridadeTarefa: p.tarefaPrioridade, duracaoMin: p.tarefaDuracaoMin } };
+  return cacheVazio.draft;
+}
+
 const CHAVE_RASCUNHO = "ecos.capture-draft.v1";
 
 /** Título mínimo para o autosave criar a Nota/Tarefa: digitar "R" e parar não pode virar item no servidor. */
@@ -139,7 +149,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
-  const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
+  const [draft, setDraft] = useState<CapturaDraft>(rascunhoVazio);
   /** Anexos escolhidos para um lançamento novo; vão para o Cofre assim que ele é criado. */
   const [anexosPendentes, setAnexosPendentes] = useState<File[]>([]);
   const [notasPendentes, setNotasPendentes] = useState<File[]>([]);
@@ -189,7 +199,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     padraoAplicado.current = { nota: false, tarefa: false };
     sessaoCaptura.current += 1;
     fecharCaptura();
-    setDraft(DRAFT_VAZIO);
+    setDraft(rascunhoVazio());
     setAnexosPendentes([]);
     setNotasPendentes([]);
     setItemCriado(null);
@@ -201,11 +211,11 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   // A captura pode ser encerrada por fora (botão voltar, Esc, fechar a janela) sem passar por `fecharTudo`.
   // Criar é sempre criar: a próxima captura não herda texto nem id da anterior (senão sobrescreveria a nota/tarefa antiga).
   useEffect(() => {
-    if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null && draft === DRAFT_VAZIO)) return;
+    if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null && draft === rascunhoVazio())) return;
     if (itemCriado) avisar(itemCriado.tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
     padraoAplicado.current = { nota: false, tarefa: false };
     sessaoCaptura.current += 1;
-    setDraft(DRAFT_VAZIO);
+    setDraft(rascunhoVazio());
     setItemCriado(null);
     ultimoEnvio.current = null;
     setErro(null);

@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from "react-dom";
 import { Calculator, Delete, X } from "lucide-react";
 import { formatMoeda } from "@/lib/format";
+import { lerMaxLancamentos, useModoValor } from "@/lib/exibicao-valores";
+import { IndicadorValor } from "@/screens/Vault/nexus/IndicadorValor";
 
 /** O painel entra um pouco por baixo da quina arredondada do formulário, para as duas peças formarem uma superfície só (sem fresta nos cantos). */
 const SOBREPOSICAO = 18;
@@ -56,6 +58,9 @@ export function CampoValor({ centavos, aoMudar, autoFocus }: { centavos: number;
   const [expressao, setExpressao] = useState("");
   const [posicao, setPosicao] = useState<{ top: number; left: number; width: number; height: number; cabeca: number; lado: "direita" | "esquerda" | "baixo" } | null>(null);
   const [pulso, setPulso] = useState(0);
+  const modoValor = useModoValor("lancamentos");
+  const ultimoModo = useRef<"barra" | "anel">("anel");
+  if (modoValor !== "numero") ultimoModo.current = modoValor;
   const raiz = useRef<HTMLDivElement>(null);
   const painel = useRef<HTMLDivElement>(null);
 
@@ -165,7 +170,8 @@ export function CampoValor({ centavos, aoMudar, autoFocus }: { centavos: number;
     { t: "0" }, { t: "," }, { t: "=", tipo: "igual", acao: igual },
   ];
 
-  return <div className="cofre-valor-wrap" ref={raiz} data-aberta={aberta || undefined}>
+  return <div className="cofre-valor-wrap" ref={raiz} data-aberta={aberta || undefined} data-modo={modoValor}>
+    <span className="cofre-valor-ind" aria-hidden="true"><IndicadorValor modo={ultimoModo.current} valor={centavos} max={Math.max(lerMaxLancamentos(), centavos)} /></span>
     <input autoFocus={autoFocus} inputMode="numeric" value={formatMoeda(centavos)} onChange={(e) => aoMudar(Number(e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9) || 0))} placeholder="R$ 0,00" aria-label="Valor" />
     <button type="button" className="cofre-valor-calc" aria-label="Abrir calculadora" aria-expanded={aberta} title="Calculadora" onClick={() => (aberta ? fechar() : abrir())}><Calculator size={15} /></button>
     {aberta && posicao && createPortal(

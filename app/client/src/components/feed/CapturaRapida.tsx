@@ -3,6 +3,7 @@ import { CheckSquare, FileText, Loader2 } from "lucide-react";
 import { ApiError, notas, tarefas } from "@/lib/api";
 import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 const TITULO_MAX = 120;
 
@@ -14,7 +15,7 @@ function separar(texto: string): { titulo: string; corpo: string } {
 }
 
 /**
- * Captura rápida no topo do Feed: Enter cria uma nota, Ctrl+Enter uma tarefa, Shift+Enter quebra a linha.
+ * Captura rápida no topo do Feed: Enter cria uma nota (ou tarefa, se assim estiver nas preferências), Ctrl+Enter o outro, Shift+Enter quebra a linha.
  * O item aparece na hora (o feed é atualizado pelo refresh-bus).
  */
 export function CapturaRapida() {
@@ -51,7 +52,9 @@ export function CapturaRapida() {
         onKeyDown={(e) => {
           if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
           e.preventDefault();
-          void criar(e.ctrlKey || e.metaKey ? "tarefa" : "nota");
+          const { capturaEnter } = lerPreferenciasAplicativo();
+          const outro = capturaEnter === "nota" ? "tarefa" : "nota";
+          void criar(e.ctrlKey || e.metaKey ? outro : capturaEnter);
         }}
         placeholder="O que está na sua cabeça?"
         aria-label="Captura rápida"

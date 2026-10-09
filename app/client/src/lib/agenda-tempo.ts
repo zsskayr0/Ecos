@@ -116,6 +116,8 @@ export interface ItemAgenda extends Posicao {
   salvando?: boolean;
   /** Item que é uma transação do Cofre (conta à parte no resumo do dia). */
   transacao?: boolean;
+  /** Linha abaixo do título (em lançamento: o valor, no lugar do "dia inteiro"). */
+  legenda?: string;
 }
 
 export interface CapacidadesItem {

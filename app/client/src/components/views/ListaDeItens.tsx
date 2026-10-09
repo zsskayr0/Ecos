@@ -14,6 +14,7 @@ import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
 import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
+import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
 
 interface Props {
   itens: FeedItem[];
@@ -36,6 +37,10 @@ interface Props {
   pesquisavel?: boolean;
   /** Texto do campo de busca, ex.: "Pesquisar em Trabalho…". */
   placeholderBusca?: string;
+  /** Seletor de visualização (ou similar) à direita da barra de filtros. */
+  acaoDireita?: React.ReactNode;
+  /** Telas de tarefas: no desktop não há Feed; o modo de cards vira tabela. */
+  semFeedNoDesktop?: boolean;
 }
 
 function lerFiltros(chave: string): EstadoFiltros | null {
@@ -46,10 +51,10 @@ function lerFiltros(chave: string): EstadoFiltros | null {
 }
 
 /** Uma lista de notas e/ou tarefas em qualquer das visualizações: feed (cards), lista compacta, tabela ou grade. */
-export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true, pesquisavel = false, placeholderBusca }: Props) {
+export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true, pesquisavel = false, placeholderBusca, acaoDireita, semFeedNoDesktop = false }: Props) {
   const chaveDosFiltros = chaveFiltros ?? chave;
   const desktop = useIsDesktop();
-  const efetivo = modoEfetivo(modo, desktop);
+  const efetivo = modoEfetivo(modo, desktop, semFeedNoDesktop);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [pastasDisponiveis, setPastasDisponiveis] = useState<{ caminho: string; nome: string }[]>([]);
   const [menuMoverAberto, setMenuMoverAberto] = useState(false);
@@ -207,7 +212,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     return [...porChave.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
   }, [itens]);
   const cabecalhoFiltros = <>
-    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} pesquisavel={pesquisavel} placeholderBusca={placeholderBusca} />
+    <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} pesquisavel={pesquisavel} placeholderBusca={placeholderBusca} acaoDireita={acaoDireita} />
     {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">{estadoFiltros.busca.trim() ? `Nada encontrado para “${estadoFiltros.busca.trim()}”.` : "Nenhum item corresponde aos filtros."}</p>}
   </>;
 
@@ -224,6 +229,10 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
 
   if (efetivo === "tabela") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<TabelaItens itens={itensAnimados} chave={chave} mostrarCriada={mostrarCriada} mostrarMotivo={mostrarMotivo} ordem={ordemTabela} onOrdemChange={mudarOrdemTabela} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
   if (efetivo === "grade") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<GradeItens itens={itensAnimados} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
+
+  if (efetivo === "kanban") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<KanbanItens itens={itensAnimados} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
+  if (efetivo === "agrupada") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<AgrupadaItens itens={itensAnimados} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
+  if (efetivo === "matriz") return <>{exibirFiltros && cabecalhoFiltros}{acoes}<MatrizItens itens={itensAnimados} selecionados={selecionados} onSelecionar={selecionar} saindo={saindo} entrando={entrando} /></>;
 
   const lista = efetivo === "lista";
   const renderItem = (item: FeedItem) => {

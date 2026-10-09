@@ -164,7 +164,11 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
 
   const gridTemplateColumns = `56px repeat(${dias.length}, minmax(120px, 1fr))`;
   const horarios = useMemo(() => itens.filter((i) => i.inicioMin !== null), [itens]);
-  const diaTodo = useMemo(() => itens.filter((i) => i.inicioMin === null), [itens]);
+  // Ordem fixa na faixa: eventos, tarefas (e prazos) e, por último, lançamentos.
+  const diaTodo = useMemo(() => {
+    const grupo = (i: ItemAgenda) => (i.transacao ? 2 : i.tipo === "evento" ? 0 : 1);
+    return itens.filter((i) => i.inicioMin === null).map((i, n) => ({ i, n })).sort((a, b) => grupo(a.i) - grupo(b.i) || a.n - b.n).map(({ i }) => i);
+  }, [itens]);
 
   // Cada dia divide a largura entre os blocos que se sobrepõem (posições originais: a prévia do arrasto não faz os outros se mexerem).
   const colunasPorDia = useMemo(() => {
@@ -178,7 +182,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
 
   const alturaDiaTodo = modoFaixa === "ocultar" ? 0
     : modoFaixa === "resumo" ? ALTURA_FAIXA_RESUMO
-      : Math.min(Math.max(44, ...dias.map((dia) => diaTodo.filter((i) => i.dia === dia).length * ALTURA_LINHA_FAIXA + 12)), MAX_LINHAS_TODOS * ALTURA_LINHA_FAIXA + 12);
+      : Math.min(Math.max(44, ...dias.map((dia) => diaTodo.filter((i) => i.dia === dia).reduce((soma, i) => soma + (i.legenda ? ALTURA_LINHA_FAIXA + 14 : ALTURA_LINHA_FAIXA), 0) + 12)), MAX_LINHAS_TODOS * ALTURA_LINHA_FAIXA + 12 + (diaTodo.some((i) => i.legenda) ? 26 : 0));
   const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
 
   // A grade vem rolada até o início configurado (as linhas fixas ocupam o topo, então a hora de início fica logo abaixo delas).
@@ -512,11 +516,12 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
     const horario = diaInteiro ? "" : `${rotuloHorario(pos.inicioMin as number)}–${rotuloHorario((pos.inicioMin as number) + pos.duracaoMin)}`;
     const corpo = (
       <>
-        <span className={`flex items-center gap-1 truncate text-xs font-medium ${item.concluida ? "line-through opacity-70" : ""}`}>
+        <span className={`flex items-center gap-1 truncate text-xs font-medium ${item.transacao ? "fonte-cofre" : ""} ${item.concluida ? "line-through opacity-70" : ""}`}>
           {item.tipo === "prazo" && <><Flag size={11} aria-hidden className="shrink-0" /><span className="sr-only">Prazo: </span></>}
           <span className="truncate">{item.titulo}</span>
         </span>
         {!diaInteiro && <span className="block truncate font-mono-value text-[10px] opacity-80">{horario}</span>}
+        {item.legenda && <span className="fonte-cofre block truncate text-[10px] opacity-80">{item.legenda}</span>}
         {item.comPrazo && <span data-marca-prazo className="mt-0.5 inline-flex items-center gap-1 rounded bg-warning/20 px-1 text-[10px] font-medium text-warning"><Flag size={10} aria-hidden />Prazo hoje</span>}
         {(cap.mover || cap.remover) && item.tipo !== "prazo" && (
           <button

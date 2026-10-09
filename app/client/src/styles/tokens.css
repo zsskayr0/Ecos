@@ -131,3 +131,26 @@ html[data-theme="light"] {
   --ecos-encrypted: #a78bfa;
   --ecos-encrypted-rgb: 167 139 250;
 }
+
+/* Alto contraste (Configurações → Aparência): textos e bordas mais fortes nos dois temas. */
+html[data-contraste="alto"],
+html[data-contraste="alto"][data-theme="dark"] {
+  --ecos-border: #8a8a8a;
+  --ecos-border-rgb: 138 138 138;
+  --ecos-text-primary: #ffffff;
+  --ecos-text-primary-rgb: 255 255 255;
+  --ecos-text-secondary: #e0e8f4;
+  --ecos-text-secondary-rgb: 224 232 244;
+  --ecos-text-muted: #b4b8c2;
+  --ecos-text-muted-rgb: 180 184 194;
+}
+html[data-contraste="alto"][data-theme="light"] {
+  --ecos-border: #4a5a75;
+  --ecos-border-rgb: 74 90 117;
+  --ecos-text-primary: #000000;
+  --ecos-text-primary-rgb: 0 0 0;
+  --ecos-text-secondary: #1c2740;
+  --ecos-text-secondary-rgb: 28 39 64;
+  --ecos-text-muted: #3a4560;
+  --ecos-text-muted-rgb: 58 69 96;
+}

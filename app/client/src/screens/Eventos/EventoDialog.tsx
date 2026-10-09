@@ -1,6 +1,7 @@
-import { useAppUI } from "@/lib/ui-context";
+﻿import { useAppUI } from "@/lib/ui-context";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ApiError, eventos, type AtualizarEventoPayload, type AtualizarOcorrenciaPayload, type CategoriaEvento, type Evento } from "@/lib/api";
 import { dataLocalISO, instanteLocalISO } from "@/lib/agenda-tempo";
 import { deInputData } from "@/lib/eventos";
@@ -10,6 +11,8 @@ import { EditorEvento, type DadosEvento, type EventoEditavel, type ModoEditor } 
 import { CategoriasDialog } from "./CategoriasDialog";
 
 interface Props {
+  /** Abre numa camada acima de tudo (ex.: a partir da tela maximizada do dia, que fica fora da área da Agenda). */
+  sobreTudo?: boolean;
   aberto: boolean;
   /** `null` = novo evento. */
   eventoId: string | null;
@@ -74,7 +77,7 @@ const mesmoConjunto = (a: { id: string }[], b: { id: string }[]) => a.length ===
  * Criar/editar evento: carrega o detalhe, abre o editor (o mesmo da Agenda) e traduz o que a pessoa fez em chamadas à API,
  * mandando só o que mudou (mexer só em vínculos ou cor não marca o evento para o Google).
  */
-export function EventoDialog({ aberto, eventoId, ocorrencia, categorias, diaInicial, eventosNoPeriodo, passoMin, onFechar, onSalvo, onCategoriasAlteradas }: Props) {
+function EventoDialogInterno({ aberto, eventoId, ocorrencia, categorias, diaInicial, eventosNoPeriodo, passoMin, onFechar, onSalvo, onCategoriasAlteradas }: Props) {
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [cats, setCats] = useState(categorias);
@@ -192,4 +195,11 @@ export function EventoDialog({ aberto, eventoId, ocorrencia, categorias, diaInic
       />
     </>
   );
+}
+
+/** Com sobreTudo, o diálogo sai da área da Agenda (portal no body) e cobre qualquer outra camada da tela. */
+export function EventoDialog({ sobreTudo, ...props }: Props) {
+  if (!sobreTudo) return <EventoDialogInterno {...props} />;
+  if (!props.aberto) return null;
+  return createPortal(<div className="fixed inset-0 z-[60]"><EventoDialogInterno {...props} /></div>, document.body);
 }

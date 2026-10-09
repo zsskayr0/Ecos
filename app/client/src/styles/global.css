@@ -128,6 +128,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Lançamentos na Agenda: mesma fonte do Cofre (.cofre-mono). */
+.fonte-cofre {
+  font-family: "Poppins", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
 .ecos-input {
   width: 100%;
   border-radius: 8px;
@@ -451,4 +457,17 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ecos-slide-indicador, .ecos-slide-botao, .ecos-tipo-entra, .ecos-secao-entra, .ecos-tx-col > *, .ecos-valor, .ecos-tx-seta,
   .ecos-tx-teclado, .ecos-tx-toggle-teclado, .ecos-tecla, .ecos-chip, .ecos-chips > *, .ecos-campo, .ecos-salvar { animation: none !important; transition: none !important; }
+}
+
+
+/* Reduzir movimento (preferência do Ecos ou do sistema): animações e transições viram instantâneas. */
+[data-reduzir-movimento="true"] *,
+[data-reduzir-movimento="true"] *::before,
+[data-reduzir-movimento="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
 }

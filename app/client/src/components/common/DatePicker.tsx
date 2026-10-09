@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cabecalhoDaSemana, deslocamentoDoMes, formatarData, useFormatoData } from "@/lib/formato-data";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Props {
@@ -49,7 +50,7 @@ function gerarDiasDoMes(referencia: Date) {
   const mes = referencia.getMonth();
   const primeiroDia = new Date(ano, mes, 1);
   const totalDias = new Date(ano, mes + 1, 0).getDate();
-  const offset = primeiroDia.getDay();
+  const offset = deslocamentoDoMes(primeiroDia);
   return { offset, totalDias, ano, mes };
 }
 
@@ -63,6 +64,7 @@ function gerarDiasDoMes(referencia: Date) {
  */
 export function DatePicker({ value, onChange, className, accent = "violet", limpavel = false, disabled = false, ariaLabel }: Props) {
   const cor = CORES[accent];
+  useFormatoData(); // re-renderiza quando o formato de data muda
   const [aberto, setAberto] = useState(false);
   const [mesReferencia, setMesReferencia] = useState(() => (value ? paraData(value) : new Date()));
   const containerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +104,7 @@ export function DatePicker({ value, onChange, className, accent = "violet", limp
         className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-1.5 font-mono-value text-sm text-text-primary"
       >
         <CalendarDays size={14} className={cor.icone} strokeWidth={1.75} />
-        {value ? paraData(value).toLocaleDateString("pt-BR") : "Sem data"}
+        {value ? formatarData(paraData(value), undefined) : "Sem data"}
       </button>
 
       {aberto && (
@@ -128,7 +130,7 @@ export function DatePicker({ value, onChange, className, accent = "violet", limp
           </div>
 
           <div className="grid grid-cols-7 gap-y-1">
-            {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
+            {cabecalhoDaSemana().map((d, i) => (
               <div key={i} className="text-center text-[10px] font-medium text-text-muted">
                 {d}
               </div>

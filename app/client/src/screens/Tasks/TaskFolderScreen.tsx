@@ -61,7 +61,6 @@ export function TaskFolderScreen() {
           <Folder size={22} className="text-cyan" />
           {nomeExibicao}
         </h1>
-        <ViewModeToggle modo={modo} onMudar={setModo} />
       </div>
       {erro && (
         <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
@@ -89,7 +88,7 @@ export function TaskFolderScreen() {
         ) : itens.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira tarefa aqui." />
         ) : (
-          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada pesquisavel placeholderBusca={`Pesquisar em ${nomeExibicao}…`} chaveFiltros={`tarefas:${caminho}`} modo={modo} itens={itens.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada pesquisavel placeholderBusca={`Pesquisar em ${nomeExibicao}…`} chaveFiltros={`tarefas:${caminho}`} modo={modo} semFeedNoDesktop acaoDireita={<ViewModeToggle modo={modo} onMudar={setModo} tarefas />} itens={itens.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

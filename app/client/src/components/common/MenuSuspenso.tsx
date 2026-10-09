@@ -50,10 +50,12 @@ interface Props<T extends string> {
   largo?: boolean;
   /** Classe extra da lista (ex.: o desenho do Cofre). */
   classeMenu?: string;
+  /** Avisa quando o menu abre ou fecha (ex.: trocar o painel ao lado enquanto se escolhe). */
+  onAbrirChange?: (aberto: boolean) => void;
 }
 
 /** Menu suspenso do Ecos, no lugar do `<select>` nativo. Anima entrada e saída, fecha com Esc/clique fora e navega por setas. */
-export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, buscar = false, largo = false, classeMenu = "" }: Props<T>) {
+export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, buscar = false, largo = false, classeMenu = "", onAbrirChange }: Props<T>) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
@@ -67,6 +69,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
   // O destaque desliza entre as opções (como o seletor de prioridade) e muda de cor conforme a opção sob o cursor.
   const [destaque, setDestaque] = useState(indiceAtual);
   useEffect(() => { if (aberto) setDestaque(indiceAtual); }, [aberto, indiceAtual]);
+  useEffect(() => { onAbrirChange?.(aberto); }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
   // Com a lista filtrada o destaque segue a primeira opção que sobrou.
   useEffect(() => { if (buscar && busca.trim()) setDestaque(0); }, [buscar, busca]);
 

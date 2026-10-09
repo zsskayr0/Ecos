@@ -34,6 +34,8 @@ import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
 import { AboutScreen } from "@/screens/Settings/AboutScreen";
 import { LicensesScreen } from "@/screens/Settings/LicensesScreen";
 import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
+import { UsoDiarioScreen } from "@/screens/Settings/UsoDiarioScreen";
+import { NotificacoesPreferenciasScreen } from "@/screens/Settings/NotificacoesPreferenciasScreen";
 import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
 import { HelpScreen } from "@/screens/Help/HelpScreen";
 import { MediaScreen } from "@/screens/Media/MediaScreen";
@@ -102,6 +104,7 @@ export const screenRoutes = (
       <Route path="conta" element={<ContaDadosScreen />} />
       <Route path="aparencia" element={<AparenciaScreen />} />
       <Route path="calendario" element={<CalendarPreferencesScreen />} />
+      <Route path="uso-diario" element={<UsoDiarioScreen />} />
       <Route path="organizacao" element={<OrganizationScreen />} />
       <Route path="sobre" element={<AboutScreen />} />
       <Route path="sobre/licencas" element={<LicensesScreen />} />
@@ -112,7 +115,7 @@ export const screenRoutes = (
       <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
       <Route path="equipes/escanear" element={<EscanearQrScreen />} />
       <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
-      <Route path="notificacoes" element={<NotificationsScreen />} />
+      <Route path="notificacoes" element={<NotificacoesPreferenciasScreen />} />
       <Route path="administracao" element={<AdministracaoScreen />} />
     </Route>
 

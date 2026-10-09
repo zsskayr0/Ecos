@@ -34,6 +34,10 @@ export type EventoLocal = {
   visibilidade?: "privado" | "google";
   /** Item que vem de uma transação do Cofre (dia inteiro, só leitura): abrir leva ao lançamento. */
   transacaoId?: string;
+  /** Linha abaixo do título (lançamento: o valor com sinal). */
+  legenda?: string;
+  /** Lançamento: valor com sinal, em centavos (entrada positiva, saída negativa). */
+  valorCentavos?: number;
 };
 
 // Estado compartilhado entre a Agenda e a tela Hoje: um evento criado/movido num lado aparece imediatamente no outro.

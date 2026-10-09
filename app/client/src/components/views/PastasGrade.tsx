@@ -1,9 +1,11 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
-import { useEffect, useState, type MouseEvent } from "react";
-import { Check, ChevronDown, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { ApiError, pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { TOM, misturar } from "@/components/common/MenuSuspenso";
 
 export interface PastaResumo {
   caminho: string;
@@ -37,14 +39,52 @@ interface Props {
   aoAbrirItem?: (item: ItemExplorador, evento: MouseEvent<HTMLButtonElement>) => void;
 }
 
-const chaveOcultas = (chave: string) => `ecos:pastas-ocultas:${chave}`;
+/** Escolha feita no próprio botão. Some quando a pessoa muda o padrão em Configurações (ver `limparEscolhaDePastas`). */
+const chaveOcultas = (chave: string) => `ecos:pastas-ocultas:v2:${chave}`;
 
-function lerOcultas(chave: string): boolean {
+/** Esquece o que foi escolhido no botão, para o padrão das Configurações valer de novo. */
+export function limparEscolhaDePastas() {
+  try { (["notas", "tarefas"] as const).forEach((c) => localStorage.removeItem(chaveOcultas(c))); } catch { /* sem armazenamento */ }
+}
+
+function lerOcultas(chave: string, padraoOculto: boolean): boolean {
   try {
-    return localStorage.getItem(chaveOcultas(chave)) === "1";
+    const escolha = localStorage.getItem(chaveOcultas(chave));
+    return escolha === null ? padraoOculto : escolha === "1";
   } catch {
-    return false;
+    return padraoOculto;
   }
+}
+
+const DURACAO_MS = 250;
+
+/**
+ * Olho que abre e fecha: a pálpebra (amêndoa) se achata e a pupila encolhe; ao abrir, volta com uma piscada
+ * (leve overshoot). Fechado, o risco diagonal é desenhado por cima.
+ */
+function Olho({ aberto }: { aberto: boolean }) {
+  const mola = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <g style={{ transformBox: "fill-box", transformOrigin: "center", transform: `scaleY(${aberto ? 1 : 0.18})`, transition: `transform 380ms ${aberto ? mola : "cubic-bezier(0.4, 0, 0.2, 1)"}` }}>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      </g>
+      <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" style={{ transformBox: "fill-box", transformOrigin: "center", transform: `scale(${aberto ? 1 : 0})`, opacity: aberto ? 1 : 0, transition: `transform 320ms ${aberto ? mola : "ease-in"}, opacity 200ms ease` }} />
+      <path d="M4 4l16 16" pathLength={1} strokeDasharray={1} strokeDashoffset={aberto ? 1 : 0} style={{ transition: `stroke-dashoffset ${aberto ? 200 : 320}ms ease-out ${aberto ? 0 : 120}ms` }} />
+    </svg>
+  );
+}
+
+/** Atraso escalonado: cada pasta entra um instante depois da anterior; ao ocultar, somem juntas. */
+const entrada = (indice: number, oculto: boolean) => ({ transitionDelay: oculto ? "0ms" : `${Math.min(indice, 10) * 25}ms` });
+
+/** Recolhe e expande a altura com animação (grid 0fr→1fr). Fechado, o conteúdo fica inerte para teclado e leitor de tela. */
+function Recolhivel({ oculto, cortar, children }: { oculto: boolean; cortar: boolean; children: ReactNode }) {
+  return (
+    <div className={`grid transition-[grid-template-rows,opacity] ease-out ${oculto ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`} style={{ transitionDuration: `${DURACAO_MS}ms` }} aria-hidden={oculto} {...(oculto ? ({ inert: "" } as object) : {})}>
+      <div className={`min-h-0 ${oculto || cortar ? "overflow-hidden" : "overflow-visible"}`}>{children}</div>
+    </div>
+  );
 }
 
 /**
@@ -53,7 +93,13 @@ function lerOcultas(chave: string): boolean {
  * inteiro e fica guardada.
  */
 export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbrir, aoCriar, rotuloCriar = "Nova pasta", espaco, visualizacao = "grade", itens = [], aoAbrirItem }: Props) {
-  const [ocultas, setOcultas] = useState(() => lerOcultas(chave));
+  // No explorador (Organização) a lista também traz os itens: ele abre mostrando tudo, sem seguir o padrão de pastas.
+  const padraoOculto = visualizacao === "grade" && !lerPreferenciasAplicativo().pastasVisiveis;
+  const [ocultas, setOcultas] = useState(() => lerOcultas(chave, padraoOculto));
+  const [estilo, setEstilo] = useState(() => lerPreferenciasAplicativo().estiloPastas);
+  // Durante a animação o conteúdo é cortado; depois solta, para o menu de cada pasta não ser cortado.
+  const [animando, setAnimando] = useState(false);
+  const temporizador = useRef<number>();
   const [menu, setMenu] = useState<string | null>(null);
   const [acao, setAcao] = useState<"renomear" | "mover" | "excluir" | null>(null);
   const [pastaAtiva, setPastaAtiva] = useState<PastaResumo | null>(null);
@@ -63,14 +109,29 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
   const [erro, setErro] = useState<string | null>(null);
   const { notificar } = useRefreshBus();
   const tipo = chave === "tarefas" ? "tarefa" : "nota";
+  const tom = chave === "tarefas" ? TOM.ciano : TOM.aco;
 
   useEffect(() => {
     if (acao !== "mover") return;
     pastasApi.listar({ recursivo: true, tipo, espaco }).then((resultado) => setDestinos(resultado.subpastas)).catch(() => setDestinos([]));
   }, [acao, tipo, espaco]);
 
+  useEffect(() => {
+    const aoMudarPreferencias = () => {
+      const prefs = lerPreferenciasAplicativo();
+      setEstilo(prefs.estiloPastas);
+      setOcultas(lerOcultas(chave, visualizacao === "grade" && !prefs.pastasVisiveis));
+    };
+    window.addEventListener("ecos:preferencias-aplicativo", aoMudarPreferencias);
+    return () => { window.removeEventListener("ecos:preferencias-aplicativo", aoMudarPreferencias); window.clearTimeout(temporizador.current); };
+  }, [chave, visualizacao]);
+
   function alternar() {
     const proximo = !ocultas;
+    setMenu(null);
+    setAnimando(true);
+    window.clearTimeout(temporizador.current);
+    temporizador.current = window.setTimeout(() => setAnimando(false), DURACAO_MS + 400);
     setOcultas(proximo);
     try {
       localStorage.setItem(chaveOcultas(chave), proximo ? "1" : "0");
@@ -109,32 +170,41 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
 
   return (
     <section aria-label={titulo}>
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-pressed={!ocultas}
+          aria-label={titulo}
+          title={ocultas ? `Mostrar ${titulo.toLowerCase()}` : `Ocultar ${titulo.toLowerCase()}`}
+          onClick={alternar}
+          style={ocultas ? undefined : { color: tom }}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-200 hover:bg-surface-2 active:scale-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${ocultas ? "text-text-muted hover:text-text-primary" : ""}`}
+        >
+          <Olho aberto={!ocultas} />
+        </button>
         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
           {titulo}
           <span className="ml-1.5 font-mono-value normal-case tracking-normal">{pastas.length}</span>
         </p>
-        <button
-          type="button"
-          aria-expanded={!ocultas}
-          onClick={alternar}
-          className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
-        >
-          {ocultas ? "Mostrar" : "Ocultar"}
-          <ChevronDown size={14} strokeWidth={1.75} className={`transition-transform ${ocultas ? "" : "rotate-180"}`} />
-        </button>
+        </div>
       </div>
 
-      {!ocultas && visualizacao === "grade" && (
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
-          {pastas.map((p) => (
-            <div key={p.caminho} className="relative flex aspect-square min-w-0 rounded-card bg-surface-1 transition-colors hover:bg-surface-2">
-            <button type="button" onClick={() => aoAbrir(p)} className="flex min-w-0 flex-1 flex-col justify-between p-4 pr-11 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400">
-              <Folder size={28} strokeWidth={1.5} className={corIcone} />
-              <span className="min-w-0">
-                <span className="line-clamp-2 block break-words font-body text-[15px] font-semibold leading-snug text-text-primary">{p.nome}</span>
-                <span className="mt-0.5 block text-xs text-text-muted">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span>
-              </span>
+      {visualizacao === "grade" && (
+        <Recolhivel oculto={ocultas} cortar={animando}>
+        <div className="grid gap-3 pb-1" style={{ gridTemplateColumns: estilo === "compacta" ? "repeat(auto-fill, minmax(190px, 1fr))" : "repeat(auto-fill, minmax(140px, 1fr))" }}>
+          {pastas.map((p, i) => (
+            <div key={p.caminho} style={entrada(i, ocultas)} className={`relative flex min-w-0 rounded-card bg-surface-1 transition-[opacity,transform,background-color] duration-[230ms] hover:bg-surface-2 ${estilo === "compacta" ? "h-12 !rounded-xl" : "aspect-square"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
+            <button type="button" onClick={() => aoAbrir(p)} className={`flex min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "items-center gap-2.5 pl-3 pr-10" : "flex-col justify-between p-4 pr-11"}`}>
+              <Folder size={estilo === "compacta" ? 18 : 28} strokeWidth={1.5} className={`shrink-0 ${corIcone}`} />
+              {estilo === "compacta" ? (
+                <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="truncate text-sm font-semibold text-text-primary">{p.nome}</span><span className="shrink-0 text-xs text-text-muted">{p.contagem_itens}</span></span>
+              ) : (
+                <span className="min-w-0">
+                  <span className="line-clamp-2 block break-words font-body text-[15px] font-semibold leading-snug text-text-primary">{p.nome}</span>
+                  <span className="mt-0.5 block text-xs text-text-muted">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span>
+                </span>
+              )}
             </button>
             <button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>
             {menu === p.caminho && <div role="menu" className="absolute right-2 top-11 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Renomear</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}
@@ -144,15 +214,17 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
             <button
               type="button"
               onClick={aoCriar}
-              className="flex aspect-square flex-col items-center justify-center gap-2 rounded-card border border-dashed border-border text-text-muted transition-colors hover:border-steel-500/60 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
+              style={entrada(pastas.length, ocultas)}
+              className={`flex items-center justify-center gap-2 border border-dashed border-border text-text-muted transition-[opacity,transform,border-color,color] duration-[230ms] hover:border-steel-500/60 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "h-12 rounded-xl" : "aspect-square flex-col rounded-card"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
             >
-              <FolderPlus size={22} strokeWidth={1.5} />
+              <FolderPlus size={estilo === "compacta" ? 18 : 22} strokeWidth={1.5} />
               <span className="text-xs font-medium">{rotuloCriar}</span>
             </button>
           )}
         </div>
+        </Recolhivel>
       )}
-      {!ocultas && visualizacao === "explorador" && (
+      {visualizacao === "explorador" && !ocultas && (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface-1">
           <div className="flex min-h-11 items-center border-b border-border bg-surface-2/60 px-3 text-xs font-medium text-text-muted"><span className="flex-1">Nome</span><span className="hidden sm:block sm:w-24">Tipo</span><span className="w-8" /></div>
           {pastas.map((p) => <div key={p.caminho} className="group relative flex min-h-12 items-center border-b border-border px-3 last:border-b-0 hover:bg-surface-2"><button type="button" onClick={() => aoAbrir(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><Folder size={18} strokeWidth={1.65} className={corIcone} /><span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{p.nome}</span><span className="hidden text-xs text-text-muted sm:block sm:w-24">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span><ChevronRight size={16} className="text-text-muted" /></button><button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>{menu === p.caminho && <div role="menu" className="absolute right-3 top-10 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Renomear</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}</div>)}

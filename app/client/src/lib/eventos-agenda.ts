@@ -163,7 +163,9 @@ export function transacaoParaItem(t: TransacaoApi): EventoLocal {
   return {
     id: `transacao:${t.id}`, transacaoId: t.id, inicio: t.data, minutos: null, duracaoMin: 60, cor: "", movivel: false,
     corHex: t.tipo === "entrada" ? "#22c55e" : "#ef4444",
-    titulo: `${sinal}${formatMoeda(t.valor_centavos)} ${t.descricao}${t.status === "pendente" ? " (pendente)" : ""}`,
+    titulo: `${t.descricao}${t.status === "pendente" ? " (pendente)" : ""}`,
+    legenda: `${sinal}${formatMoeda(t.valor_centavos)}`,
+    valorCentavos: t.tipo === "entrada" ? t.valor_centavos : -t.valor_centavos,
   };
 }
 

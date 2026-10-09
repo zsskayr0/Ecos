@@ -1,4 +1,5 @@
 import type { FeedItem } from "@/lib/types";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 /** Filtros simples da lista, mais a ordem. Prioridade, "Atrasadas" e "Concluídas" só existem em tarefas. */
 
@@ -27,7 +28,7 @@ export interface EstadoFiltros {
 export const ESTADO_VAZIO: EstadoFiltros = { status: "todos", prioridade: "todas", equipe: "todas", pastas: [], tags: [], donos: [], ordem: "relevancia", ordemDirecao: 1, busca: "" };
 
 /** Onde há tarefas, as concluídas ficam a um clique de distância em vez de poluir a lista. */
-export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas ? { ...ESTADO_VAZIO, status: "pendente" } : ESTADO_VAZIO);
+export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas && !lerPreferenciasAplicativo().mostrarConcluidas ? { ...ESTADO_VAZIO, status: "pendente" } : ESTADO_VAZIO);
 
 export const filtrosAtivos = (e: EstadoFiltros, temTarefas: boolean) =>
   (e.status !== estadoInicial(temTarefas).status ? 1 : 0) + (e.prioridade !== "todas" ? 1 : 0) + (e.equipe !== "todas" ? 1 : 0) + (e.pastas.length ? 1 : 0) + (e.tags.length ? 1 : 0) + (e.donos.length ? 1 : 0) + (e.busca?.trim() ? 1 : 0);

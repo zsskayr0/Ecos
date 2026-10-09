@@ -48,7 +48,6 @@ export function TaskFoldersRootScreen() {
     <div className="px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Pastas de Tarefas</h1>
-        <div className="flex items-center gap-2"><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {erro && (
@@ -75,7 +74,7 @@ export function TaskFoldersRootScreen() {
             Nenhuma tarefa criada ainda.
           </p>
         ) : (
-          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada pesquisavel placeholderBusca="Pesquisar em todas as tarefas…" modo={modo} itens={tarefas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
+          <ListaDeItens chave="tarefas" tipoPastas="tarefa" mostrarCriada pesquisavel placeholderBusca="Pesquisar em todas as tarefas…" modo={modo} semFeedNoDesktop acaoDireita={<ViewModeToggle modo={modo} onMudar={setModo} tarefas />} itens={tarefas.map((t) => tarefaResumoParaView(t, equipes, perfil))} />
         )}
       </div>
     </div>

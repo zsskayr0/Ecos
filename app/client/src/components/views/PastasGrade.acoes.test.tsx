@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pastas } from "@/lib/api";
 import { RefreshProvider } from "@/lib/refresh-bus";
 import { PastasGrade } from "./PastasGrade";
@@ -13,6 +13,9 @@ vi.mock("@/lib/api", () => ({
 const pasta = { caminho: "Arquivo", nome: "Arquivo", contagem_itens: 0 };
 
 describe("ações e árvore de destino das pastas", () => {
+  // As pastas começam ocultas por padrão; estes testes exercitam as ações, então abrem as pastas.
+  beforeEach(() => { localStorage.setItem("ecos:pastas-ocultas:v2:notas", "0"); });
+
   it("mostra as quatro ações pedidas e não oferece criar subpasta nos três pontos", () => {
     const abrir = vi.fn();
     render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={abrir} /></RefreshProvider>);
@@ -47,5 +50,30 @@ describe("ações e árvore de destino das pastas", () => {
     const confirmacao = screen.getByRole("status");
     expect(confirmacao.textContent).toContain("Pasta movida com sucesso.");
     expect(confirmacao.className).toContain("bg-success");
+  });
+});
+
+describe("pastas ocultas por padrão", () => {
+  beforeEach(() => { localStorage.clear(); });
+
+  it("começam ocultas, com o botão desligado e o conteúdo inerte", () => {
+    render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={vi.fn()} /></RefreshProvider>);
+    expect(screen.getByRole("button", { name: "Pastas" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Ações para Arquivo" })).toBeNull();
+  });
+
+  it("o botão mostra as pastas e a escolha vale na próxima abertura", () => {
+    const { unmount } = render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={vi.fn()} /></RefreshProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Pastas" }));
+    expect(screen.getByRole("button", { name: "Ações para Arquivo" })).toBeTruthy();
+    unmount();
+    render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={vi.fn()} /></RefreshProvider>);
+    expect(screen.getByRole("button", { name: "Pastas" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a preferência 'mostrar pastas ao abrir' faz elas começarem abertas", () => {
+    localStorage.setItem("ecos:preferencias-aplicativo:v1", JSON.stringify({ pastasVisiveis: true }));
+    render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={vi.fn()} /></RefreshProvider>);
+    expect(screen.getByRole("button", { name: "Pastas" }).getAttribute("aria-pressed")).toBe("true");
   });
 });

@@ -1,3 +1,4 @@
+import { primeiroDiaDaSemana } from "./formato-data";
 import type { Evento } from "@/lib/api";
 
 export type Periodo = "semana" | "mes";
@@ -6,11 +7,11 @@ function zerarHora(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/** Janela `[de, ate)` em horário local: semana de domingo a domingo, ou o mês inteiro. */
+/** Janela `[de, ate)` em horário local: semana de 7 dias (começa no domingo ou na segunda, conforme a preferência), ou o mês inteiro. */
 export function intervaloDoPeriodo(periodo: Periodo, ancora: Date): { de: Date; ate: Date } {
   if (periodo === "semana") {
     const de = zerarHora(ancora);
-    de.setDate(de.getDate() - de.getDay());
+    de.setDate(de.getDate() - ((de.getDay() - primeiroDiaDaSemana() + 7) % 7));
     const ate = new Date(de);
     ate.setDate(ate.getDate() + 7);
     return { de, ate };

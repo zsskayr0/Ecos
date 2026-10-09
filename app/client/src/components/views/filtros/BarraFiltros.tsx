@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, ListChecks, ListFilter, PencilLine, Sparkles, Tag, Tags, User, Users, X } from "lucide-react";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { MenuMultiplo, type OpcaoMultipla } from "@/components/common/MenuMultiplo";
@@ -32,6 +33,8 @@ interface Props {
   /** Mostra a lupa ao lado de "Ordenar": a busca vale só para esta lista, junto com os filtros dela. */
   pesquisavel?: boolean;
   placeholderBusca?: string;
+  /** Controle alinhado à direita, na mesma linha dos filtros (ex.: seletor de visualização). */
+  acaoDireita?: ReactNode;
 }
 
 const chip = (ativo: boolean) =>
@@ -41,7 +44,7 @@ const corDo = <T extends string>(opcoes: OpcaoMenu<T>[], valor: T, ativo: boolea
 const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} className={`transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} />;
 
 /** Filtrar por status, prioridade e equipe, e ordenar — chips que abrem menus do próprio app. */
-export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas, pesquisavel = false, placeholderBusca }: Props) {
+export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas, pesquisavel = false, placeholderBusca, acaoDireita }: Props) {
   const padrao = estadoInicial(temTarefas);
   const equipes: OpcaoMenu<string>[] = [
     { valor: "todas", rotulo: "Todas as equipes", icone: Users }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta, icone: User },
@@ -107,6 +110,7 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
         </button>
       )}
       {visiveis !== total && <span className="ml-auto text-xs text-text-muted" aria-live="polite">{visiveis} de {total}</span>}
+      {acaoDireita && <div className={visiveis !== total ? undefined : "ml-auto"}>{acaoDireita}</div>}
     </div>
   );
 }
