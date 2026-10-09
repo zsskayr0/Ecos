@@ -39,13 +39,13 @@ function Cartao({ item, comum, arrastavel = false }: { item: FeedItem; comum: Co
   const concluida = !nota && item.status === "concluida";
   const prazo = !nota ? prazoDaTarefa(item) : null;
   return (
-    <div data-flip={chave} onClickCapture={(e) => { comum.onSelecionar?.(e, item, comum.itens); }} className={`${animacao} ${marcado ? "rounded-xl ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>
+    <div data-flip={chave} onClickCapture={(e) => { comum.onSelecionar?.(e, item, comum.itens); }} className={`${animacao} ${marcado ? "rounded-lg ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>
       <button
         type="button"
         draggable={arrastavel && !nota}
         onDragStart={arrastavel && !nota ? aoArrastar : undefined}
         onClick={(e) => abrir(caminhoDoItem(item), e)}
-        className={`flex w-full flex-col gap-1.5 rounded-xl border border-border bg-surface-1 p-3 text-left transition-colors hover:border-steel-500/60 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${arrastavel && !nota ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`flex w-full flex-col gap-1.5 rounded-lg border-0 bg-surface-1 p-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(128,128,128,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(0,0,0,0.18),0_0_0_1px_rgba(128,128,128,0.2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${arrastavel && !nota ? "cursor-grab active:cursor-grabbing" : ""}`}
       >
         <span className="flex items-start gap-2">
           {nota ? <StickyNote size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-steel-300" /> : concluida ? <CheckCircle2 size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
@@ -60,6 +60,31 @@ function Cartao({ item, comum, arrastavel = false }: { item: FeedItem; comum: Co
         )}
       </button>
     </div>
+  );
+}
+
+/** Cor de cada coluna do quadro (estilo Notion): bolinha, pílula do título e fundo suave. */
+interface TomColuna { ponto: string; pilula: string; fundo: string }
+const tom = (rgb: string): TomColuna => ({ ponto: `rgb(${rgb})`, pilula: `rgb(${rgb} / 0.16)`, fundo: `rgb(${rgb} / 0.06)` });
+const TOM_NEUTRO = tom("120 120 120");
+const TOM_COLUNA: Record<string, TomColuna> = {
+  pendente: tom("217 115 13"),
+  concluida: tom("68 131 97"),
+  alta: tom("212 76 71"),
+  media: tom("217 115 13"),
+  baixa: tom("51 126 169"),
+  notas: TOM_NEUTRO,
+};
+
+function CabecalhoColuna({ rotulo, n, id }: { rotulo: string; n: number; id: string }) {
+  const t = TOM_COLUNA[id] ?? TOM_NEUTRO;
+  return (
+    <h3 className="flex items-center gap-2 px-0.5 text-sm">
+      <span className="flex items-center gap-1.5 rounded-md px-2 py-0.5 font-medium text-text-primary" style={{ background: t.pilula }}>
+        <span className="size-2 rounded-full" style={{ background: t.ponto }} />{rotulo}
+      </span>
+      <span className="text-xs font-medium text-text-muted">{n}</span>
+    </h3>
   );
 }
 
@@ -220,11 +245,11 @@ export function KanbanItens(comum: Comum) {
             onDragOver={(e) => { e.preventDefault(); setSobre(coluna.id); }}
             onDragLeave={() => setSobre((atual) => (atual === coluna.id ? null : atual))}
             onDrop={(e) => void soltar(e, coluna)}
-            style={{ width: larguraDe(coluna.id), transition: redimensionando ? "border-color 150ms" : "width 320ms cubic-bezier(0.22, 1, 0.36, 1), border-color 150ms" }}
-            className={`relative flex min-h-40 shrink-0 flex-col gap-2 rounded-2xl border bg-surface-2/50 p-2.5 ${sobre === coluna.id ? "border-steel-400 bg-surface-2" : "border-border"}`}
+            style={{ width: larguraDe(coluna.id), background: (TOM_COLUNA[coluna.id] ?? TOM_NEUTRO).fundo, transition: redimensionando ? "box-shadow 150ms" : "width 320ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms" }}
+            className={`relative flex min-h-40 shrink-0 flex-col gap-2 rounded-xl p-2.5 ${sobre === coluna.id ? "ring-2 ring-steel-400" : ""}`}
           >
             <AlcaLargura rotulo={coluna.rotulo} largura={larguraDe(coluna.id)} onInicio={() => setRedimensionando(true)} onMudar={(l) => mudarLargura(coluna.id, l)} onSoltar={terminarRedimensao} onRestaurar={() => restaurarColuna(coluna.id)} />
-            <h3 className="flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{coluna.rotulo}<Contagem n={coluna.itens.length} /></h3>
+            <CabecalhoColuna id={coluna.id} rotulo={coluna.rotulo} n={coluna.itens.length} />
             {coluna.itens.length === 0 && <p className="px-1 py-4 text-center text-xs text-text-muted">Solte tarefas aqui</p>}
             <GradeFluida colunas={colunasDaGrade(larguraDe(coluna.id))}>
               {[...coluna.itens].sort(porPrioridadeEPrazo).map((t) => <Cartao key={t.id} item={t} comum={comum} arrastavel />)}
@@ -232,9 +257,9 @@ export function KanbanItens(comum: Comum) {
           </section>
         ))}
         {notas.length > 0 && (
-          <section aria-label="Notas" style={{ width: larguraDe("notas"), transition: redimensionando ? undefined : "width 320ms cubic-bezier(0.22, 1, 0.36, 1)" }} className="relative flex shrink-0 flex-col gap-2 rounded-2xl border border-border bg-surface-2/50 p-2.5">
+          <section aria-label="Notas" style={{ width: larguraDe("notas"), background: TOM_NEUTRO.fundo, transition: redimensionando ? undefined : "width 320ms cubic-bezier(0.22, 1, 0.36, 1)" }} className="relative flex shrink-0 flex-col gap-2 rounded-xl p-2.5">
             <AlcaLargura rotulo="Notas" largura={larguraDe("notas")} onInicio={() => setRedimensionando(true)} onMudar={(l) => mudarLargura("notas", l)} onSoltar={terminarRedimensao} onRestaurar={() => restaurarColuna("notas")} />
-            <h3 className="flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Notas<Contagem n={notas.length} /></h3>
+            <CabecalhoColuna id="notas" rotulo="Notas" n={notas.length} />
             <GradeFluida colunas={colunasDaGrade(larguraDe("notas"))}>
               {notas.map((n) => <Cartao key={n.id} item={n} comum={comum} />)}
             </GradeFluida>
