@@ -383,6 +383,17 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
                     role="separator"
                     aria-orientation="vertical"
                     aria-label={`Redimensionar ${coluna.titulo}`}
+                    tabIndex={0}
+                    aria-valuenow={larguraDe(coluna)}
+                    aria-valuemin={LARGURA_MIN}
+                    onKeyDown={(e) => {
+                      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                      e.preventDefault();
+                      const nova = Math.max(LARGURA_MIN, larguraDe(coluna) + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10));
+                      largurasAtuais.current = { ...largurasAtuais.current, [coluna.id]: nova };
+                      setLarguras(largurasAtuais.current);
+                      try { localStorage.setItem(chaveLarguras(chave), JSON.stringify(largurasAtuais.current)); } catch { /* só não persiste */ }
+                    }}
                     onPointerDown={(e) => iniciarRedimensionar(e, coluna)}
                     onPointerMove={moverRedimensionar}
                     onPointerUp={encerrarRedimensionar}

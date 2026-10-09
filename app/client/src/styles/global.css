@@ -146,8 +146,15 @@ body {
 .ecos-input::placeholder {
   color: var(--ecos-text-muted);
 }
-.ecos-input:focus {
-  outline: none;
+/* Anel de foco padrão por teclado. :where() zera a especificidade, então
+   qualquer regra própria (ex.: Toggle, editor) continua valendo. */
+:where(a, button, summary, select, input, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="separator"][tabindex], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 2px;
+}
+.ecos-input:focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 1px;
 }
 
 ::-webkit-scrollbar {

@@ -2,6 +2,7 @@ import { VaultScreen } from "@/screens/Vault/VaultScreen";
 import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
+import { ArmadilhaFoco } from "./components/common/ArmadilhaFoco";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { RefreshProvider } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -127,6 +128,7 @@ export default function App() {
               <ToastHost />
             </AuthGate>
             <OfflineStatus />
+            <ArmadilhaFoco />
           </ArrasteTarefaProvider>
         </AppUIProvider>
       </RefreshProvider>

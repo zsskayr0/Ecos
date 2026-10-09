@@ -30,6 +30,28 @@ export function TabBar({ pane }: { pane: Pane }) {
               role="tab"
               data-tab-id={tab.id}
               aria-selected={ativa}
+              tabIndex={ativa ? 0 : -1}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                const i = pane.tabs.findIndex((t) => t.id === tab.id);
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dispatch({ type: "activate-tab", paneId: pane.id, tabId: tab.id }); return; }
+                if (e.key === "Delete") { e.preventDefault(); dispatch({ type: "close-tab", paneId: pane.id, tabId: tab.id }); return; }
+                if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+                e.preventDefault();
+                const passo = e.key === "ArrowLeft" ? -1 : 1;
+                // Alt+setas reordenam a aba (alternativa ao arrastar); setas simples movem o foco.
+                if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+                  const destino = i + passo;
+                  if (destino < 0 || destino >= pane.tabs.length) return;
+                  dispatch({ type: "move-tab", tabId: tab.id, toPaneId: pane.id, index: destino });
+                  requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tab-id="${tab.id}"]`)?.focus());
+                  return;
+                }
+                const j = e.key === "Home" ? 0 : e.key === "End" ? pane.tabs.length - 1 : (i + passo + pane.tabs.length) % pane.tabs.length;
+                const alvoTab = pane.tabs[j];
+                dispatch({ type: "activate-tab", paneId: pane.id, tabId: alvoTab.id });
+                requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tab-id="${alvoTab.id}"]`)?.focus());
+              }}
               ref={(el) => {
                 // Congela a largura atual: a animação parte dela em vez de esperar o teto de 200px.
                 if (el && fechando.includes(tab.id) && !el.style.getPropertyValue("--ecos-aba-w")) el.style.setProperty("--ecos-aba-w", `${el.offsetWidth}px`);

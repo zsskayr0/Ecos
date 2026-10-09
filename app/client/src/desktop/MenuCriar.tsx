@@ -20,8 +20,14 @@ export function MenuCriar() {
     const fora = (e: MouseEvent) => {
       if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false);
     };
+    // Tab para fora do menu fecha e segue a ordem normal de foco.
+    const saiu = (e: FocusEvent) => {
+      if (raiz.current && e.relatedTarget instanceof Node && !raiz.current.contains(e.relatedTarget)) setAberto(false);
+    };
     document.addEventListener("mousedown", fora);
-    return () => document.removeEventListener("mousedown", fora);
+    raiz.current?.addEventListener("focusout", saiu);
+    const el = raiz.current;
+    return () => { document.removeEventListener("mousedown", fora); el?.removeEventListener("focusout", saiu); };
   }, [aberto]);
 
   function aoTeclarNoMenu(e: KeyboardEvent<HTMLDivElement>) {
@@ -69,6 +75,7 @@ export function MenuCriar() {
               role="menuitem"
               onClick={() => {
                 setAberto(false);
+                raiz.current?.querySelector<HTMLElement>("button")?.focus();
                 abrirCaptura(tipo, tipo === "transacao" ? diaCofre : null);
               }}
               className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-text-primary hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none"
