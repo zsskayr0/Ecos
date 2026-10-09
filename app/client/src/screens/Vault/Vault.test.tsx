@@ -66,7 +66,7 @@ it("explica rota ausente sem impedir acesso aos lançamentos", async () => {
     render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
     await screen.findByText("O painel precisa de uma atualização");
     fireEvent.click(screen.getByRole("button", {name:"Abrir lançamentos"}));
-    await screen.findByText("Nenhum lançamento encontrado.");
+    await screen.findByText("Nenhum lançamento no período");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(financeiro.painel).toHaveBeenCalledTimes(1);
 });

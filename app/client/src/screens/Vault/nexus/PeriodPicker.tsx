@@ -1,5 +1,5 @@
 // Portado do Nexus: components/PeriodPicker.tsx. Mantém a composição e as interações originais.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MONTH_ABBR,
   WEEKDAY_ABBR,
@@ -20,6 +20,20 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  // Largura do rótulo medida: o botão cresce/encolhe com transição quando o texto muda e empurra vizinhos junto.
+  const rotulo = useRef<HTMLSpanElement>(null);
+  const [larguraRotulo, setLarguraRotulo] = useState<number | null>(null);
+  const textoPeriodo = periodLabel(value);
+  useLayoutEffect(() => {
+    const el = rotulo.current;
+    if (!el) return;
+    const medir = () => setLarguraRotulo(Math.ceil(el.getBoundingClientRect().width) + 1);
+    medir();
+    // A fonte da página pode carregar depois da primeira medida; remedir evita o texto cortado.
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(medir);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [textoPeriodo]);
   const [mode, setMode] = useState<Mode>(value.kind);
 
   // --- estado do modo "Mês" ---
@@ -114,18 +128,18 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
   const rowSegments = computeRangeRowSegments(grid, displayStart, displayEnd);
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         ref={trigger}
         aria-haspopup="dialog"
         aria-label={`Selecionar período: ${periodLabel(value)}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="cofre-card flex items-center gap-2 rounded-[11px] px-3.5 py-2 text-[0.78rem] font-semibold text-[var(--text-muted)] transition-all duration-150 hover:text-[var(--text)] active:scale-[0.97]"
+        className="cofre-card flex items-center gap-2 whitespace-nowrap rounded-[11px] px-3.5 py-2 text-[0.78rem] font-semibold text-[var(--text-muted)] transition-all duration-150 hover:text-[var(--text)] active:scale-[0.97]"
       >
         <IconCalendar width={13} height={13} />
-        {periodLabel(value)}
-        <IconChevronDown width={12} height={12} className="text-[var(--text-faint)]" />
+        <span className="cofre-period-rotulo" style={larguraRotulo == null ? undefined : { width: larguraRotulo }}><span ref={rotulo}>{textoPeriodo}</span></span>
+        <IconChevronDown width={12} height={12} className={`text-[var(--text-faint)] transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (

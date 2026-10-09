@@ -9,6 +9,7 @@ import { useAutoriaDoCofre } from "@/lib/use-autoria-cofre";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { definirMaxLancamentos, maiorValor, useModoValor, type ModoValor } from "@/lib/exibicao-valores";
 import { ValorComIndicador } from "./nexus/IndicadorValor";
+import { VaultEmptyState } from "./VaultEmptyState";
 import type { Periodo } from "./types";
 import type { Filtro } from "./VaultDashboard";
 import { PeriodPicker } from "./nexus/PeriodPicker";
@@ -422,7 +423,7 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
       <div className="cofre-view-controls">
         {view === "lista" && <div className="cofre-sort" role="group" aria-label="Ordenar lista">
           <MenuOrdenar valor={ordem.chave} aoMudar={(chave) => setOrdem((o) => ({ ...o, chave }))} />
-          <button type="button" aria-label={ordem.dir === 1 ? "Ordem crescente" : "Ordem decrescente"} title={ordem.dir === 1 ? "Crescente" : "Decrescente"} onClick={() => setOrdem((o) => ({ ...o, dir: o.dir === 1 ? -1 : 1 }))}>{ordem.dir === 1 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}</button>
+          <button type="button" aria-label={ordem.dir === 1 ? "Ordem crescente" : "Ordem decrescente"} title={ordem.dir === 1 ? "Crescente" : "Decrescente"} onClick={() => setOrdem((o) => ({ ...o, dir: o.dir === 1 ? -1 : 1 }))}><ArrowUp size={14} className="cofre-sort-dir" data-desc={ordem.dir !== 1 || undefined} /></button>
         </div>}
         <div className="cofre-view-toggle"><button aria-pressed={view === "lista"} onClick={() => setView("lista")}><List size={14} />Lista</button><button aria-pressed={view === "tabela"} onClick={() => setView("tabela")}><Table2 size={14} />Tabela</button></div>
         {view === "tabela" && <MenuColunas visiveis={colunasVisiveis} autor={!!contexto.autor} aoMudar={(v) => { setColunasVisiveis(v); salvarColunasVisiveis(v); }} />}
@@ -437,8 +438,10 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
     </div>}
     {editando && selecionados.length > 0 && <EdicaoEmBloco total={selecionados.length} pagadores={pagadores} contas={contas} categorias={categorias} formas={formas.ativas} ocupado={ocupado} aoSalvar={(m) => void editarEmBloco(m)} aoCancelar={() => setEditando(false)} />}
     <div className="cofre-transactions-card" data-selecionando={contexto.selecionando || undefined} data-autoria={contexto.autor ? "" : undefined}>
-      {carregando ? <p className="cofre-table-empty">Carregando lançamentos…</p>
-        : !exibidas.length ? <p className="cofre-table-empty" role="status">{buscando ? "Buscando…" : q ? `Nada encontrado para “${q}”.` : "Nenhum lançamento encontrado."}</p>
+      {carregando ? <VaultEmptyState carregando titulo="Carregando lançamentos…" />
+        : !exibidas.length ? (buscando ? <VaultEmptyState carregando titulo="Buscando…" />
+          : q ? <VaultEmptyState titulo={`Nada encontrado para “${q}”.`} descricao="Tente outro termo ou ajuste os filtros." />
+          : <VaultEmptyState titulo="Nenhum lançamento no período" descricao="Lance receitas, despesas, recorrentes ou parceladas e acompanhe vencimentos e pagamentos." onNovo={() => abrirCaptura("transacao")} />)
         : view === "lista" ? <div>{exibidas.map((t) => <Linha key={t.id} t={t} ctx={contexto} />)}</div>
         : <Tabela rows={exibidas} ctx={contexto} ordem={ordem} ordenar={ordenar} visiveis={colunasVisiveis} />}
     </div>
