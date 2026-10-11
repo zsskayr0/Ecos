@@ -384,7 +384,7 @@ export function MatrizItens(comum: Comum) {
                 <span className="text-sm font-semibold text-text-primary">{q.titulo} <span className="text-xs font-normal text-text-muted">· {q.dica}</span></span>
                 <Contagem n={itens.length} />
               </h3>
-              {itens.length === 0 && <p className="px-1 py-6 text-center text-xs text-text-muted">Nada por aqui</p>}
+              {itens.length === 0 && <p className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-text-muted">Nada por aqui</p>}
               {itens.map((t) => <Cartao key={t.id} item={t} comum={comum} />)}
             </section>
           );
