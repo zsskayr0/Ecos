@@ -14,6 +14,7 @@ import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type Preferenc
 import { avisar } from "@/lib/toast";
 import { TagsOrganizacao } from "./TagsOrganizacao";
 
+import { TagsOrganizacao } from "./TagsOrganizacao";
 type Tipo = "nota" | "tarefa";
 
 /** Administração global de diretórios. A navegação de conteúdo permanece em
@@ -113,6 +114,8 @@ export function OrganizationScreen() {
     <TagsOrganizacao espaco={espaco} />
 
     <section className="mt-8">
+    <TagsOrganizacao espaco={espaco} />
+
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Links</p>
       <div className="overflow-visible rounded-2xl border border-border bg-surface-1">
         <LinhaPreferencia Icone={Link2} titulo="Formato para links novos" descricao="Define como os links internos serão gerados.">

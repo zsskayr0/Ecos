@@ -15,6 +15,7 @@ import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
 import { canonicaTag } from "@/lib/tags";
 import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
+import { canonicaTag } from "@/lib/tags";
 import { TabelaItens } from "./TabelaItens";
 import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
 
