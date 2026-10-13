@@ -82,6 +82,10 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
   const abrir = () => {
     if (fixo) {
       const r = raiz.current!.getBoundingClientRect();
+      // Um ancestral com `transform` (as janelas do Ecos) vira o referencial do `fixed`: converte as coordenadas para ele.
+      let ref: HTMLElement | null = raiz.current!.parentElement;
+      while (ref && getComputedStyle(ref).transform === "none") ref = ref.parentElement;
+      const o = ref?.getBoundingClientRect() ?? { left: 0, top: 0, bottom: window.innerHeight, width: window.innerWidth };
       // Altura realmente visível (a janela pode estar menor que `innerHeight`, ex.: painéis do app).
       const altura = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight, window.visualViewport?.height ?? Infinity);
       const abaixo = altura - r.bottom - 14;
@@ -92,9 +96,9 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       const largura = Math.min(Math.max(r.width, larguraMin ?? (largo ? 320 : 176)), window.innerWidth - 16);
       setPosicao({
         position: "fixed", marginTop: 0, width: largura, minWidth: 0,
-        left: Math.max(8, Math.min(alinhar === "dir" ? r.right - largura : r.left, window.innerWidth - largura - 8)),
-        right: "auto", top: subir ? "auto" : r.bottom + 6,
-        bottom: subir ? altura - r.top + 6 : "auto",
+        left: Math.max(8, Math.min((alinhar === "dir" ? r.right - largura : r.left) - o.left, o.width - largura - 8)),
+        right: "auto", top: subir ? "auto" : r.bottom - o.top + 6,
+        bottom: subir ? (ref ? o.bottom : altura) - r.top + 6 : "auto",
         maxHeight: Math.max(Math.min(preciso, 160), Math.min(alturaMax, subir ? acima : abaixo)),
       });
     }

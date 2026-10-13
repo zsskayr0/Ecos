@@ -319,7 +319,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   return (
     <div className="pointer-events-none fixed inset-0" style={{ zIndex: 50 + z }}>
       {/* Configurações (do Ecos e do Cofre) desfocam o fundo; o painel antigo do Cofre tinha este véu e foi unificado aqui. */}
-      {janelaDeConfiguracoes && <div aria-hidden className="absolute inset-0 bg-black/45 backdrop-blur-[6px] transition-opacity duration-200" style={{ opacity: saindo ? 0 : 1 }} />}
+      {janelaDeConfiguracoes && <div aria-hidden onPointerDown={(e) => e.stopPropagation()} className="pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[6px] transition-opacity duration-200" style={{ opacity: saindo ? 0 : 1 }} />}
       {/* `transform` faz os elementos `fixed` das telas (botão flutuante de salvar) ancorarem na janela, não no app. */}
       <div
         ref={janelaRef}
@@ -383,7 +383,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           </button>
         </header>}
 
-        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
+        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : janelaDeConfiguracoes ? "rounded-b-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
           <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
           <TituloJanelaContext.Provider value={setTituloDinamico}>
           <FecharDocumentoContext.Provider value={aoFechar}>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Bell, CalendarClock, ListChecks, CalendarDays, DatabaseBackup, FolderTree, Info, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -35,17 +36,28 @@ export function useGrupos() {
   return [...GRUPOS.slice(0, 3), { titulo: "Administração", abas: [{ para: "/configuracoes/administracao", rotulo: "Usuários e equipes", Icone: UserCog }] }, ...GRUPOS.slice(3)];
 }
 
+const CHAVE_ULTIMA_ABA = "ecos:configuracoes:ultima-aba";
+const lerUltimaAba = () => { try { return localStorage.getItem(CHAVE_ULTIMA_ABA); } catch { return null; } };
+
 /** No desktop, as configurações ganham uma barra lateral de categorias (estilo Obsidian); no celular continua a lista de telas. */
 export function ConfiguracoesLayout() {
   const desktop = useIsDesktop();
   const { pathname } = useLocation();
   const grupos = useGrupos();
+  const raiz = pathname.replace(/\/$/, "") === "/configuracoes";
+  useEffect(() => {
+    if (!raiz && grupos.some((g) => g.abas.some((a) => a.para === pathname))) { try { localStorage.setItem(CHAVE_ULTIMA_ABA, pathname); } catch { /* só vale nesta sessão */ } }
+  }, [pathname, raiz, grupos]);
   if (!desktop) return <Outlet />;
-  // No desktop a lista de configurações é a própria barra lateral: a raiz abre a primeira aba.
-  if (pathname.replace(/\/$/, "") === "/configuracoes") return <Navigate to="/configuracoes/perfil" replace />;
+    // Abre na última aba visitada (se ela ainda existir para esta pessoa); senão, no Perfil.
+  if (raiz) {
+    const ultima = lerUltimaAba();
+    const destino = ultima && grupos.some((g) => g.abas.some((a) => a.para === ultima)) ? ultima : "/configuracoes/perfil";
+    return <Navigate to={destino} replace />;
+  }
   return (
-    <div className="config-desktop flex h-full min-h-[70vh] overflow-hidden">
-      <nav aria-label="Categorias de configurações" className="relative z-10 w-56 shrink-0 overflow-y-auto border-r border-border bg-surface-1/60 px-2 py-4">
+    <div className="config-desktop flex h-full min-h-0 overflow-hidden">
+      <nav aria-label="Categorias de configurações" className="relative z-10 w-56 shrink-0 overflow-y-auto overscroll-contain border-r border-border bg-surface-1/60 px-2 py-4">
         {grupos.map((grupo) => (
           <div key={grupo.titulo} className="mb-4">
             <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-text-muted">{grupo.titulo}</p>
@@ -57,7 +69,7 @@ export function ConfiguracoesLayout() {
           </div>
         ))}
       </nav>
-      <div className="relative isolate min-w-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-4xl"><Outlet /></div></div>
+      <div className="relative isolate min-w-0 flex-1 overflow-y-auto overscroll-contain"><div className="mx-auto max-w-4xl"><Outlet /></div></div>
     </div>
   );
 }
