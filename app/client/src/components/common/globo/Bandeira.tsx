@@ -33,6 +33,10 @@ const UnionJack = ({ x = 0, y = 0, w = 30, h = 20 }: { x?: number; y?: number; w
 );
 
 const BANDEIRAS: Record<string, () => ReactNode> = {
+  "União Europeia": () => (<>
+    <rect width="30" height="20" fill="#003399" />
+    {Array.from({ length: 12 }, (_, i) => <circle key={i} cx={15 + 6 * Math.cos((i * Math.PI) / 6)} cy={10 + 6 * Math.sin((i * Math.PI) / 6)} r={0.9} fill="#ffcc00" />)}
+  </>),
   Brasil: () => (<>
     <rect width="30" height="20" fill="#009c3b" />
     <polygon points="15,2.2 27.3,10 15,17.8 2.7,10" fill="#ffdf00" />

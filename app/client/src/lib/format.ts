@@ -5,13 +5,27 @@ export function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Moeda exibida no Cofre (só o símbolo: os valores guardados não são convertidos). Definida pelas configurações do Cofre, por equipe. */
+export const MOEDAS: { id: string; rotulo: string; simbolo: string; pais: string }[] = [
+  { id: "BRL", rotulo: "Real (R$)", simbolo: "R$", pais: "Brasil" },
+  { id: "USD", rotulo: "Dólar (US$)", simbolo: "US$", pais: "Estados Unidos" },
+  { id: "EUR", rotulo: "Euro (€)", simbolo: "€", pais: "União Europeia" },
+  { id: "GBP", rotulo: "Libra (£)", simbolo: "£", pais: "Reino Unido" },
+  { id: "ARS", rotulo: "Peso argentino (AR$)", simbolo: "AR$", pais: "Argentina" },
+  { id: "CLP", rotulo: "Peso chileno (CLP$)", simbolo: "CLP$", pais: "Chile" },
+  { id: "JPY", rotulo: "Iene (¥)", simbolo: "¥", pais: "Japão" },
+];
+let simboloMoeda = "R$";
+export function definirMoeda(id: string): void { simboloMoeda = MOEDAS.find((m) => m.id === id)?.simbolo ?? "R$"; }
+export function simboloDaMoeda(): string { return simboloMoeda; }
+
 export function formatMoeda(valorCentavos: number): string {
   const sinal = valorCentavos < 0 ? "-" : "";
   const abs = Math.abs(valorCentavos);
   const reais = Math.floor(abs / 100);
   const centavos = String(abs % 100).padStart(2, "0");
   const reaisFormatado = reais.toLocaleString("pt-BR");
-  return `${sinal}R$ ${reaisFormatado},${centavos}`;
+  return `${sinal}${simboloMoeda} ${reaisFormatado},${centavos}`;
 }
 
 export function formatTempoRelativo(isoDate: string): string {

@@ -1459,6 +1459,13 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 /* Visão de lista: a categoria (na cor dela) fica junto do ícone, sem a forma de pagamento. */
 .cofre-transaction-lead { display:flex; align-items:center; gap:8px; min-width:0; }
 .cofre-transaction-lead .cofre-transaction-category { display:block; font-weight:600; font-size:12px; }
+.cofre-transaction-lead .cofre-transaction-category { color:var(--cat-cor, inherit); transition:color .55s cubic-bezier(.2,.8,.2,1), filter .55s ease; }
+/* Configurações › Cofre › Exibição e valores: nome e cor da categoria, um ajuste por tema. */
+html[data-theme="light"] .cofre-transaction-lead .cofre-transaction-category[data-nome-claro="off"],
+html:not([data-theme="light"]) .cofre-transaction-lead .cofre-transaction-category[data-nome-escuro="off"] { display:none; }
+html[data-theme="light"] .cofre-transaction-lead .cofre-transaction-category[data-cor-claro="off"],
+html:not([data-theme="light"]) .cofre-transaction-lead .cofre-transaction-category[data-cor-escuro="off"] { color:var(--text); }
+@media (prefers-reduced-motion:reduce) { .cofre-transaction-lead .cofre-transaction-category { transition:none; } }
 
 .cofre-transaction-list-row strong:has(> .cofre-ind-valor), .cofre-transactions-table strong:has(> .cofre-ind-valor) { display:block; }
 
@@ -1481,3 +1488,46 @@ button.cofre-anexo-tile:focus-visible,.cofre-anexo-novo:focus-visible,.cofre-ane
 .cofre-catmenu-rodape button { padding:5px 8px; border-radius:8px; color:var(--text-secondary); font-size:12px; font-weight:600; }
 .cofre-catmenu-rodape button:hover:not(:disabled) { background:var(--panel); color:var(--text); }
 .cofre-catmenu-rodape button:disabled { opacity:.4; }
+
+/* Interruptor "Nome visível / Nome oculto": o quadradinho (como o ícone de uma categoria) desliza por cima do texto.
+   Mesma casca do .cofre-config-btn (borda, raio, fundo, tipografia) e o azul das barras/anéis do Cofre. */
+.cofre-slide-nome { --slide-pad:14px; --slide-icone:20px; position:relative; flex:0 0 auto; display:inline-block; width:148px; height:34px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--panel-elevated); color:var(--text); font-size:12px; font-weight:600; cursor:pointer; overflow:hidden; }
+.cofre-slide-nome:hover { border-color:var(--border-strong); }
+.cofre-slide-nome-icone { position:absolute; top:50%; left:8px; width:var(--slide-icone); height:var(--slide-icone); margin-top:calc(var(--slide-icone) / -2); border-radius:6px; display:grid; place-items:center;
+  background:var(--cofre-accent, #3b82f6); transition:transform .38s cubic-bezier(.34,1.3,.5,1), opacity .3s ease; }
+.cofre-slide-nome-icone svg { display:block; }
+.cofre-slide-nome-texto { position:absolute; top:0; bottom:0; display:flex; align-items:center; white-space:nowrap; transition:opacity .25s ease, transform .38s cubic-bezier(.2,.8,.2,1); }
+.cofre-slide-nome-texto[data-q="visivel"] { left:36px; }
+.cofre-slide-nome-texto[data-q="oculto"] { left:var(--slide-pad); color:var(--text-muted, #7a8599); text-decoration:line-through; text-decoration-thickness:1.5px; }
+.cofre-slide-nome[data-visivel="true"] .cofre-slide-nome-texto[data-q="oculto"] { opacity:0; transform:translateX(14px); }
+.cofre-slide-nome[data-visivel="false"] .cofre-slide-nome-texto[data-q="visivel"] { opacity:0; transform:translateX(-14px); }
+.cofre-slide-nome[data-visivel="false"] .cofre-slide-nome-icone { transform:translateX(112px); opacity:.4; }
+.cofre-slide-nome:focus-visible { outline:2px solid var(--cofre-accent, #3b82f6); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce) { .cofre-slide-nome-icone, .cofre-slide-nome-texto { transition:none; } }
+
+/* Nome da categoria oculto: a coluna do começo encolhe até o ícone e a descrição ocupa o espaço que sobrou. */
+@media (min-width:701px) {
+  html[data-theme="light"] .cofre-transaction-list-row[data-nome-claro="off"],
+  html:not([data-theme="light"]) .cofre-transaction-list-row[data-nome-escuro="off"] { grid-template-columns:34px minmax(180px,1fr) 88px var(--col-valor) 70px 96px; }
+  html[data-theme="light"] .cofre-transactions-card[data-autoria] .cofre-transaction-list-row[data-nome-claro="off"],
+  html:not([data-theme="light"]) .cofre-transactions-card[data-autoria] .cofre-transaction-list-row[data-nome-escuro="off"] { grid-template-columns:34px minmax(180px,1fr) 88px var(--col-valor) 70px 96px 34px; }
+}
+
+/* Interruptor "Com cor / Sem cor": a amostra, no gradiente do Ecos (ciano → azul), perde (ou ganha) saturação e brilho, e o texto esvaece junto. */
+.cofre-slide-cor.cofre-slide-nome { width:112px; }
+.cofre-slide-cor-amostra { position:absolute; top:50%; left:8px; width:20px; height:20px; margin-top:-10px; border-radius:6px;
+  background:linear-gradient(135deg,#9ce9fe,#5ad1ff 40%,#4b72f9);
+  transition:filter .55s cubic-bezier(.2,.8,.2,1), opacity .55s ease, transform .4s cubic-bezier(.34,1.3,.5,1); }
+.cofre-slide-cor .cofre-slide-nome-texto { transition:opacity .4s ease, transform .4s cubic-bezier(.2,.8,.2,1); }
+.cofre-slide-cor .cofre-slide-nome-texto[data-q="oculto"] { left:36px; text-decoration:none; }
+.cofre-slide-cor[data-visivel="true"] .cofre-slide-nome-texto[data-q="visivel"] { background:linear-gradient(90deg,#2fb4e8,#4b72f9); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.cofre-slide-cor[data-visivel="false"] .cofre-slide-cor-amostra { filter:saturate(0) brightness(1.15); opacity:.55; transform:scale(.92); }
+.cofre-slide-cor[data-visivel="true"] .cofre-slide-nome-texto[data-q="oculto"] { opacity:0; transform:translateY(5px); }
+.cofre-slide-cor[data-visivel="false"] .cofre-slide-nome-texto[data-q="visivel"] { opacity:0; transform:translateY(-5px); }
+@media (prefers-reduced-motion:reduce) { .cofre-slide-cor-amostra { transition:none; } }
+
+/* A faixa lateral segue o "Com cor / Sem cor" (o ícone da categoria fica sempre colorido). */
+.cofre-transaction-list-row { box-shadow:inset 3px 0 0 var(--cat-cor, transparent); transition:background .14s ease, grid-template-columns .45s cubic-bezier(.2,.8,.2,1), box-shadow .55s cubic-bezier(.2,.8,.2,1); }
+html[data-theme="light"] .cofre-transaction-list-row[data-cor-claro="off"],
+html:not([data-theme="light"]) .cofre-transaction-list-row[data-cor-escuro="off"] { box-shadow:inset 3px 0 0 color-mix(in srgb, var(--text) 22%, transparent); }
+@media (prefers-reduced-motion:reduce) { .cofre-transaction-list-row { transition:none; } }

@@ -39,6 +39,8 @@ export function definirEspacoDoCofre(espaco: string) {
   espacoDoCofre = novo;
   emitirContextoCofre();
 }
+/** Espaço do Cofre em uso agora (as configurações do Cofre são guardadas por espaço/equipe). */
+export function espacoAtualDoCofre(): string { return espacoDoCofre; }
 export function definirUsuarioDoCofre(id: string | null) {
   if (id === usuarioDoCofre) return;
   usuarioDoCofre = id;

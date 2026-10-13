@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Calculator, Delete, X } from "lucide-react";
-import { formatMoeda } from "@/lib/format";
+import { formatMoeda, simboloDaMoeda } from "@/lib/format";
 import { lerMaxLancamentos, useModoValor } from "@/lib/exibicao-valores";
 import { IndicadorValor } from "@/screens/Vault/nexus/IndicadorValor";
 
@@ -172,7 +172,7 @@ export function CampoValor({ centavos, aoMudar, autoFocus }: { centavos: number;
 
   return <div className="cofre-valor-wrap" ref={raiz} data-aberta={aberta || undefined} data-modo={modoValor}>
     <span className="cofre-valor-ind" aria-hidden="true"><IndicadorValor modo={ultimoModo.current} valor={centavos} max={Math.max(lerMaxLancamentos(), centavos)} /></span>
-    <input autoFocus={autoFocus} inputMode="numeric" value={formatMoeda(centavos)} onChange={(e) => aoMudar(Number(e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9) || 0))} placeholder="R$ 0,00" aria-label="Valor" />
+    <input autoFocus={autoFocus} inputMode="numeric" value={formatMoeda(centavos)} onChange={(e) => aoMudar(Number(e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 9) || 0))} placeholder={`${simboloDaMoeda()} 0,00`} aria-label="Valor" />
     <button type="button" className="cofre-valor-calc" aria-label="Abrir calculadora" aria-expanded={aberta} title="Calculadora" onClick={() => (aberta ? fechar() : abrir())}><Calculator size={15} /></button>
     {aberta && posicao && createPortal(
       <div className="cofre-calc-lado" data-lado={posicao.lado} style={{ top: posicao.top, left: posicao.left, width: posicao.width, height: posicao.height, "--calc-cabeca": `${posicao.cabeca}px` } as CSSProperties}>

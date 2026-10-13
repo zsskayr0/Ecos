@@ -11,16 +11,43 @@ import { SenhaLembrada } from "@/screens/Vault/SenhaLembrada";
 import { VaultCsv } from "@/screens/Vault/VaultCsv";
 import { PeriodPicker } from "@/screens/Vault/nexus/PeriodPicker";
 import { defaultPeriod, periodRange, type Period } from "@/screens/Vault/nexus/period";
-import { TELAS_VALORES, salvarModoValor, useExibicaoValores, type ModoValor } from "@/lib/exibicao-valores";
+import { TELAS_VALORES, salvarCategoriaTema, salvarModoValor, salvarMoeda, usePreferenciasCofre, type ModoValor, type TemaCategoria } from "@/lib/exibicao-valores";
+import { MOEDAS } from "@/lib/format";
+import { Bandeira } from "@/components/common/globo/Bandeira";
+import { CURVAS } from "@/components/brand/LogoAnimada";
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { IndicadorValor } from "@/screens/Vault/nexus/IndicadorValor";
 
 const MODOS_VALOR: { id: ModoValor; rotulo: string }[] = [{ id: "numero", rotulo: "Número" }, { id: "barra", rotulo: "Barra" }, { id: "anel", rotulo: "Anel" }];
 
 /** Escolha por tela de como o valor aparece: só o número, com barra ou com anel. Fica neste dispositivo; não depende do Cofre estar aberto. */
 function ExibicaoValores() {
-  const atual = useExibicaoValores();
+  const prefs = usePreferenciasCofre();
+  const atual = prefs.modos;
   return (
     <div className="mt-5 flex flex-col gap-2.5">
+      <p className="text-sm text-text-muted">Estas opções valem para o Cofre desta equipe; cada equipe tem as suas.</p>
+      <Linha titulo="Moeda" descricao="Só o símbolo muda: os valores guardados não são convertidos.">
+        <SeletorEcos valor={prefs.moeda} ariaLabel="Moeda" classe="cofre-config-btn !w-[200px] !justify-between" alinhar="dir" larguraMin={200} onChange={salvarMoeda} opcoes={MOEDAS.map((m) => ({ valor: m.id, rotulo: m.rotulo, visual: <Bandeira pais={m.pais} className="h-3.5 w-5 rounded-[2px]" /> }))} />
+      </Linha>
+      {(["claro", "escuro"] as TemaCategoria[]).map((tema) => (
+        <Linha key={tema} titulo={`Categoria na lista · tema ${tema}`} descricao="Nome e cor da categoria ao lado do ícone, na lista de lançamentos.">
+          <div className="flex gap-1.5">
+            <button type="button" role="switch" aria-checked={prefs.categoria[tema].nome} aria-label="Nome da categoria" className="cofre-slide-nome" data-visivel={prefs.categoria[tema].nome}
+              onClick={() => salvarCategoriaTema(tema, { nome: !prefs.categoria[tema].nome })}>
+              <span className="cofre-slide-nome-icone" aria-hidden><svg viewBox="0 0 680 640" width="13" height="12">{CURVAS.map((d, i) => <path key={i} d={d} fill="#fff" fillRule="evenodd" />)}</svg></span>
+              <span className="cofre-slide-nome-texto" data-q="visivel">Nome visível</span>
+              <span className="cofre-slide-nome-texto" data-q="oculto">Nome oculto</span>
+            </button>
+            <button type="button" role="switch" aria-checked={prefs.categoria[tema].cor} aria-label="Cor da categoria" className="cofre-slide-nome cofre-slide-cor" data-visivel={prefs.categoria[tema].cor}
+              onClick={() => salvarCategoriaTema(tema, { cor: !prefs.categoria[tema].cor })}>
+              <span className="cofre-slide-cor-amostra" aria-hidden />
+              <span className="cofre-slide-nome-texto" data-q="visivel">Com cor</span>
+              <span className="cofre-slide-nome-texto" data-q="oculto">Sem cor</span>
+            </button>
+          </div>
+        </Linha>
+      ))}
       <p className="text-sm text-text-muted">Barra e anel mostram o valor em relação ao maior valor da tela no período selecionado.</p>
       {TELAS_VALORES.map((t) => (
         <Linha key={t.id} titulo={t.rotulo}>
@@ -46,7 +73,7 @@ const REPOSITORIO_URL = "";
 
 export const ABAS_COFRE: { id: Aba; rotulo: string; Icone: LucideIcon }[] = [
   { id: "seguranca", rotulo: "Segurança", Icone: ShieldCheck },
-  { id: "valores", rotulo: "Exibição de valores", Icone: CircleDashed },
+  { id: "valores", rotulo: "Exibição e valores", Icone: CircleDashed },
   { id: "csv", rotulo: "Backup & CSV", Icone: FileSpreadsheet },
   { id: "github", rotulo: "GitHub", Icone: Github },
   { id: "ajuda", rotulo: "Ajuda & Suporte", Icone: HelpCircle },

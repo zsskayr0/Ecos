@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from "react";
+import { assinarContextoCofre, espacoAtualDoCofre } from "./api";
+import { definirMoeda, MOEDAS } from "./format";
 
 /**
  * Como o Cofre mostra os valores ao lado do número: só o número, uma barra ou um anel de progresso.
@@ -22,51 +24,96 @@ export const EVENTO_EXIBICAO_VALORES = "ecos:exibicao-valores";
 
 export type ExibicaoValores = Record<TelaValores, ModoValor>;
 
+/** Aparência do nome da categoria na lista de lançamentos: um ajuste para o tema claro e outro para o escuro. */
+export interface CategoriaTema { nome: boolean; cor: boolean }
+export type TemaCategoria = "claro" | "escuro";
+export interface PreferenciasCofre { modos: ExibicaoValores; moeda: string; categoria: Record<TemaCategoria, CategoriaTema> }
+
 const PADRAO: ExibicaoValores = { painel: "numero", lancamentos: "numero", contas: "barra", categorias: "barra", recorrencias: "numero", sacados: "numero" };
 // Contas e Categorias já mostravam uma barra sob o valor: ela segue como padrão.
 const MODOS: ModoValor[] = ["numero", "barra", "anel"];
+const PADRAO_PREFS = (): PreferenciasCofre => ({ modos: { ...PADRAO }, moeda: "BRL", categoria: { claro: { nome: true, cor: true }, escuro: { nome: true, cor: true } } });
 
-function normalizar(bruto: unknown): ExibicaoValores {
+function normalizar(bruto: unknown): PreferenciasCofre {
   const o = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
-  const r = { ...PADRAO };
-  for (const t of TELAS_VALORES) if (MODOS.includes(o[t.id] as ModoValor)) r[t.id] = o[t.id] as ModoValor;
+  const r = PADRAO_PREFS();
+  // Formato antigo: o próprio objeto era o mapa tela → modo.
+  const modos = (o.modos && typeof o.modos === "object" ? o.modos : o) as Record<string, unknown>;
+  for (const t of TELAS_VALORES) if (MODOS.includes(modos[t.id] as ModoValor)) r.modos[t.id] = modos[t.id] as ModoValor;
+  if (typeof o.moeda === "string" && MOEDAS.some((m) => m.id === o.moeda)) r.moeda = o.moeda;
+  const c = (o.categoria && typeof o.categoria === "object" ? o.categoria : {}) as Record<string, Partial<CategoriaTema>>;
+  for (const tema of ["claro", "escuro"] as const) {
+    if (typeof c[tema]?.nome === "boolean") r.categoria[tema].nome = c[tema]!.nome!;
+    if (typeof c[tema]?.cor === "boolean") r.categoria[tema].cor = c[tema]!.cor!;
+  }
   return r;
 }
 
+/** As configurações do Cofre são por equipe: cada espaço (`pessoal` / `equipe:<id>`) tem a sua chave. */
+const chaveDoEspaco = () => `${CHAVE_EXIBICAO_VALORES}.${espacoAtualDoCofre()}`;
+
 function lerBruto(): string | null {
-  try { return localStorage.getItem(CHAVE_EXIBICAO_VALORES); } catch { return null; }
+  try { return localStorage.getItem(chaveDoEspaco()) ?? (espacoAtualDoCofre() === "pessoal" ? localStorage.getItem(CHAVE_EXIBICAO_VALORES) : null); } catch { return null; }
 }
 
-export function salvarModoValor(tela: TelaValores, modo: ModoValor): void {
-  let atual: ExibicaoValores;
-  try { atual = normalizar(JSON.parse(lerBruto() ?? "{}")); } catch { atual = { ...PADRAO }; }
-  try { localStorage.setItem(CHAVE_EXIBICAO_VALORES, JSON.stringify({ ...atual, [tela]: modo })); } catch { /* vale só até recarregar */ }
+function lerPrefs(): PreferenciasCofre {
+  try { return normalizar(JSON.parse(lerBruto() ?? "{}")); } catch { return PADRAO_PREFS(); }
+}
+
+function salvarPrefs(prefs: PreferenciasCofre): void {
+  try { localStorage.setItem(chaveDoEspaco(), JSON.stringify(prefs)); } catch { /* vale só até recarregar */ }
+  definirMoeda(prefs.moeda);
   window.dispatchEvent(new Event(EVENTO_EXIBICAO_VALORES));
 }
 
+export function salvarModoValor(tela: TelaValores, modo: ModoValor): void {
+  const p = lerPrefs();
+  salvarPrefs({ ...p, modos: { ...p.modos, [tela]: modo } });
+}
+export function salvarMoeda(moeda: string): void { salvarPrefs({ ...lerPrefs(), moeda }); }
+export function salvarCategoriaTema(tema: TemaCategoria, mudanca: Partial<CategoriaTema>): void {
+  const p = lerPrefs();
+  salvarPrefs({ ...p, categoria: { ...p.categoria, [tema]: { ...p.categoria[tema], ...mudanca } } });
+}
+
+let chaveEmCache: string | undefined;
 let textoEmCache: string | null | undefined;
-let valorEmCache: ExibicaoValores = { ...PADRAO };
-function instantaneo(): ExibicaoValores {
+let valorEmCache: PreferenciasCofre = PADRAO_PREFS();
+function instantaneo(): PreferenciasCofre {
   const texto = lerBruto();
-  if (texto !== textoEmCache) {
+  const chave = chaveDoEspaco();
+  if (texto !== textoEmCache || chave !== chaveEmCache) {
     textoEmCache = texto;
-    try { valorEmCache = normalizar(JSON.parse(texto ?? "{}")); } catch { valorEmCache = { ...PADRAO }; }
+    chaveEmCache = chave;
+    valorEmCache = lerPrefs();
+    definirMoeda(valorEmCache.moeda);
   }
   return valorEmCache;
 }
 
 function assinar(aviso: () => void) {
-  const aoArmazenar = (e: StorageEvent) => { if (e.key === null || e.key === CHAVE_EXIBICAO_VALORES) aviso(); };
+  const aoArmazenar = (e: StorageEvent) => { if (e.key === null || e.key.startsWith(CHAVE_EXIBICAO_VALORES)) aviso(); };
   window.addEventListener(EVENTO_EXIBICAO_VALORES, aviso);
   window.addEventListener("storage", aoArmazenar);
+  const parar = assinarContextoCofre(aviso);
   return () => {
     window.removeEventListener(EVENTO_EXIBICAO_VALORES, aviso);
     window.removeEventListener("storage", aoArmazenar);
+    parar();
   };
 }
 
-export function useExibicaoValores(): ExibicaoValores {
+export function usePreferenciasCofre(): PreferenciasCofre {
   return useSyncExternalStore(assinar, instantaneo, instantaneo);
+}
+
+export function useExibicaoValores(): ExibicaoValores {
+  return usePreferenciasCofre().modos;
+}
+
+/** Moeda (id) do espaço ativo; quem a usa remonta a tela quando ela muda, já que `formatMoeda` é uma função simples. */
+export function useMoeda(): string {
+  return usePreferenciasCofre().moeda;
 }
 
 export function useModoValor(tela: TelaValores): ModoValor {

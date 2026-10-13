@@ -1,3 +1,4 @@
+import { simboloDaMoeda } from "@/lib/format";
 // Portado do Nexus: components/charts/scale.ts. Mantém a composição e as interações originais.
 /** Escala linear simples: mapeia um valor de `domain` para `range`. */
 export function scaleLinear(domain: [number, number], range: [number, number]) {
@@ -18,7 +19,7 @@ export function niceMax(value: number): number {
 
 /** "R$ 12.500" → "12,5k" para rótulos compactos de eixo. */
 export function compactBRL(value: number): string {
-  if (value === 0) return "R$0";
+  if (value === 0) return `${simboloDaMoeda()}0`;
   if (value >= 1000) {
     const k = value / 1000;
     return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1).replace(".", ",")}k`;

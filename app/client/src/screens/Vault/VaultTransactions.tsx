@@ -7,7 +7,7 @@ import { casaBusca } from "@/lib/texto-busca";
 import { useAppUI } from "@/lib/ui-context";
 import { useAutoriaDoCofre } from "@/lib/use-autoria-cofre";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
-import { definirMaxLancamentos, maiorValor, useModoValor, type ModoValor } from "@/lib/exibicao-valores";
+import { definirMaxLancamentos, maiorValor, useModoValor, usePreferenciasCofre, type ModoValor } from "@/lib/exibicao-valores";
 import { ValorComIndicador } from "./nexus/IndicadorValor";
 import { VaultEmptyState } from "./VaultEmptyState";
 import { FiltroCategoriasMenu } from "./FiltroCategoriasMenu";
@@ -554,6 +554,7 @@ function Status({ t }: { t: TransacaoApi }) {
 
 function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
   const categoria = ctx.categorias.get(t.categoria_id ?? "");
+  const prefCat = usePreferenciasCofre().categoria;
   const pagador = ctx.pagadores.get(t.beneficiario_id ?? "");
   const marcado = ctx.selecionados.has(t.id);
   // No toque não existe "passar o mouse": segurar a linha começa a seleção.
@@ -561,7 +562,8 @@ function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
   const cancelarToque = () => { if (toque.current) window.clearTimeout(toque.current.timer); };
   return <div
     className={`cofre-transaction-list-row ${marcado ? "selected" : ""}`}
-    style={categoria ? { boxShadow: `inset 3px 0 0 ${categoria.cor}` } : {}}
+    data-nome-claro={prefCat.claro.nome ? undefined : "off"} data-nome-escuro={prefCat.escuro.nome ? undefined : "off"} data-cor-claro={prefCat.claro.cor ? undefined : "off"} data-cor-escuro={prefCat.escuro.cor ? undefined : "off"}
+    style={categoria ? ({ "--cat-cor": categoria.cor } as CSSProperties) : {}}
     onClick={(e) => { if (toque.current?.disparou) { toque.current = null; return; } ctx.clicar(t, e); }}
     onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
     onPointerDown={(e) => {
@@ -570,7 +572,7 @@ function Linha({ t, ctx }: { t: TransacaoApi; ctx: Contexto }) {
     }}
     onPointerUp={cancelarToque} onPointerLeave={cancelarToque} onPointerCancel={cancelarToque}
   >
-    <span className="cofre-transaction-lead"><Inicio t={t} categoria={categoria} ctx={ctx} /><span className="cofre-transaction-category" style={categoria?.cor ? { color: categoria.cor } : undefined} title={categoria?.nome ?? "Sem categoria"}>{categoria?.nome ?? "Sem categoria"}</span></span>
+    <span className="cofre-transaction-lead"><Inicio t={t} categoria={categoria} ctx={ctx} /><span className="cofre-transaction-category" data-nome-claro={prefCat.claro.nome ? undefined : "off"} data-nome-escuro={prefCat.escuro.nome ? undefined : "off"} data-cor-claro={prefCat.claro.cor ? undefined : "off"} data-cor-escuro={prefCat.escuro.cor ? undefined : "off"} style={categoria?.cor ? ({ "--cat-cor": categoria.cor } as CSSProperties) : undefined} title={categoria?.nome ?? "Sem categoria"}>{categoria?.nome ?? "Sem categoria"}</span></span>
     <span className="cofre-transaction-description">
       <span className="cofre-transaction-titulo"><b>{t.descricao}</b></span>
       <small data-vazio={pagador ? undefined : ""}>{pagador ?? "Sem pagador"}{ctx.viaComprovante.has(t.id) && <i className="cofre-via-anexo">achado no comprovante</i>}</small>
