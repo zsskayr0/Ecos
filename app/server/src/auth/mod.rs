@@ -198,11 +198,11 @@ pub async fn login(State(state): State<AppState>, headers: HeaderMap, jar: Cooki
         return Err(AppError::new(ErrorCode::InvalidCredentials));
     }
 
-    let access = session::emitir_access_token(&usuario_id, &state.config.session_secret)
-        .map_err(|_| AppError::new(ErrorCode::InternalError))?;
     let refresh_valor = session::gerar_refresh_token();
     let refresh_hash = session::hash_refresh_token(&refresh_valor);
     let sessao_id = new_id();
+    let access = session::emitir_access_token_com_sessao(&usuario_id, Some(&sessao_id), &state.config.session_secret)
+        .map_err(|_| AppError::new(ErrorCode::InternalError))?;
     let expira_em = (chrono::Utc::now() + chrono::Duration::days(session::DURACAO_REFRESH_DIAS)).to_rfc3339();
 
     let usuario_id_para_sessao = usuario_id.clone();
@@ -248,18 +248,18 @@ pub async fn refresh(
     let novo_hash = session::hash_refresh_token(&novo_refresh);
     let agora = chrono::Utc::now();
     let expira_em = (agora + chrono::Duration::days(session::DURACAO_REFRESH_DIAS)).to_rfc3339();
-    let usuario_id: Option<String> = state.db.with(move |conn| {
+    let linha: Option<(String, String)> = state.db.with(move |conn| {
         let mut stmt = conn.prepare(
             "UPDATE sessao SET refresh_token_hash = ?1, expira_em = ?2 \
              WHERE refresh_token_hash = ?3 AND revogado_em IS NULL AND expira_em > ?4 \
-             RETURNING usuario_id",
+             RETURNING usuario_id, id",
         )?;
-        stmt.query_row(rusqlite::params![novo_hash, expira_em, hash_atual, agora.to_rfc3339()], |r| r.get(0)).optional()
+        stmt.query_row(rusqlite::params![novo_hash, expira_em, hash_atual, agora.to_rfc3339()], |r| Ok((r.get(0)?, r.get(1)?))).optional()
     }).await?;
-    let Some(usuario_id) = usuario_id else {
+    let Some((usuario_id, sessao_id)) = linha else {
         return Err(AppError::new(ErrorCode::Unauthorized));
     };
-    let access = session::emitir_access_token(&usuario_id, &state.config.session_secret)
+    let access = session::emitir_access_token_com_sessao(&usuario_id, Some(&sessao_id), &state.config.session_secret)
         .map_err(|_| AppError::new(ErrorCode::InternalError))?;
     let novo_jar = jar
         .add(session::cookie_sessao(access.clone(), state.config.cookie_secure))
@@ -350,7 +350,7 @@ pub struct TrocarSenhaPayload {
 /// `POST /me/senha` — troca a própria senha. Exige a senha atual (uma sessão esquecida aberta não basta). Se a conta
 /// estava com senha temporária, cumpre a troca obrigatória e devolve uma recovery key nova, que só a pessoa vê (a que
 /// existia foi gerada às cegas na criação da conta). As outras sessões da pessoa são encerradas.
-pub async fn trocar_senha(State(state): State<AppState>, Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>, Json(payload): Json<TrocarSenhaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn trocar_senha(State(state): State<AppState>, Extension(usuario): Extension<crate::middleware::auth_guard::UsuarioAutenticado>, Extension(sessao_atual): Extension<crate::middleware::auth_guard::SessaoAtual>, Json(payload): Json<TrocarSenhaPayload>) -> AppResult<Json<serde_json::Value>> {
     let id = usuario.0.clone();
     let linha: Option<(String, String, bool)> = state
         .db
@@ -375,6 +375,12 @@ pub async fn trocar_senha(State(state): State<AppState>, Extension(usuario): Ext
         .with(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute("UPDATE usuario SET senha_hash = ?1, deve_trocar_senha = 0 WHERE id = ?2", rusqlite::params![nova_hash, id])?;
+            // Encerra as outras sessões (o refresh e, pelo `sid`, os access tokens já emitidos); a atual segue.
+            // Token sem `sid` (legado) não identifica a sessão: nesse caso todas são encerradas.
+            tx.execute(
+                "UPDATE sessao SET revogado_em = datetime('now') WHERE usuario_id = ?1 AND revogado_em IS NULL AND id != ?2",
+                rusqlite::params![id, sessao_atual.0.unwrap_or_default()],
+            )?;
             if let Some(h) = nova_recovery_hash {
                 tx.execute("UPDATE usuario SET recovery_key_hash = ?1 WHERE id = ?2", rusqlite::params![h, id])?;
             }

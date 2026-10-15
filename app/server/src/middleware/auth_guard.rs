@@ -20,6 +20,10 @@ use crate::state::AppState;
 #[derive(Debug, Clone)]
 pub struct UsuarioAutenticado(pub String);
 
+/// Sessão (`sessao.id`) que emitiu o token da requisição; `None` para tokens sem `sid`.
+#[derive(Debug, Clone)]
+pub struct SessaoAtual(pub Option<String>);
+
 /// Cookie primeiro (navegador, mesma origem — inclui o build servido pelo
 /// próprio `ecos-app`); `Authorization: Bearer` como alternativa pro
 /// cliente Tauri, cuja origem (`tauri://localhost` / `http://tauri.localhost`)
@@ -79,6 +83,20 @@ pub async fn exigir_sessao(
         }
     }
 
+    // Token amarrado a uma sessão: sessão revogada (troca de senha, logout) ou expirada não autentica mais.
+    if let Some(sid) = claims.sid.clone() {
+        let ativa: Result<Option<bool>, _> = state
+            .db
+            .with(move |conn| conn.query_row("SELECT revogado_em IS NULL FROM sessao WHERE id = ?1", [&sid], |r| r.get(0)).optional())
+            .await;
+        match ativa {
+            Ok(Some(true)) => {}
+            Ok(_) => return Err(AppError::new(ErrorCode::Unauthorized)),
+            Err(_) => return Err(AppError::new(ErrorCode::InternalError)),
+        }
+    }
+
+    req.extensions_mut().insert(SessaoAtual(claims.sid));
     req.extensions_mut().insert(UsuarioAutenticado(claims.sub));
     Ok(next.run(req).await)
 }

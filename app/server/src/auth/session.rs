@@ -20,15 +20,25 @@ pub struct Claims {
     /// `usuario_id`.
     pub sub: String,
     pub exp: usize,
+    /// Id da linha de `sessao` que emitiu o token: revogar a sessão (troca de senha, logout) invalida o token.
+    /// Tokens sem `sid` (emitidos antes deste campo ou em testes) seguem válidos até expirar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
 }
 
 /// Emite um access token JWT (HS256) curto, assinado com o segredo de
 /// sessão da instância (seção 5.4 — nunca ausente em produção).
 pub fn emitir_access_token(usuario_id: &str, segredo: &[u8]) -> anyhow::Result<String> {
+    emitir_access_token_com_sessao(usuario_id, None, segredo)
+}
+
+/// Igual a `emitir_access_token`, mas amarra o token à sessão (`sid`).
+pub fn emitir_access_token_com_sessao(usuario_id: &str, sessao_id: Option<&str>, segredo: &[u8]) -> anyhow::Result<String> {
     let exp = (Utc::now() + ChronoDuration::minutes(DURACAO_ACCESS_TOKEN_MIN)).timestamp() as usize;
     let claims = Claims {
         sub: usuario_id.to_string(),
         exp,
+        sid: sessao_id.map(str::to_string),
     };
     Ok(encode(&Header::default(), &claims, &EncodingKey::from_secret(segredo))?)
 }
