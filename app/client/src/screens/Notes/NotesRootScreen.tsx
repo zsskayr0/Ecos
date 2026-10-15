@@ -1,7 +1,7 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
 import { pastas, notas as notasApi, ApiError, type NotaResumo } from "@/lib/api";
 import { notaResumoParaView } from "@/lib/adapters";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
@@ -39,8 +39,10 @@ export function NotesRootScreen() {
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [soltas, setSoltas] = useState<NotaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
+    setErro(null);
     const espaco = intercalarEquipes ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined) : espacoAtivo;
     Promise.all([pastas.listar({ tipo: "nota", espaco }), notasApi.listar({ espaco, limit: 100 })])
       .then(([p, n]) => {
@@ -48,7 +50,7 @@ export function NotesRootScreen() {
         setSoltas(n.items);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
-  }, [versao, espacoAtivo, intercalarEquipes, filtroEquipeId]);
+  }, [versao, tentativa, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (
     <SoltarMarkdown className="min-h-full px-4 pt-1">
@@ -57,12 +59,7 @@ export function NotesRootScreen() {
         <div className="flex items-center gap-2"><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
-      {erro && (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-          {erro}
-        </div>
-      )}
+      {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       <PastasGrade
         chave="notas"
@@ -75,7 +72,7 @@ export function NotesRootScreen() {
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Sem pasta</p>
       <div>
         {soltas === null ? (
-          <EstadoCarregando texto="Carregando…" />
+          erro ? null : <EstadoCarregando texto="Carregando…" />
         ) : soltas.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">
             Nenhuma nota solta — tudo o que você tem está catalogado numa pasta.

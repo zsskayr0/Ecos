@@ -1,7 +1,7 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
 import { pastas, tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
 import { tarefaResumoParaView } from "@/lib/adapters";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
@@ -31,8 +31,10 @@ export function TaskFoldersRootScreen() {
   const [subpastas, setSubpastas] = useState<{ caminho: string; nome: string; contagem_itens: number }[] | null>(null);
   const [tarefas, setTarefas] = useState<TarefaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
+    setErro(null);
     // Não passe `pasta` aqui. A barra de filtros opera localmente sobre esta
     // lista; buscar só `pasta: ""` fazia qualquer pasta escolhida resultar
     // em zero itens, mesmo que ela tivesse tarefas.
@@ -43,7 +45,7 @@ export function TaskFoldersRootScreen() {
         setTarefas(t.items);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
-  }, [versao, espacoAtivo, intercalarEquipes, filtroEquipeId]);
+  }, [versao, tentativa, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (
     <div className="px-4 pt-1">
@@ -51,12 +53,7 @@ export function TaskFoldersRootScreen() {
         <h1 className="font-display text-2xl text-text-primary">Pastas de Tarefas</h1>
       </div>
 
-      {erro && (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
-          {erro}
-        </div>
-      )}
+      {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       <PastasGrade
         chave="tarefas"
@@ -69,7 +66,7 @@ export function TaskFoldersRootScreen() {
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Todas as tarefas</p>
       <div>
         {tarefas === null ? (
-          <EstadoCarregando texto="Carregando…" />
+          erro ? null : <EstadoCarregando texto="Carregando…" />
         ) : tarefas.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">
             Nenhuma tarefa criada ainda.

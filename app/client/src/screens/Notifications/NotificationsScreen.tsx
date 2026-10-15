@@ -1,4 +1,5 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, ChevronLeft } from "lucide-react";
@@ -41,13 +42,15 @@ export function NotificationsScreen() {
   const [aba, setAba] = useState<NotificacaoApi["categoria"] | "tudo">("tudo");
   const [itens, setItens] = useState<NotificacaoApi[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
+    setErro(null);
     notificacoesApi
       .listar({ categoria: aba === "tudo" ? undefined : aba, limit: 100 })
       .then((p) => setItens(p.items))
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar."));
-  }, [aba, versao]);
+  }, [aba, versao, tentativa]);
 
   const grupos = useMemo(() => agruparPorData(itens ?? []), [itens]);
 
@@ -85,10 +88,10 @@ export function NotificationsScreen() {
         ))}
       </div>
 
-      {erro && <p className="mb-4 text-sm text-error">{erro}</p>}
+      {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       {itens === null ? (
-        <EstadoCarregando texto="Carregando…" />
+        erro ? null : <EstadoCarregando texto="Carregando…" />
       ) : itens.length === 0 ? (
         <EmptyState
           icon={Bell}

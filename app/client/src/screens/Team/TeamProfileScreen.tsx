@@ -1,4 +1,5 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { TIPOS_DE_EQUIPE, rotuloDoTipoDeEquipe, type TipoEquipe } from "@/lib/tipo-equipe";
 import { useNavigate, useParams } from "react-router-dom";
@@ -42,6 +43,7 @@ export function TeamProfileScreen() {
   const [equipe, setEquipe] = useState<{ id: string; nome: string; tipo: TipoEquipe; estatisticas: { notas: number; tarefas: number } } | null>(null);
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [editando, setEditando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [novoNome, setNovoNome] = useState("");
@@ -53,13 +55,14 @@ export function TeamProfileScreen() {
 
   useEffect(() => {
     if (!equipeId) return;
+    setErro(null);
     Promise.all([equipesApi.obter(equipeId), pessoal ? Promise.resolve([] as Membro[]) : equipesApi.listarMembros(equipeId)])
       .then(([e, m]) => {
         setEquipe(e);
         setMembros(m);
       })
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Equipe não encontrada."));
-  }, [equipeId, pessoal, versao]);
+  }, [equipeId, pessoal, versao, tentativa]);
 
   async function convidar() {
     if (!equipeId) return;
@@ -108,7 +111,7 @@ export function TeamProfileScreen() {
         <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
-        <p className="text-sm text-error">{erro}</p>
+        <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
       </div>
     );
   }
