@@ -1,32 +1,73 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
-import { ApiError, vault } from "@/lib/api";
+import { ApiError, FRASE_RESET_COFRE, vault } from "@/lib/api";
 
-const FRASE_CONFIRMACAO = "apagar meu cofre";
+const FRASE_CONFIRMACAO = FRASE_RESET_COFRE;
 
 /**
- * Privacy & Vault (section 3.12) — mandatory biometrics (on by default),
- * "hide amounts in the Feed" (off by default), a visually isolated danger
- * zone, last, away from harmless toggles. Zero humor across this entire
- * screen (tone rule, section 1.4).
+ * Privacy & Vault (section 3.12) — "hide amounts in the Feed" (off by default,
+ * saved on the server), biometrics (not available yet: shown disabled), and a
+ * visually isolated danger zone, last. Zero humor across this entire screen
+ * (tone rule, section 1.4).
  */
 export function PrivacyVaultScreen() {
   const navigate = useNavigate();
-  const [biometriaObrigatoria, setBiometriaObrigatoria] = useState(true);
   const [ocultarValores, setOcultarValores] = useState(false);
+  const [prefCarregada, setPrefCarregada] = useState(false);
+  const [prefErro, setPrefErro] = useState<string | null>(null);
+  const [salvandoPref, setSalvandoPref] = useState(false);
+  const [backup, setBackup] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [frase, setFrase] = useState("");
   const [apagando, setApagando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [apagado, setApagado] = useState(false);
 
+  useEffect(() => {
+    let ativo = true;
+    vault.preferencias
+      .obter()
+      .then((p) => {
+        if (!ativo) return;
+        setOcultarValores(p.ocultar_valores_feed === true);
+        setPrefCarregada(true);
+      })
+      .catch((e) => {
+        if (!ativo) return;
+        setPrefErro(
+          e instanceof ApiError && e.code === "CONEXAO_INDISPONIVEL"
+            ? "Sem conexão com o servidor. Não foi possível carregar esta opção."
+            : "Desbloqueie o Cofre para ver e alterar esta opção.",
+        );
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  async function alternarOcultarValores(novo: boolean) {
+    const anterior = ocultarValores;
+    setOcultarValores(novo);
+    setSalvandoPref(true);
+    setPrefErro(null);
+    try {
+      await vault.preferencias.salvarOcultarValoresFeed(novo);
+    } catch {
+      setOcultarValores(anterior);
+      setPrefErro("Não foi possível salvar. A opção continua como estava.");
+    } finally {
+      setSalvandoPref(false);
+    }
+  }
+
   async function resetarCofre() {
     setApagando(true);
     setErro(null);
     try {
-      await vault.resetar();
+      const r = await vault.resetar();
+      setBackup(r.backup_de_seguranca ?? null);
       setApagado(true);
       setConfirmando(false);
       setFrase("");
@@ -51,15 +92,23 @@ export function PrivacyVaultScreen() {
           <p className="text-[15px] font-medium text-text-primary">Biometria obrigatória</p>
           <p className="text-xs text-text-muted">Exigir biometria pra abrir o Cofre, sempre.</p>
         </div>
-        <Toggle checked={biometriaObrigatoria} onChange={setBiometriaObrigatoria} />
+        <Toggle checked={true} onChange={() => {}} label="Biometria obrigatória" />
       </div>
 
-      <div className="mb-8 flex items-center justify-between rounded-2xl bg-surface-1 p-4">
-        <div className="pr-3">
-          <p className="text-[15px] font-medium text-text-primary">Ocultar valores no Feed</p>
-          <p className="text-xs text-text-muted">Substitui valores monetários por •••• fora do Cofre.</p>
+      <div className="mb-8 rounded-2xl bg-surface-1 p-4">
+        <div className="flex items-center justify-between">
+          <div className="pr-3">
+            <p className="text-[15px] font-medium text-text-primary">Ocultar valores no Feed</p>
+            <p className="text-xs text-text-muted">Não mostra valores monetários no Feed, fora do Cofre.</p>
+          </div>
+          <Toggle
+            checked={ocultarValores}
+            onChange={(v) => void alternarOcultarValores(v)}
+            disabled={!prefCarregada || salvandoPref}
+            label="Ocultar valores no Feed"
+          />
         </div>
-        <Toggle checked={ocultarValores} onChange={setOcultarValores} />
+        {prefErro && <p role="alert" className="mt-2 text-xs text-error">{prefErro}</p>}
       </div>
 
       <div className="rounded-2xl border border-error/40 bg-error/[0.06] p-4">
@@ -72,7 +121,12 @@ export function PrivacyVaultScreen() {
           desfeita.
         </p>
 
-        {apagado && <p role="status" className="mb-3 text-sm text-success">Cofre resetado. O servidor guardou um backup de segurança antes de apagar.</p>}
+        {apagado && (
+          <p role="status" className="mb-3 text-sm text-success">
+            Cofre resetado.
+            {backup ? ` Backup de segurança guardado: ${backup}.` : " O servidor guardou um backup de segurança antes de apagar."}
+          </p>
+        )}
 
         {!confirmando ? (
           <button
@@ -108,7 +162,7 @@ export function PrivacyVaultScreen() {
               </button>
               <button
                 onClick={() => void resetarCofre()}
-                disabled={frase.trim().toLowerCase() !== FRASE_CONFIRMACAO || apagando}
+                disabled={frase !== FRASE_CONFIRMACAO || apagando}
                 className="flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
                 {apagando ? "Apagando…" : "Apagar permanentemente"}

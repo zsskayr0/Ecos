@@ -1188,11 +1188,16 @@ export interface PreferenciasCofreApi {
   conta_padrao: string | null;
   ordem_contas: string[];
   ordem_categorias: string[];
+  /** Esconde os valores monetários do Feed (fora do Cofre). Quem aplica é o servidor. */
+  ocultar_valores_feed: boolean;
 }
+
+/** Frase digitada para confirmar o reset do Cofre; o servidor exige exatamente esta (`FRASE_CONFIRMACAO` em app/vault/src/routes/reset.rs). */
+export const FRASE_RESET_COFRE = "APAGAR TUDO";
 
 export const vault = {
   /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
-  resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: "APAGAR TUDO" }),
+  resetar: () => post<{ ok: true; backup_de_seguranca: string | null }>("/vault/reset", { confirm: FRASE_RESET_COFRE }),
   ativar: (senha: string) => post<{ ok: true }>("/vault/ativar", { senha }),
   desbloquear: (senha: string) => post<{ ok: true }>("/vault/desbloquear", { senha }),
   bloquear: () => { window.dispatchEvent(new Event("ecos:bloqueio-manual")); window.dispatchEvent(new Event("ecos:cofre-bloqueado")); return post<{ ok: true }>("/vault/bloquear"); },
@@ -1200,6 +1205,7 @@ export const vault = {
   preferencias: {
     obter: () => get<PreferenciasCofreApi>("/vault/preferencias"),
     salvar: (chave: "conta_padrao", valor: string | null) => put<{ ok: true }>(`/vault/preferencias/${chave}`, { valor }),
+    salvarOcultarValoresFeed: (valor: boolean) => put<{ ok: true }>("/vault/preferencias/ocultar_valores_feed", { valor }),
     salvarOrdem: (chave: "ordem_contas" | "ordem_categorias", ids: string[]) => put<{ ok: true }>(`/vault/preferencias/${chave}`, { valor: ids }),
   },
   /** Pesquisa tolerante (acento, erro de digitação, texto lido dos comprovantes). Devolve os ids que casam, do melhor para o pior. */

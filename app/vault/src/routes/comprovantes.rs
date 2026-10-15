@@ -716,6 +716,13 @@ mod testes {
         assert_eq!(prefs["conta_padrao"], ids[2]);
         assert_eq!(como(&app, "equipe", "bia", "GET", "/vault/preferencias", None).await.1["conta_padrao"], Value::Null);
 
+        // Ocultar valores no Feed: padrão falso, por pessoa, só aceita booleano.
+        assert_eq!(prefs["ocultar_valores_feed"], false);
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/ocultar_valores_feed", Some(json!({ "valor": true }))).await.0, StatusCode::OK);
+        assert_eq!(como(&app, "equipe", "ana", "GET", "/vault/preferencias", None).await.1["ocultar_valores_feed"], true);
+        assert_eq!(como(&app, "equipe", "bia", "GET", "/vault/preferencias", None).await.1["ocultar_valores_feed"], false);
+        assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/ocultar_valores_feed", Some(json!({ "valor": "sim" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
         // Validação: conta que não existe, chave desconhecida, lista malformada.
         assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/conta_padrao", Some(json!({ "valor": "nao-existe" }))).await.0, StatusCode::NOT_FOUND);
         assert_eq!(como(&app, "equipe", "ana", "PUT", "/vault/preferencias/qualquer", Some(json!({ "valor": 1 }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);

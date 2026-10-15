@@ -17,13 +17,17 @@ use crate::jobs::backup::nome_arquivo_backup;
 use crate::routes::ativacao::usuario;
 use crate::state::AppState;
 
+/// Frase exata exigida para apagar o Cofre. O cliente tem a mesma constante (`FRASE_RESET_COFRE` em `lib/api.ts`);
+/// o teste abaixo trava o valor para que os dois lados não divirjam sem querer.
+pub const FRASE_CONFIRMACAO: &str = "APAGAR TUDO";
+
 #[derive(Debug, Deserialize)]
 pub struct ConfirmarPayload {
     pub confirm: String,
 }
 
 pub async fn reset(State(state): State<AppState>, Json(payload): Json<ConfirmarPayload>) -> AppResult<Json<serde_json::Value>> {
-    if payload.confirm != "APAGAR TUDO" {
+    if payload.confirm != FRASE_CONFIRMACAO {
         return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
     }
 
@@ -54,7 +58,7 @@ pub async fn reset(State(state): State<AppState>, Json(payload): Json<ConfirmarP
 /// backups; sem cópia "pre-reset"). Sem Cofre ativado não há o que apagar; com Cofre trancado, recusa (423): a pessoa
 /// precisa desbloquear para provar que pode. Nunca toca no Cofre de outra pessoa.
 pub async fn excluir_cofre(State(state): State<AppState>, Json(payload): Json<ConfirmarPayload>) -> AppResult<Json<serde_json::Value>> {
-    if payload.confirm != "APAGAR TUDO" {
+    if payload.confirm != FRASE_CONFIRMACAO {
         return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
     }
     let uid = usuario()?;
@@ -72,4 +76,12 @@ pub async fn excluir_cofre(State(state): State<AppState>, Json(payload): Json<Co
     }
     tracing::info!(usuario = %uid, "cofre excluído junto com a conta");
     Ok(Json(serde_json::json!({ "ok": true, "existia": true })))
+}
+
+#[cfg(test)]
+mod testes {
+    #[test]
+    fn frase_de_confirmacao_nao_muda_sem_alinhar_o_cliente() {
+        assert_eq!(super::FRASE_CONFIRMACAO, "APAGAR TUDO");
+    }
 }

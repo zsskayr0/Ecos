@@ -2,13 +2,17 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { exportar, excluir, resetar, logout, baixar } = vi.hoisted(() => ({
-  exportar: vi.fn(), excluir: vi.fn(), resetar: vi.fn(), logout: vi.fn(), baixar: vi.fn(),
+const { exportar, excluir, resetar, logout, baixar, obterPrefs, salvarOcultar } = vi.hoisted(() => ({
+  exportar: vi.fn(), excluir: vi.fn(), resetar: vi.fn(), logout: vi.fn(), baixar: vi.fn(), obterPrefs: vi.fn(), salvarOcultar: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async () => {
   const real = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return { ...real, conta: { exportar, excluir }, vault: { ...real.vault, resetar } };
+  return {
+    ...real,
+    conta: { exportar, excluir },
+    vault: { ...real.vault, resetar, preferencias: { ...real.vault.preferencias, obter: obterPrefs, salvarOcultarValoresFeed: salvarOcultar } },
+  };
 });
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ logout }) }));
 vi.mock("@/lib/baixar-arquivo", () => ({ baixarArquivo: baixar }));
@@ -19,7 +23,12 @@ import { PrivacyVaultScreen } from "./PrivacyVaultScreen";
 
 const abrir = (tela: JSX.Element) => render(<MemoryRouter>{tela}</MemoryRouter>);
 
-beforeEach(() => { vi.clearAllMocks(); logout.mockResolvedValue(undefined); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  logout.mockResolvedValue(undefined);
+  obterPrefs.mockResolvedValue({ conta_padrao: null, ordem_contas: [], ordem_categorias: [], ocultar_valores_feed: false });
+  salvarOcultar.mockResolvedValue({ ok: true });
+});
 
 describe("Conta e dados — exportar", () => {
   it("chama GET /me/export e baixa o .zip", async () => {
@@ -96,21 +105,55 @@ describe("Privacidade e cofre — Resetar Cofre", () => {
   const preparar = () => {
     abrir(<PrivacyVaultScreen />);
     fireEvent.click(screen.getByRole("button", { name: "Resetar Cofre" }));
-    fireEvent.change(screen.getByPlaceholderText("apagar meu cofre"), { target: { value: "apagar meu cofre" } });
+    fireEvent.change(screen.getByPlaceholderText("APAGAR TUDO"), { target: { value: "APAGAR TUDO" } });
     return screen.getByRole("button", { name: /Apagar permanentemente/ });
   };
 
-  it("chama POST /vault/reset e confirma o sucesso", async () => {
+  it("só habilita com a frase exata (maiúsculas), a mesma exigida pelo servidor", () => {
+    abrir(<PrivacyVaultScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Resetar Cofre" }));
+    const campo = screen.getByPlaceholderText("APAGAR TUDO");
+    fireEvent.change(campo, { target: { value: "apagar tudo" } });
+    expect((screen.getByRole("button", { name: /Apagar permanentemente/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(campo, { target: { value: "APAGAR TUDO" } });
+    expect((screen.getByRole("button", { name: /Apagar permanentemente/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(resetar).not.toHaveBeenCalled();
+  });
+
+  it("chama POST /vault/reset e mostra o nome do backup de segurança", async () => {
     resetar.mockResolvedValue({ ok: true, backup_de_seguranca: "pre-reset-x" });
     fireEvent.click(preparar());
-    expect((await screen.findByRole("status")).textContent).toMatch(/Cofre resetado/);
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toMatch(/Cofre resetado/);
+    expect(status.textContent).toMatch(/pre-reset-x/);
     expect(resetar).toHaveBeenCalledTimes(1);
   });
 
-  it("mostra o erro do servidor e não finge que apagou", async () => {
-    resetar.mockRejectedValue(new ApiError("VAULT_LOCKED", "O Cofre está bloqueado.", 403));
+  it("mostra o erro do servidor (inclui falha de backup) e não finge que apagou", async () => {
+    resetar.mockRejectedValue(new ApiError("VAULT_BACKUP_FAILED", "Reset abortado: não foi possível tirar o backup de segurança antes de apagar.", 500));
     fireEvent.click(preparar());
-    expect((await screen.findByRole("alert")).textContent).toMatch(/bloqueado/);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/backup/);
     expect(screen.queryByText(/Cofre resetado/)).toBeNull();
+  });
+});
+
+describe("Privacidade e cofre — controles", () => {
+  it("reflete o valor salvo no servidor e persiste ao alternar", async () => {
+    obterPrefs.mockResolvedValue({ conta_padrao: null, ordem_contas: [], ordem_categorias: [], ocultar_valores_feed: true });
+    abrir(<PrivacyVaultScreen />);
+    const sw = screen.getByRole("switch", { name: "Ocultar valores no Feed" });
+    await waitFor(() => expect(sw.getAttribute("aria-checked")).toBe("true"));
+    fireEvent.click(sw);
+    await waitFor(() => expect(salvarOcultar).toHaveBeenCalledWith(false));
+  });
+
+  it("volta ao valor anterior e avisa quando o salvamento falha", async () => {
+    salvarOcultar.mockRejectedValue(new ApiError("INTERNAL_ERROR", "x", 500));
+    abrir(<PrivacyVaultScreen />);
+    const sw = screen.getByRole("switch", { name: "Ocultar valores no Feed" });
+    await waitFor(() => expect((sw as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(sw);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Não foi possível salvar/);
+    expect(sw.getAttribute("aria-checked")).toBe("false");
   });
 });

@@ -16,7 +16,9 @@ use crate::state::AppState;
 pub const CONTA_PADRAO: &str = "conta_padrao";
 pub const ORDEM_CONTAS: &str = "ordem_contas";
 pub const ORDEM_CATEGORIAS: &str = "ordem_categorias";
-const CHAVES: [&str; 3] = [CONTA_PADRAO, ORDEM_CONTAS, ORDEM_CATEGORIAS];
+/// Esconde os valores monetários dos cards do Feed (fora do Cofre). Booleano, por pessoa; a ausência vale `false`.
+pub const OCULTAR_VALORES_FEED: &str = "ocultar_valores_feed";
+const CHAVES: [&str; 4] = [CONTA_PADRAO, ORDEM_CONTAS, ORDEM_CATEGORIAS, OCULTAR_VALORES_FEED];
 const MAXIMO_ITENS: usize = 2000;
 
 /// Lê uma preferência de `usuario`; `None` quando nunca foi definida (ou o valor guardado não é JSON).
@@ -46,6 +48,7 @@ pub async fn obter(State(state): State<AppState>) -> AppResult<Json<Value>> {
                 CONTA_PADRAO: ler(conn, &usuario, CONTA_PADRAO)?.filter(|v| v.is_string()),
                 ORDEM_CONTAS: ler_ordem(conn, &usuario, ORDEM_CONTAS)?,
                 ORDEM_CATEGORIAS: ler_ordem(conn, &usuario, ORDEM_CATEGORIAS)?,
+                OCULTAR_VALORES_FEED: ler(conn, &usuario, OCULTAR_VALORES_FEED)?.and_then(|v| v.as_bool()).unwrap_or(false),
             }))
         })
         .await?;
@@ -71,6 +74,11 @@ pub async fn salvar(State(state): State<AppState>, Path(chave): Path<String>, Js
             Value::Null => None,
             Value::String(id) if !id.is_empty() && id.len() <= 64 => Some(corpo.valor.clone()),
             _ => return Err(invalido("conta padrão deve ser o id de uma conta ou nulo")),
+        }
+    } else if chave == OCULTAR_VALORES_FEED {
+        match &corpo.valor {
+            Value::Bool(_) => Some(corpo.valor.clone()),
+            _ => return Err(invalido("ocultar valores deve ser verdadeiro ou falso")),
         }
     } else {
         let Value::Array(itens) = &corpo.valor else { return Err(invalido("a ordem deve ser uma lista de ids")) };

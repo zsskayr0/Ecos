@@ -163,9 +163,17 @@ async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed) -> R
             match crate::routes::vault_proxy::requisicao_interna(state, reqwest::Method::GET, &caminho, usuario_id).await.send().await.ok().filter(|r| r.status().is_success()) {
                 Some(resposta) => {
                     let transacao: serde_json::Value = resposta.json().await.unwrap_or(serde_json::json!({}));
+                    // Preferência "ocultar valores no Feed" (guardada no Cofre, por pessoa). Na dúvida (não conseguiu ler),
+                    // o valor não sai: esconder por engano é inofensivo, vazar não.
+                    let oculto = match crate::routes::vault_proxy::requisicao_interna(state, reqwest::Method::GET, "/vault/preferencias", usuario_id).await.send().await.ok().filter(|r| r.status().is_success()) {
+                        Some(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("ocultar_valores_feed").and_then(|b| b.as_bool())).unwrap_or(true),
+                        None => true,
+                    };
+                    let valor = if oculto { serde_json::Value::Null } else { transacao.get("valor_centavos").cloned().unwrap_or(serde_json::Value::Null) };
                     Ok(serde_json::json!({
                         "id": linha.id, "tipo": "transacao",
-                        "valor_centavos": transacao.get("valor_centavos"),
+                        "valor_oculto": oculto,
+                        "valor_centavos": valor,
                         "status": transacao.get("status"),
                         "descricao": transacao.get("descricao"),
                         "criado_em": transacao.get("criado_em"),
