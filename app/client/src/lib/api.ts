@@ -934,6 +934,21 @@ export interface MembroEquipeApi {
   entrou_em?: string;
 }
 
+/** Preferências de calendário e localização, por pessoa (`/me/preferencias/calendario`). */
+export interface PreferenciasCalendarioApi {
+  pais: string;
+  fuso: string;
+  inicio: string;
+  deadlines: boolean;
+  /** `false` = a pessoa nunca salvou: os valores são os padrões do servidor. */
+  definido: boolean;
+}
+
+export const preferenciasCalendarioApi = {
+  obter: () => get<PreferenciasCalendarioApi>("/me/preferencias/calendario"),
+  atualizar: (dados: Partial<Omit<PreferenciasCalendarioApi, "definido">>) => patch<PreferenciasCalendarioApi>("/me/preferencias/calendario", dados),
+};
+
 export const equipes = {
   listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number; cor?: string; cor_personalizada?: boolean; avatar_atualizado_em?: number | null }[]>("/equipes"),
   criar: (nome: string, tipo: TipoEquipe = "pessoal", cor?: string) => post<{ id: string }>("/equipes", { nome, tipo, ...(cor ? { cor } : {}) }),

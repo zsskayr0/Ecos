@@ -25,6 +25,7 @@ pub mod notas;
 pub mod notificacoes;
 pub mod pagination;
 pub mod pastas;
+pub mod preferencias;
 pub mod rotina;
 pub mod sync;
 pub mod tags;
@@ -70,6 +71,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
         .route("/me/senha", post(crate::auth::trocar_senha))
+        .route("/me/preferencias/calendario", get(preferencias::obter).patch(preferencias::atualizar))
         .route("/me/aceites/termos", post(crate::auth::aceitar_termos))
         .route("/admin/usuarios", get(crate::admin::listar).post(crate::admin::criar))
         .route("/admin/usuarios/:id/redefinir-senha", post(crate::admin::redefinir_senha))

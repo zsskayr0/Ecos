@@ -5,7 +5,9 @@ import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import { PainelMundo, type ModoPainel } from "@/components/common/globo/PainelMundo";
 import { GoogleCalendarCard } from "./GoogleCalendarCard";
-import { lerPreferenciasCalendario, salvarPreferenciasCalendario } from "@/lib/preferencias-calendario";
+import { lerPreferenciasCalendario, salvarPreferenciasCalendario, salvarPreferenciasCalendarioNoServidor, sincronizarPreferenciasCalendario } from "@/lib/preferencias-calendario";
+import { useAuth } from "@/lib/auth-context";
+import { ApiError } from "@/lib/api";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type FormatoData } from "@/lib/preferencias-aplicativo";
 
 const PAISES = ["Brasil", "Portugal", "Estados Unidos", "Canadá", "México", "Argentina", "Chile", "Colômbia", "Uruguai", "Reino Unido", "Espanha", "França", "Alemanha", "Itália", "Países Baixos", "Suíça", "Japão", "China", "Índia", "Austrália"]
@@ -31,9 +33,22 @@ export function CalendarPreferencesScreen() {
   const salvo = lerPreferenciasCalendario();
   const [pais, setPais] = useState(salvo.pais ?? "Brasil");
   const [fuso, setFuso] = useState(salvo.fuso ?? "America/Sao_Paulo");
-  const inicio = salvo.inicio ?? "06:00";
+  const { perfil } = useAuth();
+  const [inicio, setInicio] = useState(salvo.inicio ?? "06:00");
   const [deadlines, setDeadlines] = useState(salvo.deadlines ?? true);
   const [mensagem, setMensagem] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  // Abre com o que o servidor tem (outro aparelho pode ter mudado): a cópia local é só cache.
+  useEffect(() => {
+    if (!perfil?.id) return;
+    let vivo = true;
+    void sincronizarPreferenciasCalendario(perfil.id).then((p) => {
+      if (!vivo) return;
+      setPais(p.pais); setFuso(p.fuso); setInicio(p.inicio); setDeadlines(p.deadlines);
+    });
+    return () => { vivo = false; };
+  }, [perfil?.id]);
   // Enquanto o seletor de fuso está aberto o globo dá lugar ao mapa de fusos; ele volta um instante depois de fechar.
   const [modoPainel, setModoPainel] = useState<ModoPainel>("globo");
   const voltarAoGlobo = useRef<number>();
@@ -47,7 +62,19 @@ export function CalendarPreferencesScreen() {
   const [app, setApp] = useState(lerPreferenciasAplicativo);
   const alterarApp = (patch: Partial<ReturnType<typeof lerPreferenciasAplicativo>>) => setApp((atual) => { const proxima = { ...atual, ...patch }; salvarPreferenciasAplicativo(proxima); return proxima; });
   function mudarPais(novoPais: string) { setPais(novoPais); setFuso(FUSO_DO_PAIS[novoPais] ?? "UTC"); setMensagem(""); }
-  function salvar() { salvarPreferenciasCalendario({ pais, fuso, inicio, deadlines }); setMensagem("Preferências salvas neste dispositivo."); }
+  async function salvar() {
+    setMensagem(""); setErro(""); setSalvando(true);
+    try {
+      if (!perfil?.id) throw new Error("sem sessão");
+      await salvarPreferenciasCalendarioNoServidor(perfil.id, { pais, fuso, inicio, deadlines });
+      setMensagem("Preferências salvas na sua conta.");
+    } catch (e) {
+      // Mantém a escolha neste aparelho e diz o que faltou, em vez de perder o que a pessoa acabou de fazer.
+      salvarPreferenciasCalendario({ pais, fuso, inicio, deadlines });
+      if (e instanceof ApiError && e.campos?.length) setErro(e.campos.map((c) => c.motivo).join(" "));
+      else setErro("Não foi possível salvar na conta agora. As preferências ficaram só neste dispositivo; tente salvar de novo mais tarde.");
+    } finally { setSalvando(false); }
+  }
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
     <div className="mb-5 flex items-center gap-2"><button aria-label="Voltar" data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Calendário e localização</h1></div>
@@ -68,8 +95,9 @@ export function CalendarPreferencesScreen() {
       <div className="space-y-2"><GoogleCalendarCard /><Integracao nome="Outlook Calendar" descricao="Calendário Microsoft 365 e Outlook" /><Integracao nome="iCal / CalDAV" descricao="Apple Calendar e outros calendários compatíveis" /></div>
       <div className="mt-4 flex items-center justify-between gap-3 text-sm text-text-primary"><span>Mostrar prazos no calendário</span><Toggle checked={deadlines} onChange={(valor) => { setDeadlines(valor); setMensagem(""); }} label="Mostrar prazos no calendário" /></div>
     </Secao>
-    <button onClick={salvar} className="min-h-11 rounded-xl border border-[#1e4f82] bg-[#1e4f82] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-[background-color,border-color,transform,box-shadow] hover:border-[#28679f] hover:bg-[#28679f] hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e4f82]">Salvar preferências</button>
-    {mensagem && <p className="mt-3 text-sm text-success">{mensagem}</p>}
+    <button onClick={() => void salvar()} disabled={salvando} className="min-h-11 rounded-xl border border-[#1e4f82] bg-[#1e4f82] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-[background-color,border-color,transform,box-shadow] hover:border-[#28679f] hover:bg-[#28679f] hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e4f82]">{salvando ? "Salvando…" : "Salvar preferências"}</button>
+    {mensagem && <p role="status" className="mt-3 text-sm text-success">{mensagem}</p>}
+    {erro && <p role="alert" className="mt-3 text-sm text-error">{erro}</p>}
   </div>;
 }
 

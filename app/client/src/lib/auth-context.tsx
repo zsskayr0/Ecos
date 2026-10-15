@@ -5,6 +5,7 @@ import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } f
 import { limparDadosOffline } from "./offline-store";
 import { registrarCoresDasEquipes } from "./team-color";
 import { definirUsuarioDasFotos } from "./profile-avatar";
+import { sincronizarPreferenciasCalendario } from "./preferencias-calendario";
 
 export interface Perfil {
   id: string;
@@ -97,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { definirUsuarioDoCofre(perfil?.id ?? null); definirUsuarioDasFotos(perfil?.id ?? null); }, [perfil?.id]);
   // Rascunhos de nota/tarefa esquecidos há semanas não ficam no aparelho para sempre.
   useEffect(() => { expirarRascunhosAntigos(); }, []);
+
+  // Preferências de calendário e localização acompanham a conta: cópia local espelha o servidor ao entrar.
+  useEffect(() => { if (perfil?.id) void sincronizarPreferenciasCalendario(perfil.id); }, [perfil?.id]);
 
   const login = useCallback(async (usuario: string, senha: string) => {
     setErro(null);
