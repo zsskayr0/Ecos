@@ -4,7 +4,7 @@ import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Nota } from "@/lib/types";
 import { MOTIVO_CLASSES, MOTIVO_LABEL } from "@/lib/format";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
-import { Avatar } from "@/components/common/Avatar";
+import { AvatarUsuario } from "@/components/common/AvatarUsuario";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { useEffect, useMemo, useState } from "react";
 import { FolderInput, Paperclip, SquareArrowOutUpRight } from "lucide-react";
@@ -96,7 +96,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
 
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="flex min-w-0 items-center gap-2">
-          <Avatar nome={nota.dono.nome} corFundo={nota.origemEquipe?.cor} tamanho={18} />
+          <AvatarUsuario usuarioId={nota.dono.id} nome={nota.dono.nome} corFundo={nota.origemEquipe?.cor} tamanho={18} />
           <span className="truncate text-xs text-text-muted">
             {nota.dono.nome}
             {nota.origemEquipe && ` · ${nota.origemEquipe.nome}`}

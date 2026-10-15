@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, Circle, Flag, FlagTriangleRight, Flame, FolderInput, ListChecks, SquareArrowOutUpRight } from "lucide-react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { PrioridadeTarefa, Tarefa } from "@/lib/types";
-import { Avatar } from "@/components/common/Avatar";
+import { AvatarUsuario } from "@/components/common/AvatarUsuario";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 import { tarefas } from "@/lib/api";
@@ -124,7 +124,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
 
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="flex min-w-0 items-center gap-2">
-          <Avatar nome={tarefa.dono.nome} corFundo={tarefa.origemEquipe?.cor} tamanho={18} />
+          <AvatarUsuario usuarioId={tarefa.dono.id} nome={tarefa.dono.nome} corFundo={tarefa.origemEquipe?.cor} tamanho={18} />
           <span className="truncate text-xs text-text-muted">
             {tarefa.dono.nome}
             {tarefa.origemEquipe && ` · ${tarefa.origemEquipe.nome}`}

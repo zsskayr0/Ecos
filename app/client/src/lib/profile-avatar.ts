@@ -21,11 +21,41 @@ export function notificarFotoPerfilAtualizada(id: string) {
   window.dispatchEvent(new CustomEvent(EVENTO_ATUALIZADO, { detail: id }));
 }
 
+/** Foto de perfil guardada só neste navegador (antes de existir o endpoint): sobe uma vez ao servidor e sai do localStorage. */
+function arquivoDaFotoLegada(dataUrl: string): File | null {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!m) return null;
+  try {
+    const binario = atob(m[2]);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    return new File([bytes], "foto-perfil", { type: m[1] });
+  } catch { return null; }
+}
+
+let usuarioDasFotos: string | null = null;
+/** Quem está logado: só a foto legada desta pessoa pode subir (outra conta no mesmo navegador não herda a foto). */
+export function definirUsuarioDasFotos(id: string | null) { usuarioDasFotos = id; }
+
+async function migrarFotoLegada(id: string): Promise<Blob | null> {
+  if (!id || id !== usuarioDasFotos) return null;
+  const legada = fotoLegada(id);
+  const arquivo = legada ? arquivoDaFotoLegada(legada) : null;
+  if (!arquivo) return null;
+  try {
+    const preparada = await prepararFotoPerfil(arquivo);
+    await avatarPerfil.enviar(preparada);
+    limparFotoLegada(id);
+    return preparada;
+  } catch { return null; } // sem rede ou recusada: a cópia local continua valendo como fallback
+}
+
 async function carregarFoto(id: string, versao?: number | null, forcar = false): Promise<string | undefined> {
   if (!forcar && fotosEmMemoria.has(id) && versoesEmMemoria.get(id) === versao) return fotosEmMemoria.get(id);
   const existente = carregamentos.get(id);
   if (existente) return existente;
-  const carregamento = avatarPerfil.obter(id).then((blob) => {
+  const carregamento = avatarPerfil.obter(id).then(async (blob) => {
+    if (!blob) blob = await migrarFotoLegada(id);
     const anterior = fotosEmMemoria.get(id);
     const proxima = blob ? URL.createObjectURL(blob) : fotoLegada(id);
     if (anterior?.startsWith("blob:") && anterior !== proxima) URL.revokeObjectURL(anterior);

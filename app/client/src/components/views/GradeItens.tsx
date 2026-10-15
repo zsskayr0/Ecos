@@ -1,6 +1,6 @@
 import { useState, type MouseEvent } from "react";
 import { CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
-import { Avatar } from "@/components/common/Avatar";
+import { AvatarUsuario } from "@/components/common/AvatarUsuario";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { anexosDaNota, previewDaNota } from "@/lib/note-media";
@@ -27,7 +27,7 @@ function Rodape({ item }: { item: FeedItem }) {
   return (
     <span className="mt-auto flex items-center justify-between gap-2 pt-1 text-xs text-text-muted">
       {item.atualizadoEm ? <TempoEdicao iso={item.atualizadoEm} className="truncate" /> : <span />}
-      <Avatar nome={item.dono.nome} corFundo={item.origemEquipe?.cor} tamanho={18} />
+      <AvatarUsuario usuarioId={item.dono.id} nome={item.dono.nome} corFundo={item.origemEquipe?.cor} tamanho={18} />
     </span>
   );
 }

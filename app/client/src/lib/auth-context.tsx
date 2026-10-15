@@ -4,6 +4,7 @@ import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline } from "./offline-store";
 import { registrarCoresDasEquipes } from "./team-color";
+import { definirUsuarioDasFotos } from "./profile-avatar";
 
 export interface Perfil {
   id: string;
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [recarregarPerfil]);
 
   // Cadastros em cache (formas de pagamento…) pertencem a quem está autenticado.
-  useEffect(() => { definirUsuarioDoCofre(perfil?.id ?? null); }, [perfil?.id]);
+  useEffect(() => { definirUsuarioDoCofre(perfil?.id ?? null); definirUsuarioDasFotos(perfil?.id ?? null); }, [perfil?.id]);
   // Rascunhos de nota/tarefa esquecidos há semanas não ficam no aparelho para sempre.
   useEffect(() => { expirarRascunhosAntigos(); }, []);
 
