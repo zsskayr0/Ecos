@@ -138,6 +138,21 @@ describe("Privacidade e cofre — Resetar Cofre", () => {
 });
 
 describe("Privacidade e cofre — controles", () => {
+  it("biometria aparece desabilitada e marcada como em breve", () => {
+    abrir(<PrivacyVaultScreen />);
+    const sw = screen.getByRole("switch", { name: /Biometria/ }) as HTMLButtonElement;
+    expect(sw.disabled).toBe(true);
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect(document.body.textContent).toMatch(/Em breve/);
+  });
+
+  it("explica o que o reset apaga e que não dá pra desfazer", () => {
+    abrir(<PrivacyVaultScreen />);
+    const texto = document.body.textContent ?? "";
+    expect(texto).toMatch(/recorrências e comprovantes/);
+    expect(texto).toMatch(/não pode ser desfeita/);
+  });
+
   it("reflete o valor salvo no servidor e persiste ao alternar", async () => {
     obterPrefs.mockResolvedValue({ conta_padrao: null, ordem_contas: [], ordem_categorias: [], ocultar_valores_feed: true });
     abrir(<PrivacyVaultScreen />);

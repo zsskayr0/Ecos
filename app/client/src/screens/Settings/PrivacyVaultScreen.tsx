@@ -90,9 +90,9 @@ export function PrivacyVaultScreen() {
       <div className="mb-3 flex items-center justify-between rounded-2xl bg-surface-1 p-4">
         <div className="pr-3">
           <p className="text-[15px] font-medium text-text-primary">Biometria obrigatória</p>
-          <p className="text-xs text-text-muted">Exigir biometria pra abrir o Cofre, sempre.</p>
+          <p className="text-xs text-text-muted">Em breve. Ainda não é possível exigir biometria para abrir o Cofre.</p>
         </div>
-        <Toggle checked={true} onChange={() => {}} label="Biometria obrigatória" />
+        <Toggle checked={false} onChange={() => {}} disabled label="Biometria obrigatória (em breve)" />
       </div>
 
       <div className="mb-8 rounded-2xl bg-surface-1 p-4">
@@ -117,8 +117,9 @@ export function PrivacyVaultScreen() {
           Zona de risco
         </p>
         <p className="mb-4 text-sm text-text-secondary">
-          Resetar o Cofre apaga todas as transações, categorias e contas permanentemente. Essa ação não pode ser
-          desfeita.
+          Resetar o Cofre apaga todas as transações, categorias, contas, recorrências e comprovantes
+          permanentemente. Antes de apagar, o servidor guarda um backup de segurança; se esse backup falhar, nada é
+          apagado. Essa ação não pode ser desfeita pela tela.
         </p>
 
         {apagado && (
