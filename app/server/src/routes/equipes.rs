@@ -27,15 +27,6 @@ fn exigir_cargo(cargo: &Option<String>, permitidos: &[&str]) -> AppResult<()> {
     }
 }
 
-/// Só o dono mexe no cargo (ou na permanência) de outro dono; admin da equipe não rebaixa nem remove quem é dono.
-async fn proteger_dono(state: &AppState, equipe_id: &str, quem_pede: &Option<String>, alvo: &str) -> AppResult<Option<String>> {
-    let cargo_alvo = cargo_do_usuario(state, equipe_id, alvo).await?.ok_or(AppError::new(ErrorCode::NotFound))?;
-    if cargo_alvo == "dono" && quem_pede.as_deref() != Some("dono") {
-        return Err(AppError::new(ErrorCode::Forbidden));
-    }
-    Ok(Some(cargo_alvo))
-}
-
 /// Mesma paleta e mesmo hash que o cliente usava para derivar a cor de uma equipe sem escolha salva
 /// (hash = hash * 31 + código do caractere, 32 bits), para que equipes existentes não mudem de aparência.
 const PALETA_EQUIPE: [&str; 6] = ["#5B8FC7", "#7DD3FC", "#22C55E", "#F59E0B", "#8FB4DC", "#3E6FA8"];
@@ -271,37 +262,98 @@ pub struct TrocarCargoPayload {
     pub cargo: String,
 }
 
+/// Resultado de uma mudança de composição da equipe, decidido e aplicado numa única transação: as regras
+/// (um dono ao menos, admin sem poder sobre dono) são checadas e gravadas juntas, então pedidos concorrentes
+/// não conseguem, cada um por si válido, deixar a equipe sem dono.
+enum Desfecho {
+    Feito,
+    NaoEncontrado,
+    Proibido,
+    UltimoDono,
+    UnicaPessoa,
+}
+
+fn cargo_em(tx: &rusqlite::Transaction<'_>, equipe_id: &str, usuario_id: &str) -> rusqlite::Result<Option<String>> {
+    tx.query_row("SELECT cargo FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario_id], |r| r.get(0)).optional()
+}
+
+fn donos_em(tx: &rusqlite::Transaction<'_>, equipe_id: &str) -> rusqlite::Result<i64> {
+    tx.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1 AND cargo = 'dono'", [equipe_id], |r| r.get(0))
+}
+
+fn desfecho_para_erro(d: Desfecho, mensagem_ultimo_dono: &'static str) -> AppResult<()> {
+    match d {
+        Desfecho::Feito => Ok(()),
+        Desfecho::NaoEncontrado => Err(AppError::new(ErrorCode::NotFound)),
+        Desfecho::Proibido => Err(AppError::new(ErrorCode::Forbidden)),
+        Desfecho::UltimoDono => Err(AppError::new(ErrorCode::Conflict).with_message(mensagem_ultimo_dono)),
+        Desfecho::UnicaPessoa => Err(AppError::new(ErrorCode::Conflict).with_message("Você é a única pessoa desta equipe. Para sair, exclua a equipe.")),
+    }
+}
+
 pub async fn trocar_cargo(
     State(state): State<AppState>,
     Extension(usuario): Extension<UsuarioAutenticado>,
     Path((equipe_id, usuario_alvo)): Path<(String, String)>,
     Json(payload): Json<TrocarCargoPayload>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let meu_cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
-    exigir_cargo(&meu_cargo, &["dono", "admin"])?;
     if !["dono", "admin", "membro"].contains(&payload.cargo.as_str()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "cargo".into(), motivo: "inválido".into() }]));
     }
-    // Só quem é dono passa a propriedade (um cargo "admin" da equipe não se promove a dono).
-    if payload.cargo == "dono" && meu_cargo.as_deref() != Some("dono") {
-        return Err(AppError::new(ErrorCode::Forbidden));
-    }
-    let cargo_alvo = proteger_dono(&state, &equipe_id, &meu_cargo, &usuario_alvo).await?;
-    if cargo_alvo.as_deref() == Some("dono") && payload.cargo != "dono" {
-        let donos: i64 = state.db.with({ let id = equipe_id.clone(); move |conn| conn.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1 AND cargo = 'dono'", [&id], |r| r.get(0)) }).await?;
-        if donos <= 1 {
-            return Err(AppError::new(ErrorCode::Conflict).with_message("A equipe precisa de ao menos um dono. Passe a propriedade para outra pessoa antes."));
-        }
-    }
-    state
+    let (eu, novo) = (usuario.0.clone(), payload.cargo.clone());
+    let desfecho = state
         .db
         .with(move |conn| {
-            conn.execute(
-                "UPDATE membro_equipe SET cargo = ?1 WHERE equipe_id = ?2 AND usuario_id = ?3",
-                rusqlite::params![payload.cargo, equipe_id, usuario_alvo],
-            )
+            let tx = conn.unchecked_transaction()?;
+            let Some(meu) = cargo_em(&tx, &equipe_id, &eu)? else { return Ok(Desfecho::NaoEncontrado) };
+            if meu == "membro" { return Ok(Desfecho::Proibido); }
+            let Some(atual) = cargo_em(&tx, &equipe_id, &usuario_alvo)? else { return Ok(Desfecho::NaoEncontrado) };
+            // Só quem é dono passa a propriedade e só o dono mexe em outro dono (admin não se promove nem rebaixa dono).
+            if (novo == "dono" || atual == "dono") && meu != "dono" { return Ok(Desfecho::Proibido); }
+            if atual == "dono" && novo != "dono" && donos_em(&tx, &equipe_id)? <= 1 { return Ok(Desfecho::UltimoDono); }
+            tx.execute("UPDATE membro_equipe SET cargo = ?1 WHERE equipe_id = ?2 AND usuario_id = ?3", rusqlite::params![novo, equipe_id, usuario_alvo])?;
+            tx.commit()?;
+            Ok(Desfecho::Feito)
         })
         .await?;
+    desfecho_para_erro(desfecho, "A equipe precisa de ao menos um dono. Passe a propriedade para outra pessoa antes.")?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TransferirPayload {
+    pub usuario_id: String,
+}
+
+/// `POST /equipes/:id/transferir` — o dono passa a propriedade a outra pessoa da equipe e vira administrador,
+/// numa só operação (a equipe nunca fica sem dono nem sem a pessoa que responde por ela).
+pub async fn transferir_propriedade(
+    State(state): State<AppState>,
+    Extension(usuario): Extension<UsuarioAutenticado>,
+    Path(equipe_id): Path<String>,
+    Json(payload): Json<TransferirPayload>,
+) -> AppResult<Json<serde_json::Value>> {
+    if payload.usuario_id == usuario.0 {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "usuario_id".into(), motivo: "escolha outra pessoa da equipe".into() }]));
+    }
+    let (eu, alvo) = (usuario.0.clone(), payload.usuario_id.clone());
+    let desfecho = state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            match cargo_em(&tx, &equipe_id, &eu)?.as_deref() {
+                None => return Ok(Desfecho::NaoEncontrado),
+                Some("dono") => {}
+                Some(_) => return Ok(Desfecho::Proibido),
+            }
+            if cargo_em(&tx, &equipe_id, &alvo)?.is_none() { return Ok(Desfecho::NaoEncontrado); }
+            tx.execute("UPDATE membro_equipe SET cargo = 'dono' WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, alvo])?;
+            tx.execute("UPDATE membro_equipe SET cargo = 'admin' WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, eu])?;
+            tx.commit()?;
+            Ok(Desfecho::Feito)
+        })
+        .await?;
+    desfecho_para_erro(desfecho, "")?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -310,13 +362,24 @@ pub async fn remover_membro(
     Extension(usuario): Extension<UsuarioAutenticado>,
     Path((equipe_id, usuario_alvo)): Path<(String, String)>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let meu_cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
-    exigir_cargo(&meu_cargo, &["dono", "admin"])?;
-    proteger_dono(&state, &equipe_id, &meu_cargo, &usuario_alvo).await?;
-    state
+    let eu = usuario.0.clone();
+    let desfecho = state
         .db
-        .with(move |conn| conn.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario_alvo]))
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let Some(meu) = cargo_em(&tx, &equipe_id, &eu)? else { return Ok(Desfecho::NaoEncontrado) };
+            if meu == "membro" { return Ok(Desfecho::Proibido); }
+            let Some(atual) = cargo_em(&tx, &equipe_id, &usuario_alvo)? else { return Ok(Desfecho::NaoEncontrado) };
+            if atual == "dono" {
+                if meu != "dono" { return Ok(Desfecho::Proibido); }
+                if donos_em(&tx, &equipe_id)? <= 1 { return Ok(Desfecho::UltimoDono); }
+            }
+            tx.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario_alvo])?;
+            tx.commit()?;
+            Ok(Desfecho::Feito)
+        })
         .await?;
+    desfecho_para_erro(desfecho, "Esta pessoa é a única dona da equipe. Passe a propriedade para outra pessoa antes de removê-la.")?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -324,16 +387,22 @@ pub async fn remover_membro(
 /// com a autoria original (histórico compartilhado). Dono com outras pessoas precisa transferir a
 /// propriedade antes; quem é a única pessoa deve excluir a equipe.
 pub async fn sair(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(equipe_id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let cargo = cargo_do_usuario(&state, &equipe_id, &usuario.0).await?;
-    exigir_cargo(&cargo, &["dono", "admin", "membro"])?;
-    let total: i64 = state.db.with({ let id = equipe_id.clone(); move |conn| conn.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1", [&id], |r| r.get(0)) }).await?;
-    if total <= 1 {
-        return Err(AppError::new(ErrorCode::Conflict).with_message("Você é a única pessoa desta equipe. Para sair, exclua a equipe."));
-    }
-    if cargo.as_deref() == Some("dono") {
-        return Err(AppError::new(ErrorCode::Conflict).with_message("Você é dono desta equipe. Transfira a propriedade para outra pessoa antes de sair."));
-    }
-    state.db.with(move |conn| conn.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, usuario.0])).await?;
+    let eu = usuario.0.clone();
+    let desfecho = state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let Some(cargo) = cargo_em(&tx, &equipe_id, &eu)? else { return Ok(Desfecho::NaoEncontrado) };
+            let total: i64 = tx.query_row("SELECT COUNT(*) FROM membro_equipe WHERE equipe_id = ?1", [&equipe_id], |r| r.get(0))?;
+            if total <= 1 { return Ok(Desfecho::UnicaPessoa); }
+            // Outro dono na equipe? Então este pode sair; senão a propriedade precisa passar antes.
+            if cargo == "dono" && donos_em(&tx, &equipe_id)? <= 1 { return Ok(Desfecho::UltimoDono); }
+            tx.execute("DELETE FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2", rusqlite::params![equipe_id, eu])?;
+            tx.commit()?;
+            Ok(Desfecho::Feito)
+        })
+        .await?;
+    desfecho_para_erro(desfecho, "Você é dono desta equipe. Transfira a propriedade para outra pessoa antes de sair.")?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -367,48 +436,82 @@ pub async fn criar_convite(State(state): State<AppState>, Extension(usuario): Ex
     Ok(Json(serde_json::json!({ "id": convite_id, "codigo": codigo, "expira_em": expira_em })))
 }
 
-pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(codigo): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let codigo = codigo.trim().to_uppercase();
-    let convite: Option<(String, String, String, String)> = state
+/// `GET /equipes/:id/convites` — convites ainda válidos (pendentes e não vencidos), só para dono/admin.
+pub async fn listar_convites(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    let agora = Utc::now();
+    let linhas: Vec<(String, String, String, String)> = state
         .db
         .with(move |conn| {
-            conn.query_row(
-                "SELECT id, equipe_id, estado, expira_em FROM convite_equipe WHERE codigo = ?1",
-                [&codigo],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-            )
-            .optional()
+            let mut stmt = conn.prepare("SELECT id, codigo, criado_em, expira_em FROM convite_equipe WHERE equipe_id = ?1 AND estado = 'pendente' ORDER BY criado_em DESC")?;
+            let l = stmt.query_map([&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(l)
         })
         .await?;
-    let (convite_id, equipe_id, estado, expira_em) = convite.ok_or(AppError::new(ErrorCode::NotFound))?;
-    let vencido = chrono::DateTime::parse_from_rfc3339(&expira_em).map(|d| d < Utc::now()).unwrap_or(true);
-    if estado != "pendente" || vencido {
-        return Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado ou expirou."));
-    }
+    let validos: Vec<serde_json::Value> = linhas
+        .into_iter()
+        .filter(|(_, _, _, expira)| chrono::DateTime::parse_from_rfc3339(expira).map(|d| d >= agora).unwrap_or(false))
+        .map(|(id, codigo, criado_em, expira_em)| serde_json::json!({ "id": id, "codigo": codigo, "criado_em": criado_em, "expira_em": expira_em }))
+        .collect();
+    Ok(Json(serde_json::json!(validos)))
+}
 
-    // Uso único mesmo sob corrida: só quem consegue mudar 'pendente' -> 'aceito' entra na equipe.
-    let consumido = state
+/// `DELETE /equipes/:id/convites/:convite_id` — revoga um convite pendente (dono/admin). O estado fica
+/// `expirado` (o schema não tem um estado próprio de revogação) e a validade é encerrada agora.
+pub async fn revogar_convite(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path((id, convite_id)): Path<(String, String)>) -> AppResult<Json<serde_json::Value>> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    let agora = Utc::now().to_rfc3339();
+    let afetadas = state
+        .db
+        .with(move |conn| conn.execute(
+            "UPDATE convite_equipe SET estado = 'expirado', expira_em = ?1 WHERE id = ?2 AND equipe_id = ?3 AND estado = 'pendente'",
+            rusqlite::params![agora, convite_id, id],
+        ))
+        .await?;
+    if afetadas == 0 { return Err(AppError::new(ErrorCode::NotFound)); }
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+enum ResultadoConvite { Aceito, JaMembro, Indisponivel, NaoExiste }
+
+/// Consumo atômico: a validade (estado, expiração) é conferida e o convite é consumido na mesma transação,
+/// então duas pessoas usando o mesmo código ao mesmo tempo não entram as duas, e um convite vencido ou
+/// revogado nunca é aceito. Quem já é da equipe não gasta o convite.
+pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(codigo): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    let codigo = codigo.trim().to_uppercase();
+    let agora = Utc::now();
+    let resultado = state
         .db
         .with(move |conn| {
             let tx = conn.unchecked_transaction()?;
-            let afetadas = tx.execute("UPDATE convite_equipe SET estado = 'aceito' WHERE id = ?1 AND estado = 'pendente'", [&convite_id])?;
-            if afetadas == 1 {
-                tx.execute(
-                    "INSERT OR IGNORE INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'membro')",
-                    rusqlite::params![equipe_id, usuario.0],
-                )?;
+            let convite: Option<(String, String, String, String)> = tx
+                .query_row("SELECT id, equipe_id, estado, expira_em FROM convite_equipe WHERE codigo = ?1", [&codigo], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .optional()?;
+            let Some((convite_id, equipe_id, estado, expira_em)) = convite else { return Ok(ResultadoConvite::NaoExiste) };
+            let vencido = chrono::DateTime::parse_from_rfc3339(&expira_em).map(|d| d < agora).unwrap_or(true);
+            if estado != "pendente" || vencido {
+                if estado == "pendente" { tx.execute("UPDATE convite_equipe SET estado = 'expirado' WHERE id = ?1 AND estado = 'pendente'", [&convite_id])?; tx.commit()?; }
+                return Ok(ResultadoConvite::Indisponivel);
             }
+            if cargo_em(&tx, &equipe_id, &usuario.0)?.is_some() { return Ok(ResultadoConvite::JaMembro); }
+            let consumido = tx.execute("UPDATE convite_equipe SET estado = 'aceito' WHERE id = ?1 AND estado = 'pendente'", [&convite_id])?;
+            if consumido != 1 { return Ok(ResultadoConvite::Indisponivel); }
+            tx.execute("INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'membro')", rusqlite::params![equipe_id, usuario.0])?;
             tx.commit()?;
-            Ok(afetadas == 1)
+            Ok(ResultadoConvite::Aceito)
         })
         .await?;
-    if !consumido {
-        return Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado ou expirou."));
+    match resultado {
+        ResultadoConvite::Aceito => Ok(Json(serde_json::json!({ "ok": true }))),
+        ResultadoConvite::JaMembro => Ok(Json(serde_json::json!({ "ok": true, "ja_membro": true }))),
+        ResultadoConvite::NaoExiste => Err(AppError::new(ErrorCode::NotFound)),
+        ResultadoConvite::Indisponivel => Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado, foi revogado ou expirou.")),
     }
-    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 #[cfg(test)]
 mod testes;
 #[cfg(test)]
 mod testes_identidade;
+#[cfg(test)]
+mod testes_propriedade;

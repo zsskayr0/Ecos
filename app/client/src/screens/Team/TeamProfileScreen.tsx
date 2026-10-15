@@ -251,6 +251,7 @@ export function TeamProfileScreen() {
                   cargoAtual={m.cargo as Cargo}
                   ocupado={agindoEm === m.usuario_id}
                   onTrocarCargo={(cargo) => void aoMembro(m.usuario_id, () => equipesApi.trocarCargo(equipeId!, m.usuario_id, cargo), "Não foi possível alterar o cargo.")}
+                  onTransferir={meuCargo === "dono" && m.cargo !== "dono" ? () => void aoMembro(m.usuario_id, async () => { await equipesApi.transferirPropriedade(equipeId!, m.usuario_id); void recarregarPerfil(); }, "Não foi possível transferir a propriedade.") : undefined}
                   onRemover={() => void aoMembro(m.usuario_id, () => equipesApi.removerMembro(equipeId!, m.usuario_id), "Não foi possível remover a pessoa da equipe.")}
                 />
               )}

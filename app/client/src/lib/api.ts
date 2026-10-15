@@ -953,6 +953,10 @@ export const equipes = {
   trocarCargo: (id: string, usuarioId: string, cargo: "dono" | "admin" | "membro") =>
     patch<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`, { cargo }),
   removerMembro: (id: string, usuarioId: string) => del<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`),
+  /** Só o dono: passa a propriedade e vira administrador. */
+  transferirPropriedade: (id: string, usuarioId: string) => post<{ ok: true }>(`/equipes/${id}/transferir`, { usuario_id: usuarioId }),
+  listarConvites: (id: string) => get<{ id: string; codigo: string; criado_em: string; expira_em: string }[]>(`/equipes/${id}/convites`),
+  revogarConvite: (id: string, conviteId: string) => del<{ ok: true }>(`/equipes/${id}/convites/${conviteId}`),
   sair: (id: string) => post<{ ok: true }>(`/equipes/${id}/sair`),
   criarConvite: (id: string) => post<{ id: string; codigo: string; expira_em: string }>(`/equipes/${id}/convites`),
   aceitarConvite: (codigo: string) => post<{ ok: true }>(`/convites/${codigo}/aceitar`),

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sair, notificar, recarregarPerfil, trocarCargo, removerMembro } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn(), trocarCargo: vi.fn(), removerMembro: vi.fn() }));
+const { sair, notificar, recarregarPerfil, trocarCargo, removerMembro, transferirPropriedade } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn(), trocarCargo: vi.fn(), removerMembro: vi.fn(), transferirPropriedade: vi.fn() }));
 
 vi.mock("@/lib/api", async () => {
   const real = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -14,6 +14,7 @@ vi.mock("@/lib/api", async () => {
       sair,
       trocarCargo,
       removerMembro,
+      transferirPropriedade,
     },
   };
 });
@@ -103,6 +104,27 @@ describe("Gerenciar membros", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remover" }));
     await waitFor(() => expect(removerMembro).toHaveBeenCalledWith("EQ", "u2"));
     expect(screen.getByRole("button", { name: "Convidar" })).toBeTruthy();
+  });
+
+  it("dono transfere a propriedade com confirmação; administrador não vê a opção", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("dono"));
+    transferirPropriedade.mockResolvedValue({ ok: true });
+    abrir();
+    fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transferir propriedade" }));
+    expect(transferirPropriedade).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Transferir" }));
+    await waitFor(() => expect(transferirPropriedade).toHaveBeenCalledWith("EQ", "u2"));
+    expect(recarregarPerfil).toHaveBeenCalled();
+  });
+
+  it("administrador não vê a opção de transferir", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("admin"));
+    abrir();
+    fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
+    expect(screen.queryByRole("button", { name: "Transferir propriedade" })).toBeNull();
   });
 
   it("membro comum não vê ações de gestão nem o botão de convite", async () => {
