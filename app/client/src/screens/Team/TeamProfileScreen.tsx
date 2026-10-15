@@ -108,7 +108,7 @@ export function TeamProfileScreen() {
   if (erro && !equipe) {
     return (
       <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
+        <button aria-label="Voltar" onClick={() => navigate(-1)} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
         <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
@@ -119,7 +119,7 @@ export function TeamProfileScreen() {
   if (!equipe || !membros) {
     return (
       <div className="px-4 pt-1">
-        <button onClick={() => navigate(-1)} className="mb-4 text-text-muted">
+        <button aria-label="Voltar" onClick={() => navigate(-1)} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
         <EstadoCarregando texto="Carregando…" />

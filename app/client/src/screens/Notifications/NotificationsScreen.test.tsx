@@ -14,6 +14,13 @@ vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ versao: 0, notific
 describe("NotificationsScreen: falha de carregamento", () => {
   beforeEach(() => listar.mockReset());
 
+  it("o botão de voltar só com ícone tem nome acessível", async () => {
+    listar.mockResolvedValue({ items: [] });
+    render(<MemoryRouter><NotificationsScreen /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Voltar" })).toBeTruthy();
+    await screen.findByText("Nada por aqui ainda.");
+  });
+
   it("troca o carregamento por erro com Tentar de novo, que refaz a chamada", async () => {
     listar.mockRejectedValueOnce(new Error("falhou")).mockResolvedValueOnce({ items: [] });
     render(<MemoryRouter><NotificationsScreen /></MemoryRouter>);

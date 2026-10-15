@@ -79,7 +79,7 @@ export function TeamsScreen() {
   }
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-    <div className="mb-5 flex items-center gap-2"><button data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Equipes</h1></div>
+    <div className="mb-5 flex items-center gap-2"><button aria-label="Voltar" data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Equipes</h1></div>
     <div className="mb-6"><ToggleItem label="Intercalação de equipes" descricao="Exibe itens de todas as equipes e permite filtrá-los." ativo={intercalarEquipes} onChange={setIntercalarEquipes} /></div>
     {erro && <div className="mb-4 flex items-center gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} />{erro}</div>}
     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Suas equipes</p>

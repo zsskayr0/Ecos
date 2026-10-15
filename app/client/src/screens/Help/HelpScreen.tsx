@@ -37,7 +37,7 @@ export function HelpScreen() {
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <div className="mb-6 flex items-center gap-2">
-        <button onClick={() => navigate(-1)} className="text-text-muted">
+        <button aria-label="Voltar" onClick={() => navigate(-1)} className="text-text-muted">
           <ChevronLeft size={22} />
         </button>
         <h1 className="font-display text-xl text-text-primary">Central de ajuda</h1>

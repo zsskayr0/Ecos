@@ -84,7 +84,7 @@ export function SearchScreen() {
   return (
     <div className="px-4 pt-1">
       <div className="mb-5 flex items-center gap-2">
-        <button onClick={() => navigate(-1)} className="text-text-muted">
+        <button aria-label="Voltar" onClick={() => navigate(-1)} className="text-text-muted">
           <ChevronLeft size={22} />
         </button>
         <div className="flex flex-1 items-center gap-2 rounded-2xl bg-surface-1 px-4 py-2.5">

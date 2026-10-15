@@ -50,7 +50,7 @@ export function CalendarPreferencesScreen() {
   function salvar() { salvarPreferenciasCalendario({ pais, fuso, inicio, deadlines }); setMensagem("Preferências salvas neste dispositivo."); }
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-    <div className="mb-5 flex items-center gap-2"><button data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Calendário e localização</h1></div>
+    <div className="mb-5 flex items-center gap-2"><button aria-label="Voltar" data-voltar onClick={() => navigate(-1)} className="text-text-muted"><ChevronLeft size={22} /></button><h1 className="font-display text-xl text-text-primary">Calendário e localização</h1></div>
     <Secao titulo="Localização">
       {/* O globo abre ao lado dos campos (acima deles no celular) e gira até o país escolhido. */}
       <div className="md:grid md:grid-cols-[minmax(0,1fr)_300px] md:items-start md:gap-6">
