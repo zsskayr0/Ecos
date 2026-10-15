@@ -237,3 +237,49 @@ async fn cor_propria_do_evento_e_so_do_ecos_valida_e_pode_ser_limpa() {
     assert!(lista[0]["cor"].is_null(), "a lista também devolve a cor");
     let _ = std::fs::remove_dir_all(raiz);
 }
+
+// Persistência dos eventos criados na Agenda: o que a tela manda volta igual depois de recarregar o índice.
+#[tokio::test]
+async fn evento_criado_na_agenda_persiste_com_fuso_dia_inteiro_cor_notas_e_espaco() {
+    let (app, token, raiz, state) = app_de_teste().await;
+
+    // Dia inteiro com fuso: fica em disco e volta do índice igual (a data não desloca).
+    let (st, feriado) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("Feriado", "2026-09-07T03:00:00Z", "2026-09-08T03:00:00Z", serde_json::json!({
+        "dia_inteiro": true, "fuso": "America/Sao_Paulo", "cor": "#22c55e", "descricao": "Independência", "local": "Em casa",
+    })))).await;
+    assert_eq!(st, StatusCode::OK, "{feriado}");
+    assert_eq!(feriado["dia_inteiro"], true);
+    assert_eq!(feriado["fuso"], "America/Sao_Paulo");
+    assert_eq!(feriado["visibilidade"], "privado", "nasce só do Ecos: não vira tarefa nem vai a calendário externo sozinho");
+    assert_eq!(feriado["sync_pendente"], false);
+
+    // Mover e redimensionar (PATCH de início/fim) preservam o resto.
+    let id = feriado["id"].as_str().unwrap().to_string();
+    let (st, movido) = chamar(&app, "PATCH", &format!("/api/v1/eventos/{id}"), &token, Some(serde_json::json!({ "inicio": "2026-09-08T03:00:00Z", "fim": "2026-09-10T03:00:00Z" }))).await;
+    assert_eq!(st, StatusCode::OK, "{movido}");
+    assert_eq!((movido["dia_inteiro"].clone(), movido["fuso"].clone(), movido["descricao"].clone()), (serde_json::json!(true), serde_json::json!("America/Sao_Paulo"), serde_json::json!("Independência")));
+
+    // "Recarregar": índice apagado e refeito dos arquivos.
+    state.db.with(|c| { c.execute("DELETE FROM evento", [])?; Ok(()) }).await.unwrap();
+    crate::db::reindex::reindexar_tudo(&state.db, &state.config.notes_root).await.unwrap();
+    let (_, depois) = chamar(&app, "GET", &format!("/api/v1/eventos/{id}"), &token, None).await;
+    assert_eq!(depois["inicio"], "2026-09-08T03:00:00+00:00");
+    assert_eq!(depois["fim"], "2026-09-10T03:00:00+00:00");
+    assert_eq!(depois["cor"].as_str().map(str::to_lowercase).as_deref(), Some("#22c55e"));
+    assert_eq!(depois["local"], "Em casa");
+
+    // Fuso que não é IANA é recusado, na criação e na edição, sem gravar nada.
+    let (st, _) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("X", "2026-09-21T13:00:00Z", "2026-09-21T14:00:00Z", serde_json::json!({ "fuso": "Marte/Olympus" })))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let (st, _) = chamar(&app, "PATCH", &format!("/api/v1/eventos/{id}"), &token, Some(serde_json::json!({ "fuso": "GMT+3" }))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, intacto) = chamar(&app, "GET", &format!("/api/v1/eventos/{id}"), &token, None).await;
+    assert_eq!(intacto["fuso"], "America/Sao_Paulo");
+    let (_, lista) = chamar(&app, "GET", "/api/v1/eventos", &token, None).await;
+    assert_eq!(lista.as_array().unwrap().len(), 1, "o evento recusado não foi criado");
+
+    // Fim antes do início não grava.
+    let (st, _) = chamar(&app, "POST", "/api/v1/eventos", &token, Some(evento("Y", "2026-09-21T14:00:00Z", "2026-09-21T13:00:00Z", serde_json::json!({})))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let _ = std::fs::remove_dir_all(raiz);
+}

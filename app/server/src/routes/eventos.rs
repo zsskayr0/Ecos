@@ -41,7 +41,7 @@ fn vazio_para_none(valor: Option<String>) -> Option<String> {
     valor.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-fn validar_campos(titulo: &str, inicio: DateTime<Utc>, fim: DateTime<Utc>, local: Option<&str>, rrule: Option<&str>) -> AppResult<()> {
+fn validar_campos(titulo: &str, inicio: DateTime<Utc>, fim: DateTime<Utc>, local: Option<&str>, rrule: Option<&str>, fuso: Option<&str>) -> AppResult<()> {
     let mut campos = Vec::new();
     if titulo.trim().is_empty() {
         campos.push(CampoInvalido { campo: "titulo".into(), motivo: "não pode ser vazio".into() });
@@ -53,6 +53,10 @@ fn validar_campos(titulo: &str, inicio: DateTime<Utc>, fim: DateTime<Utc>, local
     }
     if local.is_some_and(|l| l.chars().count() > 300) {
         campos.push(CampoInvalido { campo: "local".into(), motivo: "máximo de 300 caracteres".into() });
+    }
+    // Fuso é um nome IANA (`America/Sao_Paulo`): é ele que mantém o dia certo de um evento de dia inteiro e das séries.
+    if fuso.is_some_and(|f| f.parse::<chrono_tz::Tz>().is_err()) {
+        campos.push(CampoInvalido { campo: "fuso".into(), motivo: "esperado um fuso IANA, como America/Sao_Paulo".into() });
     }
     if let Some(r) = rrule {
         if !r.starts_with("RRULE:") || !r.contains("FREQ=") || r.len() > 500 || r.contains('\n') {
@@ -289,7 +293,8 @@ pub struct CriarEventoPayload {
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarEventoPayload>) -> AppResult<Json<serde_json::Value>> {
     let local = vazio_para_none(payload.local);
     let rrule = vazio_para_none(payload.rrule);
-    validar_campos(&payload.titulo, payload.inicio, payload.fim, local.as_deref(), rrule.as_deref())?;
+    let fuso = vazio_para_none(payload.fuso.clone());
+    validar_campos(&payload.titulo, payload.inicio, payload.fim, local.as_deref(), rrule.as_deref(), fuso.as_deref())?;
     let espaco: Espaco = payload
         .espaco
         .as_deref()
@@ -316,7 +321,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         inicio: payload.inicio,
         fim: payload.fim,
         dia_inteiro: payload.dia_inteiro,
-        fuso: vazio_para_none(payload.fuso),
+        fuso,
         local,
         categoria_id,
         cor,
@@ -352,7 +357,7 @@ async fn editar_evento(state: &AppState, usuario_id: &str, id: &str, f: impl FnO
     let (mut fm, mut corpo) = (doc.front_matter, doc.body);
     let titulo_antes = fm.titulo.clone();
     let afeta_google = f(&mut fm, &mut corpo)?;
-    validar_campos(&fm.titulo, fm.inicio, fm.fim, fm.local.as_deref(), fm.rrule.as_deref())?;
+    validar_campos(&fm.titulo, fm.inicio, fm.fim, fm.local.as_deref(), fm.rrule.as_deref(), None)?; // fuso: validado em `atualizar`, só quando a edição o muda (eventos do Google trazem o deles)
     if afeta_google && fm.visibilidade == EventoVisibilidade::Google {
         fm.sync_pendente = true;
     } else if fm.visibilidade == EventoVisibilidade::Privado && fm.google.event_id.is_none() {
@@ -409,6 +414,11 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         let espaco = espaco_do_evento(&state, &usuario.0, &id).await?;
         let dir = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco, &usuario.0), eventos_fs::DIR).await?;
         garantir_categoria(&dir, c)?;
+    }
+    if let Some(Some(f)) = &p.fuso {
+        if !f.trim().is_empty() && f.parse::<chrono_tz::Tz>().is_err() {
+            return Err(invalido("fuso", "esperado um fuso IANA, como America/Sao_Paulo"));
+        }
     }
     if let Some(Some(c)) = &p.cor {
         if !cor_valida(c) {
