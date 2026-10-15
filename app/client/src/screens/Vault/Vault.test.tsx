@@ -70,3 +70,15 @@ it("explica rota ausente sem impedir acesso aos lançamentos", async () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(financeiro.painel).toHaveBeenCalledTimes(1);
 });
+it("com o Cofre trancado, nenhuma seção abre nem consulta valores (rota direta incluída)", async () => {
+    vi.mocked(vault.config).mockResolvedValue({ cofre_ativado: true, destrancado: false, saldos_por_conta: [] });
+    for (const rota of ["/cofre/painel", "/cofre/lancamentos", "/cofre/recorrencias", "/cofre/cadastros"]) {
+        const { unmount } = render(<MemoryRouter initialEntries={[rota]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
+        await screen.findByText("O Cofre está bloqueado");
+        expect(screen.queryByRole("navigation", { name: "Navegação do Cofre" })).toBeNull();
+        unmount();
+    }
+    expect(financeiro.painel).not.toHaveBeenCalled();
+    expect(vault.transacoes.listar).not.toHaveBeenCalled();
+    expect(vault.categorias.listar).not.toHaveBeenCalled();
+});
