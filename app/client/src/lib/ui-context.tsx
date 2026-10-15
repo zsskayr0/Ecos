@@ -19,6 +19,8 @@ interface AppUIState {
   /** Dia em foco no calendário do Cofre; o botão de criar usa como data padrão. */
   diaCofre: string | null;
   setDiaCofre: (dia: string | null) => void;
+  /** Identidade da sessão de captura: sobe a cada `abrirCaptura`, mesmo que a anterior nunca tenha chegado a fechar. */
+  idCaptura: number;
   trocarTipoCaptura: (tipo: TipoCaptura) => void;
   fecharCaptura: () => void;
   /** Linhas Markdown de anexos (ex.: imagens compartilhadas) à espera de entrar no corpo da captura aberta. */
@@ -40,6 +42,7 @@ const AppUIContext = createContext<AppUIState | null>(null);
 export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
+  const [idCaptura, setIdCaptura] = useState(0);
   const [dataCaptura, setDataCaptura] = useState<string | null>(null);
   const [rascunhoCaptura, setRascunhoCaptura] = useState<Partial<CapturaDraft> | null>(null);
   const [diaCofre, setDiaCofre] = useState<string | null>(null);
@@ -57,9 +60,10 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       fecharDrawer: () => setDrawerAberto(false),
 
       capturaAberta,
-      abrirCaptura: (inicial, data = null, rascunho = null) => { setDataCaptura(data); setRascunhoCaptura(rascunho); setCapturaAberta(inicial); },
+      abrirCaptura: (inicial, data = null, rascunho = null) => { setDataCaptura(data); setRascunhoCaptura(rascunho); setIdCaptura((n) => n + 1); setCapturaAberta(inicial); },
       dataCaptura,
       rascunhoCaptura,
+      idCaptura,
       diaCofre,
       setDiaCofre,
       trocarTipoCaptura: (tipo) => setCapturaAberta(tipo),
@@ -75,7 +79,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       intercalarEquipes,
       setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, dataCaptura, rascunhoCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
+    [drawerAberto, capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;

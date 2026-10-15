@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateFlow, MIN_CARACTERES_CRIACAO, temConteudoMinimo, type CapturaDraft, type SetDraft } from "./CreateFlow";
@@ -7,6 +7,7 @@ const criar = vi.hoisted(() => vi.fn(async () => ({ id: "n1" })));
 const atualizar = vi.hoisted(() => vi.fn(async () => ({})));
 const avisar = vi.hoisted(() => vi.fn());
 const fecharCaptura = vi.hoisted(() => vi.fn());
+const ui = vi.hoisted(() => ({ idCaptura: 1 }));
 
 vi.mock("@/lib/api", () => ({
   notas: { criar, atualizar }, tarefas: { criar, atualizar }, vault: {},
@@ -18,7 +19,7 @@ vi.mock("@/lib/formas-pagamento-store", () => ({
 vi.mock("@/lib/toast", () => ({ avisar }));
 vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ notificar: vi.fn() }) }));
 vi.mock("@/lib/ui-context", () => ({
-  useAppUI: () => ({ capturaAberta: "nota", fecharCaptura, trocarTipoCaptura: vi.fn(), espacoAtivo: "pessoal", anexosDeCaptura: [], limparAnexosDeCaptura: vi.fn() }),
+  useAppUI: () => ({ capturaAberta: "nota", idCaptura: ui.idCaptura, fecharCaptura, trocarTipoCaptura: vi.fn(), espacoAtivo: "pessoal", anexosDeCaptura: [], limparAnexosDeCaptura: vi.fn() }),
 }));
 vi.mock("./NoteForm", () => ({
   NoteForm: ({ draft, setDraft }: { draft: CapturaDraft; setDraft: SetDraft }) => (
@@ -33,6 +34,7 @@ describe("autosave da captura", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    ui.idCaptura = 1;
     criar.mockClear(); atualizar.mockClear(); avisar.mockClear(); fecharCaptura.mockClear();
     render(<MemoryRouter><CreateFlow /></MemoryRouter>);
   });
@@ -62,6 +64,22 @@ describe("autosave da captura", () => {
     await passar(700);
     expect(criar).toHaveBeenCalledTimes(1);
     expect(atualizar).toHaveBeenCalledTimes(1);
+  });
+
+  it("uma nova sessão de captura (clique rápido, sem fechar) começa vazia e cria outro item", async () => {
+    cleanup();
+    const vista = render(<MemoryRouter><CreateFlow /></MemoryRouter>);
+    digitar("Primeira");
+    await passar(700);
+    expect(criar).toHaveBeenCalledTimes(1);
+    ui.idCaptura = 2;
+    vista.rerender(<MemoryRouter><CreateFlow /></MemoryRouter>);
+    await passar(10);
+    expect((screen.getByLabelText("titulo") as HTMLInputElement).value).toBe("");
+    digitar("Segunda");
+    await passar(700);
+    expect(criar).toHaveBeenCalledTimes(2);
+    expect(atualizar).not.toHaveBeenCalled();
   });
 
   it("fechar com conteúdo grava o que faltava e avisa onde ficou", async () => {

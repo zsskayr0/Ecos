@@ -145,7 +145,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   pastaContexto?: PastaContexto | null;
   contextoDesktop?: "ecos" | "cofre";
 }) {
-  const { capturaAberta, dataCaptura, rascunhoCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
+  const { capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -165,6 +165,26 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   // Rascunho de versões antigas: já não é reaberto (toda captura começa em branco), então some.
   useEffect(() => { try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ } }, []);
 
+  // Cada `abrirCaptura` é uma sessão nova. Se a anterior não chegou a passar por `capturaAberta === null` (fechar e abrir
+  // no mesmo ciclo, clique rápido), grava o que ela tinha e começa em branco. Vem antes dos efeitos que aplicam pasta/data/cópia.
+  const idVisto = useRef(idCaptura);
+  const tipoVisto = useRef(capturaAberta);
+  useEffect(() => {
+    const mesmoTipo = tipoVisto.current === capturaAberta;
+    tipoVisto.current = capturaAberta;
+    if (idVisto.current === idCaptura) return;
+    idVisto.current = idCaptura;
+    if (mesmoTipo) aoDesmontar.current(); // com o tipo trocado junto, o rascunho antigo não casaria com o novo tipo
+    padraoAplicado.current = { nota: false, tarefa: false };
+    sessaoCaptura.current += 1;
+    setDraft(rascunhoVazio());
+    setAnexosPendentes([]);
+    setNotasPendentes([]);
+    setItemCriado(null);
+    ultimoEnvio.current = null;
+    setErro(null);
+  }, [idCaptura, capturaAberta]);
+
   // Dentro de uma pasta, a Tarefa/Nota nova já nasce nela — uma vez por captura, para não brigar com a escolha da pessoa.
   const contexto = pastaContexto !== undefined ? pastaContexto : pastaDoCaminho(location.pathname);
   const padraoAplicado = useRef({ nota: false, tarefa: false });
@@ -175,17 +195,17 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     if (contexto?.tipo !== capturaAberta) return;
     const pasta = contexto.pasta;
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
-  }, [capturaAberta, contexto?.tipo, contexto?.pasta]);
+  }, [capturaAberta, idCaptura, contexto?.tipo, contexto?.pasta]);
 
   // Transação aberta a partir de um dia do calendário nasce naquele dia.
   useEffect(() => {
     if (capturaAberta === "transacao" && dataCaptura) setDraft((d) => ({ ...d, dataTransacao: dataCaptura }));
-  }, [capturaAberta, dataCaptura]);
+  }, [capturaAberta, idCaptura, dataCaptura]);
 
   // Cópia de outro lançamento: já nasce preenchida, para editar antes de salvar.
   useEffect(() => {
     if (capturaAberta === "transacao" && rascunhoCaptura) setDraft((d) => ({ ...d, ...rascunhoCaptura }));
-  }, [capturaAberta, rascunhoCaptura]);
+  }, [capturaAberta, idCaptura, rascunhoCaptura]);
 
   // Anexos que chegam de fora (imagens compartilhadas com o app) entram no corpo da nota/tarefa aberta.
   useEffect(() => {
