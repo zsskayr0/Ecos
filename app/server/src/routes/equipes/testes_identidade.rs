@@ -112,3 +112,25 @@ async fn foto_da_equipe_recusa_svg_disfarcado_tamanho_excessivo_e_some_com_a_equ
     assert_eq!(st, StatusCode::OK);
     assert!(crate::routes::avatar::arquivo_existente_em(&pasta_fotos(&state), "EQ").is_none(), "excluir a equipe elimina a foto");
 }
+
+#[tokio::test]
+async fn membros_trazem_nome_usuario_foto_e_entrada_sem_id_cru_como_nome() {
+    let (state, dono, ..) = estado_com_equipe().await;
+    // Foto de perfil do admin `a` (a pasta de perfis é a mesma que o endpoint de avatar usa).
+    let pasta = state.config.notes_root.join(".ecos").join("avatares");
+    std::fs::create_dir_all(&pasta).unwrap();
+    std::fs::write(pasta.join("a.png"), PNG).unwrap();
+
+    let (st, membros) = chamar(&state, "GET", "/api/v1/equipes/EQ/membros", Some(&dono), Value::Null).await;
+    assert_eq!(st, StatusCode::OK);
+    let por_id = |id: &str| membros.as_array().unwrap().iter().find(|m| m["usuario_id"] == id).unwrap().clone();
+    assert_eq!(por_id("d")["nome"], "Dona Maria");
+    assert_eq!(por_id("d")["nome_usuario"], "dono");
+    assert_eq!(por_id("a")["nome"], "admin", "sem nome de exibição usa o nome de usuário");
+    assert_eq!(por_id("m")["nome"], "membro", "nome em branco também cai no nome de usuário");
+    assert!(por_id("a")["avatar_atualizado_em"].is_number());
+    assert!(por_id("d")["avatar_atualizado_em"].is_null());
+    assert!(por_id("d")["entrou_em"].is_string());
+    let texto = membros.to_string();
+    for proibido in ["hash", "senha", "recovery"] { assert!(!texto.contains(proibido), "{proibido}"); }
+}

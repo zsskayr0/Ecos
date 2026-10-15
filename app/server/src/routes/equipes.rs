@@ -183,9 +183,6 @@ pub struct AtualizarEquipePayload {
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarEquipePayload>) -> AppResult<Json<serde_json::Value>> {
     exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
-    if payload.nome.trim().is_empty() {
-        return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
-    }
     if let Some(tipo) = &payload.tipo { tipo_valido(tipo)?; }
     if payload.nome.as_deref().is_some_and(|n| n.trim().is_empty()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
@@ -248,18 +245,24 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
 /// Só quem é membro da Equipe vê quem participa dela, e só o necessário: o id, o cargo e o nome de exibição (ou, sem ele, o nome de usuário).
 pub async fn listar_membros(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin", "membro"])?;
-    let membros: Vec<serde_json::Value> = state
+    let membros: Vec<(String, String, String, String, String)> = state
         .db
         .with(move |conn| {
-            let mut stmt = conn.prepare("SELECT m.usuario_id, m.cargo, COALESCE(NULLIF(TRIM(u.nome), ''), u.nome_usuario) FROM membro_equipe m JOIN usuario u ON u.id = m.usuario_id WHERE m.equipe_id = ?1 ORDER BY u.nome_usuario COLLATE NOCASE")?;
+            let mut stmt = conn.prepare("SELECT m.usuario_id, m.cargo, COALESCE(NULLIF(TRIM(u.nome), ''), u.nome_usuario), u.nome_usuario, m.entrou_em FROM membro_equipe m JOIN usuario u ON u.id = m.usuario_id WHERE m.equipe_id = ?1 ORDER BY u.nome_usuario COLLATE NOCASE")?;
             let linhas = stmt
-                .query_map([&id], |r| {
-                    Ok(serde_json::json!({ "usuario_id": r.get::<_, String>(0)?, "cargo": r.get::<_, String>(1)?, "nome": r.get::<_, String>(2)? }))
-                })?
+                .query_map([&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
         })
         .await?;
+    // Identidade pública dentro da equipe: nome de exibição, nome de usuário, versão da foto e data de entrada. Nada além disso.
+    let membros: Vec<serde_json::Value> = membros
+        .into_iter()
+        .map(|(usuario_id, cargo, nome, nome_usuario, entrou_em)| {
+            let avatar = crate::routes::avatar::versao(&state, &usuario_id);
+            serde_json::json!({ "usuario_id": usuario_id, "cargo": cargo, "nome": nome, "nome_usuario": nome_usuario, "avatar_atualizado_em": avatar, "entrou_em": entrou_em })
+        })
+        .collect();
     Ok(Json(serde_json::json!(membros)))
 }
 

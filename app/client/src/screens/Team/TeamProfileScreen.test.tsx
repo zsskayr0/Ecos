@@ -61,3 +61,19 @@ describe("Sair da equipe", () => {
     expect(screen.queryByText("Lista de equipes")).toBeNull();
   });
 });
+
+describe("Identidade dos membros", () => {
+  it("mostra nome e nome de usuário reais e nunca o id truncado", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValueOnce([
+      { usuario_id: "u1", cargo: "membro", nome: "Ana", nome_usuario: "ana" },
+      { usuario_id: "01HZXABCDEFGHJKMNPQRSTVWXY", cargo: "dono", nome: "Bruno Lima", nome_usuario: "bruno", avatar_atualizado_em: 123 },
+      { usuario_id: "01HZXZZZZZZZZZZZZZZZZZZZZZ", cargo: "membro", nome_usuario: "carla" },
+    ]);
+    abrir();
+    expect(await screen.findByText("Bruno Lima")).toBeTruthy();
+    expect(screen.getByText("@bruno")).toBeTruthy();
+    expect(screen.getByText("carla")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/01HZX/);
+  });
+});

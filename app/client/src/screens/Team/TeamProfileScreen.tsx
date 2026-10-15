@@ -7,7 +7,7 @@ import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { ChevronDown, ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil, Camera, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
-import { equipes as equipesApi, ApiError } from "@/lib/api";
+import { equipes as equipesApi, ApiError, type MembroEquipeApi } from "@/lib/api";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { corDaEquipe } from "@/lib/team-color";
@@ -18,19 +18,12 @@ import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import { obterServidorBaseUrl } from "@/lib/server-config";
 import { QrConvite } from "./QrConvite";
 
-interface Membro {
-  usuario_id: string;
-  cargo: string;
-  /** Nome de exibição (ou o nome de usuário, se a pessoa não definiu um). */
-  nome?: string;
-}
+type Membro = MembroEquipeApi;
 
 /**
- * Team Profile (section 3.7) — real `GET /equipes/:id`. GAP-12: the
- * backend doesn't expose a user directory (`membro_equipe` only stores
- * `usuario_id`/`cargo`, see `routes/equipes.rs::listar_membros`) — with
- * no name/handle for anyone but yourself, other members show up by id
- * (short, mono), never a made-up name.
+ * Team Profile (section 3.7) — real `GET /equipes/:id` e `GET /equipes/:id/membros`,
+ * que traz nome de exibição, nome de usuário e versão da foto de cada pessoa
+ * (nunca hash, sessão ou e-mail).
  */
 export function TeamProfileScreen() {
   const { equipeId } = useParams();
@@ -226,12 +219,12 @@ export function TeamProfileScreen() {
           const souEu = m.usuario_id === perfil?.id;
           return (
             <div key={m.usuario_id} className="flex items-center gap-3 rounded-2xl px-1 py-2.5">
-              <AvatarMembro usuarioId={m.usuario_id} nome={souEu ? nomeExibicao(perfil!) : m.nome || m.usuario_id} versao={souEu ? perfil!.avatar_atualizado_em : null} />
+              <AvatarMembro usuarioId={m.usuario_id} nome={souEu ? nomeExibicao(perfil!) : m.nome || m.nome_usuario || "Membro"} versao={souEu ? perfil!.avatar_atualizado_em : (m.avatar_atualizado_em ?? null)} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium text-text-primary">
-                  {souEu ? nomeExibicao(perfil!) : m.nome || <span className="font-mono-value text-sm">{m.usuario_id.slice(0, 10)}…</span>}
+                  {souEu ? nomeExibicao(perfil!) : m.nome || m.nome_usuario || "Membro"}
                 </p>
-                {souEu && <p className="text-xs text-text-muted">Você</p>}
+                {souEu ? <p className="text-xs text-text-muted">Você</p> : m.nome_usuario && m.nome_usuario !== m.nome && <p className="truncate text-xs text-text-muted">@{m.nome_usuario}</p>}
               </div>
               <RoleBadge cargo={m.cargo as Cargo} />
             </div>

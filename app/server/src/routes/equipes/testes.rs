@@ -30,7 +30,7 @@ async fn membros_da_equipe_so_para_membros_e_so_com_id_cargo_e_nome() {
     for m in membros {
         let mut campos: Vec<&str> = m.as_object().unwrap().keys().map(String::as_str).collect();
         campos.sort();
-        assert_eq!(campos, ["cargo", "nome", "usuario_id"], "nada além disso (nunca hash, recovery key, sessão)");
+        assert_eq!(campos, ["avatar_atualizado_em", "cargo", "entrou_em", "nome", "nome_usuario", "usuario_id"], "nada além disso (nunca hash, recovery key, sessão)");
     }
 }
 

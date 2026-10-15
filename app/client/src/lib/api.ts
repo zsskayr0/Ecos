@@ -923,6 +923,17 @@ export const rotina = {
   excluir: (id: string) => del<{ ok: true }>(`/rotina/blocos/${id}`),
 };
 
+/** Identidade pública de quem participa de uma equipe (`GET /equipes/:id/membros`). */
+export interface MembroEquipeApi {
+  usuario_id: string;
+  cargo: string;
+  /** Nome de exibição (ou o nome de usuário, se a pessoa não definiu um). */
+  nome?: string;
+  nome_usuario?: string;
+  avatar_atualizado_em?: number | null;
+  entrou_em?: string;
+}
+
 export const equipes = {
   listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number; cor?: string; cor_personalizada?: boolean; avatar_atualizado_em?: number | null }[]>("/equipes"),
   criar: (nome: string, tipo: TipoEquipe = "pessoal", cor?: string) => post<{ id: string }>("/equipes", { nome, tipo, ...(cor ? { cor } : {}) }),
@@ -938,7 +949,7 @@ export const equipes = {
   removerAvatar: (id: string) => del<{ ok: true }>(`/equipes/${encodeURIComponent(id)}/avatar`),
   // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
   excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
-  listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; nome?: string }[]>(`/equipes/${id}/membros`),
+  listarMembros: (id: string) => get<MembroEquipeApi[]>(`/equipes/${id}/membros`),
   trocarCargo: (id: string, usuarioId: string, cargo: "dono" | "admin" | "membro") =>
     patch<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`, { cargo }),
   removerMembro: (id: string, usuarioId: string) => del<{ ok: true }>(`/equipes/${id}/membros/${usuarioId}`),
