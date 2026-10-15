@@ -152,6 +152,16 @@ body {
   outline: 2px solid rgb(var(--ecos-cyan-rgb));
   outline-offset: 2px;
 }
+/* A11Y-1: a utilidade `outline-none` do Tailwind (especificidade de classe)
+   vencia a regra :where() acima e deixava campos sem indicador. Campos nus
+   que não declaram anel próprio (`ring-`) ou realce de wrapper recuperam o
+   anel; os que têm alternativa (anel, fundo, wrapper focus-within) seguem
+   como estão. O Cofre tem CSS próprio e fica de fora. */
+:where(input, textarea, select, button).outline-none:not([class*="ring-"]):not([class*="focus-visible:bg"]):not([class*="focus:w-"]):not([class*="focus:border"]):focus-visible,
+:where(input, textarea, select, button).focus\:outline-none:not([class*="ring-"]):focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 2px;
+}
 .ecos-input:focus-visible {
   outline: 2px solid rgb(var(--ecos-cyan-rgb));
   outline-offset: 1px;
