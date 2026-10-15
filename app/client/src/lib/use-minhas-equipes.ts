@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { equipes as equipesApi } from "./api";
 import { useRefreshBus } from "./refresh-bus";
+import { corLocalPendente, limparCorLocal, registrarCoresDasEquipes } from "./team-color";
 import type { TipoEquipe } from "./tipo-equipe";
 
 export interface MinhaEquipe {
@@ -10,6 +11,28 @@ export interface MinhaEquipe {
   tipo: TipoEquipe;
   /** Quantas pessoas a equipe tem (inclui quem está logado). */
   membros: number;
+  /** Cor de identidade, a mesma em todos os aparelhos (vem do servidor). */
+  cor?: string;
+  /** `true` quando alguém já escolheu a cor no servidor (senão `cor` é a derivada do id). */
+  cor_personalizada?: boolean;
+  /** Versão da foto da equipe no servidor (`null` = sem foto); invalida o cache da imagem. */
+  avatar_atualizado_em?: number | null;
+}
+
+/**
+ * Cor escolhida neste aparelho antes de a cor existir no servidor: dono/admin a enviam uma vez e a cópia
+ * local é descartada; para os demais cargos ela é só descartada (o servidor manda). Falha de rede mantém a cópia.
+ */
+function migrarCoresLocais(lista: MinhaEquipe[]) {
+  for (const equipe of lista) {
+    const pendente = corLocalPendente(equipe.id, equipe.cor);
+    if (!pendente) { if (equipe.cor) limparCorLocal(equipe.id); continue; }
+    if (equipe.cor_personalizada) { limparCorLocal(equipe.id); continue; } // o servidor já tem uma escolha: ela vale
+    if (equipe.cargo !== "dono" && equipe.cargo !== "admin") { limparCorLocal(equipe.id); continue; }
+    void equipesApi.atualizar(equipe.id, undefined, undefined, pendente)
+      .then(() => { limparCorLocal(equipe.id); registrarCoresDasEquipes([{ id: equipe.id, cor: pendente.toUpperCase() }]); })
+      .catch(() => { /* tenta de novo na próxima carga */ });
+  }
 }
 
 /**
@@ -29,6 +52,8 @@ export function useMinhasEquipes() {
     equipesApi
       .listarMinhas()
       .then((lista) => {
+        registrarCoresDasEquipes(lista);
+        migrarCoresLocais(lista);
         if (vivo) setEquipes(lista);
       })
       .catch(() => {

@@ -404,19 +404,26 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
         .await?;
     let (nome_usuario, nome, papel, deve_trocar_senha) = linha.ok_or(AppError::new(ErrorCode::NotFound))?;
 
-    let equipes: Vec<serde_json::Value> = state
+    let equipes: Vec<(String, String, String, String, Option<String>)> = state
         .db
         .with({
             let usuario_id = usuario_id.clone();
             move |conn| {
-                let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo, e.tipo FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
+                let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo, e.tipo, e.cor FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
                 let linhas = stmt
-                    .query_map([&usuario_id], |r| Ok(serde_json::json!({"id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)?, "tipo": r.get::<_, String>(3)?})))?
+                    .query_map([&usuario_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(linhas)
             }
         })
         .await?;
+    let equipes: Vec<serde_json::Value> = equipes
+        .into_iter()
+        .map(|(id, nome, cargo, tipo, cor)| {
+            let avatar = crate::routes::equipes::versao_avatar_equipe(&state, &id);
+            serde_json::json!({ "id": id, "nome": nome, "cargo": cargo, "tipo": tipo, "cor": crate::routes::equipes::cor_efetiva(&id, cor), "avatar_atualizado_em": avatar })
+        })
+        .collect();
 
     let termos_aceitos: bool = state
         .db

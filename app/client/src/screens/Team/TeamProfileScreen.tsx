@@ -13,7 +13,7 @@ import { useAppUI } from "@/lib/ui-context";
 import { corDaEquipe } from "@/lib/team-color";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import type { Cargo } from "@/lib/types";
-import { definirAvatarEquipeLocal, useAvatarEquipe } from "@/lib/team-avatar";
+import { enviarAvatarEquipe, useAvatarEquipe } from "@/lib/team-avatar";
 import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import { obterServidorBaseUrl } from "@/lib/server-config";
 import { QrConvite } from "./QrConvite";
@@ -40,7 +40,7 @@ export function TeamProfileScreen() {
   const { versao, notificar } = useRefreshBus();
   const [convidarAberto, setConvidarAberto] = useState(false);
   const [codigoConvite, setCodigoConvite] = useState<string | null>(null);
-  const [equipe, setEquipe] = useState<{ id: string; nome: string; tipo: TipoEquipe; estatisticas: { notas: number; tarefas: number } } | null>(null);
+  const [equipe, setEquipe] = useState<{ id: string; nome: string; tipo: TipoEquipe; cor?: string; avatar_atualizado_em?: number | null; estatisticas: { notas: number; tarefas: number } } | null>(null);
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
@@ -49,7 +49,7 @@ export function TeamProfileScreen() {
   const [novoNome, setNovoNome] = useState("");
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
-  const fotoEquipe = useAvatarEquipe(equipeId);
+  const fotoEquipe = useAvatarEquipe(equipeId, equipe?.avatar_atualizado_em);
   const pessoal = equipeId === "pessoal";
   const { url: fotoPessoal } = useFotoPerfil(perfil?.id ?? "", perfil?.avatar_atualizado_em ?? null);
 
@@ -127,14 +127,15 @@ export function TeamProfileScreen() {
     );
   }
 
-  const cor = pessoal ? (localStorage.getItem("ecos:cor-equipe-pessoal") ?? "#3E6FA8") : corDaEquipe(equipe.id);
+  const cor = pessoal ? (localStorage.getItem("ecos:cor-equipe-pessoal") ?? "#3E6FA8") : (equipe.cor ?? corDaEquipe(equipe.id));
   const meuCargo = membros.find((m) => m.usuario_id === perfil?.id)?.cargo;
   const podeEditarFoto = !pessoal && (meuCargo === "dono" || meuCargo === "admin");
   async function trocarFoto(arquivo?: File) {
     if (!arquivo) return;
     setEnviandoFoto(true);
-    try { definirAvatarEquipeLocal(equipe!.id, await prepararFotoPerfil(arquivo)); }
-    catch (e) { window.alert(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
+    setErro(null);
+    try { await enviarAvatarEquipe(equipe!.id, await prepararFotoPerfil(arquivo)); notificar(); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
     finally { setEnviandoFoto(false); }
   }
 

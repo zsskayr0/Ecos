@@ -22,7 +22,7 @@ vi.mock("@/lib/auth-context", () => ({
 vi.mock("@/lib/ui-context", () => ({ useAppUI: () => ({ setFiltroEquipeId: vi.fn(), setEspacoAtivo: vi.fn() }) }));
 vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ versao: 0, notificar }) }));
 vi.mock("@/lib/profile-avatar", () => ({ prepararFotoPerfil: vi.fn(), useFotoPerfil: () => ({ url: null }) }));
-vi.mock("@/lib/team-avatar", () => ({ definirAvatarEquipeLocal: vi.fn(), useAvatarEquipe: () => null }));
+vi.mock("@/lib/team-avatar", () => ({ enviarAvatarEquipe: vi.fn(), useAvatarEquipe: () => null }));
 
 import { ApiError } from "@/lib/api";
 import { TeamProfileScreen } from "./TeamProfileScreen";

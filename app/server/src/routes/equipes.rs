@@ -36,21 +36,54 @@ async fn proteger_dono(state: &AppState, equipe_id: &str, quem_pede: &Option<Str
     Ok(Some(cargo_alvo))
 }
 
+/// Mesma paleta e mesmo hash que o cliente usava para derivar a cor de uma equipe sem escolha salva
+/// (hash = hash * 31 + código do caractere, 32 bits), para que equipes existentes não mudem de aparência.
+const PALETA_EQUIPE: [&str; 6] = ["#5B8FC7", "#7DD3FC", "#22C55E", "#F59E0B", "#8FB4DC", "#3E6FA8"];
+
+fn cor_derivada(equipe_id: &str) -> &'static str {
+    let hash = equipe_id.encode_utf16().fold(0u32, |h, c| h.wrapping_mul(31).wrapping_add(c as u32));
+    PALETA_EQUIPE[hash as usize % PALETA_EQUIPE.len()]
+}
+
+/// `#RRGGBB` (maiúsculas ou minúsculas). Nada de nomes, `rgb()` ou `url()` — o valor vai direto para estilos no cliente.
+fn cor_valida(cor: &str) -> bool {
+    cor.len() == 7 && cor.starts_with('#') && cor[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn validar_cor(cor: &str) -> AppResult<String> {
+    if cor_valida(cor) { Ok(cor.to_uppercase()) } else {
+        Err(AppError::validation(vec![CampoInvalido { campo: "cor".into(), motivo: "use o formato #RRGGBB".into() }]))
+    }
+}
+
+pub(crate) fn cor_efetiva(id: &str, salva: Option<String>) -> String {
+    salva.filter(|c| cor_valida(c)).unwrap_or_else(|| cor_derivada(id).to_string())
+}
+
+pub(crate) fn versao_avatar_equipe(state: &AppState, equipe_id: &str) -> Option<u64> {
+    crate::routes::avatar::versao_em(&crate::routes::avatar::raiz_equipes(state), equipe_id)
+}
+
 pub async fn listar_minhas(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
-    let equipes: Vec<serde_json::Value> = state
+    let equipes: Vec<(String, String, String, String, i64, Option<String>)> = state
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT e.id, e.nome, m.cargo, e.tipo, (SELECT COUNT(*) FROM membro_equipe x WHERE x.equipe_id = e.id) FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1",
+                "SELECT e.id, e.nome, m.cargo, e.tipo, (SELECT COUNT(*) FROM membro_equipe x WHERE x.equipe_id = e.id), e.cor FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1",
             )?;
             let linhas = stmt
-                .query_map([&usuario.0], |r| {
-                    Ok(serde_json::json!({ "id": r.get::<_, String>(0)?, "nome": r.get::<_, String>(1)?, "cargo": r.get::<_, String>(2)?, "tipo": r.get::<_, String>(3)?, "membros": r.get::<_, i64>(4)? }))
-                })?
+                .query_map([&usuario.0], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
         })
         .await?;
+    let equipes: Vec<serde_json::Value> = equipes
+        .into_iter()
+        .map(|(id, nome, cargo, tipo, membros, cor)| {
+            let avatar = versao_avatar_equipe(&state, &id);
+            serde_json::json!({ "cor_personalizada": cor.is_some(), "cor": cor_efetiva(&id, cor), "avatar_atualizado_em": avatar, "id": id, "nome": nome, "cargo": cargo, "tipo": tipo, "membros": membros })
+        })
+        .collect();
     Ok(Json(serde_json::json!(equipes)))
 }
 
@@ -59,6 +92,8 @@ pub struct CriarEquipePayload {
     pub nome: String,
     #[serde(default)]
     pub tipo: Option<String>,
+    #[serde(default)]
+    pub cor: Option<String>,
 }
 
 pub const TIPOS_DE_EQUIPE: [&str; 2] = ["pessoal", "corporativo"];
@@ -73,6 +108,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     }
     let tipo = payload.tipo.clone().unwrap_or_else(|| "pessoal".to_string());
     tipo_valido(&tipo)?;
+    let cor = payload.cor.as_deref().map(validar_cor).transpose()?;
     let id = new_id();
     state
         .db
@@ -80,7 +116,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
             let id = id.clone();
             move |conn| {
                 let tx = conn.unchecked_transaction()?;
-                tx.execute("INSERT INTO equipe (id, nome, tipo) VALUES (?1, ?2, ?3)", rusqlite::params![id, payload.nome, tipo])?;
+                tx.execute("INSERT INTO equipe (id, nome, tipo, cor) VALUES (?1, ?2, ?3, ?4)", rusqlite::params![id, payload.nome, tipo, cor])?;
                 tx.execute(
                     "INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'dono')",
                     rusqlite::params![id, usuario.0],
@@ -111,11 +147,13 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         return Err(AppError::new(ErrorCode::NotFound));
     }
     let id2 = id.clone();
-    let equipe: Option<(String, String, String)> = state
+    let equipe: Option<(String, String, String, Option<String>)> = state
         .db
-        .with(move |conn| conn.query_row("SELECT id, nome, tipo FROM equipe WHERE id = ?1", [&id2], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional())
+        .with(move |conn| conn.query_row("SELECT id, nome, tipo, cor FROM equipe WHERE id = ?1", [&id2], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional())
         .await?;
-    let (id, nome, tipo) = equipe.ok_or(AppError::new(ErrorCode::NotFound))?;
+    let (id, nome, tipo, cor) = equipe.ok_or(AppError::new(ErrorCode::NotFound))?;
+    let cor = cor_efetiva(&id, cor);
+    let avatar = versao_avatar_equipe(&state, &id);
 
     let (notas, tarefas): (i64, i64) = state
         .db
@@ -129,14 +167,18 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         })
         .await?;
 
-    Ok(Json(serde_json::json!({ "id": id, "nome": nome, "tipo": tipo, "estatisticas": { "notas": notas, "tarefas": tarefas } })))
+    Ok(Json(serde_json::json!({ "id": id, "nome": nome, "tipo": tipo, "cor": cor, "avatar_atualizado_em": avatar, "estatisticas": { "notas": notas, "tarefas": tarefas } })))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AtualizarEquipePayload {
-    pub nome: String,
+    /// Opcional: dá para mudar só a cor ou só o tipo. Se vier, não pode ser vazio.
+    #[serde(default)]
+    pub nome: Option<String>,
     #[serde(default)]
     pub tipo: Option<String>,
+    #[serde(default)]
+    pub cor: Option<String>,
 }
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarEquipePayload>) -> AppResult<Json<serde_json::Value>> {
@@ -145,13 +187,42 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
     }
     if let Some(tipo) = &payload.tipo { tipo_valido(tipo)?; }
+    if payload.nome.as_deref().is_some_and(|n| n.trim().is_empty()) {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
+    }
+    let cor = payload.cor.as_deref().map(validar_cor).transpose()?;
     let afetadas = state
         .db
-        .with(move |conn| conn.execute("UPDATE equipe SET nome = ?1, tipo = COALESCE(?2, tipo) WHERE id = ?3", rusqlite::params![payload.nome, payload.tipo, id]))
+        .with(move |conn| conn.execute(
+            "UPDATE equipe SET nome = COALESCE(?1, nome), tipo = COALESCE(?2, tipo), cor = COALESCE(?3, cor) WHERE id = ?4",
+            rusqlite::params![payload.nome, payload.tipo, cor, id],
+        ))
         .await?;
     if afetadas == 0 {
         return Err(AppError::new(ErrorCode::NotFound));
     }
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// `GET /equipes/:id/avatar` — qualquer membro vê a foto da equipe; quem não participa recebe 404.
+pub async fn obter_avatar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<axum::response::Response> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin", "membro"])?;
+    crate::routes::avatar::servir_de(&crate::routes::avatar::raiz_equipes(&state), &id)
+}
+
+/// `PUT /equipes/:id/avatar` (multipart, campo `arquivo`) — só dono/admin. PNG/JPEG/WebP pelos bytes, até 2 MB.
+pub async fn enviar_avatar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, mut multipart: axum::extract::Multipart) -> AppResult<Json<serde_json::Value>> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    let bytes = crate::routes::avatar::ler_campo_arquivo(&mut multipart).await?;
+    let ext = crate::routes::avatar::validar_imagem(&bytes)?;
+    crate::routes::avatar::gravar_em(&crate::routes::avatar::raiz_equipes(&state), &id, ext, &bytes)?;
+    Ok(Json(serde_json::json!({ "ok": true, "avatar_atualizado_em": versao_avatar_equipe(&state, &id) })))
+}
+
+/// `DELETE /equipes/:id/avatar` — só dono/admin; idempotente.
+pub async fn remover_avatar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    crate::routes::avatar::remover_todos_em(&crate::routes::avatar::raiz_equipes(&state), &id);
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -168,7 +239,9 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     if payload.confirm != "EXCLUIR EQUIPE" {
         return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
     }
+    let id_arquivo = id.clone();
     state.db.with(move |conn| conn.execute("DELETE FROM equipe WHERE id = ?1", [&id])).await?;
+    crate::routes::avatar::remover_todos_em(&crate::routes::avatar::raiz_equipes(&state), &id_arquivo);
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -334,3 +407,5 @@ pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): 
 
 #[cfg(test)]
 mod testes;
+#[cfg(test)]
+mod testes_identidade;

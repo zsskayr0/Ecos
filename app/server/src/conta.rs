@@ -254,6 +254,7 @@ pub async fn excluir_conta(State(state): State<AppState>, Extension(usuario): Ex
     if let Some(dir) = &dir_pessoal { remover(dir, &mut avisos); }
     for (_, dir) in &espacos_removidos { remover(dir, &mut avisos); }
     crate::routes::avatar::remover_todos(&state, &id);
+    for equipe in &sozinhas { crate::routes::avatar::remover_todos_em(&crate::routes::avatar::raiz_equipes(&state), equipe); }
     anonimizar_front_matter(&state.config.notes_root, &autorais, &id, &mut avisos);
     limpar_lixeira(&state, &chave_pessoal, dir_pessoal.as_deref(), &espacos_removidos, &mut avisos);
     if let Err(e) = crate::db::reindex::reindexar_tudo(&state.db, &state.config.notes_root).await {

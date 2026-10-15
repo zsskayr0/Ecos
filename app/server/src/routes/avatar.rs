@@ -37,13 +37,67 @@ fn mime_da_extensao(ext: &str) -> &'static str {
     match ext { "png" => "image/png", "jpg" => "image/jpeg", _ => "image/webp" }
 }
 
+/// Pasta das fotos de equipe, separada da de perfil (`.ecos/avatares-equipes/<equipe_id>.<ext>`).
+pub(crate) fn raiz_equipes(state: &AppState) -> PathBuf { state.config.notes_root.join(".ecos").join("avatares-equipes") }
+
+pub(crate) fn arquivo_existente_em(dir: &std::path::Path, id: &str) -> Option<(PathBuf, &'static str)> {
+    if !id_seguro(id) { return None; }
+    EXTENSOES.iter().map(|ext| (dir.join(format!("{id}.{ext}")), *ext)).find(|(p, _)| p.is_file())
+}
+
+pub(crate) fn remover_todos_em(dir: &std::path::Path, id: &str) {
+    if !id_seguro(id) { return; }
+    for ext in EXTENSOES { let _ = std::fs::remove_file(dir.join(format!("{id}.{ext}"))); }
+}
+
+/// Carimbo de versão (epoch, segundos) do arquivo de `id` em `dir`; `None` sem foto.
+pub(crate) fn versao_em(dir: &std::path::Path, id: &str) -> Option<u64> {
+    let (caminho, _) = arquivo_existente_em(dir, id)?;
+    std::fs::metadata(caminho).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
+}
+
+/// Valida o corpo de um envio de foto (vazio, tamanho, tipo pelos bytes) e devolve a extensão.
+pub(crate) fn validar_imagem(bytes: &[u8]) -> AppResult<&'static str> {
+    let invalido = |msg: &str| AppError::new(ErrorCode::ValidationError).with_message(msg.to_string());
+    if bytes.is_empty() { return Err(invalido("A imagem está vazia. Escolha outra foto.")); }
+    if bytes.len() > TAMANHO_MAXIMO_AVATAR_BYTES {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "arquivo".into(), motivo: "maior que 2 MB".into() }]));
+    }
+    tipo_da_imagem(bytes).map(|(ext, _)| ext).ok_or_else(|| invalido("Formato não suportado. Use uma imagem PNG, JPEG ou WebP."))
+}
+
+/// Lê o primeiro campo `arquivo` de um multipart como bytes (sem validar o conteúdo).
+pub(crate) async fn ler_campo_arquivo(multipart: &mut Multipart) -> AppResult<Vec<u8>> {
+    let invalido = |msg: &str| AppError::new(ErrorCode::ValidationError).with_message(msg.to_string());
+    let campo = multipart.next_field().await.map_err(|_| invalido("O envio da imagem está incompleto ou inválido. Escolha a imagem novamente."))?
+        .ok_or_else(|| invalido("Nenhuma imagem foi enviada. Escolha uma foto."))?;
+    if campo.name() != Some("arquivo") { return Err(invalido("O envio não contém uma imagem válida. Escolha a foto novamente.")); }
+    let bytes = campo.bytes().await.map_err(|_| invalido("O envio foi interrompido ou excedeu o limite. Use uma imagem de até 2 MB."))?;
+    Ok(bytes.to_vec())
+}
+
+/// Grava a foto de `id` em `dir`, trocando a anterior (qualquer extensão).
+pub(crate) fn gravar_em(dir: &std::path::Path, id: &str, ext: &str, bytes: &[u8]) -> AppResult<()> {
+    if !id_seguro(id) { return Err(AppError::new(ErrorCode::NotFound)); }
+    remover_todos_em(dir, id);
+    std::fs::create_dir_all(dir).and_then(|_| std::fs::write(dir.join(format!("{id}.{ext}")), bytes)).map_err(|err| {
+        tracing::error!(error = %err, "falha ao guardar foto");
+        AppError::new(ErrorCode::InternalError).with_message("Não foi possível guardar a foto no servidor. Verifique o espaço disponível e a permissão da pasta.")
+    })
+}
+
+pub(crate) fn servir_de(dir: &std::path::Path, id: &str) -> AppResult<Response> {
+    let (caminho, ext) = arquivo_existente_em(dir, id).ok_or_else(|| AppError::new(ErrorCode::NotFound))?;
+    let bytes = std::fs::read(caminho).map_err(|_| AppError::new(ErrorCode::NotFound))?;
+    Ok(resposta_imagem(bytes, mime_da_extensao(ext)))
+}
+
 pub(crate) fn arquivo_existente(state: &AppState, usuario_id: &str) -> Option<(PathBuf, &'static str)> {
-    if !id_seguro(usuario_id) { return None; }
-    EXTENSOES.iter().map(|ext| (raiz(state).join(format!("{usuario_id}.{ext}")), *ext)).find(|(p, _)| p.is_file())
+    arquivo_existente_em(&raiz(state), usuario_id)
 }
 
 pub(crate) fn remover_todos(state: &AppState, usuario_id: &str) {
-    for ext in EXTENSOES { let _ = std::fs::remove_file(raiz(state).join(format!("{usuario_id}.{ext}"))); }
+    remover_todos_em(&raiz(state), usuario_id);
 }
 
 /// Carimbo de versão (epoch, segundos) pra o cliente invalidar o cache; `None` sem foto.

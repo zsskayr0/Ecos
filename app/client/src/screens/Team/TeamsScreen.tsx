@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Camera, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMinhasEquipes, type MinhaEquipe } from "@/lib/use-minhas-equipes";
-import { corDaEquipe, definirCorDaEquipe } from "@/lib/team-color";
+import { corDaEquipe, registrarCoresDasEquipes } from "@/lib/team-color";
 import { Avatar } from "@/components/common/Avatar";
 import { PaletaCores } from "@/components/common/PaletaCores";
 import { ApiError, avatarPerfil, equipes as equipesApi } from "@/lib/api";
 import { limparFotoLegada, notificarFotoPerfilAtualizada, prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
-import { definirAvatarEquipeLocal, useAvatarEquipe } from "@/lib/team-avatar";
+import { enviarAvatarEquipe, useAvatarEquipe } from "@/lib/team-avatar";
 import { ToggleItem } from "@/screens/Settings/SettingsScreen";
 import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -45,9 +45,20 @@ export function TeamsScreen() {
     setMenuAberto(null); setErro(null); setEnviandoFoto(equipe.id);
     try {
       const preparada = await prepararFotoPerfil(arquivo);
-      definirAvatarEquipeLocal(equipe.id, preparada);
+      await enviarAvatarEquipe(equipe.id, preparada);
+      notificar();
     } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
     finally { setEnviandoFoto(null); }
+  }
+
+  async function salvarCor(equipe: MinhaEquipe, cor: string, aplicar: (cor: string) => void) {
+    setErro(null);
+    try {
+      await equipesApi.atualizar(equipe.id, undefined, undefined, cor);
+      registrarCoresDasEquipes([{ id: equipe.id, cor: cor.toUpperCase() }]);
+      aplicar(cor);
+      notificar();
+    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível salvar a cor da equipe."); }
   }
 
   async function trocarFotoPessoal(arquivo?: File) {
@@ -85,7 +96,7 @@ export function TeamsScreen() {
     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Suas equipes</p>
     <div ref={menus} className="overflow-visible rounded-2xl bg-surface-1">
       {perfil && <LinhaPessoal nome={nomeExibicao(perfil)} perfilId={perfil.id} versaoFoto={perfil.avatar_atualizado_em} cor={corPessoal} menuAberto={menuAberto === "pessoal"} enviandoFoto={enviandoFoto === "pessoal"} onAbrir={() => navigate(`${baseEquipe}/pessoal`)} onMenu={() => setMenuAberto((id) => id === "pessoal" ? null : "pessoal")} onFoto={(arquivo) => void trocarFotoPessoal(arquivo)} onCor={mudarCorPessoal} />}
-      {carregando ? <EstadoCarregando /> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`${baseEquipe}/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} />)}
+      {carregando ? <EstadoCarregando /> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`${baseEquipe}/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} onCor={(cor, aplicar) => void salvarCor(equipe, cor, aplicar)} />)}
     </div>
     <button onClick={() => navigate(`${baseEquipe}/nova`)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-steel-300 hover:bg-surface-1"><Plus size={17} />Criar ou entrar em uma equipe</button>
     <p className="mt-4 flex items-center gap-2 text-xs text-text-muted"><Users size={14} />Dono e administradores podem editar a equipe; somente o dono pode excluí-la.</p>
@@ -108,11 +119,12 @@ function LinhaPessoal({ nome, perfilId, versaoFoto, cor, menuAberto, enviandoFot
 }
 
 
-function LinhaEquipe({ equipe, menuAberto, enviandoFoto, onAbrir, onMenu, onFoto, onRenomear, onExcluir }: { equipe: MinhaEquipe; menuAberto: boolean; enviandoFoto: boolean; onAbrir: () => void; onMenu: () => void; onFoto: (arquivo?: File) => void; onRenomear: () => void; onExcluir: () => void }) {
-  const foto = useAvatarEquipe(equipe.id);
+function LinhaEquipe({ equipe, menuAberto, enviandoFoto, onAbrir, onMenu, onFoto, onRenomear, onExcluir, onCor }: { equipe: MinhaEquipe; menuAberto: boolean; enviandoFoto: boolean; onAbrir: () => void; onMenu: () => void; onFoto: (arquivo?: File) => void; onRenomear: () => void; onExcluir: () => void; onCor: (cor: string, aplicar: (cor: string) => void) => void }) {
+  const foto = useAvatarEquipe(equipe.id, equipe.avatar_atualizado_em);
   const podeEditar = equipe.cargo === "dono" || equipe.cargo === "admin";
-  const [cor, setCor] = useState(() => corDaEquipe(equipe.id));
+  const [cor, setCor] = useState(() => equipe.cor ?? corDaEquipe(equipe.id));
   const [corTemporaria, setCorTemporaria] = useState(cor);
+  useEffect(() => { setCor(equipe.cor ?? corDaEquipe(equipe.id)); }, [equipe.cor, equipe.id]);
   useEffect(() => { if (menuAberto) setCorTemporaria(cor); }, [cor, menuAberto]);
   const mudou = corTemporaria.toLowerCase() !== cor.toLowerCase();
   return <div className="relative flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-0">
@@ -124,7 +136,7 @@ function LinhaEquipe({ equipe, menuAberto, enviandoFoto, onAbrir, onMenu, onFoto
       <button onClick={onRenomear} className="ecos-menu-item flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary"><Pencil size={15} />Renomear</button>
       {equipe.cargo === "dono" && <button onClick={onExcluir} className="ecos-menu-item flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir equipe</button>}
       </>}
-      <div className="border-t border-border/60 px-2 py-2"><p className="mb-2 text-xs font-medium text-text-muted">Cor da equipe</p><PaletaCores valor={corTemporaria} onChange={setCorTemporaria} /><button type="button" disabled={!mudou} onClick={() => { definirCorDaEquipe(equipe.id, corTemporaria); setCor(corTemporaria); }} className={`mt-2 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-all duration-150 ${!mudou ? "cursor-default border-border bg-transparent text-text-secondary" : "border-steel-500 bg-steel-600 text-white shadow-sm hover:bg-steel-500 active:scale-[0.98]"}`}>{!mudou ? "Cor salva" : "Salvar cor"}</button></div>
+      {podeEditar && <div className="border-t border-border/60 px-2 py-2"><p className="mb-2 text-xs font-medium text-text-muted">Cor da equipe</p><PaletaCores valor={corTemporaria} onChange={setCorTemporaria} /><button type="button" disabled={!mudou} onClick={() => onCor(corTemporaria, setCor)} className={`mt-2 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-all duration-150 ${!mudou ? "cursor-default border-border bg-transparent text-text-secondary" : "border-steel-500 bg-steel-600 text-white shadow-sm hover:bg-steel-500 active:scale-[0.98]"}`}>{!mudou ? "Cor salva" : "Salvar cor"}</button></div>}
     </div>}
   </div>;
 }

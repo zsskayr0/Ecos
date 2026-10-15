@@ -3,6 +3,7 @@ import { ApiError, auth, definirUsuarioDoCofre, prepararConteudoOffline } from "
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline } from "./offline-store";
+import { registrarCoresDasEquipes } from "./team-color";
 
 export interface Perfil {
   id: string;
@@ -10,7 +11,7 @@ export interface Perfil {
   nome: string | null;
   cofre_ativado: boolean;
   avatar_atualizado_em: number | null;
-  equipes: { id: string; nome: string; cargo: string }[];
+  equipes: { id: string; nome: string; cargo: string; cor?: string; avatar_atualizado_em?: number | null }[];
   /** Quem administra a instância cria as contas das demais pessoas (aba Administração). */
   papel: "admin" | "usuario";
   /** Senha temporária: o app só deixa trocar a senha até que isso seja feito. */
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const recarregarPerfil = useCallback(async () => {
     try {
       const p = await auth.perfil();
+      registrarCoresDasEquipes(p.equipes);
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);
@@ -100,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await auth.login(usuario, senha);
       const p = await auth.perfil();
+      registrarCoresDasEquipes(p.equipes);
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);

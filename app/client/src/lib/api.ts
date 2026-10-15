@@ -420,7 +420,7 @@ export const auth = {
     await post<void>("/auth/logout");
   },
   perfil: () =>
-    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string; tipo?: TipoEquipe }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
+    get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string; tipo?: TipoEquipe; cor?: string; avatar_atualizado_em?: number | null }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
   aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
   /** Troca a própria senha. Com senha temporária (conta criada pela administração) devolve uma recovery key nova, que só aparece uma vez. */
@@ -924,10 +924,18 @@ export const rotina = {
 };
 
 export const equipes = {
-  listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number }[]>("/equipes"),
-  criar: (nome: string, tipo: TipoEquipe = "pessoal") => post<{ id: string }>("/equipes", { nome, tipo }),
-  obter: (id: string) => get<{ id: string; nome: string; tipo: TipoEquipe; estatisticas: { notas: number; tarefas: number } }>(`/equipes/${id}`),
-  atualizar: (id: string, nome: string, tipo?: TipoEquipe) => patch<{ ok: true }>(`/equipes/${id}`, { nome, ...(tipo ? { tipo } : {}) }),
+  listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number; cor?: string; cor_personalizada?: boolean; avatar_atualizado_em?: number | null }[]>("/equipes"),
+  criar: (nome: string, tipo: TipoEquipe = "pessoal", cor?: string) => post<{ id: string }>("/equipes", { nome, tipo, ...(cor ? { cor } : {}) }),
+  obter: (id: string) => get<{ id: string; nome: string; tipo: TipoEquipe; cor?: string; avatar_atualizado_em?: number | null; estatisticas: { notas: number; tarefas: number } }>(`/equipes/${id}`),
+  atualizar: (id: string, nome?: string, tipo?: TipoEquipe, cor?: string) => patch<{ ok: true }>(`/equipes/${id}`, { ...(nome ? { nome } : {}), ...(tipo ? { tipo } : {}), ...(cor ? { cor } : {}) }),
+  /** Foto da equipe (só dono/admin trocam; qualquer membro vê). `null` = sem foto. */
+  obterAvatar: (id: string) => reqBlob(`/equipes/${encodeURIComponent(id)}/avatar`),
+  enviarAvatar: (id: string, arquivo: File) => {
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    return req<{ ok: true; avatar_atualizado_em: number | null }>(`/equipes/${encodeURIComponent(id)}/avatar`, { method: "PUT", body: dados });
+  },
+  removerAvatar: (id: string) => del<{ ok: true }>(`/equipes/${encodeURIComponent(id)}/avatar`),
   // A frase que o servidor exige (seção 5.4) é fixa; quem confirma digitando o nome da equipe faz isso na interface.
   excluir: (id: string) => del<{ ok: true }>(`/equipes/${id}`, { confirm: "EXCLUIR EQUIPE" }),
   listarMembros: (id: string) => get<{ usuario_id: string; cargo: string; nome?: string }[]>(`/equipes/${id}/membros`),

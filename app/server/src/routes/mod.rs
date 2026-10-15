@@ -123,6 +123,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/rotina/blocos/:id", patch(rotina::atualizar).delete(rotina::excluir))
         .route("/equipes", get(equipes::listar_minhas).post(equipes::criar))
         .route("/equipes/:id", get(equipes::obter).patch(equipes::atualizar).delete(equipes::excluir))
+        .route("/equipes/:id/avatar", get(equipes::obter_avatar).put(equipes::enviar_avatar).delete(equipes::remover_avatar).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
         .route("/equipes/:id/membros", get(equipes::listar_membros))
         .route("/equipes/:id/membros/:usuario_id", patch(equipes::trocar_cargo).delete(equipes::remover_membro))
         .route("/equipes/:id/sair", post(equipes::sair))
