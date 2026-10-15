@@ -56,7 +56,9 @@ export function ProfileScreen() {
       setMensagemPerfil({ tipo: "erro", texto: e instanceof Error ? e.message : "Não foi possível guardar a imagem." });
     } finally { setSalvandoFoto(false); }
   }
-  if (!perfil) return status === "carregando" ? <EstadoCarregando texto="Carregando perfil…" /> : null;
+  if (!perfil) return status === "carregando"
+    ? <EstadoCarregando texto="Carregando perfil…" />
+    : <div className="px-4 pt-1"><EstadoErro mensagem="Não foi possível carregar o perfil." onTentarDeNovo={() => void recarregarPerfil()} /></div>;
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">

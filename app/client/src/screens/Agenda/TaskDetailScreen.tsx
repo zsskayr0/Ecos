@@ -132,6 +132,7 @@ export function TaskDetailScreen() {
     try {
       const criada = await tarefas.criar({ ...payload(value), titulo: `${value.titulo} (cópia)` });
       notificar();
+      avisar("Tarefa duplicada.", "sucesso");
       navigate(`/tarefa/${criada.id}`);
     } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a tarefa."); }
   }

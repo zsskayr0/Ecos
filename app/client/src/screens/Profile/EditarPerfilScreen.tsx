@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ChevronLeft, Eye, EyeOff } from "lucide-re
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
 
 const BOTAO = "rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-steel-500 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-text-muted disabled:hover:bg-surface-3";
@@ -11,7 +12,7 @@ const BOTAO = "rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-whit
 /** Editar perfil: o nome de usuário (login e pasta em disco) é fixo; aqui ele só aparece, e a senha é trocada. */
 export function EditarPerfilScreen() {
   const navigate = useNavigate();
-  const { perfil, status } = useAuth();
+  const { perfil, status, recarregarPerfil } = useAuth();
   const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const [trocando, setTrocando] = useState(false);
   const [atual, setAtual] = useState("");
@@ -31,7 +32,9 @@ export function EditarPerfilScreen() {
     } finally { setTrocando(false); }
   }
 
-  if (!perfil) return status === "carregando" ? <EstadoCarregando texto="Carregando perfil…" /> : null;
+  if (!perfil) return status === "carregando"
+    ? <EstadoCarregando texto="Carregando perfil…" />
+    : <div className="px-4 pt-1"><EstadoErro mensagem="Não foi possível carregar o perfil." onTentarDeNovo={() => void recarregarPerfil()} /></div>;
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">

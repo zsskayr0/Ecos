@@ -125,8 +125,9 @@ function NoteDetailMobile() {
       const atualizada = await notas.obter(id);
       setNota(atualizada);
       notificar();
-    } catch {
-      /* silent — a secondary, non-critical action */
+      avisar("Nota marcada como revisada.", "sucesso");
+    } catch (e) {
+      avisar(e instanceof ApiError ? e.message : "Não foi possível marcar como revisada.", "erro");
     }
   }
 

@@ -157,7 +157,8 @@ export function NoteEditorDesktop() {
       await notas.atualizar(id, { marcar_revisado: true });
       setNota(await notas.obter(id));
       notificar();
-    } catch { /* ação secundária */ }
+      avisar("Nota marcada como revisada.", "sucesso");
+    } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível marcar como revisada.", "erro"); }
   }
 
   async function excluir() {
@@ -180,6 +181,7 @@ export function NoteEditorDesktop() {
     try {
       const criada = await notas.criar({ titulo: `${valor.titulo} (cópia)`, corpo: valor.corpo, tags: tagsFinais(valor), pasta: valor.pasta ?? undefined, espaco: valor.espaco });
       notificar();
+      avisar("Nota duplicada.", "sucesso");
       navigate(`/notas/${criada.id}`);
     } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a nota."); }
   }
