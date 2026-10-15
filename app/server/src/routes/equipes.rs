@@ -141,6 +141,9 @@ pub struct AtualizarEquipePayload {
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarEquipePayload>) -> AppResult<Json<serde_json::Value>> {
     exigir_cargo(&cargo_do_usuario(&state, &id, &usuario.0).await?, &["dono", "admin"])?;
+    if payload.nome.trim().is_empty() {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
+    }
     if let Some(tipo) = &payload.tipo { tipo_valido(tipo)?; }
     let afetadas = state
         .db
@@ -307,18 +310,25 @@ pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): 
         return Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado ou expirou."));
     }
 
-    state
+    // Uso único mesmo sob corrida: só quem consegue mudar 'pendente' -> 'aceito' entra na equipe.
+    let consumido = state
         .db
         .with(move |conn| {
             let tx = conn.unchecked_transaction()?;
-            tx.execute(
-                "INSERT OR IGNORE INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'membro')",
-                rusqlite::params![equipe_id, usuario.0],
-            )?;
-            tx.execute("UPDATE convite_equipe SET estado = 'aceito' WHERE id = ?1", [&convite_id])?;
-            tx.commit()
+            let afetadas = tx.execute("UPDATE convite_equipe SET estado = 'aceito' WHERE id = ?1 AND estado = 'pendente'", [&convite_id])?;
+            if afetadas == 1 {
+                tx.execute(
+                    "INSERT OR IGNORE INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'membro')",
+                    rusqlite::params![equipe_id, usuario.0],
+                )?;
+            }
+            tx.commit()?;
+            Ok(afetadas == 1)
         })
         .await?;
+    if !consumido {
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Este convite já foi usado ou expirou."));
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
