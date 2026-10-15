@@ -35,8 +35,15 @@
   --ecos-text-primary-rgb: 232 239 248;
   --ecos-text-secondary: #a8b8d0;
   --ecos-text-secondary-rgb: 168 184 208;
-  --ecos-text-muted: #6b6c72;
-  --ecos-text-muted-rgb: 107 108 114;
+  /* A11Y/UI-1: >= 4,5:1 sobre base e todas as superfícies (era #6b6c72, 3,15:1 em surface-3). */
+  --ecos-text-muted: #8f9098;
+  --ecos-text-muted-rgb: 143 144 152;
+  /* Borda de CONTROLE (inputs, campos): >= 3:1 (WCAG 1.4.11). --ecos-border segue decorativa. */
+  --ecos-border-control: #767676;
+  --ecos-border-control-rgb: 118 118 118;
+  /* Texto/ícone sobre fundo de acento (ciano/violeta, Fab, bg-cyan): preto no escuro. */
+  --ecos-on-accent: #000000;
+  --ecos-on-accent-rgb: 0 0 0;
 
   color-scheme: dark;
 }
@@ -64,32 +71,48 @@ html[data-theme="light"] {
      official design system comes to specify the exact shades. */
   --ecos-text-secondary: #3d4a63;
   --ecos-text-secondary-rgb: 61 74 99;
-  --ecos-text-muted: #6d7994;
-  --ecos-text-muted-rgb: 109 121 148;
+  --ecos-text-muted: #52607c;
+  --ecos-text-muted-rgb: 82 96 124;
+  --ecos-border-control: #667894;
+  --ecos-border-control-rgb: 102 120 148;
+  --ecos-on-accent: #ffffff;
+  --ecos-on-accent-rgb: 255 255 255;
 
   /* No claro, os acentos também carregam texto e ícones. As versões do
      tema escuro eram luminosas demais sobre superfícies claras. */
   --ecos-steel-700: #d7e5f6;
   --ecos-steel-700-rgb: 215 229 246;
-  --ecos-steel-500: #2366aa;
-  --ecos-steel-500-rgb: 35 102 170;
-  --ecos-steel-400: #3377b8;
-  --ecos-steel-400-rgb: 51 119 184;
+  --ecos-steel-500: #1f5c9e;
+  --ecos-steel-500-rgb: 31 92 158;
+  --ecos-steel-400: #2563a3;
+  --ecos-steel-400-rgb: 37 99 163;
   --ecos-steel-300: #245e99;
   --ecos-steel-300-rgb: 36 94 153;
   --ecos-steel-200: #174978;
   --ecos-steel-200-rgb: 23 73 120;
 
-  --ecos-cyan: #087eaf;
-  --ecos-cyan-rgb: 8 126 175;
-  --ecos-violet: #6d4cc6;
-  --ecos-violet-rgb: 109 76 198;
-  --ecos-success: #15803d;
-  --ecos-success-rgb: 21 128 61;
-  --ecos-warning: #b45309;
-  --ecos-warning-rgb: 180 83 9;
+  --ecos-cyan: #066591;
+  --ecos-cyan-rgb: 6 101 145;
+  --ecos-violet: #6544c0;
+  --ecos-violet-rgb: 101 68 192;
+  --ecos-success: #156a2e;
+  --ecos-success-rgb: 21 106 46;
+  --ecos-warning: #964308;
+  --ecos-warning-rgb: 150 67 8;
   --ecos-error: #b91c1c;
   --ecos-error-rgb: 185 28 28;
+
+  /* Domínio: os valores do escuro davam 1,2 a 3,4:1 sobre as superfícies claras. */
+  --ecos-frescor: #156a2e;
+  --ecos-frescor-rgb: 21 106 46;
+  --ecos-orfa: #7539b8;
+  --ecos-orfa-rgb: 117 57 184;
+  --ecos-interacao: #066591;
+  --ecos-interacao-rgb: 6 101 145;
+  --ecos-esquecimento: #b91c1c;
+  --ecos-esquecimento-rgb: 185 28 28;
+  --ecos-encrypted: #6544c0;
+  --ecos-encrypted-rgb: 101 68 192;
 
   color-scheme: light;
 }
@@ -99,6 +122,8 @@ html[data-theme="light"] {
 :root {
   --ecos-steel-700: #1e3a5f;
   --ecos-steel-700-rgb: 30 58 95;
+  /* steel-500 é preenchimento de botão com texto branco (5,3:1); clareá-lo
+     para virar texto quebraria esses botões. Texto de acento usa steel-400+. */
   --ecos-steel-500: #3e6fa8;
   --ecos-steel-500-rgb: 62 111 168;
   --ecos-steel-400: #5b8fc7;
@@ -119,15 +144,15 @@ html[data-theme="light"] {
   --ecos-orfa-rgb: 192 132 252;
   --ecos-interacao: #7dd3fc;
   --ecos-interacao-rgb: 125 211 252;
-  --ecos-esquecimento: #ef4444;
-  --ecos-esquecimento-rgb: 239 68 68;
+  --ecos-esquecimento: #f25f5f;
+  --ecos-esquecimento-rgb: 242 95 95;
 
   --ecos-success: #22c55e;
   --ecos-success-rgb: 34 197 94;
   --ecos-warning: #f59e0b;
   --ecos-warning-rgb: 245 158 11;
-  --ecos-error: #ef4444;
-  --ecos-error-rgb: 239 68 68;
+  --ecos-error: #f25f5f;
+  --ecos-error-rgb: 242 95 95;
   --ecos-encrypted: #a78bfa;
   --ecos-encrypted-rgb: 167 139 250;
 }
@@ -137,6 +162,8 @@ html[data-contraste="alto"],
 html[data-contraste="alto"][data-theme="dark"] {
   --ecos-border: #8a8a8a;
   --ecos-border-rgb: 138 138 138;
+  --ecos-border-control: #8a8a8a;
+  --ecos-border-control-rgb: 138 138 138;
   --ecos-text-primary: #ffffff;
   --ecos-text-primary-rgb: 255 255 255;
   --ecos-text-secondary: #e0e8f4;
@@ -147,6 +174,8 @@ html[data-contraste="alto"][data-theme="dark"] {
 html[data-contraste="alto"][data-theme="light"] {
   --ecos-border: #4a5a75;
   --ecos-border-rgb: 74 90 117;
+  --ecos-border-control: #4a5a75;
+  --ecos-border-control-rgb: 74 90 117;
   --ecos-text-primary: #000000;
   --ecos-text-primary-rgb: 0 0 0;
   --ecos-text-secondary: #1c2740;

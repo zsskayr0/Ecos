@@ -24,7 +24,7 @@ export function Fab() {
     <button
       onClick={onClick}
       aria-label={noCofre ? "Nova transação" : "Criar"}
-      className={`ecos-fab fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-nav ${noCofre ? "bottom-20 md:bottom-8" : "bottom-24"}`}
+      className={`ecos-fab fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-on-accent shadow-nav ${noCofre ? "bottom-20 md:bottom-8" : "bottom-24"}`}
       style={{
         background: noCofre
           ? "linear-gradient(135deg, var(--ecos-violet), var(--ecos-cyan))"
