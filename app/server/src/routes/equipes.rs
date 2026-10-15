@@ -227,6 +227,27 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     if payload.confirm != "EXCLUIR EQUIPE" {
         return Err(AppError::new(ErrorCode::ConfirmationPhraseRequired));
     }
+    // Política de dados: a equipe só é excluída vazia. Notas, tarefas e eventos não são movidos nem apagados em
+    // silêncio — quem exclui decide o destino de cada item antes. Assim nunca sobra conteúdo ativo apontando para
+    // uma equipe inexistente. (A Lixeira não conta: não há como esvaziá-la, e o que ela guarda segue em disco.)
+    let espaco = format!("equipe:{id}");
+    let (notas, tarefas, eventos): (i64, i64, i64) = state
+        .db
+        .with(move |conn| {
+            let contar = |tabela: &str| conn.query_row(&format!("SELECT COUNT(*) FROM {tabela} WHERE espaco = ?1"), [&espaco], |r| r.get::<_, i64>(0));
+            Ok((contar("nota")?, contar("tarefa")?, contar("evento")?))
+        })
+        .await?;
+    if notas + tarefas + eventos > 0 {
+        let mut partes = Vec::new();
+        for (n, singular, plural) in [(notas, "nota", "notas"), (tarefas, "tarefa", "tarefas"), (eventos, "evento", "eventos")] {
+            if n > 0 { partes.push(format!("{n} {}", if n == 1 { singular } else { plural })); }
+        }
+        return Err(AppError::new(ErrorCode::Conflict).with_message(format!(
+            "A equipe ainda tem {}. Exclua ou mova esse conteúdo antes de excluir a equipe.",
+            partes.join(", ")
+        )));
+    }
     let id_arquivo = id.clone();
     state.db.with(move |conn| conn.execute("DELETE FROM equipe WHERE id = ?1", [&id])).await?;
     crate::routes::avatar::remover_todos_em(&crate::routes::avatar::raiz_equipes(&state), &id_arquivo);
@@ -515,3 +536,5 @@ mod testes;
 mod testes_identidade;
 #[cfg(test)]
 mod testes_propriedade;
+#[cfg(test)]
+mod testes_exclusao;

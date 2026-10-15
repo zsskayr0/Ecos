@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sair, notificar, recarregarPerfil, trocarCargo, removerMembro, transferirPropriedade } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn(), trocarCargo: vi.fn(), removerMembro: vi.fn(), transferirPropriedade: vi.fn() }));
+const { sair, notificar, recarregarPerfil, trocarCargo, removerMembro, transferirPropriedade, criarConvite, listarConvites, revogarConvite } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn(), trocarCargo: vi.fn(), removerMembro: vi.fn(), transferirPropriedade: vi.fn(), criarConvite: vi.fn(), listarConvites: vi.fn(), revogarConvite: vi.fn() }));
 
 vi.mock("@/lib/api", async () => {
   const real = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -15,6 +15,9 @@ vi.mock("@/lib/api", async () => {
       trocarCargo,
       removerMembro,
       transferirPropriedade,
+      criarConvite,
+      listarConvites,
+      revogarConvite,
     },
   };
 });
@@ -153,5 +156,27 @@ describe("Gerenciar membros", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
     fireEvent.click(screen.getByRole("button", { name: "Tornar administrador" }));
     await waitFor(() => expect(document.body.textContent).toMatch(/não pode alterar este cargo/));
+  });
+});
+
+describe("Convites da equipe", () => {
+  it("lista os convites ativos e revoga com feedback de erro sem alert nativo", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue([{ usuario_id: "u1", cargo: "dono", nome: "Ana", nome_usuario: "ana" }]);
+    criarConvite.mockResolvedValue({ id: "c1", codigo: "ABCD1234", expira_em: "2030-01-01T00:00:00Z" });
+    listarConvites.mockResolvedValue([{ id: "c1", codigo: "ABCD1234", criado_em: "2029-12-25T00:00:00Z", expira_em: "2030-01-01T00:00:00Z" }]);
+    revogarConvite.mockRejectedValueOnce(new ApiError("NOT_FOUND", "Convite não encontrado.", 404));
+    revogarConvite.mockResolvedValue({ ok: true });
+    const alerta = vi.spyOn(window, "alert").mockImplementation(() => {});
+    abrir();
+    fireEvent.click(await screen.findByRole("button", { name: "Convidar" }));
+    const revogar = await screen.findByRole("button", { name: "Revogar convite ABCD1234" });
+    fireEvent.click(revogar);
+    await waitFor(() => expect(document.body.textContent).toMatch(/Convite não encontrado/));
+    listarConvites.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Revogar convite ABCD1234" }));
+    await waitFor(() => expect(revogarConvite).toHaveBeenCalledTimes(2));
+    expect(revogarConvite).toHaveBeenCalledWith("EQ", "c1");
+    expect(alerta).not.toHaveBeenCalled();
   });
 });

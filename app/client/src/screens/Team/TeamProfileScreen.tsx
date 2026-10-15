@@ -44,6 +44,7 @@ export function TeamProfileScreen() {
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
   const [agindoEm, setAgindoEm] = useState<string | null>(null);
+  const [convites, setConvites] = useState<{ id: string; codigo: string; expira_em: string }[]>([]);
   const fotoEquipe = useAvatarEquipe(equipeId, equipe?.avatar_atualizado_em);
   const pessoal = equipeId === "pessoal";
   const { url: fotoPessoal } = useFotoPerfil(perfil?.id ?? "", perfil?.avatar_atualizado_em ?? null);
@@ -59,6 +60,23 @@ export function TeamProfileScreen() {
       .catch((e) => setErro(e instanceof ApiError ? e.message : "Equipe não encontrada."));
   }, [equipeId, pessoal, versao, tentativa]);
 
+  async function carregarConvites() {
+    if (!equipeId) return;
+    try { setConvites(await equipesApi.listarConvites(equipeId)); } catch { /* a lista é um complemento: o convite novo já foi criado */ }
+  }
+
+  async function revogarConvite(conviteId: string, codigo: string) {
+    if (!equipeId) return;
+    setErro(null);
+    try {
+      await equipesApi.revogarConvite(equipeId, conviteId);
+      if (codigo === codigoConvite) { setCodigoConvite(null); setConvidarAberto(false); }
+      await carregarConvites();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Não foi possível revogar o convite.");
+    }
+  }
+
   async function convidar() {
     if (!equipeId) return;
     setConvidarAberto(true);
@@ -66,6 +84,7 @@ export function TeamProfileScreen() {
     try {
       const r = await equipesApi.criarConvite(equipeId);
       setCodigoConvite(r.codigo);
+      void carregarConvites();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível gerar o convite.");
     }
@@ -218,6 +237,16 @@ export function TeamProfileScreen() {
             <QrConvite codigo={codigoConvite} base={obterServidorBaseUrl() ?? window.location.origin} />
           ) : (
             <span className="font-mono-value text-sm text-text-primary">Gerando...</span>
+          )}
+          {convites.length > 0 && (
+            <ul aria-label="Convites ativos" className="mt-3 border-t border-border/60 pt-2">
+              {convites.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-2 py-1">
+                  <span className="min-w-0 truncate text-xs text-text-secondary"><span className="font-mono-value text-text-primary">{c.codigo}</span> · expira em {new Date(c.expira_em).toLocaleDateString("pt-BR")}</span>
+                  <button type="button" aria-label={`Revogar convite ${c.codigo}`} onClick={() => void revogarConvite(c.id, c.codigo)} className="min-h-11 shrink-0 rounded-lg px-3 text-xs font-medium text-error hover:bg-error/10">Revogar</button>
+                </li>
+              ))}
+            </ul>
           )}
           {codigoConvite && (
             <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
