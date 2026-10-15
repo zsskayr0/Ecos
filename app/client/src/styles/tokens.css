@@ -2,6 +2,8 @@
  * Ecos design tokens — the single source of truth for color.
  * Mirrors ecos-prompt-execucao-frontend.md, section 1.3, literally.
  * Don't add/change a shade here without updating the spec first.
+ * Divergences from the spec (contrast fixes) are listed in
+ * docs/FRONTEND-TOKENS-ALTERACOES.md until the spec itself is updated.
  *
  * Each color exists in two forms: the literal hex (`--ecos-*`, used in
  * loose CSS — inline gradients, etc.) and the RGB triplet (`--ecos-*-rgb`,
