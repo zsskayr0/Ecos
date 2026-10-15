@@ -17,14 +17,16 @@ Abra o Ecos e toque no ícone do Cofre. No primeiro acesso, você vai definir um
 do Cofre (pode ser igual ou diferente da senha da sua conta). Essa senha é a única forma de gerar
 a chave de criptografia dos seus dados financeiros — ninguém além de você tem acesso a ela.
 
-Nesse mesmo passo, uma recovery key é gerada e exibida uma única vez. Guarde-a em um lugar seguro,
-fora deste dispositivo.
+O Cofre não tem recovery key: a chave de criptografia vem só da senha, e a recovery key da sua
+conta do Ecos (mostrada uma única vez no cadastro) não abre o Cofre. Guarde a senha do Cofre em um
+lugar seguro, por exemplo um gerenciador de senhas.
 
 ### Importante
 
 - A senha do Cofre não é recuperável pelos autores do Ecos, nem por ninguém além de você.
-- Se você perder a senha e não tiver a recovery key, os dados do Cofre ficam permanentemente
-  inacessíveis. Não existe recuperação alternativa.
+- Se você perder a senha, os dados do Cofre ficam permanentemente inacessíveis. Não existe
+  recuperação alternativa; só é possível resetar o Cofre (Configurações › Privacidade e cofre),
+  o que apaga os lançamentos.
 - Desativar o Cofre depois (derrubando o container) não apaga os dados — eles continuam no volume
   Docker até você decidir removê-lo explicitamente.
 

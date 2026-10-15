@@ -70,6 +70,22 @@ it("explica rota ausente sem impedir acesso aos lançamentos", async () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(financeiro.painel).toHaveBeenCalledTimes(1);
 });
+it("auto-bloqueio: voltar depois do tempo limite tranca a tela e chama o bloqueio no servidor", async () => {
+    localStorage.setItem("ecos:cofre:auto-bloqueio-min", "1");
+    vi.mocked(vault.bloquear).mockResolvedValue({ ok: true });
+    render(<MemoryRouter initialEntries={["/cofre"]}><AuthProvider><RefreshProvider><AppUIProvider><VaultScreen voltar={vi.fn()}/></AppUIProvider></RefreshProvider></AuthProvider></MemoryRouter>);
+    await screen.findByText("Saldo total (histórico)");
+    const agora = Date.now();
+    let estado: DocumentVisibilityState = "hidden";
+    const vis = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => estado);
+    const rel = vi.spyOn(Date, "now").mockReturnValue(agora + 2 * 60_000);
+    estado = "visible";
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(await screen.findByText("O Cofre está bloqueado")).toBeTruthy();
+    expect(screen.queryByText("Saldo total (histórico)")).toBeNull();
+    expect(vault.bloquear).toHaveBeenCalled();
+    vis.mockRestore(); rel.mockRestore(); localStorage.clear();
+});
 it("com o Cofre trancado, nenhuma seção abre nem consulta valores (rota direta incluída)", async () => {
     vi.mocked(vault.config).mockResolvedValue({ cofre_ativado: true, destrancado: false, saldos_por_conta: [] });
     for (const rota of ["/cofre/painel", "/cofre/lancamentos", "/cofre/recorrencias", "/cofre/cadastros"]) {

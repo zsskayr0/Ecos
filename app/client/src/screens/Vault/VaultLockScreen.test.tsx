@@ -65,3 +65,21 @@ it("com senha guardada no aparelho, oferece o botão de biometria", async () => 
   fireEvent.click(screen.getByRole("button", { name: /Desbloquear com biometria/ }));
   await waitFor(() => expect(onBiometria).toHaveBeenCalled());
 });
+
+it("o texto da tela bate com o que existe: senha, sem promessa de biometria nem ícone de digital", () => {
+  const { container } = render(<VaultLockScreen primeiraVez={false} onSubmeter={vi.fn()} />);
+  expect(screen.getByText("Digite a senha do Cofre para acessar os dados financeiros.")).toBeTruthy();
+  expect(screen.queryByText(/identidade|biometria/i)).toBeNull();
+  expect(container.querySelector(".lucide-fingerprint")).toBeNull();
+});
+
+it("na primeira vez o requisito de senha aparece sob o campo e conta o que falta", () => {
+  render(<VaultLockScreen primeiraVez onSubmeter={vi.fn()} />);
+  const requisito = screen.getByText(/Mínimo de 12 caracteres, sem espaços\./);
+  expect(requisito.id).toBe("requisito-senha-cofre");
+  expect(screen.getByPlaceholderText("Senha do Cofre").getAttribute("aria-describedby")).toBe("requisito-senha-cofre");
+  digitar("curta");
+  expect(screen.getByText(/Faltam 7\./)).toBeTruthy();
+  digitar("uma-senha-longa-ok");
+  expect(screen.queryByText(/Faltam/)).toBeNull();
+});

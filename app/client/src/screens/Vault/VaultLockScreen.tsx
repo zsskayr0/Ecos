@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Fingerprint, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Fingerprint, AlertTriangle, ArrowLeft, Lock } from "lucide-react";
 import { ApiError } from "@/lib/api";
 import { lembradaExigeConfirmacao } from "@/lib/cofre-lembrado";
 
@@ -60,7 +60,7 @@ export function VaultLockScreen({
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-6 px-8 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-violet/15">
-        <Fingerprint size={30} strokeWidth={1.5} className="text-violet" />
+        <Lock size={30} strokeWidth={1.5} className="text-violet" />
       </div>
       <div>
         <p className="font-body text-[15px] font-semibold text-text-primary">
@@ -68,8 +68,8 @@ export function VaultLockScreen({
         </p>
         <p className="mt-1 text-sm text-text-muted">
           {primeiraVez
-            ? `${equipe ? "É o Cofre compartilhado da equipe: quem for membro e souber a senha vê e edita as mesmas finanças. Só dono e administradores ativam. " : ""}Essa senha é exclusiva do Cofre, separada da sua senha de login. Mínimo de 12 caracteres, sem espaços. Guarde-a — sem ela, não há como recuperar os dados.`
-            : equipe ? "Digite a senha do Cofre da equipe, definida por quem o ativou." : "Confirme sua identidade para acessar dados financeiros."}
+            ? `${equipe ? "É o Cofre compartilhado da equipe: quem for membro e souber a senha vê e edita as mesmas finanças. Só dono e administradores ativam. " : ""}Essa senha é exclusiva do Cofre, separada da sua senha de login. Guarde-a — sem ela, não há como recuperar os dados.`
+            : equipe ? "Digite a senha do Cofre da equipe, definida por quem o ativou." : "Digite a senha do Cofre para acessar os dados financeiros."}
         </p>
       </div>
 
@@ -103,6 +103,7 @@ export function VaultLockScreen({
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
           placeholder="Senha do Cofre"
+          aria-describedby={primeiraVez ? "requisito-senha-cofre" : undefined}
           className="ecos-input text-center"
           autoFocus
         />
@@ -114,6 +115,11 @@ export function VaultLockScreen({
             placeholder="Confirme a senha"
             className="ecos-input text-center"
           />
+        )}
+        {primeiraVez && (
+          <p id="requisito-senha-cofre" className={`text-left text-xs ${senha.length === 0 || senha.length >= 12 ? "text-text-muted" : "text-error"}`}>
+            Mínimo de 12 caracteres, sem espaços.{senha.length > 0 && senha.length < 12 ? ` Faltam ${12 - senha.length}.` : ""}
+          </p>
         )}
 
         {permitirLembrar && (

@@ -43,7 +43,7 @@ export function OnboardingScreen() {
           </Slide>
         )}
         {passo === "cofre" && (
-          <Slide titulo="Um Cofre, não uma planilha" descricao="Finanças criptografadas, biometria obrigatória, isoladas do resto do app.">
+          <Slide titulo="Um Cofre, não uma planilha" descricao="Finanças criptografadas, com senha própria, isoladas do resto do app.">
             <div className="rounded-card border border-violet/25 bg-gradient-to-br from-violet/15 to-transparent p-5">
               <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-violet">
                 <ShieldHalf size={13} />

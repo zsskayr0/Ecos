@@ -17,6 +17,7 @@ import { Bandeira } from "@/components/common/globo/Bandeira";
 import { CURVAS } from "@/components/brand/LogoAnimada";
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { IndicadorValor } from "@/screens/Vault/nexus/IndicadorValor";
+import { OPCOES_AUTO_BLOQUEIO, lerAutoBloqueioMin, salvarAutoBloqueioMin } from "@/lib/auto-bloqueio";
 
 const MODOS_VALOR: { id: ModoValor; rotulo: string }[] = [{ id: "numero", rotulo: "Número" }, { id: "barra", rotulo: "Barra" }, { id: "anel", rotulo: "Anel" }];
 
@@ -106,6 +107,7 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
   const [podeLembrar, setPodeLembrar] = useState(false);
   const [bloqueando, setBloqueando] = useState(false);
   const [period, setPeriod] = useState<Period>(defaultPeriod);
+  const [autoBloqueio, setAutoBloqueio] = useState(lerAutoBloqueioMin);
 
   const nomeEquipe = espacoAtivo.startsWith("equipe:") ? equipes.find((e) => e.id === espacoAtivo.slice(7))?.nome ?? "Equipe" : undefined;
   const chave = perfil ? chaveDoCofre(perfil.id, espacoAtivo) : null;
@@ -162,6 +164,9 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
             <div className="flex flex-col gap-2.5">
               {aba === "seguranca" && <>
                 <Linha titulo="Bloquear agora" descricao="Oculta os dados e pede a senha do Cofre para voltar."><button type="button" className="cofre-config-btn" disabled={bloqueando} onClick={async () => { setBloqueando(true); try { await vault.bloquear(); } finally { setBloqueando(false); } }}><Lock size={14} />Bloquear Cofre</button></Linha>
+                <Linha titulo="Bloquear por inatividade" descricao="O Cofre bloqueia sozinho depois deste tempo sem uso ou em segundo plano. Vale só neste aparelho.">
+                  <SeletorEcos valor={String(autoBloqueio)} ariaLabel="Bloquear por inatividade" classe="cofre-config-btn !w-[160px] !justify-between" alinhar="dir" larguraMin={160} onChange={(v) => { const n = Number(v); setAutoBloqueio(n); salvarAutoBloqueioMin(n); }} opcoes={OPCOES_AUTO_BLOQUEIO} />
+                </Linha>
                 <SenhaLembrada />
                 <Linha titulo="Resetar o Cofre" descricao="Apagar tudo fica em Privacidade e cofre, com confirmação e backup de segurança." />
               </>}
