@@ -104,7 +104,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
         </button>
         {menuAberto && (
           <>
-          {mobile && <button type="button" aria-label="Fechar seleção de pasta" onClick={() => setMenuAberto(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
+          {mobile && <button type="button" tabIndex={-1} aria-hidden="true" aria-label="Fechar seleção de pasta" onClick={() => setMenuAberto(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
           <div className={`ecos-fade-in border border-border bg-surface-2 shadow-nav ${mobile ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70vh,34rem)] overflow-y-auto rounded-2xl p-2" : "absolute left-0 top-full z-30 mt-1 w-64 rounded-xl p-1"}`}>
             {mobile && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta nota será organizada.</p></div><button type="button" onClick={() => setMenuAberto(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3" aria-label="Fechar"><X size={17} /></button></div>}
             <div role="menu" aria-label="Pasta da nota" className="max-h-56 overflow-y-auto">

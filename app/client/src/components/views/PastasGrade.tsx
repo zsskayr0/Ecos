@@ -4,6 +4,7 @@ import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChe
 import { ApiError, pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
+import { Dialog } from "@/components/common/Dialog";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { TOM, misturar } from "@/components/common/MenuSuspenso";
 
@@ -234,7 +235,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
         </div>
       )}
       {acao && pastaAtiva && (
-        <div role="dialog" aria-modal="true" aria-labelledby="pasta-acao-titulo" className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+        <Dialog rotuloId="pasta-acao-titulo" onFechar={fecharAcao}>
           <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 id="pasta-acao-titulo" className="font-semibold text-text-primary">{acao === "renomear" ? "Renomear pasta" : acao === "mover" ? "Mover pasta" : "Excluir pasta"}</h2>
@@ -245,7 +246,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
             {acao === "excluir" && <><p className="text-sm text-text-secondary">Excluir <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>? A pasta precisa estar vazia.</p><button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-white disabled:opacity-40"><Trash2 size={16} />Excluir pasta</button></>}
             {erro && <p role="alert" className="mt-3 text-sm text-error">{erro}</p>}
           </div>
-        </div>
+        </Dialog>
       )}
     </section>
   );

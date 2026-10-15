@@ -1,5 +1,6 @@
 import { FileText, ListChecks, Wallet } from "lucide-react";
 import type { TipoCaptura } from "@/lib/ui-context";
+import { Dialog } from "@/components/common/Dialog";
 
 const OPCOES: { tipo: TipoCaptura; label: string; Icon: typeof FileText }[] = [
   { tipo: "nota", label: "Nota", Icon: FileText },
@@ -19,11 +20,10 @@ export function ChoicePopup({
   onFechar: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <button aria-label="Fechar" onClick={onFechar} className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
+    <Dialog rotuloId="choice-popup-titulo" onFechar={onFechar} className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 backdrop-blur-[2px] sm:items-center">
       <div className="relative z-10 w-full max-w-md rounded-t-[28px] bg-surface-1 p-6 pb-10 ecos-fade-in sm:rounded-[28px]">
         <div className="mx-auto mb-5 h-1 w-10 rounded-pill bg-border sm:hidden" />
-        <p className="mb-5 text-center font-body text-[15px] font-semibold text-text-primary">O que vamos capturar?</p>
+        <p id="choice-popup-titulo" className="mb-5 text-center font-body text-[15px] font-semibold text-text-primary">O que vamos capturar?</p>
         <div className="grid grid-cols-3 gap-3">
           {OPCOES.map(({ tipo, label, Icon }) => (
             <button
@@ -37,6 +37,6 @@ export function ChoicePopup({
           ))}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

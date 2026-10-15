@@ -15,7 +15,9 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Dialog } from "@/components/common/Dialog";
 import { Avatar } from "@/components/common/Avatar";
 import { useAppUI } from "@/lib/ui-context";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
@@ -53,7 +55,19 @@ export function Drawer() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  if (!drawerAberto) return null;
+  // Mantém montado durante a animação de saída (pulada com reduced-motion).
+  const [montado, setMontado] = useState(drawerAberto);
+  const [saindo, setSaindo] = useState(false);
+  useEffect(() => {
+    if (drawerAberto) { setMontado(true); setSaindo(false); return; }
+    if (!montado) return;
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setMontado(false); return; }
+    setSaindo(true);
+    const t = window.setTimeout(() => { setMontado(false); setSaindo(false); }, 160);
+    return () => window.clearTimeout(t);
+  }, [drawerAberto, montado]);
+
+  if (!montado) return null;
 
   function ir(rota: string) {
     fecharDrawer();
@@ -88,8 +102,8 @@ export function Drawer() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <aside aria-label="Menu principal" className="flex h-full w-[82%] max-w-xs flex-col overflow-y-auto border-r border-border bg-surface-1 px-2 py-3 shadow-nav ecos-fade-in">
+    <Dialog rotulo="Menu principal" onFechar={fecharDrawer} className={`fixed inset-0 z-50 flex bg-black/50 backdrop-blur-[2px] ${saindo ? "ecos-drawer-sai" : ""}`}>
+      <aside aria-label="Navegação" className="flex h-full w-[82%] max-w-xs flex-col overflow-y-auto border-r border-border bg-surface-1 px-2 py-3 shadow-nav ecos-fade-in">
         <header className="mb-3 flex items-center justify-between px-2">
           <button type="button" onClick={() => ir("/perfil")} className="flex min-w-0 items-center gap-3 rounded-xl p-1 text-left hover:bg-surface-2">
             <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={40} url={urlFotoPerfil} />
@@ -120,7 +134,6 @@ export function Drawer() {
           </div>
         </div>
       </aside>
-      <button aria-label="Fechar menu" onClick={fecharDrawer} className="flex-1 bg-black/50 backdrop-blur-[2px]" />
-    </div>
+    </Dialog>
   );
 }

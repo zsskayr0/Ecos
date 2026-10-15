@@ -1,3 +1,4 @@
+import { useEscFecha } from "@/components/common/Dialog";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
@@ -56,6 +57,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   const [folderError, setFolderError] = useState<string | null>(null);
   const [newSubtask, setNewSubtask] = useState("");
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  useEscFecha(folderMenuOpen, () => setFolderMenuOpen(false));
   const [durationMenuOpen, setDurationMenuOpen] = useState(false);
   const largo = !useIsMobile();
   const [larguraSidebar, setLarguraSidebar] = useState(lerLarguraSidebar);
@@ -197,7 +199,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
             <button type="button" aria-haspopup="menu" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}>
               <Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} />
             </button>
-            {folderMenuOpen && !largo && <button type="button" aria-label="Fechar seleção de pasta" onClick={() => setFolderMenuOpen(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
+            {folderMenuOpen && !largo && <button type="button" tabIndex={-1} aria-hidden="true" aria-label="Fechar seleção de pasta" onClick={() => setFolderMenuOpen(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
             {folderMenuOpen && <div role="menu" aria-labelledby={`${id}-folder-label`} className={`${largo ? "absolute top-full z-30 mt-1 max-h-64 w-full rounded-xl p-1" : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70vh,34rem)] rounded-2xl p-2"} overflow-y-auto border border-border bg-surface-1 shadow-nav`}>
               {!largo && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta tarefa será organizada.</p></div><button type="button" onClick={() => setFolderMenuOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Fechar"><X size={17} /></button></div>}
               <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p>

@@ -202,6 +202,13 @@ body {
   animation: ecos-fade-in 180ms ease-out;
 }
 
+/* Saída do Drawer: o contêiner some e o painel desliza para a esquerda. */
+@keyframes ecos-drawer-sai { from { opacity: 1; } to { opacity: 0; } }
+@keyframes ecos-drawer-painel-sai { from { transform: translateX(0); } to { transform: translateX(-24px); } }
+.ecos-drawer-sai { animation: ecos-drawer-sai 160ms ease-in forwards; pointer-events: none; }
+.ecos-drawer-sai > aside { animation: ecos-drawer-painel-sai 160ms ease-in forwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-drawer-sai, .ecos-drawer-sai > aside { animation: none; } }
+
 @keyframes ecos-item-entra {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
