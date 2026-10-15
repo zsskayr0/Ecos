@@ -98,7 +98,7 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
         </ul>}
     </div>
 
-    <ConfirmDeleteDialog open={removendo !== null} busy={ocupado} onCancel={() => setRemovendo(null)}
+    <ConfirmDeleteDialog open={removendo !== null} busy={ocupado} description="A tag sai dos itens, mas eles continuam existindo." onCancel={() => setRemovendo(null)}
       title={removendo ? `Remover #${removendo.tag} de ${removendo.total} ${removendo.total === 1 ? "item" : "itens"}? Os itens continuam existindo.` : ""}
       onConfirm={() => removendo && void executar(() => tagsApi.remover({ espaco, tag: removendo.tag }), (n) => `Tag removida de ${n} ${n === 1 ? "item" : "itens"}.`)} />
   </section>;

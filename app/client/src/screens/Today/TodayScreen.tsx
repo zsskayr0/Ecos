@@ -9,6 +9,7 @@ import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAppUI } from "@/lib/ui-context";
+import { avisarComDesfazer } from "@/lib/desfazer";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { EventoDialog } from "@/screens/Eventos/EventoDialog";
 
@@ -71,7 +72,10 @@ export function TodayScreen() {
   const concluir = (t: TarefaResumo) => {
     setLista((atual) => atual && atual.filter((x) => x.id !== t.id)); // some na hora
     setBlocos((atuais) => atuais.filter((b) => b.tarefa_id !== t.id)); // e o tempo alocado dela também
-    return executar(() => tarefas.atualizarStatus(t.id, "concluida"), "Não foi possível concluir a tarefa.");
+    return executar(async () => {
+      await tarefas.atualizarStatus(t.id, "concluida");
+      avisarComDesfazer("Tarefa concluída.", () => tarefas.atualizarStatus(t.id, "pendente"), { aoDesfazer: notificar, sucesso: "Tarefa reaberta." });
+    }, "Não foi possível concluir a tarefa.");
   };
   const reagendar = (t: TarefaResumo, dia: string) => {
     setReagendando(null);

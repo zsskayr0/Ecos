@@ -2,8 +2,10 @@ import { useId, useLayoutEffect, useRef } from "react";
 import { Trash2 } from "lucide-react";
 
 /** The native dialog manages focus, keyboard navigation and background inertness. */
-export function ConfirmDeleteDialog({ open, title, busy, onCancel, onConfirm }: {
+export function ConfirmDeleteDialog({ open, title, busy, onCancel, onConfirm, description = "Vai para a Lixeira. Você pode restaurar depois." }: {
   open: boolean; title: string; busy: boolean; onCancel: () => void; onConfirm: () => void;
+  /** Padrão: nota e tarefa vão para a Lixeira. Outros usos (ex.: remover tag) devem dizer o que de fato acontece. */
+  description?: string;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -23,7 +25,7 @@ export function ConfirmDeleteDialog({ open, title, busy, onCancel, onConfirm }: 
       if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) onCancel();
     }}>
     <h2 id={`${id}-title`} className="mb-3 flex items-center gap-3 text-lg font-semibold"><Trash2 size={20} className="shrink-0 text-error" />{title}</h2>
-    <p id={`${id}-description`} className="mb-6 text-sm text-text-secondary">Confirme a exclusão antes de continuar.</p>
+    <p id={`${id}-description`} className="mb-6 text-sm text-text-secondary">{description}</p>
     <div className="flex gap-3">
       <button type="button" autoFocus disabled={busy} onClick={onCancel} className="min-h-12 flex-1 rounded-xl bg-surface-2 px-4 text-sm font-medium disabled:opacity-40">Cancelar</button>
       <button type="button" disabled={busy} onClick={onConfirm} className="min-h-12 flex-1 rounded-xl bg-error px-4 text-sm font-semibold text-white disabled:opacity-40">{busy ? "Apagando..." : "Apagar"}</button>

@@ -1,4 +1,5 @@
 import { avisar } from "@/lib/toast";
+import { avisarExcluido } from "@/lib/desfazer";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -135,7 +136,7 @@ function NoteDetailMobile() {
     try {
       await notas.excluir(id);
       notificar();
-      avisar("Nota apagada.", "sucesso");
+      avisarExcluido("nota", nota?.titulo ?? "", notificar);
       navigate(-1);
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");

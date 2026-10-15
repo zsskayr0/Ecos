@@ -1,4 +1,5 @@
 import { avisar } from "@/lib/toast";
+import { avisarComDesfazer } from "@/lib/desfazer";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { NoteCard } from "@/components/cards/NoteCard";
 import { NoteListRow } from "@/components/cards/NoteListRow";
@@ -121,7 +122,17 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
         else await tarefas.atualizar(item.id, { pasta: pasta ?? "" });
       }
       setSelecionados(new Set()); ancora.current = null; notificar();
-      avisar(`${itensSelecionados.length === 1 ? "Item movido" : `${itensSelecionados.length} itens movidos`}.`, "sucesso");
+      const anteriores = itensSelecionados.map((item) => ({ item, pasta: pastaDoItem(item) }));
+      avisarComDesfazer(
+        `${anteriores.length === 1 ? "Item movido" : `${anteriores.length} itens movidos`}.`,
+        async () => {
+          for (const { item, pasta: antiga } of anteriores) {
+            if (item.tipo === "nota") await notas.atualizar(item.id, { pasta: antiga ?? "" });
+            else await tarefas.atualizar(item.id, { pasta: antiga ?? "" });
+          }
+        },
+        { aoDesfazer: notificar, sucesso: "Movimento desfeito." },
+      );
     } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível mover os itens selecionados."); }
     finally { setProcessando(false); setMenuMoverAberto(false); }
   }
@@ -152,8 +163,14 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     if (!tarefasSelecionadas.length || processando) return;
     setProcessando(true); setErroAcao(null);
     try {
-      for (const item of tarefasSelecionadas) await tarefas.atualizarStatus(item.id, "concluida");
+      const concluidas = [...tarefasSelecionadas];
+      for (const item of concluidas) await tarefas.atualizarStatus(item.id, "concluida");
       setSelecionados(new Set()); ancora.current = null; notificar();
+      avisarComDesfazer(
+        concluidas.length === 1 ? "Tarefa concluída." : `${concluidas.length} tarefas concluídas.`,
+        async () => { for (const item of concluidas) await tarefas.atualizarStatus(item.id, "pendente"); },
+        { aoDesfazer: notificar, sucesso: concluidas.length === 1 ? "Tarefa reaberta." : "Tarefas reabertas." },
+      );
     } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível concluir as tarefas."); }
     finally { setProcessando(false); }
   }

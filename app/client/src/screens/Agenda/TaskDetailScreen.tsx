@@ -9,6 +9,7 @@ import { TaskComposer } from "@/components/editor/TaskComposer";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { avisarExcluido } from "@/lib/desfazer";
 import { EMPTY_TASK, taskFromDetail, taskScheduledAt, taskTags, type TaskFields } from "@/lib/task-fields";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -122,7 +123,7 @@ export function TaskDetailScreen() {
   async function excluir() {
     if (!id || salvando) return;
     setSalvando(true); setErro(null);
-    try { await tarefas.excluir(id); removerRascunho(id); notificar(); avisar("Tarefa apagada.", "sucesso"); navigate(-1); }
+    try { await tarefas.excluir(id); removerRascunho(id); notificar(); avisarExcluido("tarefa", tarefa?.titulo ?? "", notificar); navigate(-1); }
     catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível apagar."); setSalvando(false); }
   }
   async function duplicar() {

@@ -1,4 +1,5 @@
 import { avisar } from "@/lib/toast";
+import { avisarExcluido } from "@/lib/desfazer";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -164,7 +165,7 @@ export function NoteEditorDesktop() {
     setSalvando(true);
     try {
       await notas.excluir(id);
-      avisar("Nota apagada.", "sucesso");
+      avisarExcluido("nota", nota?.titulo ?? "", notificar);
       removerRascunho(id);
       notificar();
       navigate(-1);
