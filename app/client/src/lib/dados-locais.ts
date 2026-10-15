@@ -3,9 +3,12 @@
  * usuário: rascunhos de notas e tarefas, buscas recentes e o layout do desktop (com os títulos das abas abertas).
  * Isso não deve ficar no aparelho depois que a pessoa sai da conta; as preferências ficam.
  */
-/** Rascunhos e listas que nascem de dados financeiros (nomes de sacados, rascunho de lançamento de versões antigas). */
-const CHAVES_FINANCEIRAS = ["ecos.capture-draft.v1", "ecos:cofre:sacados-ignorados"];
-const CHAVES_COM_CONTEUDO = ["ecos-buscas-recentes", "ecos.desktop.workspace.v1", "ecos.rascunhos.vistos.v1", ...CHAVES_FINANCEIRAS];
+/**
+ * Rascunhos e listas que podem conter dados financeiros: nomes de sacados, rascunho de lançamento de versões
+ * antigas e buscas recentes (a busca global também consulta os lançamentos do Cofre).
+ */
+const CHAVES_FINANCEIRAS = ["ecos.capture-draft.v1", "ecos:cofre:sacados-ignorados", "ecos-buscas-recentes"];
+const CHAVES_COM_CONTEUDO = ["ecos.desktop.workspace.v1", "ecos.rascunhos.vistos.v1", ...CHAVES_FINANCEIRAS];
 const PREFIXOS_COM_CONTEUDO = ["ecos.task-draft.", "ecos.note-draft."];
 const CHAVE_COFRE_ROTA = "ecos.desktop.cofre-rota.v1";
 const CHAVE_VISTOS = "ecos.rascunhos.vistos.v1";

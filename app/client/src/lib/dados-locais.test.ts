@@ -18,9 +18,11 @@ describe("rascunhos e dados financeiros", () => {
   it("bloquear o Cofre apaga nomes de sacados e rascunho de lançamento antigo, e mantém preferências e rascunhos de nota", () => {
     localStorage.setItem("ecos:cofre:sacados-ignorados", "[\"mercado joao\"]");
     localStorage.setItem("ecos.capture-draft.v1", "{\"valorCentavos\":12345}");
+    localStorage.setItem("ecos-buscas-recentes", "[\"aluguel\"]");
     localStorage.setItem("ecos.note-draft.v1:n1", "x");
     localStorage.setItem("ecos.cofre.categorias.preferencias", "{}");
     window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
+    expect(localStorage.getItem("ecos-buscas-recentes")).toBeNull();
     expect(localStorage.getItem("ecos:cofre:sacados-ignorados")).toBeNull();
     expect(localStorage.getItem("ecos.capture-draft.v1")).toBeNull();
     expect(localStorage.getItem("ecos.note-draft.v1:n1")).toBe("x");

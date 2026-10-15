@@ -70,6 +70,9 @@ async fn admin_cria_conta_com_senha_temporaria_e_a_pessoa_e_obrigada_a_trocar() 
     let thaty_na_lista = lista.as_array().unwrap().iter().find(|u| u["id"] == id_thaty.as_str()).unwrap();
     assert_eq!((thaty_na_lista["deve_trocar_senha"].as_bool(), thaty_na_lista["papel"].as_str()), (Some(true), Some("usuario")));
     assert!(!lista.to_string().contains(&temporaria), "a senha temporária não volta na listagem");
+    for proibido in ["$argon2", "senha_hash", "recovery_key_hash"] {
+        assert!(!lista.to_string().contains(proibido), "a listagem de usuários não expõe {proibido}");
+    }
 
     // Ela entra com a senha temporária, mas só consegue ver o perfil e trocar a senha.
     assert_eq!(entrar(&app, "thaty", "senha-errada").await.0, StatusCode::UNAUTHORIZED);
@@ -78,6 +81,9 @@ async fn admin_cria_conta_com_senha_temporaria_e_a_pessoa_e_obrigada_a_trocar() 
     let thaty = token.unwrap();
     let (st, eu) = chamar(&app, "GET", "/api/v1/me", Some(&thaty), None).await;
     assert_eq!((st, eu["deve_trocar_senha"].as_bool(), eu["papel"].as_str()), (StatusCode::OK, Some(true), Some("usuario")));
+    for proibido in ["$argon2", "senha_hash", "recovery_key_hash"] {
+        assert!(!eu.to_string().contains(proibido), "GET /me não expõe {proibido}");
+    }
     for (m, r) in [("GET", "/api/v1/notas"), ("GET", "/api/v1/tarefas"), ("GET", "/api/v1/equipes"), ("GET", "/api/v1/vault/config"), ("GET", "/api/v1/feed")] {
         let (st, corpo) = chamar(&app, m, r, Some(&thaty), None).await;
         assert_eq!((st, corpo["error"].as_str()), (StatusCode::FORBIDDEN, Some("PASSWORD_CHANGE_REQUIRED")), "{m} {r}");
