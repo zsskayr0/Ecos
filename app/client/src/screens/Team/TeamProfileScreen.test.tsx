@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sair, notificar, recarregarPerfil } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn() }));
+const { sair, notificar, recarregarPerfil, trocarCargo, removerMembro } = vi.hoisted(() => ({ sair: vi.fn(), notificar: vi.fn(), recarregarPerfil: vi.fn(), trocarCargo: vi.fn(), removerMembro: vi.fn() }));
 
 vi.mock("@/lib/api", async () => {
   const real = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -12,6 +12,8 @@ vi.mock("@/lib/api", async () => {
       obter: vi.fn().mockResolvedValue({ id: "EQ", nome: "Casa", estatisticas: { notas: 1, tarefas: 2 } }),
       listarMembros: vi.fn().mockResolvedValue([{ usuario_id: "u1", cargo: "membro", entrou_em: "2026-01-01" }, { usuario_id: "u2", cargo: "dono", entrou_em: "2026-01-01" }]),
       sair,
+      trocarCargo,
+      removerMembro,
     },
   };
 });
@@ -75,5 +77,59 @@ describe("Identidade dos membros", () => {
     expect(screen.getByText("@bruno")).toBeTruthy();
     expect(screen.getByText("carla")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/01HZX/);
+  });
+});
+
+describe("Gerenciar membros", () => {
+  const lista = (meuCargo: string) => [
+    { usuario_id: "u1", cargo: meuCargo, nome: "Ana", nome_usuario: "ana" },
+    { usuario_id: "u2", cargo: "membro", nome: "Bruno", nome_usuario: "bruno" },
+    { usuario_id: "u3", cargo: "dono", nome: "Carla", nome_usuario: "carla" },
+  ];
+
+  it("dono promove, rebaixa e remove, com confirmação para remover", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("dono"));
+    trocarCargo.mockResolvedValue({ ok: true });
+    removerMembro.mockResolvedValue({ ok: true });
+    abrir();
+    fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tornar administrador" }));
+    await waitFor(() => expect(trocarCargo).toHaveBeenCalledWith("EQ", "u2", "admin"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remover da equipe" }));
+    expect(removerMembro).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Remover" }));
+    await waitFor(() => expect(removerMembro).toHaveBeenCalledWith("EQ", "u2"));
+    expect(screen.getByRole("button", { name: "Convidar" })).toBeTruthy();
+  });
+
+  it("membro comum não vê ações de gestão nem o botão de convite", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("membro"));
+    abrir();
+    await screen.findByText("Bruno");
+    expect(screen.queryByRole("button", { name: /^Gerenciar/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Convidar" })).toBeNull();
+  });
+
+  it("administrador gerencia membros, mas não o dono", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("admin"));
+    abrir();
+    await screen.findByText("Bruno");
+    expect(screen.getByRole("button", { name: "Gerenciar Bruno" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Gerenciar Carla" })).toBeNull();
+  });
+
+  it("mostra a recusa do servidor ao alterar um cargo", async () => {
+    const { equipes } = await import("@/lib/api");
+    vi.mocked(equipes.listarMembros).mockResolvedValue(lista("dono"));
+    trocarCargo.mockRejectedValue(new ApiError("FORBIDDEN", "Você não pode alterar este cargo.", 403));
+    abrir();
+    fireEvent.click(await screen.findByRole("button", { name: "Gerenciar Bruno" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tornar administrador" }));
+    await waitFor(() => expect(document.body.textContent).toMatch(/não pode alterar este cargo/));
   });
 });

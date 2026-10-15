@@ -17,6 +17,7 @@ import { enviarAvatarEquipe, useAvatarEquipe } from "@/lib/team-avatar";
 import { prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import { obterServidorBaseUrl } from "@/lib/server-config";
 import { QrConvite } from "./QrConvite";
+import { AcoesMembro, podeGerenciarMembro } from "./AcoesMembro";
 
 type Membro = MembroEquipeApi;
 
@@ -42,6 +43,7 @@ export function TeamProfileScreen() {
   const [novoNome, setNovoNome] = useState("");
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
+  const [agindoEm, setAgindoEm] = useState<string | null>(null);
   const fotoEquipe = useAvatarEquipe(equipeId, equipe?.avatar_atualizado_em);
   const pessoal = equipeId === "pessoal";
   const { url: fotoPessoal } = useFotoPerfil(perfil?.id ?? "", perfil?.avatar_atualizado_em ?? null);
@@ -86,6 +88,21 @@ export function TeamProfileScreen() {
     }
   }
 
+  async function aoMembro(usuarioId: string, acao: () => Promise<unknown>, falha: string) {
+    if (!equipeId) return;
+    setAgindoEm(usuarioId);
+    setErro(null);
+    try {
+      await acao();
+      setMembros(await equipesApi.listarMembros(equipeId));
+      notificar();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : falha);
+    } finally {
+      setAgindoEm(null);
+    }
+  }
+
   async function trocarTipo(tipo: TipoEquipe) {
     if (!equipeId || !equipe) return;
     try { await equipesApi.atualizar(equipeId, equipe.nome, tipo); setEquipe({ ...equipe, tipo }); notificar(); void recarregarPerfil(); }
@@ -123,6 +140,7 @@ export function TeamProfileScreen() {
   const cor = pessoal ? (localStorage.getItem("ecos:cor-equipe-pessoal") ?? "#3E6FA8") : (equipe.cor ?? corDaEquipe(equipe.id));
   const meuCargo = membros.find((m) => m.usuario_id === perfil?.id)?.cargo;
   const podeEditarFoto = !pessoal && (meuCargo === "dono" || meuCargo === "admin");
+  const podeConvidar = podeEditarFoto; // o servidor restringe convites a dono e administrador
   async function trocarFoto(arquivo?: File) {
     if (!arquivo) return;
     setEnviandoFoto(true);
@@ -181,7 +199,7 @@ export function TeamProfileScreen() {
           <Rss size={16} strokeWidth={1.75} />
           Ver tudo
         </button>
-        {!pessoal && <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">
+        {!pessoal && podeConvidar && <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">
           <UserPlus size={16} strokeWidth={1.75} />
           Convidar
         </button>}
@@ -227,6 +245,15 @@ export function TeamProfileScreen() {
                 {souEu ? <p className="text-xs text-text-muted">Você</p> : m.nome_usuario && m.nome_usuario !== m.nome && <p className="truncate text-xs text-text-muted">@{m.nome_usuario}</p>}
               </div>
               <RoleBadge cargo={m.cargo as Cargo} />
+              {podeGerenciarMembro(meuCargo, m.cargo, souEu) && (
+                <AcoesMembro
+                  nome={m.nome || m.nome_usuario || "Membro"}
+                  cargoAtual={m.cargo as Cargo}
+                  ocupado={agindoEm === m.usuario_id}
+                  onTrocarCargo={(cargo) => void aoMembro(m.usuario_id, () => equipesApi.trocarCargo(equipeId!, m.usuario_id, cargo), "Não foi possível alterar o cargo.")}
+                  onRemover={() => void aoMembro(m.usuario_id, () => equipesApi.removerMembro(equipeId!, m.usuario_id), "Não foi possível remover a pessoa da equipe.")}
+                />
+              )}
             </div>
           );
         })}
