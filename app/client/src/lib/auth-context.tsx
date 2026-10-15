@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ApiError, auth, definirUsuarioDoCofre, prepararConteudoOffline } from "./api";
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
-import { limparConteudoLocal } from "./dados-locais";
+import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline } from "./offline-store";
 
 export interface Perfil {
@@ -34,7 +34,8 @@ interface AuthState {
   erro: string | null;
   login: (usuario: string, senha: string) => Promise<void>;
   registrar: (nomeUsuario: string, senha: string, nome: string, declaraIdadeMinima: boolean, aceitaTermos: boolean) => Promise<{ recovery_key: string }>;
-  logout: () => Promise<void>;
+  /** Com rascunhos não salvos neste aparelho, pergunta antes de sair; `semAviso` pula a pergunta (conta já apagada). */
+  logout: (opcoes?: { semAviso?: boolean }) => Promise<void>;
   /** Calls `/me` again — used after editing the profile, joining a Team, etc. */
   recarregarPerfil: () => Promise<void>;
 }
@@ -91,6 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cadastros em cache (formas de pagamento…) pertencem a quem está autenticado.
   useEffect(() => { definirUsuarioDoCofre(perfil?.id ?? null); }, [perfil?.id]);
+  // Rascunhos de nota/tarefa esquecidos há semanas não ficam no aparelho para sempre.
+  useEffect(() => { expirarRascunhosAntigos(); }, []);
 
   const login = useCallback(async (usuario: string, senha: string) => {
     setErro(null);
@@ -126,7 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (opcoes?: { semAviso?: boolean }) => {
+    const rascunhos = opcoes?.semAviso ? 0 : contarRascunhosLocais();
+    if (rascunhos > 0 && !window.confirm(`Há ${rascunhos} rascunho${rascunhos > 1 ? "s" : ""} de nota ou tarefa não salvo${rascunhos > 1 ? "s" : ""} neste aparelho. Sair da conta apaga ${rascunhos > 1 ? "esses rascunhos" : "esse rascunho"}. Sair mesmo assim?`)) return;
     try {
       // Quem sai da conta não deixa senha de Cofre guardada neste computador.
       if (perfil) await esquecerSenhasDaConta(perfil.id, ["pessoal", ...perfil.equipes.map((e) => `equipe:${e.id}`)]);

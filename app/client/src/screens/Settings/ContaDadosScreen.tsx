@@ -54,7 +54,7 @@ export function ContaDadosScreen() {
   }
 
   // A conta já não existe no servidor; sair limpa o que ficou neste aparelho (token, sessão nativa) e volta ao login.
-  const concluir = () => { void logout().catch(() => undefined); };
+  const concluir = () => { void logout({ semAviso: true }).catch(() => undefined); };
 
   if (concluida) {
     return (

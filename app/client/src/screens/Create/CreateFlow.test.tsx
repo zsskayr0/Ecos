@@ -56,6 +56,15 @@ describe("autosave da captura", () => {
     expect(fecharCaptura).toHaveBeenCalled();
   });
 
+  it("o rascunho da captura vive só em memória: nada do que se digita vai para o localStorage", async () => {
+    digitar("Mercado do João 123,45");
+    await passar(300);
+    const guardado = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join("\n");
+    expect(guardado).not.toContain("Mercado");
+    expect(guardado).not.toContain("123,45");
+    expect(localStorage.getItem("ecos.capture-draft.v1")).toBeNull();
+  });
+
   it("um título cria um único item e as pausas seguintes só atualizam", async () => {
     digitar("Reunião");
     await passar(700);
