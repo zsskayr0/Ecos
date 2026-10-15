@@ -66,6 +66,16 @@ describe("autosave da captura", () => {
     expect(atualizar).toHaveBeenCalledTimes(1);
   });
 
+  it("servidor fora do ar: o texto fica guardado neste aparelho e não é perdido", async () => {
+    criar.mockRejectedValueOnce(new Error("offline"));
+    digitar("Reunião importante");
+    await passar(700);
+    const guardado = JSON.parse(localStorage.getItem("ecos.capture-draft-falha.v1") ?? "null");
+    expect(guardado.tipo).toBe("nota");
+    expect(guardado.draft.texto).toBe("Reunião importante");
+    expect((screen.getByLabelText("titulo") as HTMLInputElement).value).toBe("Reunião importante");
+  });
+
   it("uma nova sessão de captura (clique rápido, sem fechar) começa vazia e cria outro item", async () => {
     cleanup();
     const vista = render(<MemoryRouter><CreateFlow /></MemoryRouter>);

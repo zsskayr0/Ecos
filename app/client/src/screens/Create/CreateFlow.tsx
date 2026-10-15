@@ -98,6 +98,8 @@ export function rascunhoVazio(): CapturaDraft {
 }
 
 const CHAVE_RASCUNHO = "ecos.capture-draft.v1";
+/** Nota/Tarefa que não pôde ser gravada (servidor fora do ar): guardada aqui para a pessoa recuperar na próxima captura. */
+export const CHAVE_RASCUNHO_FALHA = "ecos.capture-draft-falha.v1";
 
 /** Título mínimo para o autosave criar a Nota/Tarefa: digitar "R" e parar não pode virar item no servidor. */
 export const MIN_CARACTERES_CRIACAO = 3;
@@ -162,6 +164,24 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   const sessaoCaptura = useRef(0);
 
   useEffect(() => { onTitleChange?.(draft.texto.trim()); }, [draft.texto, onTitleChange]);
+  // Texto que não chegou ao servidor na captura anterior: oferece recuperar (uma vez por montagem).
+  const ofereceuRecuperar = useRef(false);
+  useEffect(() => {
+    if ((capturaAberta !== "nota" && capturaAberta !== "tarefa") || ofereceuRecuperar.current) return;
+    let guardado: { tipo: "nota" | "tarefa"; draft: CapturaDraft } | null = null;
+    try { guardado = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO_FALHA) ?? "null"); } catch { /* cache indisponível */ }
+    if (!guardado?.draft?.texto) return;
+    ofereceuRecuperar.current = true;
+    const { tipo, draft: salvo } = guardado;
+    avisar("Há texto que não foi salvo da última vez.", "neutro", {
+      rotulo: "Recuperar",
+      aoClicar: () => {
+        try { localStorage.removeItem(CHAVE_RASCUNHO_FALHA); } catch { /* cache indisponível */ }
+        if (tipo !== capturaAberta) trocarTipoCaptura(tipo);
+        setDraft({ ...DRAFT_VAZIO, ...salvo });
+      },
+    });
+  }, [capturaAberta, trocarTipoCaptura]);
   // Rascunho de versões antigas: já não é reaberto (toda captura começa em branco), então some.
   useEffect(() => { try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ } }, []);
 
@@ -300,7 +320,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       if (sessao !== sessaoCaptura.current) return true;
       ultimoEnvio.current = JSON.stringify({ tipo, draft });
       if (tipo === "nota" || tipo === "tarefa") {
-        try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
+        try { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_RASCUNHO_FALHA); } catch { /* cache indisponível */ }
         return true;
       }
       fecharTudo();
@@ -308,6 +328,10 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       return true;
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : "Não foi possível salvar. O ecos-app está rodando?");
+      // Com o servidor fora do ar, o texto não pode sumir se a janela for fechada: fica neste aparelho até ser recuperado.
+      if ((tipo === "nota" || tipo === "tarefa") && draft.texto.trim()) {
+        try { localStorage.setItem(CHAVE_RASCUNHO_FALHA, JSON.stringify({ tipo, draft })); } catch { /* cache indisponível */ }
+      }
       return false;
     } finally {
       envioEmCurso.current = false;

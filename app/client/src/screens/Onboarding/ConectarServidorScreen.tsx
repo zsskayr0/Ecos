@@ -213,7 +213,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       </label>
 
       {resultado === "erro" && erro && (
-        <div className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+        <div role="alert" className="flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
           {erro}
         </div>
