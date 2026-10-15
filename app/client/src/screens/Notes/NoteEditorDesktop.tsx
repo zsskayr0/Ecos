@@ -68,6 +68,8 @@ export function NoteEditorDesktop() {
   const { notificar } = useRefreshBus();
   const [nota, setNota] = useState<NotaApi | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
+  const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [valor, setValor] = useState<CamposNota | null>(null);
   const [salvo, setSalvo] = useState<CamposNota | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -83,14 +85,19 @@ export function NoteEditorDesktop() {
   useEffect(() => {
     if (!id) return;
     let ativo = true;
-    setNota(null); setValor(null); setSalvo(null); setNaoEncontrada(false); setErro(null);
+    setNota(null); setValor(null); setSalvo(null); setNaoEncontrada(false); setFalhaCarga(null); setErro(null);
     notas.obter(id).then((n) => {
       if (!ativo) return;
       const original = camposDaNota(n);
       setNota(n); setSalvo(original); setValor(lerRascunho(id) ?? original);
-    }).catch(() => ativo && setNaoEncontrada(true));
+    }).catch((e) => {
+      if (!ativo) return;
+      // Só 404 vira "sumiu"; queda de rede e demais falhas oferecem tentar de novo.
+      if (e instanceof ApiError && e.status === 404) setNaoEncontrada(true);
+      else setFalhaCarga(e instanceof ApiError && e.code === "CONEXAO_INDISPONIVEL" ? "Sem conexão com o servidor." : "Pode ser uma falha temporária.");
+    });
     return () => { ativo = false; };
-  }, [id]);
+  }, [id, tentativa]);
 
   const sujo = !!valor && !!salvo && !iguais(valor, salvo);
 
@@ -179,6 +186,18 @@ export function NoteEditorDesktop() {
   const mudar = (patch: Partial<CamposNota>) => setValor((v) => (v ? { ...v, ...patch } : v));
 
   if (naoEncontrada) return <div className="ecos-detail-content"><EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." /></div>;
+  if (falhaCarga) {
+    return (
+      <div className="ecos-detail-content">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Não consegui carregar."
+          subtitle={`${falhaCarga} A nota não foi apagada.`}
+          action={<button type="button" onClick={() => setTentativa((t) => t + 1)} className="rounded-2xl bg-surface-2 px-4 py-2 text-sm font-medium text-text-primary">Tentar de novo</button>}
+        />
+      </div>
+    );
+  }
   if (!nota || !valor) return <div className="ecos-detail-content"><EstadoCarregando texto="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);

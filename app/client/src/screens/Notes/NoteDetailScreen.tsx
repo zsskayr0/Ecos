@@ -43,6 +43,8 @@ function NoteDetailMobile() {
   const definirTituloJanela = useContext(TituloJanelaContext);
   const [nota, setNota] = useState<NotaCompleta | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
+  const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [editando, setEditando] = useState(false);
   const [tituloEdit, setTituloEdit] = useState("");
   const [corpoEdit, setCorpoEdit] = useState("");
@@ -53,11 +55,20 @@ function NoteDetailMobile() {
 
   useEffect(() => {
     if (!id) return;
+    let ativo = true;
+    setNaoEncontrada(false);
+    setFalhaCarga(null);
     notas
       .obter(id)
-      .then((n) => setNota(n))
-      .catch(() => setNaoEncontrada(true));
-  }, [id]);
+      .then((n) => { if (ativo) setNota(n); })
+      .catch((e) => {
+        if (!ativo) return;
+        // Só 404 vira "sumiu"; queda de rede e demais falhas oferecem tentar de novo.
+        if (e instanceof ApiError && e.status === 404) setNaoEncontrada(true);
+        else setFalhaCarga(e instanceof ApiError && e.code === "CONEXAO_INDISPONIVEL" ? "Sem conexão com o servidor." : "Pode ser uma falha temporária.");
+      });
+    return () => { ativo = false; };
+  }, [id, tentativa]);
 
   useEffect(() => { definirTituloJanela?.((editando ? tituloEdit : nota?.titulo ?? "").trim()); }, [definirTituloJanela, editando, nota?.titulo, tituloEdit]);
 
@@ -138,6 +149,22 @@ function NoteDetailMobile() {
         <DetailHeader onBack={() => navigate(-1)} />
         <div className="ecos-detail-content">
         <EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." />
+        </div>
+      </div>
+    );
+  }
+
+  if (falhaCarga) {
+    return (
+      <div className="ecos-detail-page">
+        <DetailHeader onBack={() => navigate(-1)} />
+        <div className="ecos-detail-content">
+          <EmptyState
+            icon={AlertTriangle}
+            title="Não consegui carregar."
+            subtitle={`${falhaCarga} A nota não foi apagada.`}
+            action={<button type="button" onClick={() => setTentativa((t) => t + 1)} className="rounded-2xl bg-surface-2 px-4 py-2 text-sm font-medium text-text-primary">Tentar de novo</button>}
+          />
         </div>
       </div>
     );
