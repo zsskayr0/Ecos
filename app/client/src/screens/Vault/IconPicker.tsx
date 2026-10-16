@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import * as Icons from "lucide-react";
+import * as Icons from "lucide-react/dist/cjs/lucide-react.js";
 import { Search, X } from "lucide-react";
 import { CATEGORIAS_LUCIDE, ICONES_LUCIDE } from "./nexus/lucide-catalogo";
 

@@ -7,7 +7,8 @@ import { SegmentedSlide } from "@/components/common/SegmentedSlide";
 import { DonutChart } from "../nexus/DonutChart";
 import { RadarChart } from "../nexus/RadarChart";
 import { periodNoun, type Period } from "../nexus/period";
-import { COR_SEM_CATEGORIA, corDoTexto, resolverIcone } from "./icone";
+import { COR_SEM_CATEGORIA, corDoTexto } from "./icone";
+import { resolverIcone } from "./resolver-icone";
 
 type Recorrencia = Awaited<ReturnType<typeof financeiro.recorrencias>>[number];
 

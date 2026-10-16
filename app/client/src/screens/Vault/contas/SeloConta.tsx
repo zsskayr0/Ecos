@@ -1,6 +1,6 @@
 import { Wallet } from "lucide-react";
 import type { TipoConta } from "@/lib/api";
-import { corDoTexto } from "../VaultCategories";
+import { corDoTexto } from "../categorias/icone";
 import { iniciais } from "./bancos";
 import { logoDoBanco } from "./logos";
 

@@ -11,7 +11,8 @@ import { avisar } from "@/lib/toast";
 import { maesPossiveis, tipoAoMudarDeMae, tipoCabeNaMae } from "@/lib/categorias-hierarquia";
 import { useOrdemPessoal } from "./ordem-pessoal";
 import { SeletorCor } from "./contas/SeletorCor";
-import { CORES, CategoriaIcone, corDoTexto, resolverIcone } from "./categorias/icone";
+import { CORES, CategoriaIcone, corDoTexto } from "./categorias/icone";
+import { resolverIcone } from "./categorias/resolver-icone";
 import { montarFamilias, ROTULO_CRITERIO, serieMensal, ultimosMeses, usoPorCategoria, type Criterio, type Familia } from "./categorias/dados";
 import { acharDuplicatas, type GrupoDuplicado } from "./categorias/duplicatas";
 import { MesclarModal } from "./categorias/MesclarModal";
@@ -28,7 +29,8 @@ import { VistaKanban, type AgruparKanban } from "./categorias/KanbanCategorias";
 import { AnaliseCategorias } from "./categorias/AnaliseCategorias";
 import "./categorias/categorias.css";
 
-export { CORES, COR_SEM_CATEGORIA, CategoriaIcone, corDoTexto, resolverIcone } from "./categorias/icone";
+export { CORES, COR_SEM_CATEGORIA, CategoriaIcone, corDoTexto } from "./categorias/icone";
+export { resolverIcone } from "./categorias/resolver-icone";
 
 const IconPicker = lazy(() => import("./IconPicker"));
 

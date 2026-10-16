@@ -1,22 +1,15 @@
-import * as Icons from "lucide-react";
+import { CircleHelp } from "lucide-react";
 import type { CategoriaApi } from "@/lib/api";
+import { IconePorNome } from "@/components/common/IconePorNome";
 
 export const COR_SEM_CATEGORIA = "#6b6c72";
 export const CORES = ["#f29a9f", "#fda4af", "#fdba74", "#fcd34d", "#bef264", "#86d7ad", "#5eead4", "#7dd3fc", "#93c5fd", "#a5b4fc", "#c4b5fd", "#f0abfc", "#f9a8d4", "#d4d4d8", "#a8a29e", "#94a3b8"];
 
-export function resolverIcone(nome?: string | null): Icons.LucideIcon {
-  if (!nome) return Icons.Tag;
-  const mapa = Icons as unknown as Record<string, Icons.LucideIcon>;
-  if (mapa[nome]) return mapa[nome];
-  const pascal = nome.split(/[-_ ]/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
-  return mapa[pascal] ?? Icons.Tag;
-}
 
 /** Ícone da categoria sobre a cor dela (o mesmo da tela de Categorias); sem categoria, um ponto de interrogação neutro. */
 export function CategoriaIcone({ categoria, tamanho = 16, className = "cofre-cats-icon" }: { categoria?: Pick<CategoriaApi, "icone" | "cor" | "nome"> | null; tamanho?: number; className?: string }) {
-  if (!categoria) return <span className={className} style={{ background: COR_SEM_CATEGORIA, color: "#ffffff" }} aria-hidden><Icons.CircleHelp size={tamanho} /></span>;
-  const Icone = resolverIcone(categoria.icone);
-  return <span className={className} style={{ background: categoria.cor, color: corDoTexto(categoria.cor) }} aria-hidden><Icone size={tamanho} /></span>;
+  if (!categoria) return <span className={className} style={{ background: COR_SEM_CATEGORIA, color: "#ffffff" }} aria-hidden><CircleHelp size={tamanho} /></span>;
+  return <span className={className} style={{ background: categoria.cor, color: corDoTexto(categoria.cor) }} aria-hidden><IconePorNome nome={categoria.icone || "Tag"} padrao="Tag" size={tamanho} /></span>;
 }
 
 /** Texto legível sobre a cor da categoria (preto ou branco, pela luminância). */

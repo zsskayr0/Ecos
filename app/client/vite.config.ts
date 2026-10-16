@@ -49,6 +49,8 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (/node_modules\/(react|react-dom|react-router|react-router-dom|@remix-run|scheduler)\//.test(id)) return "vendor-react";
+          // Conjunto completo (cópia CJS, só dos usuários de "ícone por nome"): pedaço próprio e sob demanda.
+          if (id.includes("node_modules/lucide-react/dist/cjs/")) return "vendor-icones-completo";
           if (id.includes("node_modules/lucide-react/")) return "vendor-icones";
           return undefined;
         },
