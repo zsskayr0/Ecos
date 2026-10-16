@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
+import { AlertTriangle, Copy, Download, Eye, EyeOff, KeyRound } from "lucide-react";
+import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
 import { validarNomeUsuario, validarSenhaNova } from "@/lib/validacao";
@@ -276,7 +277,12 @@ export function AuthScreen() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
                   <span>
                     {erroLocal}
-                    {precisaConvite && " Peça à pessoa que administra o Ecos para criar a sua conta."}
+                    {precisaConvite && " Este servidor já tem uma conta: se ela é sua, use Entrar; se você foi convidado para uma equipe, entre com a conta que já existe e use o código em Equipes → Entrar com código; para ter uma conta própria, peça à pessoa que administra o Ecos para criá-la."}
+                    {precisaConvite && (
+                      <button type="button" onClick={() => { setModo("login"); setPrecisaConvite(false); setErroLocal(null); }} className="mt-2 block min-h-11 font-semibold underline underline-offset-2">
+                        Ir para Entrar
+                      </button>
+                    )}
                   </span>
                 </div>
               )
@@ -350,6 +356,15 @@ export function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
       >
         <Copy size={15} />
         {copiado ? "Copiada" : "Copiar"}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => baixarArquivo(new Blob([`Recovery key do Ecos\n\n${recoveryKey}\n\nGuarde este arquivo fora deste aparelho. Ela recupera a conta, não a senha do Cofre.\n`], { type: "text/plain;charset=utf-8" }), "ecos-recovery-key.txt")}
+        className="flex items-center justify-center gap-2 rounded-2xl bg-surface-2 py-3 text-sm font-semibold text-text-primary"
+      >
+        <Download size={15} />
+        Baixar como arquivo
       </button>
 
       <label className="flex items-center gap-2.5 text-sm text-text-secondary">

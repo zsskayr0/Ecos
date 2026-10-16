@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, Monitor, Wifi, HelpCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { definirServidorBaseUrl } from "@/lib/server-config";
 import { ehAndroid } from "@/lib/platform";
-import { auth } from "@/lib/api";
+import { ApiError, auth } from "@/lib/api";
 
 export type Passo = "boas-vindas" | "local" | "endereco" | "ajuda" | "sucesso";
 
@@ -168,9 +168,13 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       await auth.testarConexao();
       setResultado("ok");
       window.location.reload();
-    } catch {
+    } catch (e) {
       setResultado("erro");
-      setErro("Não consegui alcançar esse endereço. Confira se o servidor do Ecos está ligado, se o endereço está certo e se este aparelho está na mesma rede (ou na mesma VPN).");
+      if (e instanceof ApiError && e.code === "SERVIDOR_INVALIDO") {
+        setErro(`Esse endereço respondeu${e.status ? ` (código ${e.status})` : ""}, mas não parece ser um servidor do Ecos. Confira a porta (o padrão é 7023) e se não é outro serviço.`);
+      } else {
+        setErro("Não consegui alcançar esse endereço. Confira se o servidor do Ecos está ligado, se o endereço está certo e se este aparelho está na mesma rede (ou na mesma VPN).");
+      }
       definirServidorBaseUrl(null);
     } finally {
       setTestando(false);
