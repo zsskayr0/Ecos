@@ -17,7 +17,11 @@ pub enum GoogleErro {
     PreCondicao,
     /// O evento (ou o calendário) não existe mais no Google (HTTP 404).
     NaoEncontrado,
-    Http { status: u16, mensagem: String },
+    /// O Google não aceitou o access token (401): ele foi revogado antes de vencer. Renovar uma vez resolve; se
+    /// persistir, o refresh token também foi recusado (`InvalidGrant`) na renovação.
+    TokenRecusado,
+    /// `razao` é o código curto do Google (`forbidden`, `rateLimitExceeded`, `invalid`...), sem dado do usuário.
+    Http { status: u16, mensagem: String, razao: String },
     Rede(String),
 }
 
@@ -28,7 +32,8 @@ impl std::fmt::Display for GoogleErro {
             GoogleErro::InvalidGrant => write!(f, "o Google recusou o token (acesso revogado ou expirado)"),
             GoogleErro::PreCondicao => write!(f, "o evento mudou no Google desde a última leitura"),
             GoogleErro::NaoEncontrado => write!(f, "evento não encontrado no Google"),
-            GoogleErro::Http { status, mensagem } => write!(f, "o Google respondeu {status}: {mensagem}"),
+            GoogleErro::TokenRecusado => write!(f, "o Google recusou o token de acesso"),
+            GoogleErro::Http { status, mensagem, .. } => write!(f, "o Google respondeu {status}: {mensagem}"),
             GoogleErro::Rede(m) => write!(f, "falha de rede ao falar com o Google: {m}"),
         }
     }
@@ -153,8 +158,12 @@ async fn resposta_ou_erro(resp: reqwest::Response) -> Result<reqwest::Response, 
     if codigo == "invalid_grant" {
         return Err(GoogleErro::InvalidGrant);
     }
-    let mensagem = json["error_description"].as_str().or_else(|| json["error"]["message"].as_str()).unwrap_or(codigo).to_string();
-    Err(GoogleErro::Http { status: status.as_u16(), mensagem })
+    if status.as_u16() == 401 && codigo != "invalid_client" {
+        return Err(GoogleErro::TokenRecusado);
+    }
+    let mensagem: String = json["error_description"].as_str().or_else(|| json["error"]["message"].as_str()).unwrap_or(codigo).chars().take(200).collect();
+    let razao = json["error"]["errors"][0]["reason"].as_str().or_else(|| json["error"]["status"].as_str()).unwrap_or(codigo).to_string();
+    Err(GoogleErro::Http { status: status.as_u16(), mensagem, razao })
 }
 
 fn rede(e: reqwest::Error) -> GoogleErro {
@@ -237,6 +246,12 @@ pub async fn listar_eventos(
 
 fn url_do_evento(cfg: &GoogleConfig, calendar_id: &str, event_id: &str) -> String {
     format!("{}/calendars/{}/events/{}", cfg.api_base, codificar_segmento(calendar_id), codificar_segmento(event_id))
+}
+
+/// Um evento pelo id (para trazer a versão do Google de um item em conflito).
+pub async fn obter_evento(http: &reqwest::Client, cfg: &GoogleConfig, access_token: &str, calendar_id: &str, event_id: &str) -> Result<EventoGoogle, GoogleErro> {
+    let resp = http.get(url_do_evento(cfg, calendar_id, event_id)).bearer_auth(access_token).send().await.map_err(rede)?;
+    ler_json(resp).await
 }
 
 /// Cria o evento no Google e devolve como ele ficou (com `id`, `etag` e `updated`).

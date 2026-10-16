@@ -3,6 +3,7 @@
 
 pub mod crypto;
 pub mod google;
+pub mod problemas;
 pub mod sync;
 
 #[cfg(test)]

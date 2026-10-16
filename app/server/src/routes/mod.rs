@@ -29,6 +29,7 @@ pub mod pastas;
 pub mod preferencias;
 pub mod rotina;
 pub mod sync;
+pub mod sync_problemas;
 pub mod tags;
 pub mod tarefas;
 pub mod tarefas_serie;
@@ -156,6 +157,9 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .merge(rotas_pareamento_sensiveis())
         .route("/sync/dispositivos/:id", patch(sync::atualizar_dispositivo).delete(sync::excluir_dispositivo))
         .route("/sync/config", patch(sync::atualizar_config))
+        .route("/sync/problemas", get(sync_problemas::listar))
+        .route("/sync/problemas/tentar-novamente", post(sync_problemas::tentar_todos))
+        .route("/sync/problemas/:id/acao", post(sync_problemas::acao))
         .route("/sync/dispositivos/:id/push", patch(sync::atualizar_push))
         .route("/calendario/config", get(calendario::config))
         .route("/calendario/conectar/:provider", get(calendario::conectar))

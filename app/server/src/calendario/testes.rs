@@ -6,7 +6,7 @@ use crate::config::{Ambiente, Config, GoogleConfig};
 use crate::{auth::session, db::IndexDb, state::AppState};
 use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, Request, StatusCode};
-use axum::routing::{get, patch, post};
+use axum::routing::{get, post};
 use axum::{body::{to_bytes, Body}, Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -41,6 +41,8 @@ struct Mock {
     status_patch: VecDeque<u16>,
     status_delete: VecDeque<u16>,
     status_insert: VecDeque<u16>,
+    /// Corpo de `events.get` por id do evento (ausente = 404).
+    obter: HashMap<String, Value>,
     contador: u32,
 }
 
@@ -109,6 +111,13 @@ async fn h_instancias(State(m): State<Compartilhado>, Path((_id, eid)): Path<(St
     Json(json!({ "items": g.instancias.clone() }))
 }
 
+async fn h_obter(State(m): State<Compartilhado>, Path((_id, eid)): Path<(String, String)>) -> (StatusCode, Json<Value>) {
+    match m.lock().unwrap().obter.get(&eid) {
+        Some(v) => (StatusCode::OK, Json(v.clone())),
+        None => resposta_de_erro(404),
+    }
+}
+
 async fn h_apagar(State(m): State<Compartilhado>, Path((_id, eid)): Path<(String, String)>) -> StatusCode {
     let mut g = m.lock().unwrap();
     g.delecoes.push(eid);
@@ -122,7 +131,7 @@ async fn iniciar_mock() -> (String, Compartilhado) {
         .route("/revoke", post(h_revoke))
         .route("/calendars/primary", get(h_primario))
         .route("/calendars/:id/events", get(h_eventos).post(h_inserir))
-        .route("/calendars/:id/events/:eid", patch(h_patch).delete(h_apagar))
+        .route("/calendars/:id/events/:eid", get(h_obter).patch(h_patch).delete(h_apagar))
         .route("/calendars/:id/events/:eid/instances", get(h_instancias))
         .with_state(m.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1026,5 +1035,181 @@ async fn duas_pessoas_no_mesmo_evento_do_google_cada_uma_com_o_seu_e_nada_de_uma
     assert_eq!((vinculados_antes, vinculados_depois), (2, 2));
     let dela: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM evento WHERE criado_por = 'usuario-2' AND google_event_id IS NOT NULL", [], |r| r.get(0))).await.unwrap();
     assert_eq!(dela, 0);
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+// ---------------------------------------------------------------- reautorização, erros por item e resolução
+
+async fn notificacoes(e: &Ambiente_) -> Vec<Value> {
+    let (_, n) = api(e, "GET", "/api/v1/notificacoes?limit=100", None).await;
+    n["items"].as_array().cloned().unwrap_or_default()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reautorizar_e_erro_temporario_sao_distintos_e_so_o_primeiro_derruba_o_envio_com_aviso() {
+    let e = montar(true).await;
+    conectar_direto(&e, "2000-01-01T00:00:00+00:00".into()).await;
+
+    // Falha transitória (5xx): a conexão segue de pé, o motivo é "temporario" e ninguém é notificado.
+    e.state.db.with(|c| c.execute("UPDATE config_calendario SET access_expira_em = ?1", [em_uma_hora()])).await.unwrap();
+    e.mock.lock().unwrap().eventos.push_back((503, json!({ "error": { "code": 503, "message": "indisponível" } })));
+    let (status, _) = api(&e, "POST", "/api/v1/calendario/sincronizar", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    let c = &cfg["conectados"][0];
+    assert_eq!((c["erro_tipo"].as_str(), c["precisa_reconectar"].as_bool(), c["erros_seguidos"].as_i64()), (Some("temporario"), Some(false), Some(1)), "{c}");
+    assert!(notificacoes(&e).await.is_empty());
+    sincronizar_ok(&e).await;
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    assert!(cfg["conectados"][0]["erro_tipo"].is_null() && cfg["conectados"][0]["ultimo_resumo"].is_object(), "{cfg}");
+
+    // Acesso revogado (invalid_grant): "reautorizar", conexão preservada e UMA notificação com link para a tela de resolução.
+    e.mock.lock().unwrap().refresh_invalido = true;
+    e.state.db.with(|c| c.execute("UPDATE config_calendario SET access_expira_em = '2000-01-01T00:00:00+00:00'", [])).await.unwrap();
+    assert_eq!(api(&e, "POST", "/api/v1/calendario/sincronizar", None).await.0, StatusCode::CONFLICT);
+    assert_eq!(api(&e, "POST", "/api/v1/calendario/sincronizar", None).await.0, StatusCode::CONFLICT);
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    assert_eq!((cfg["conectados"][0]["erro_tipo"].as_str(), cfg["conectados"][0]["precisa_reconectar"].as_bool()), (Some("reautorizar"), Some(true)));
+    let n = notificacoes(&e).await;
+    assert_eq!(n.len(), 1, "idempotente por conexão: {n:?}");
+    assert_eq!((n[0]["categoria"].as_str(), n[0]["acao_url"].as_str()), (Some("sync"), Some("/configuracoes/calendario/problemas")));
+    // Preferência da categoria desligada: nada é gravado numa nova revogação.
+    api(&e, "PATCH", "/api/v1/notificacoes/preferencias/sync", Some(json!({ "caixa": false }))).await;
+    e.state.db.with(|c| c.execute("UPDATE config_calendario SET conectado_em = 'outra-conexao', precisa_reconectar = 0, access_expira_em = '2000-01-01T00:00:00+00:00'", [])).await.unwrap();
+    api(&e, "POST", "/api/v1/calendario/sincronizar", None).await;
+    assert_eq!(notificacoes(&e).await.len(), 1);
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn token_recusado_com_401_renova_uma_vez_e_repete() {
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await; // access "vigente", mas o Google o recusa
+    e.mock.lock().unwrap().eventos.push_back((401, json!({ "error": { "code": 401, "message": "Invalid Credentials", "status": "UNAUTHENTICATED" } })));
+    sincronizar_ok(&e).await;
+    let g = e.mock.lock().unwrap();
+    assert_eq!(g.tokens.len(), 1, "uma renovação");
+    assert_eq!((g.bearers[0].as_str(), g.bearers[1].as_str()), ("Bearer at-seed", "Bearer at-renovado"));
+    drop(g);
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    assert_eq!(cfg["conectados"][0]["precisa_reconectar"], false);
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+async fn problemas(e: &Ambiente_) -> Value {
+    api(e, "GET", "/api/v1/sync/problemas", None).await.1
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recusa_por_item_vira_problema_com_texto_acoes_e_aviso_unico_e_some_quando_passa() {
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await;
+    let (_, ev) = api(&e, "POST", "/api/v1/eventos", Some(evento_json("Dentista", "2026-09-21T16:00:00Z", "2026-09-21T17:00:00Z", json!({})))).await;
+    let id = ev["id"].as_str().unwrap().to_string();
+    e.mock.lock().unwrap().status_insert.push_back(403);
+    let r = sincronizar_ok(&e).await;
+    assert_eq!((r["envios_com_erro"].as_u64(), r["problemas_novos"].as_u64()), (Some(1), Some(1)), "{r}");
+
+    let p = problemas(&e).await;
+    let item = &p["items"][0];
+    assert_eq!((item["item_id"].as_str(), item["item_titulo"].as_str(), item["codigo"].as_str(), item["http_status"].as_i64(), item["tentativas"].as_i64()), (Some(id.as_str()), Some("Dentista"), Some("sem_permissao"), Some(403), Some(1)), "{p}");
+    assert!(item["explicacao"].as_str().unwrap().contains("somente leitura"));
+    assert!(item["acoes"].as_array().unwrap().iter().any(|a| a == "manter_google"));
+    assert!(!item.to_string().contains("rt-seed") && !item.to_string().contains("at-seed"), "nenhum token nos problemas");
+    assert_eq!(notificacoes(&e).await.len(), 1);
+
+    // Reincidência soma tentativas e NÃO notifica de novo.
+    e.mock.lock().unwrap().status_insert.push_back(403);
+    sincronizar_ok(&e).await;
+    assert_eq!(problemas(&e).await["items"][0]["tentativas"], 2);
+    assert_eq!(notificacoes(&e).await.len(), 1);
+
+    // Ação que não se aplica / sem confirmação é recusada; ignorar tira da lista mas conta como ignorado.
+    let pid = problemas(&e).await["items"][0]["id"].as_str().unwrap().to_string();
+    assert_eq!(api(&e, "POST", &format!("/api/v1/sync/problemas/{pid}/acao"), Some(json!({ "acao": "manter_ambos" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY, "conflito não se aplica a este código");
+    assert_eq!(api(&e, "POST", &format!("/api/v1/sync/problemas/{pid}/acao"), Some(json!({ "acao": "desvincular" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY, "exige confirmar");
+    let (st, r) = api(&e, "POST", &format!("/api/v1/sync/problemas/{pid}/acao"), Some(json!({ "acao": "ignorar" }))).await;
+    assert_eq!((st, r["estado"].as_str()), (StatusCode::OK, Some("ignorado")));
+    let p = problemas(&e).await;
+    assert_eq!((p["items"].as_array().unwrap().len(), p["ignorados"].as_i64()), (0, Some(1)));
+
+    // Passou no Google: o ciclo resolve o problema (mesmo ignorado) e avisa que voltou ao normal.
+    let r = sincronizar_ok(&e).await;
+    assert_eq!((r["enviados_criados"].as_u64(), r["problemas_resolvidos"].as_u64()), (Some(1), Some(1)), "{r}");
+    let titulos: Vec<String> = notificacoes(&e).await.iter().map(|n| n["titulo"].as_str().unwrap().to_string()).collect();
+    assert!(titulos.contains(&"Sincronização voltou ao normal".to_string()), "{titulos:?}");
+
+    assert_eq!(api(&e, "POST", "/api/v1/sync/problemas/inexistente/acao", Some(json!({ "acao": "ignorar" }))).await.0, StatusCode::NOT_FOUND);
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+/// Cria, envia e edita um evento até o Google responder 412 três vezes (conflito persistente).
+async fn conflito_persistente(e: &Ambiente_) -> (String, String) {
+    let (_, ev) = api(e, "POST", "/api/v1/eventos", Some(evento_json("Reunião", "2026-09-21T16:00:00Z", "2026-09-21T17:00:00Z", json!({})))).await;
+    let id = ev["id"].as_str().unwrap().to_string();
+    sincronizar_ok(e).await; // g-novo-1
+    api(e, "PATCH", &format!("/api/v1/eventos/{id}"), Some(json!({ "titulo": "Reunião editada aqui" }))).await;
+    for _ in 0..3 {
+        e.mock.lock().unwrap().status_patch.push_back(412);
+        sincronizar_ok(e).await;
+    }
+    let p = problemas(e).await;
+    assert_eq!((p["items"][0]["codigo"].as_str(), p["items"][0]["tentativas"].as_i64()), (Some("conflito_edicao"), Some(3)), "{p}");
+    (id, p["items"][0]["id"].as_str().unwrap().to_string())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn conflito_de_edicao_notifica_so_se_persistir_e_manter_ambos_guarda_as_duas_versoes() {
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await;
+    let (id, pid) = conflito_persistente(&e).await;
+    assert_eq!(notificacoes(&e).await.len(), 1, "um aviso, na 3ª tentativa");
+    e.mock.lock().unwrap().obter.insert("g-novo-1".into(), json!({ "id": "g-novo-1", "status": "confirmed", "etag": "\"g2\"", "updated": "2026-09-30T10:00:00.000Z", "summary": "Reunião editada no Google", "start": { "dateTime": "2026-09-21T16:00:00Z" }, "end": { "dateTime": "2026-09-21T17:00:00Z" } }));
+
+    let rota = format!("/api/v1/sync/problemas/{pid}/acao");
+    assert_eq!(api(&e, "POST", &rota, Some(json!({ "acao": "manter_ambos" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY, "sem confirmação nada muda");
+    let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id}"), None).await;
+    assert_eq!(d["titulo"], "Reunião editada aqui");
+
+    let (st, r) = api(&e, "POST", &rota, Some(json!({ "acao": "manter_ambos", "confirmar": true }))).await;
+    assert_eq!((st, r["estado"].as_str()), (StatusCode::OK, Some("resolvido")), "{r}");
+    let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id}"), None).await;
+    assert_eq!((d["titulo"].as_str(), d["sync_pendente"].as_bool()), (Some("Reunião editada no Google"), Some(false)));
+    let (_, lista) = api(&e, "GET", "/api/v1/eventos", None).await;
+    let copia = lista.as_array().unwrap().iter().find(|x| x["titulo"] == "Reunião editada aqui (versão local)").expect("cópia local guardada");
+    assert_eq!(copia["visibilidade"], "privado");
+    assert_eq!(problemas(&e).await["items"].as_array().unwrap().len(), 0);
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn manter_local_sobrescreve_sem_if_match_e_desvincular_solta_o_evento_sem_apagar() {
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await;
+    let (_id, pid) = conflito_persistente(&e).await;
+    let rota = format!("/api/v1/sync/problemas/{pid}/acao");
+    assert_eq!(api(&e, "POST", &rota, Some(json!({ "acao": "manter_local" }))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let (st, r) = api(&e, "POST", &rota, Some(json!({ "acao": "manter_local", "confirmar": true }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    {
+        let g = e.mock.lock().unwrap();
+        let (_, if_match, corpo) = g.patches.last().unwrap();
+        assert_eq!((if_match.as_deref(), corpo["summary"].as_str()), (None, Some("Reunião editada aqui")), "sobrescreve sem If-Match");
+    }
+    assert_eq!(r["estado"], "resolvido");
+
+    // Desvincular: o evento fica só no Ecos, privado; nada é apagado no Google.
+    let (_, ev2) = api(&e, "POST", "/api/v1/eventos", Some(evento_json("Outro", "2026-09-23T16:00:00Z", "2026-09-23T17:00:00Z", json!({})))).await;
+    let id2 = ev2["id"].as_str().unwrap().to_string();
+    e.mock.lock().unwrap().status_insert.push_back(400);
+    sincronizar_ok(&e).await;
+    let p = problemas(&e).await;
+    assert_eq!(p["items"][0]["codigo"], "evento_invalido");
+    let pid2 = p["items"][0]["id"].as_str().unwrap().to_string();
+    let (st, _) = api(&e, "POST", &format!("/api/v1/sync/problemas/{pid2}/acao"), Some(json!({ "acao": "desvincular", "confirmar": true }))).await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id2}"), None).await;
+    assert_eq!((d["visibilidade"].as_str(), d["sync_pendente"].as_bool()), (Some("privado"), Some(false)));
+    assert!(e.mock.lock().unwrap().delecoes.is_empty(), "nunca apaga no Google");
     let _ = std::fs::remove_dir_all(&e.raiz);
 }

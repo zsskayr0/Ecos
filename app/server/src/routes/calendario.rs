@@ -35,11 +35,13 @@ fn exigir_provider(provider: &str) -> AppResult<()> {
     }
 }
 
-fn erro_de_sync(e: SyncErro) -> AppError {
+pub(crate) fn erro_de_sync(e: SyncErro) -> AppError {
     match e {
         SyncErro::Desligado => AppError::new(ErrorCode::NotImplemented).with_message("A integração com o Google não está configurada: defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor."),
         SyncErro::NaoConectado => AppError::new(ErrorCode::NotFound).with_message("Nenhuma conta Google conectada."),
         SyncErro::PrecisaReconectar => AppError::new(ErrorCode::Conflict).with_message("O acesso ao Google foi revogado ou expirou. Reconecte a conta."),
+        SyncErro::ItemNaoEncontrado => AppError::new(ErrorCode::NotFound).with_message("Evento não encontrado."),
+        SyncErro::SemVinculo => AppError::new(ErrorCode::Conflict).with_message("Este evento não está vinculado ao Google."),
         SyncErro::Google(g) => AppError::new(ErrorCode::InternalError).with_message(g.to_string()),
         SyncErro::Interno(m) => {
             tracing::error!(error = %m, "falha interna no sync do calendário");
@@ -49,11 +51,12 @@ fn erro_de_sync(e: SyncErro) -> AppError {
 }
 
 pub async fn config(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
+    let uid = usuario.0.clone();
     let conectados = state
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT provider, conectado_em, email, ultima_sync_em, ultimo_erro, precisa_reconectar FROM config_calendario WHERE usuario_id = ?1",
+                "SELECT provider, conectado_em, email, ultima_sync_em, ultimo_erro, precisa_reconectar, erro_tipo, erro_em, erros_seguidos, ultima_tentativa_em, ultimo_resumo                  FROM config_calendario WHERE usuario_id = ?1",
             )?;
             let linhas = stmt
                 .query_map([&usuario.0], |r| {
@@ -61,13 +64,19 @@ pub async fn config(State(state): State<AppState>, Extension(usuario): Extension
                         "provider": r.get::<_, String>(0)?, "conectado_em": r.get::<_, String>(1)?, "email": r.get::<_, Option<String>>(2)?,
                         "ultima_sync_em": r.get::<_, Option<String>>(3)?, "ultimo_erro": r.get::<_, Option<String>>(4)?,
                         "precisa_reconectar": r.get::<_, bool>(5)?,
+                        "erro_tipo": r.get::<_, Option<String>>(6)?, "erro_em": r.get::<_, Option<String>>(7)?,
+                        "erros_seguidos": r.get::<_, i64>(8)?, "ultima_tentativa_em": r.get::<_, Option<String>>(9)?,
+                        "ultimo_resumo": r.get::<_, Option<String>>(10)?.and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok()),
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)
         })
         .await?;
-    Ok(Json(serde_json::json!({ "conectados": conectados, "google_configurado": state.config.google.is_some() })))
+    let abertos = state.db.with(move |conn| crate::calendario::problemas::abertos(conn, &uid)).await?;
+    // O intervalo real do job (os ciclos com falha transitória dobram o espera, até 16x) e o app OAuth em modo teste.
+    let intervalo = state.config.google.as_ref().map(|g| g.intervalo_secs);
+    Ok(Json(serde_json::json!({ "conectados": conectados, "google_configurado": state.config.google.is_some(), "intervalo_secs": intervalo, "problemas_abertos": abertos })))
 }
 
 fn aleatorio_b64(bytes: usize) -> String {
@@ -212,24 +221,37 @@ pub async fn callback(State(state): State<AppState>, Path(provider): Path<String
 
 async fn concluir_conexao(state: &AppState, cfg: &crate::config::GoogleConfig, usuario_id: &str, code: &str, verifier: &str, redirect_uri: &str) -> Result<(), String> {
     let tokens = google::trocar_codigo(&state.http, cfg, code, verifier, redirect_uri).await.map_err(|e| e.to_string())?;
-    let refresh = tokens.refresh_token.clone().ok_or("o Google não devolveu refresh token (revogue o acesso do Ecos em myaccount.google.com/permissions e conecte de novo)")?;
     let primario = google::calendario_primario(&state.http, cfg, &tokens.access_token).await.map_err(|e| e.to_string())?;
 
     let cofre = Cofre::da_config(&state.config).map_err(|e| e.to_string())?;
     let access_cifrado = cofre.cifrar(tokens.access_token.as_bytes()).map_err(|e| e.to_string())?;
-    let refresh_cifrado = cofre.cifrar(refresh.as_bytes()).map_err(|e| e.to_string())?;
+    // Sem refresh token novo (o Google só o reenvia com `prompt=consent`), o antigo da mesma conta continua valendo.
+    let refresh_cifrado: Vec<u8> = match tokens.refresh_token.as_deref() {
+        Some(r) => cofre.cifrar(r.as_bytes()).map_err(|e| e.to_string())?,
+        None => {
+            let (u, cal) = (usuario_id.to_string(), primario.id.clone());
+            let antigo: Option<Vec<u8>> = state
+                .db
+                .with(move |conn| conn.query_row("SELECT refresh_token_encrypted FROM config_calendario WHERE usuario_id = ?1 AND provider = 'google' AND calendar_id = ?2", params![u, cal], |r| r.get(0)).optional())
+                .await
+                .map_err(|e| e.to_string())?
+                .flatten();
+            antigo.ok_or("o Google não devolveu refresh token (revogue o acesso do Ecos em myaccount.google.com/permissions e conecte de novo)")?
+        }
+    };
     let expira = (Utc::now() + Duration::seconds(tokens.expires_in.unwrap_or(3600))).to_rfc3339();
     let (usuario, agora) = (usuario_id.to_string(), Utc::now().to_rfc3339());
     state
         .db
         .with(move |conn| {
-            // Reconectar (talvez outra conta) recomeça a carga do zero: cursor limpo e sem pendência de reconexão.
+            // Mesma conta (mesmo calendar_id): o cursor incremental e a última sincronização continuam valendo, então
+            // reautorizar não refaz a carga nem apaga o histórico. Outra conta recomeça do zero.
             conn.execute(
                 "INSERT INTO config_calendario (usuario_id, provider, access_token_encrypted, refresh_token_encrypted, calendar_id, conectado_em, \
                  sync_cursor, email, fuso, access_expira_em, ultima_sync_em, ultimo_erro, precisa_reconectar) \
                  VALUES (?1, 'google', ?2, ?3, ?4, ?5, NULL, ?4, ?6, ?7, NULL, NULL, 0) \
                  ON CONFLICT (usuario_id, provider) DO UPDATE SET access_token_encrypted = ?2, refresh_token_encrypted = ?3, calendar_id = ?4, \
-                 conectado_em = ?5, sync_cursor = NULL, email = ?4, fuso = ?6, access_expira_em = ?7, ultima_sync_em = NULL, ultimo_erro = NULL, precisa_reconectar = 0",
+                 conectado_em = ?5, sync_cursor = CASE WHEN calendar_id = ?4 THEN sync_cursor END, email = ?4, fuso = ?6, access_expira_em = ?7,                  ultima_sync_em = CASE WHEN calendar_id = ?4 THEN ultima_sync_em END, ultimo_erro = NULL, precisa_reconectar = 0, erro_tipo = NULL, erro_em = NULL, erros_seguidos = 0",
                 params![usuario, access_cifrado, refresh_cifrado, primario.id, agora, primario.time_zone, expira],
             )
         })

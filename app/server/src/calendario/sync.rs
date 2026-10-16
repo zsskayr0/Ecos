@@ -11,6 +11,7 @@
 
 use super::crypto::Cofre;
 use super::google::{self, EventoGoogle, GoogleErro};
+use super::problemas;
 use crate::config::GoogleConfig;
 use crate::db::reindex::reindexar_tudo;
 use crate::eventos_fs;
@@ -52,6 +53,10 @@ pub struct ResumoSync {
     pub envios_adiados: usize,
     /// Recusados pelo Google (dados inválidos): ficam pendentes e são tentados de novo.
     pub envios_com_erro: usize,
+    /// Problemas por item abertos neste ciclo, resolvidos neste ciclo e ainda abertos no fim dele.
+    pub problemas_novos: usize,
+    pub problemas_resolvidos: usize,
+    pub problemas_abertos: usize,
 }
 
 #[derive(Debug)]
@@ -60,6 +65,10 @@ pub enum SyncErro {
     Desligado,
     NaoConectado,
     PrecisaReconectar,
+    /// O evento pedido não existe (ou não é da pessoa).
+    ItemNaoEncontrado,
+    /// O evento não tem vínculo com o Google (não há versão de lá para trazer).
+    SemVinculo,
     Google(GoogleErro),
     Interno(String),
 }
@@ -70,6 +79,8 @@ impl std::fmt::Display for SyncErro {
             SyncErro::Desligado => write!(f, "integração com o Google desligada (faltam GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)"),
             SyncErro::NaoConectado => write!(f, "nenhuma conta Google conectada"),
             SyncErro::PrecisaReconectar => write!(f, "o acesso ao Google foi revogado ou expirou: reconecte a conta"),
+            SyncErro::ItemNaoEncontrado => write!(f, "evento não encontrado"),
+            SyncErro::SemVinculo => write!(f, "o evento não está vinculado ao Google"),
             SyncErro::Google(e) => write!(f, "{e}"),
             SyncErro::Interno(m) => write!(f, "erro interno: {m}"),
         }
@@ -141,16 +152,27 @@ pub async fn usuarios_para_sincronizar(state: &AppState) -> R<Vec<String>> {
 }
 
 /// Access token vigente; renova com o refresh token quando falta pouco para vencer.
-async fn token_de_acesso(state: &AppState, cfg: &GoogleConfig, cofre: &Cofre, usuario_id: &str, linha: &Linha) -> R<String> {
+async fn token_de_acesso(state: &AppState, cfg: &GoogleConfig, cofre: &Cofre, usuario_id: &str, linha: &Linha, forcar: bool) -> R<String> {
     let agora = Utc::now();
     let vigente = linha.expira.as_deref().and_then(|e| DateTime::parse_from_rfc3339(e).ok()).is_some_and(|e| e.with_timezone(&Utc) > agora + Duration::seconds(MARGEM_TOKEN_SEG));
-    if vigente {
-        if let Some(bytes) = &linha.access {
-            return Ok(String::from_utf8(cofre.decifrar(bytes)?).map_err(|_| SyncErro::Interno("access token corrompido".into()))?);
+    if vigente && !forcar {
+        if let Some(Ok(claro)) = linha.access.as_ref().map(|b| cofre.decifrar(b)) {
+            if let Ok(token) = String::from_utf8(claro) {
+                return Ok(token);
+            }
         }
     }
-    let refresh = linha.refresh.as_ref().ok_or(SyncErro::PrecisaReconectar)?;
-    let refresh = String::from_utf8(cofre.decifrar(refresh)?).map_err(|_| SyncErro::Interno("refresh token corrompido".into()))?;
+    let Some(refresh) = linha.refresh.as_ref() else {
+        marcar_reconexao(state, usuario_id).await;
+        return Err(SyncErro::PrecisaReconectar);
+    };
+    // Chave de cifra trocada/perdida ou dado corrompido: o token guardado não serve mais, só reconectando (e sem
+    // ficar repetindo um erro interno a cada ciclo).
+    let Some(refresh) = cofre.decifrar(refresh).ok().and_then(|b| String::from_utf8(b).ok()) else {
+        tracing::error!("calendário: não foi possível ler o refresh token guardado (chave de cifra mudou?); pedindo reautorização");
+        marcar_reconexao(state, usuario_id).await;
+        return Err(SyncErro::PrecisaReconectar);
+    };
     let novo = match google::renovar(&state.http, cfg, &refresh).await {
         Ok(t) => t,
         Err(GoogleErro::InvalidGrant) => {
@@ -179,49 +201,92 @@ async fn token_de_acesso(state: &AppState, cfg: &GoogleConfig, cofre: &Cofre, us
 
 async fn marcar_reconexao(state: &AppState, usuario_id: &str) {
     let usuario = usuario_id.to_string();
-    let _ = state
+    let agora = Utc::now().to_rfc3339();
+    let r = state
         .db
         .with(move |conn| {
             conn.execute(
-                "UPDATE config_calendario SET precisa_reconectar = 1, ultimo_erro = ?1 WHERE usuario_id = ?2 AND provider = 'google'",
-                params![SyncErro::PrecisaReconectar.to_string(), usuario],
-            )
+                "UPDATE config_calendario SET precisa_reconectar = 1, ultimo_erro = ?1, erro_tipo = 'reautorizar', erro_em = COALESCE(erro_em, ?2) WHERE usuario_id = ?3 AND provider = 'google'",
+                params![SyncErro::PrecisaReconectar.to_string(), agora, usuario],
+            )?;
+            // Uma notificação por conexão: reconectar gera outra `conectado_em`, então uma revogação futura avisa de novo.
+            let conectado: Option<String> = conn.query_row("SELECT conectado_em FROM config_calendario WHERE usuario_id = ?1 AND provider = 'google'", [&usuario], |r| r.get(0)).ok();
+            if let Some(c) = conectado {
+                crate::routes::notificacoes::criar_com_acao(
+                    conn, &usuario, "sync", "Reconecte o Google Calendar",
+                    "O Google revogou ou expirou o acesso do Ecos ao seu calendário. Reconecte a conta para voltar a sincronizar.",
+                    Some(&format!("google-reautorizar:{c}")), Some(problemas::ROTA_RESOLUCAO),
+                )?;
+            }
+            Ok(())
         })
         .await;
+    if let Err(e) = r {
+        tracing::error!(error = %e, "calendário: não foi possível registrar a necessidade de reautorização");
+    }
 }
 
 /// Sincroniza (Google → Ecos) a conta do usuário. Seguro de chamar de vários lugares ao mesmo tempo.
 pub async fn sincronizar(state: &AppState, usuario_id: &str) -> R<ResumoSync> {
     let cfg = state.config.google.clone().ok_or(SyncErro::Desligado)?;
     let _um_por_vez = TRAVA.lock().await;
-    let resultado = executar(state, &cfg, usuario_id).await;
+    let mut resultado = executar(state, &cfg, usuario_id, false).await;
+    // O Google recusou um access token que parecia vigente (revogado antes de vencer): renova uma vez e repete.
+    if matches!(resultado, Err(SyncErro::Google(GoogleErro::TokenRecusado))) {
+        resultado = executar(state, &cfg, usuario_id, true).await;
+    }
     let usuario = usuario_id.to_string();
-    let (agora, erro) = (Utc::now().to_rfc3339(), resultado.as_ref().err().map(|e| e.to_string()));
+    let agora = Utc::now().to_rfc3339();
     match &resultado {
         Ok(r) => tracing::info!(provider = "google", criados = r.criados, atualizados = r.atualizados, removidos = r.removidos, inalterados = r.inalterados, conflitos = r.conflitos_mantidos_locais, excecoes_ignoradas = r.excecoes_ignoradas, completa = r.completa, enviados_criados = r.enviados_criados, enviados_atualizados = r.enviados_atualizados, removidos_no_google = r.removidos_no_google, envios_adiados = r.envios_adiados, envios_com_erro = r.envios_com_erro, "sync do calendário concluído"),
         Err(e) => tracing::warn!(provider = "google", error = %e, "sync do calendário falhou"),
     }
-    let ok = erro.is_none();
+    let ok_resumo = resultado.as_ref().ok().cloned();
+    let erro = resultado.as_ref().err().map(|e| (e.to_string(), !matches!(e, SyncErro::NaoConectado | SyncErro::Desligado), matches!(e, SyncErro::PrecisaReconectar)));
     let _ = state
         .db
         .with(move |conn| {
-            if ok {
-                conn.execute("UPDATE config_calendario SET ultima_sync_em = ?1, ultimo_erro = NULL WHERE usuario_id = ?2 AND provider = 'google'", params![agora, usuario])
+            if let Some(resumo) = ok_resumo {
+                let anterior: Option<(i64, Option<String>)> = conn
+                    .query_row("SELECT erros_seguidos, erro_em FROM config_calendario WHERE usuario_id = ?1 AND provider = 'google'", [&usuario], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .ok();
+                conn.execute(
+                    "UPDATE config_calendario SET ultima_sync_em = ?1, ultima_tentativa_em = ?1, ultimo_erro = NULL, erro_tipo = NULL, erro_em = NULL, erros_seguidos = 0, ultimo_resumo = ?2 WHERE usuario_id = ?3 AND provider = 'google'",
+                    params![agora, serde_json::to_string(&resumo).unwrap_or_default(), usuario],
+                )?;
+                // "Voltou ao normal": falhou várias vezes seguidas e agora passou, ou havia problemas por item e não há mais.
+                let voltou_de_falhas = anterior.as_ref().is_some_and(|(n, _)| *n >= 3);
+                let sem_problemas_agora = problemas::abertos(conn, &usuario)? == 0;
+                if voltou_de_falhas || (resumo.problemas_resolvidos > 0 && sem_problemas_agora) {
+                    let chave = format!("sync-normal:{}", anterior.and_then(|(_, e)| e).unwrap_or_else(|| agora.clone()));
+                    crate::routes::notificacoes::criar_com_acao(conn, &usuario, "sync", "Sincronização voltou ao normal", "O Google Calendar voltou a sincronizar sem problemas.", Some(&chave), None)?;
+                }
+                Ok(())
+            } else if let Some((mensagem, conta, reautorizar)) = erro {
+                if !conta {
+                    return Ok(());
+                }
+                let tipo = if reautorizar { "reautorizar" } else { "temporario" };
+                conn.execute(
+                    "UPDATE config_calendario SET ultimo_erro = ?1, ultima_tentativa_em = ?2, erro_tipo = COALESCE(CASE WHEN erro_tipo = 'reautorizar' THEN erro_tipo END, ?3), erro_em = COALESCE(erro_em, ?2), erros_seguidos = erros_seguidos + 1 WHERE usuario_id = ?4 AND provider = 'google'",
+                    params![mensagem, agora, tipo, usuario],
+                )?;
+                Ok(())
             } else {
-                conn.execute("UPDATE config_calendario SET ultimo_erro = ?1 WHERE usuario_id = ?2 AND provider = 'google'", params![erro, usuario])
+                Ok(())
             }
         })
         .await;
     resultado
 }
 
-async fn executar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str) -> R<ResumoSync> {
+async fn executar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, forcar_renovacao: bool) -> R<ResumoSync> {
     let linha = ler_linha(state, usuario_id).await?.ok_or(SyncErro::NaoConectado)?;
     if linha.precisa_reconectar {
         return Err(SyncErro::PrecisaReconectar);
     }
     let cofre = Cofre::da_config(&state.config)?;
-    let access = token_de_acesso(state, cfg, &cofre, usuario_id, &linha).await?;
+    let access = token_de_acesso(state, cfg, &cofre, usuario_id, &linha, forcar_renovacao).await?;
     let calendar_id = linha.calendar_id.clone().unwrap_or_else(|| "primary".into());
     let fuso = linha.fuso.clone().unwrap_or_else(|| "UTC".into());
 
@@ -587,7 +652,15 @@ async fn aplicar_excecao(state: &AppState, usuario_id: &str, ev: &EventoGoogle, 
 
 /// Falha que não adianta insistir agora (rede, limite de uso, erro do Google): aborta o envio e o job tenta depois.
 fn transitorio(e: &GoogleErro) -> bool {
-    matches!(e, GoogleErro::Rede(_) | GoogleErro::Http { status: 429 | 500..=599, .. })
+    match e {
+        GoogleErro::Rede(_) | GoogleErro::Http { status: 429 | 500..=599, .. } => true,
+        // O Google responde limite de uso também como 403 (rateLimitExceeded, userRateLimitExceeded...).
+        GoogleErro::Http { status: 403, razao, mensagem } => {
+            let t = format!("{razao} {mensagem}").to_lowercase();
+            ["ratelimit", "quotaexceeded", "dailylimit"].iter().any(|x| t.contains(x))
+        }
+        _ => false,
+    }
 }
 
 /// Corpo do evento para a API do Google. `para_criar` tira os campos vazios (num `PATCH`, `null` é como se limpa um campo).
@@ -776,7 +849,24 @@ async fn enviar_excecoes(state: &AppState, cfg: &GoogleConfig, access: &str, cal
     Ok(())
 }
 
+/// Guarda (e notifica, uma vez) o problema de um item que o Google recusou.
+#[allow(clippy::too_many_arguments)]
+async fn registrar_problema(state: &AppState, usuario_id: &str, item_tipo: &str, item_id: &str, titulo: &str, operacao: &str, e: &GoogleErro, resumo: &mut ResumoSync) {
+    let codigo = problemas::codigo_do_erro(e).unwrap_or("erro_google");
+    let (status, motivo) = match e {
+        GoogleErro::Http { status, mensagem, .. } => (Some(*status), mensagem.clone()),
+        outro => (None, outro.to_string()),
+    };
+    let (u, t, i, ti, o) = (usuario_id.to_string(), item_tipo.to_string(), item_id.to_string(), titulo.to_string(), operacao.to_string());
+    match state.db.with(move |conn| problemas::registrar(conn, &u, &t, &i, &ti, "envio", &o, codigo, status, &motivo)).await {
+        Ok(Some(_)) => resumo.problemas_novos += 1,
+        Ok(None) => {}
+        Err(err) => tracing::error!(error = %err, "calendário: não foi possível registrar o problema de sincronização"),
+    }
+}
+
 async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: &str, calendar_id: &str, fuso: &str, resumo: &mut ResumoSync) -> R<()> {
+    let inicio_ciclo = Utc::now().to_rfc3339();
     // 1) Exclusões pedidas no Ecos — só as do calendário desta conexão (a fila é de todos; o token é de uma pessoa só).
     let cal_atual = calendar_id.to_string();
     let exclusoes: Vec<(String, String)> = state
@@ -795,10 +885,11 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: 
                 resumo.removidos_no_google += 1;
             }
             Err(GoogleErro::InvalidGrant) => return Err(SyncErro::PrecisaReconectar),
-            Err(e) if transitorio(&e) => return Err(e.into()),
+            Err(e) if transitorio(&e) || matches!(e, GoogleErro::TokenRecusado) => return Err(e.into()),
             Err(e) => {
                 tracing::warn!(google_event_id = %id, error = %e, "o Google recusou apagar o evento; ficará para o próximo ciclo");
                 resumo.envios_com_erro += 1;
+                registrar_problema(state, usuario_id, "exclusao", &id, "Exclusão de evento no Google", "apagar", &e, resumo).await;
             }
         }
     }
@@ -825,6 +916,7 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: 
         let (mut fm, corpo) = (doc.front_matter, doc.body);
         let mut alterou = false;
         let mut erro: Option<GoogleErro> = None;
+        let adiados_antes = resumo.envios_adiados;
         // A própria série só vai ao Google se tiver o que enviar (mudança local, ou virou privada).
         if fm.sync_pendente || fm.visibilidade == EventoVisibilidade::Privado {
             match enviar_um(state, cfg, access, calendar_id, fuso, &mut fm, &corpo, resumo).await {
@@ -837,6 +929,10 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: 
                 erro = Some(e);
             }
         }
+        // 412: o evento mudou no Google desde a última leitura. Nada foi sobrescrito; vira "conflito" para decidir.
+        if erro.is_none() && resumo.envios_adiados > adiados_antes {
+            registrar_problema(state, usuario_id, "evento", &fm.id, &fm.titulo, "atualizar", &GoogleErro::PreCondicao, resumo).await;
+        }
         // O que já foi enviado é gravado mesmo se uma falha interrompeu o resto.
         if alterou {
             std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
@@ -844,15 +940,23 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: 
         }
         match erro {
             None => {}
-            Some(e) if transitorio(&e) || matches!(e, GoogleErro::InvalidGrant) => {
+            Some(e) if transitorio(&e) || matches!(e, GoogleErro::InvalidGrant | GoogleErro::TokenRecusado) => {
                 interrompido = Some(e);
                 break;
             }
             Some(e) => {
                 tracing::warn!(evento = %fm.id, error = %e, "o Google recusou o evento; continua pendente");
                 resumo.envios_com_erro += 1;
+                registrar_problema(state, usuario_id, "evento", &fm.id, &fm.titulo, "atualizar", &e, resumo).await;
             }
         }
+    }
+    // Percorreu todos os pendentes: o que tinha problema e não voltou a falhar neste ciclo foi resolvido.
+    if interrompido.is_none() {
+        let (u, desde) = (usuario_id.to_string(), inicio_ciclo);
+        let (resolvidos, abertos) = state.db.with(move |conn| Ok((problemas::resolver_nao_tocados(conn, &u, &desde)?, problemas::abertos(conn, &u)?))).await?;
+        resumo.problemas_resolvidos = resolvidos;
+        resumo.problemas_abertos = abertos as usize;
     }
     // O que já foi enviado precisa entrar no índice mesmo se o ciclo terminou por uma falha no meio.
     if mudou {
@@ -978,4 +1082,106 @@ mod tests_conversao {
         ev.end = quando(None, Some("2026-09-22"));
         assert_eq!(converter(&ev, "Fuso/Que/Nao/Existe").unwrap().inicio.to_rfc3339(), "2026-09-21T00:00:00+00:00");
     }
+}
+
+// ---------------------------------------------------------------------
+// Resolução de problemas por item (ações escolhidas pela pessoa)
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resolucao {
+    /// Vale a versão daqui: o próximo envio sobrescreve a do Google (sem `If-Match`).
+    ManterLocal,
+    /// Vale a do Google: a mudança local pendente é descartada.
+    ManterGoogle,
+    /// A versão local vira um evento privado "(versão local)" e depois vale a do Google. Nada se perde.
+    ManterAmbos,
+    /// Solta o evento do Google: fica só no Ecos, privado. Nada é apagado em lugar nenhum.
+    Desvincular,
+}
+
+async fn arquivo_do_evento(state: &AppState, usuario_id: &str, evento_id: &str) -> R<std::path::PathBuf> {
+    let (e, u) = (evento_id.to_string(), usuario_id.to_string());
+    let rel: Option<String> = state
+        .db
+        .with(move |conn| conn.query_row("SELECT caminho_arquivo FROM evento WHERE id = ?1 AND espaco = 'pessoal' AND criado_por = ?2", [&e, &u], |r| r.get(0)).optional())
+        .await?;
+    Ok(state.config.notes_root.join(rel.ok_or(SyncErro::ItemNaoEncontrado)?))
+}
+
+/// Aplica a escolha da pessoa sobre um evento com problema. Quem chama confirma antes as que sobrescrevem algo.
+/// Depois de `ManterLocal` convém sincronizar (o envio acontece no ciclo).
+pub async fn resolver_item(state: &AppState, usuario_id: &str, evento_id: &str, como: Resolucao) -> R<()> {
+    let cfg = state.config.google.clone().ok_or(SyncErro::Desligado)?;
+    let _um_por_vez = TRAVA.lock().await;
+    let arquivo = arquivo_do_evento(state, usuario_id, evento_id).await?;
+    let doc = frontmatter::parse::<EventoFrontMatter>(&std::fs::read_to_string(&arquivo)?)?;
+    let (mut fm, corpo) = (doc.front_matter, doc.body);
+    match como {
+        Resolucao::ManterLocal => {
+            fm.google.etag = None;
+            fm.sync_pendente = true;
+            // Mais novo que o do Google, para o pull do mesmo ciclo não o sobrescrever antes do envio.
+            fm.atualizado_em = Utc::now();
+            std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+            reindexar_tudo(&state.db, &state.config.notes_root).await?;
+        }
+        Resolucao::Desvincular => {
+            fm.google = GoogleRef::default();
+            fm.visibilidade = EventoVisibilidade::Privado;
+            fm.sync_pendente = false;
+            for e in fm.excecoes.iter_mut() {
+                e.sync_pendente = false;
+                e.google = GoogleRef::default();
+            }
+            std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+            reindexar_tudo(&state.db, &state.config.notes_root).await?;
+        }
+        Resolucao::ManterGoogle | Resolucao::ManterAmbos => {
+            let event_id = fm.google.event_id.clone().ok_or(SyncErro::SemVinculo)?;
+            let cal = fm.google.calendar_id.clone();
+            let linha = ler_linha(state, usuario_id).await?.ok_or(SyncErro::NaoConectado)?;
+            if linha.precisa_reconectar {
+                return Err(SyncErro::PrecisaReconectar);
+            }
+            let cofre = Cofre::da_config(&state.config)?;
+            let calendar_id = cal.or_else(|| linha.calendar_id.clone()).unwrap_or_else(|| "primary".into());
+            let fuso = linha.fuso.clone().unwrap_or_else(|| "UTC".into());
+            // Primeiro busca a versão do Google: se falhar, nada local foi tocado.
+            let mut access = token_de_acesso(state, &cfg, &cofre, usuario_id, &linha, false).await?;
+            let ev = match google::obter_evento(&state.http, &cfg, &access, &calendar_id, &event_id).await {
+                Err(GoogleErro::TokenRecusado) => {
+                    access = token_de_acesso(state, &cfg, &cofre, usuario_id, &linha, true).await?;
+                    google::obter_evento(&state.http, &cfg, &access, &calendar_id, &event_id).await?
+                }
+                outro => outro?,
+            };
+            if como == Resolucao::ManterAmbos {
+                let mut copia = fm.clone();
+                copia.id = new_id();
+                copia.titulo = format!("{} (versão local)", fm.titulo);
+                copia.visibilidade = EventoVisibilidade::Privado;
+                copia.google = GoogleRef::default();
+                copia.sync_pendente = false;
+                for e in copia.excecoes.iter_mut() {
+                    e.sync_pendente = false;
+                    e.google = GoogleRef::default();
+                }
+                let pai = arquivo.parent().map(|p| p.to_path_buf()).ok_or(SyncErro::ItemNaoEncontrado)?;
+                let destino = naming::caminho_sem_colisao(&pai, &naming::sanitizar_nome_arquivo(&copia.titulo), "md");
+                std::fs::write(&destino, frontmatter::serialize(&copia, &corpo)?)?;
+            }
+            // Limpa a pendência e o etag para a versão do Google ser aplicada por cima (inclusive se o etag for igual).
+            fm.sync_pendente = false;
+            fm.google.etag = None;
+            for e in fm.excecoes.iter_mut() {
+                e.sync_pendente = false;
+            }
+            std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+            // O `aplicar` decide pelo índice (etag e pendência): ele precisa já refletir o arquivo limpo.
+            reindexar_tudo(&state.db, &state.config.notes_root).await?;
+            aplicar(state, usuario_id, &[ev], &fuso, &calendar_id).await?;
+        }
+    }
+    Ok(())
 }

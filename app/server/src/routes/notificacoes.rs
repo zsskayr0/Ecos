@@ -22,14 +22,19 @@ pub struct ListarQuery {
 /// Respeita as preferências da categoria: com a caixa desligada nada é gravado; com o push desligado grava mas não
 /// enfileira entrega. Falha ao enfileirar push nunca derruba a ação que gerou o aviso (o polling cobre).
 pub fn criar(conn: &rusqlite::Connection, usuario_id: &str, categoria: &str, titulo: &str, corpo: &str, chave: Option<&str>) -> rusqlite::Result<bool> {
+    criar_com_acao(conn, usuario_id, categoria, titulo, corpo, chave, None)
+}
+
+/// Como `criar`, com um link de ação (rota interna do app, ex. `/configuracoes/calendario/problemas`).
+pub fn criar_com_acao(conn: &rusqlite::Connection, usuario_id: &str, categoria: &str, titulo: &str, corpo: &str, chave: Option<&str>, acao_url: Option<&str>) -> rusqlite::Result<bool> {
     let (caixa, push) = crate::push::preferencia(conn, usuario_id, categoria).unwrap_or((true, true));
     if !caixa {
         return Ok(false);
     }
     let (id, agora) = (ecos_core::new_id(), chrono::Utc::now());
     let n = conn.execute(
-        "INSERT OR IGNORE INTO notificacao (id, usuario_id, categoria, titulo, corpo, lida, criado_em, chave) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
-        rusqlite::params![id, usuario_id, categoria, titulo, corpo, agora.to_rfc3339(), chave],
+        "INSERT OR IGNORE INTO notificacao (id, usuario_id, categoria, titulo, corpo, lida, criado_em, chave, acao_url) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8)",
+        rusqlite::params![id, usuario_id, categoria, titulo, corpo, agora.to_rfc3339(), chave, acao_url],
     )?;
     if n > 0 && push {
         if let Err(e) = crate::push::enfileirar(conn, usuario_id, &id, agora) {
@@ -121,7 +126,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         .db
         .with(move |conn| {
             let _ = varrer_prazos(conn, &usuario.0);
-            let mut sql = String::from("SELECT id, categoria, titulo, corpo, lida, criado_em FROM notificacao WHERE usuario_id = ?");
+            let mut sql = String::from("SELECT id, categoria, titulo, corpo, lida, criado_em, acao_url FROM notificacao WHERE usuario_id = ?");
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(usuario.0.clone())];
 
             if let Some(categoria) = &q.categoria {
@@ -148,6 +153,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                         "id": r.get::<_, String>(0)?, "categoria": r.get::<_, String>(1)?,
                         "titulo": r.get::<_, String>(2)?, "corpo": r.get::<_, String>(3)?,
                         "lida": r.get::<_, i64>(4)? != 0, "criado_em": r.get::<_, String>(5)?,
+                        "acao_url": r.get::<_, Option<String>>(6)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
