@@ -13,6 +13,7 @@ pub mod espacos;
 pub mod jobs;
 pub mod middleware;
 pub mod importacao;
+pub mod observabilidade;
 pub mod push;
 pub mod restauracao;
 pub mod routes;

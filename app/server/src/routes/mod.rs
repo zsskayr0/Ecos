@@ -184,5 +184,8 @@ pub fn montar(state: AppState) -> Router {
         .route("/health", get(health::liveness))
         .route("/health/ready", get(health::readiness))
         .nest("/api/v1", v1)
+        // Mede só rotas casadas (rótulo = padrão da rota). `/metrics` entra depois, para não se medir a si mesmo.
+        .route_layer(axum::middleware::from_fn(crate::observabilidade::medir))
+        .route("/metrics", get(crate::observabilidade::exportar))
         .with_state(state)
 }

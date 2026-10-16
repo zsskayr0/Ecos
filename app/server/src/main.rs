@@ -14,9 +14,15 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .event_format(middleware::log_sanitizer::SanitizedJsonFormatter)
-        .init();
+    // Log JSON sanitizado + contador de eventos `error` (métrica `ecos_log_erros_total`, base dos alertas).
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        let subscriber = tracing_subscriber::fmt()
+            .event_format(middleware::log_sanitizer::SanitizedJsonFormatter)
+            .finish()
+            .with(ecos_app::observabilidade::ContadorDeErros);
+        tracing::subscriber::set_global_default(subscriber)?;
+    }
 
     let config = Config::from_env()?;
     let db = IndexDb::open(&config.index_db_path)?;

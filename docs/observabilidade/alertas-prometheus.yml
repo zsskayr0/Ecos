@@ -1,0 +1,40 @@
+# Alertas mínimos do Ecos para o Prometheus (carregue com `rule_files:` e ligue o Alertmanager ao seu e-mail ou ntfy).
+# As métricas vêm de `GET /metrics` do ecos-app (ver docs/OBSERVABILIDADE.md). O job do scrape deve se chamar `ecos-app`.
+groups:
+  - name: ecos
+    rules:
+      - alert: EcosForaDoAr
+        expr: up{job="ecos-app"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "ecos-app não responde ao scrape há 2 minutos"
+
+      - alert: EcosErroRegistrado
+        # Qualquer evento `error` no log (falha de escrita de arquivo, de reindex, de backup de segurança...).
+        expr: sum by (alvo) (increase(ecos_log_erros_total[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "ecos-app registrou erro em {{ $labels.alvo }}"
+          description: "Veja `docker compose logs ecos-app | grep '\"nivel\":\"ERROR\"'` e procure o campo `alvo`."
+
+      - alert: EcosBackupOuRestauracaoFalhou
+        expr: increase(ecos_log_erros_total{alvo=~"ecos_app::restauracao.*"}[1h]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Falha na restauração ou no backup de segurança que a antecede"
+
+      - alert: EcosTaxaDe5xxAlta
+        expr: |
+          sum(rate(ecos_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(ecos_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Mais de 5% das requisições estão terminando em 5xx"
+
+      - alert: EcosMuitasFalhasDeLogin
+        expr: increase(ecos_login_falhas_total[10m]) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "Mais de 20 logins recusados em 10 minutos (senha esquecida ou tentativa de invasão)"
