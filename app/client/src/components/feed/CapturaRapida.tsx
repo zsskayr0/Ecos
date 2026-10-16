@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { CheckSquare, FileText, Loader2 } from "lucide-react";
 import { notas, tarefas } from "@/lib/api";
 import { useAppUI } from "@/lib/ui-context";
@@ -6,6 +7,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { avisar } from "@/lib/toast";
 const TITULO_MAX = 120;
 
 /** Primeira linha vira título; o resto, corpo. Linha única longa demais vai inteira para o corpo. */
@@ -26,15 +28,20 @@ export function CapturaRapida() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
 
   async function criar(tipo: "nota" | "tarefa") {
     if (!texto.trim() || enviando) return;
     const { titulo, corpo } = separar(texto);
     setEnviando(true); setErro(null);
     try {
-      if (tipo === "nota") await notas.criar({ titulo, corpo, espaco: espacoAtivo });
-      else await tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo });
+      const criado = tipo === "nota"
+        ? await notas.criar({ titulo, corpo, espaco: espacoAtivo })
+        : await tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo });
       setTexto(""); notificar();
+      // Confirmação visível + próximo passo: abrir o item recém-criado.
+      const rota = tipo === "nota" ? `/notas/nota/${criado.id}` : `/tarefa/${criado.id}`;
+      avisar(tipo === "nota" ? "Nota salva no Feed." : "Tarefa criada no Feed.", "sucesso", { rotulo: "Abrir", aoClicar: () => navigate(rota) });
     } catch (e) {
       setErro(mensagemDeErro(e, "Não consegui salvar a captura. Confira sua conexão e tente de novo."));
     } finally {

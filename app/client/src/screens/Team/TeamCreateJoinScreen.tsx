@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { TIPOS_DE_EQUIPE, type TipoEquipe } from "@/lib/tipo-equipe";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { avisar } from "@/lib/toast";
 /**
  * GAP-05 (resolved): "Criar ou entrar numa Equipe" — the spec (section
  * 3.9) only defined the drawer entry point, without the flow. Now real:
@@ -35,6 +36,7 @@ export function TeamCreateJoinScreen() {
       // once at login — without this, the new Team wouldn't show up in
       // the Profile until reloading the whole page.
       await recarregarPerfil();
+      avisar(`Equipe "${nome.trim()}" criada. Convide pessoas pelo código ou QR desta página.`, "sucesso");
       navigate(`${baseEquipe}/${r.id}`);
     } catch (e) {
       setErro(mensagemDeErro(e, "Não foi possível criar a Equipe."));
@@ -50,6 +52,7 @@ export function TeamCreateJoinScreen() {
       await equipes.aceitarConvite(codigo.trim().toUpperCase());
       notificar();
       await recarregarPerfil();
+      avisar("Você entrou na equipe. Ela já aparece na sua lista de equipes.", "sucesso");
       navigate(dentro ? "/configuracoes/equipes" : "/perfil");
     } catch (e) {
       setErro(mensagemDeErro(e, "Código inválido ou expirado."));
