@@ -19,6 +19,7 @@ import { useIsDesktop } from "@/lib/use-viewport";
 import { NoteEditorDesktop } from "./NoteEditorDesktop";
 import { TitleField } from "@/components/common/TitleField";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface NotaCompleta {
   id: string;
   titulo: string;
@@ -85,7 +86,7 @@ function NoteDetailMobile() {
         setNota((atual) => atual ? { ...atual, titulo: tituloEdit, corpo: corpoEdit } : atual);
         try { localStorage.removeItem(`ecos.note-draft.v1:${id}`); } catch { /* cache indisponível */ }
         notificar();
-      } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível sincronizar as alterações."); }
+      } catch (e) { setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações.")); }
       finally { setSalvando(false); }
     }, 600);
     return () => window.clearTimeout(timer);
@@ -112,7 +113,7 @@ function NoteDetailMobile() {
       setEditando(false);
       notificar();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível salvar.");
+      setErro(mensagemDeErro(e, "Não foi possível salvar."));
     } finally {
       setSalvando(false);
     }
@@ -127,7 +128,7 @@ function NoteDetailMobile() {
       notificar();
       avisar("Nota marcada como revisada.", "sucesso");
     } catch (e) {
-      avisar(e instanceof ApiError ? e.message : "Não foi possível marcar como revisada.", "erro");
+      avisar(mensagemDeErro(e, "Não foi possível marcar como revisada."), "erro");
     }
   }
 
@@ -140,7 +141,7 @@ function NoteDetailMobile() {
       avisarExcluido("nota", nota?.titulo ?? "", notificar);
       navigate(-1);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");
+      setErro(mensagemDeErro(e, "Não foi possível apagar."));
       setSalvando(false);
     }
   }

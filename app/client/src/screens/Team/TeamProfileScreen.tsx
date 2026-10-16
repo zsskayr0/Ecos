@@ -7,7 +7,7 @@ import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { ChevronDown, ChevronLeft, Copy, Rss, UserPlus, AlertTriangle, Pencil, Camera, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
 import { RoleBadge } from "@/components/common/RoleBadge";
-import { equipes as equipesApi, ApiError, type MembroEquipeApi } from "@/lib/api";
+import { equipes as equipesApi, type MembroEquipeApi } from "@/lib/api";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { corDaEquipe } from "@/lib/team-color";
@@ -19,6 +19,7 @@ import { obterServidorBaseUrl } from "@/lib/server-config";
 import { QrConvite } from "./QrConvite";
 import { AcoesMembro, podeGerenciarMembro } from "./AcoesMembro";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Membro = MembroEquipeApi;
 
 /**
@@ -57,7 +58,7 @@ export function TeamProfileScreen() {
         setEquipe(e);
         setMembros(m);
       })
-      .catch((e) => setErro(e instanceof ApiError ? e.message : "Equipe não encontrada."));
+      .catch((e) => setErro(mensagemDeErro(e, "Equipe não encontrada.")));
   }, [equipeId, pessoal, versao, tentativa]);
 
   async function carregarConvites() {
@@ -73,7 +74,7 @@ export function TeamProfileScreen() {
       if (codigo === codigoConvite) { setCodigoConvite(null); setConvidarAberto(false); }
       await carregarConvites();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível revogar o convite.");
+      setErro(mensagemDeErro(e, "Não foi possível revogar o convite."));
     }
   }
 
@@ -86,7 +87,7 @@ export function TeamProfileScreen() {
       setCodigoConvite(r.codigo);
       void carregarConvites();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível gerar o convite.");
+      setErro(mensagemDeErro(e, "Não foi possível gerar o convite."));
     }
   }
 
@@ -100,7 +101,7 @@ export function TeamProfileScreen() {
       void recarregarPerfil();
       navigate("/equipes", { replace: true });
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível sair da equipe.");
+      setErro(mensagemDeErro(e, "Não foi possível sair da equipe."));
       setConfirmandoSaida(false);
     } finally {
       setSaindo(false);
@@ -116,7 +117,7 @@ export function TeamProfileScreen() {
       setMembros(await equipesApi.listarMembros(equipeId));
       notificar();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : falha);
+      setErro(mensagemDeErro(e, falha));
     } finally {
       setAgindoEm(null);
     }
@@ -125,13 +126,13 @@ export function TeamProfileScreen() {
   async function trocarTipo(tipo: TipoEquipe) {
     if (!equipeId || !equipe) return;
     try { await equipesApi.atualizar(equipeId, equipe.nome, tipo); setEquipe({ ...equipe, tipo }); notificar(); void recarregarPerfil(); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível mudar o tipo da equipe."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível mudar o tipo da equipe.")); }
   }
 
   async function salvarNome() {
     if (!equipeId || !novoNome.trim()) return;
     try { await equipesApi.atualizar(equipeId, novoNome.trim()); setEquipe((atual) => atual ? { ...atual, nome: novoNome.trim() } : atual); setEditando(false); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível editar a equipe."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível editar a equipe.")); }
   }
 
   if (erro && !equipe) {
@@ -165,7 +166,7 @@ export function TeamProfileScreen() {
     setEnviandoFoto(true);
     setErro(null);
     try { await enviarAvatarEquipe(equipe!.id, await prepararFotoPerfil(arquivo)); notificar(); }
-    catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível alterar a foto da equipe.")); }
     finally { setEnviandoFoto(false); }
   }
 

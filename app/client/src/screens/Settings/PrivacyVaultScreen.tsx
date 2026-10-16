@@ -4,6 +4,7 @@ import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 import { ApiError, FRASE_RESET_COFRE, vault } from "@/lib/api";
 
+import { mensagemDeErro } from "@/lib/erros";
 const FRASE_CONFIRMACAO = FRASE_RESET_COFRE;
 
 /**
@@ -72,7 +73,7 @@ export function PrivacyVaultScreen() {
       setConfirmando(false);
       setFrase("");
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível resetar o Cofre. Nada foi apagado; tente novamente.");
+      setErro(mensagemDeErro(e, "Não foi possível resetar o Cofre. Nada foi apagado; tente novamente."));
     } finally {
       setApagando(false);
     }

@@ -3,7 +3,7 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ApiError, eventos, type AtualizarEventoPayload, type AtualizarOcorrenciaPayload, type CategoriaEvento, type Evento } from "@/lib/api";
+import { eventos, type AtualizarEventoPayload, type AtualizarOcorrenciaPayload, type CategoriaEvento, type Evento } from "@/lib/api";
 import { dataLocalISO, instanteLocalISO } from "@/lib/agenda-tempo";
 import { deInputData } from "@/lib/eventos";
 import { ocorrenciaEfetiva } from "@/lib/eventos-agenda";
@@ -11,6 +11,7 @@ import type { EventoLocal } from "@/lib/eventos-locais";
 import { EditorEvento, type DadosEvento, type EventoEditavel, type ModoEditor } from "../Agenda/EditorEvento";
 import { CategoriasDialog } from "./CategoriasDialog";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Props {
   /** Abre numa camada acima de tudo (ex.: a partir da tela maximizada do dia, que fica fora da área da Agenda). */
   sobreTudo?: boolean;
@@ -103,7 +104,7 @@ function EventoDialogInterno({ aberto, eventoId, ocorrencia, categorias, diaInic
     setErroCarga(null);
     if (!aberto || !eventoId) return;
     let ativo = true;
-    eventos.obter(eventoId).then((e) => { if (ativo) setDetalhe(e); }).catch((e) => { if (ativo) setErroCarga(e instanceof ApiError ? e.message : "Não foi possível carregar o evento."); });
+    eventos.obter(eventoId).then((e) => { if (ativo) setDetalhe(e); }).catch((e) => { if (ativo) setErroCarga(mensagemDeErro(e, "Não foi possível carregar o evento.")); });
     return () => { ativo = false; };
   }, [aberto, eventoId]);
 

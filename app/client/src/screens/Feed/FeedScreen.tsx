@@ -6,7 +6,7 @@ import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PullToRefresh } from "@/components/common/PullToRefresh";
 import { Rss } from "lucide-react";
-import { feed, notas, tarefas, ApiError } from "@/lib/api";
+import { feed, notas, tarefas } from "@/lib/api";
 import { notaDoFeed, notaResumoParaView, tarefaDoFeed, tarefaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAppUI } from "@/lib/ui-context";
@@ -15,6 +15,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { CapturaRapida } from "@/components/feed/CapturaRapida";
 import type { FeedItem } from "@/lib/types";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Feed — vertical stream interleaving Nota/Tarefa (section 3.1), reading
  * the real `GET /api/v1/feed` (result pre-computed by the ranking job,
@@ -73,7 +74,7 @@ export function FeedScreen() {
       ];
       setItens([...novos, ...mapeados]);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o Feed. O ecos-app está rodando?");
+      setErro(mensagemDeErro(e, "Não foi possível carregar o Feed. O ecos-app está rodando?"));
       setItens([]);
     }
   }, [filtroEquipeId, espacoAtivo, intercalarEquipes, equipes, perfil]);

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { AlertTriangle, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
-import { ApiError, auth } from "@/lib/api";
+import { auth } from "@/lib/api";
+import { validarSenhaNova } from "@/lib/validacao";
 import { RecoveryKeyReveal } from "./AuthScreen";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Primeiro acesso de uma conta criada pela administração: a senha que a pessoa recebeu é temporária, e o app não abre
  * nada antes de ela definir a própria (o servidor também recusa o resto até lá). Ao terminar, a pessoa recebe uma
@@ -23,7 +25,8 @@ export function TrocaSenhaObrigatoriaScreen() {
   if (recoveryKey) return <RecoveryKeyReveal recoveryKey={recoveryKey} />;
 
   const semEspacos = (v: string) => v.replace(/\s/g, "");
-  const invalido = !atual || nova.length < 12 || nova !== confirmacao;
+  const erroNova = nova ? validarSenhaNova(nova, perfil?.nome_usuario) : null;
+  const invalido = !atual || !nova || !!erroNova || nova !== confirmacao;
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +37,7 @@ export function TrocaSenhaObrigatoriaScreen() {
       if (r.recovery_key) setRecoveryKey(r.recovery_key);
       else await recarregarPerfil();
     } catch (err) {
-      setErro(err instanceof ApiError ? err.message : "Não foi possível trocar a senha.");
+      setErro(mensagemDeErro(err, "Não foi possível trocar a senha."));
     } finally { setSalvando(false); }
   }
 
@@ -63,7 +66,9 @@ export function TrocaSenhaObrigatoriaScreen() {
               {mostrar ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
             </button>
           </div>
-          <span className="text-xs text-text-muted">Evite senhas comuns e o seu nome de usuário.</span>
+          {erroNova
+            ? <span role="alert" className="text-xs text-error">{erroNova}</span>
+            : <span className="text-xs text-text-muted">Evite senhas comuns e o seu nome de usuário.</span>}
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-sm font-semibold text-text-primary">Repita a nova senha</span>

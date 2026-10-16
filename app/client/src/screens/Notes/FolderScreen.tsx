@@ -6,7 +6,7 @@ import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { EmptyState } from "@/components/common/EmptyState";
-import { notas as notasApi, pastas as pastasApi, ApiError, type NotaResumo } from "@/lib/api";
+import { notas as notasApi, pastas as pastasApi, type NotaResumo } from "@/lib/api";
 import { notaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
@@ -16,6 +16,7 @@ import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** Inside a folder — compact subfolders at the top, notes below with the same card as the Feed (section 3.2). */
 export function FolderScreen() {
   const { "*": caminho = "" } = useParams();
@@ -45,7 +46,7 @@ export function FolderScreen() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErro(e instanceof ApiError ? e.message : "Não foi possível carregar esta pasta.");
+        setErro(mensagemDeErro(e, "Não foi possível carregar esta pasta."));
         setNotas([]);
       });
     return () => {

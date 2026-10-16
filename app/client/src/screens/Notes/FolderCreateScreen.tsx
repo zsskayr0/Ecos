@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
-import { pastas, ApiError } from "@/lib/api";
+import { pastas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** `POST /api/v1/pastas` — a Pasta is just a new directory under `Notas/` (section 1.3/1.5). */
 export function FolderCreateScreen() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export function FolderCreateScreen() {
       notificar();
       navigate(pai ? `/notas/pasta/${caminhoPastaNaRota(pai)}` : "/notas");
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
+      setErro(mensagemDeErro(e, "Não foi possível criar a pasta."));
     } finally {
       setSalvando(false);
     }

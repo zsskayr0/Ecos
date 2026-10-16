@@ -4,11 +4,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { FileText } from "lucide-react";
 import { DetailHeader } from "@/components/layout/DetailHeader";
 import { PdfReader, RECUO_LATERAL } from "@/components/common/PdfReader";
-import { ApiError, media } from "@/lib/api";
+import { media } from "@/lib/api";
 import { nomeDoArquivo } from "@/lib/format";
 import { useAjustarJanela } from "@/lib/documento-popup";
 import { useIsDesktop } from "@/lib/use-viewport";
 
+import { mensagemDeErro } from "@/lib/erros";
 const IMAGENS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"];
 
 /**
@@ -38,7 +39,7 @@ export function FileViewerScreen() {
     media
       .baixar(caminho)
       .then((d) => vivo && setDados(d))
-      .catch((e) => vivo && setErro(e instanceof ApiError ? e.message : "Não foi possível abrir o PDF."));
+      .catch((e) => vivo && setErro(mensagemDeErro(e, "Não foi possível abrir o PDF.")));
     return () => {
       vivo = false;
     };

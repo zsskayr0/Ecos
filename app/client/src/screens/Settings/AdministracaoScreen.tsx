@@ -1,9 +1,10 @@
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, KeyRound, Shield, UserPlus, X } from "lucide-react";
-import { admin, ApiError, type EquipeAdmin, type UsuarioAdmin } from "@/lib/api";
+import { admin, type EquipeAdmin, type UsuarioAdmin } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-
+import { mensagemDeErro } from "@/lib/erros";
+import { validarNomeUsuario } from "@/lib/validacao";
 const BOTAO = "rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-steel-500 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-text-muted disabled:hover:bg-surface-3";
 const NOME_USUARIO = /[^A-Za-z0-9._-]/g;
 
@@ -31,20 +32,22 @@ export function AdministracaoScreen() {
     try {
       const [u, e] = await Promise.all([admin.listarUsuarios(), admin.listarEquipes()]);
       setUsuarios(u); setEquipes(e);
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar a administração."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível carregar a administração.")); }
   }, []);
   useEffect(() => { void carregar(); }, [carregar]);
 
   async function executar(acao: () => Promise<void>) {
     setOcupado(true); setErro(null);
     try { await acao(); await carregar(); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível concluir."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível concluir.")); }
     finally { setOcupado(false); }
   }
 
+  const erroUsuario = novoUsuario ? validarNomeUsuario(novoUsuario) : null;
+
   async function criar(e: React.FormEvent) {
     e.preventDefault();
-    if (ocupado || novoUsuario.length < 3) return;
+    if (ocupado || !novoUsuario || erroUsuario) return;
     await executar(async () => {
       const r = await admin.criarUsuario(novoUsuario, novoNome.trim() || undefined, novoAdmin ? "admin" : "usuario");
       setTemporaria({ nome: r.nome_usuario, senha: r.senha_temporaria, nova: true });
@@ -84,7 +87,9 @@ export function AdministracaoScreen() {
         <label className="block text-sm text-text-secondary">Nome de usuário
           <input value={novoUsuario} onChange={(e) => setNovoUsuario(e.target.value.replace(NOME_USUARIO, ""))} maxLength={32} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="ex.: thaty" className="ecos-input mt-1.5 w-full" />
         </label>
-        <p className="mt-1 text-xs text-text-muted">3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o login e o nome da pasta da pessoa, e não muda depois.</p>
+        {erroUsuario
+          ? <p role="alert" className="mt-1 text-xs text-error">{erroUsuario}</p>
+          : <p className="mt-1 text-xs text-text-muted">3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o login e o nome da pasta da pessoa, e não muda depois.</p>}
         <label className="mt-3 block text-sm text-text-secondary">Nome (opcional)
           <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} maxLength={80} placeholder="como ela aparece para as outras pessoas" className="ecos-input mt-1.5 w-full" />
         </label>
@@ -92,7 +97,7 @@ export function AdministracaoScreen() {
           <input type="checkbox" checked={novoAdmin} onChange={(e) => setNovoAdmin(e.target.checked)} className="accent-steel-400" />
           Também administra o Ecos
         </label>
-        <button disabled={ocupado || novoUsuario.length < 3} className={`mt-4 flex items-center gap-2 ${BOTAO}`}><UserPlus size={15} />Criar conta</button>
+        <button disabled={ocupado || !novoUsuario || !!erroUsuario}className={`mt-4 flex items-center gap-2 ${BOTAO}`}><UserPlus size={15} />Criar conta</button>
       </form>
 
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Contas</p>

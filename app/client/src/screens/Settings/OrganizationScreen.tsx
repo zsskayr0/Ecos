@@ -3,7 +3,7 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState, type MouseEvent } from "react";
 import { ChevronDown, Folder, FolderPlus, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { ApiError, pastas } from "@/lib/api";
+import { pastas } from "@/lib/api";
 import { PastasGrade, type ItemExplorador, type PastaResumo } from "@/components/views/PastasGrade";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -15,6 +15,7 @@ import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type Preferenc
 import { avisar } from "@/lib/toast";
 import { TagsOrganizacao } from "./TagsOrganizacao";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Tipo = "nota" | "tarefa";
 
 /** Administração global de diretórios. A navegação de conteúdo permanece em
@@ -43,7 +44,7 @@ export function OrganizationScreen() {
     setAtualizando(true); setErro(null);
     pastas.listar({ tipo, espaco, pasta_pai: pastaAtual })
       .then((r) => { if (ativa) { setLista(r.subpastas); setItens(r.itens as unknown as ItemExplorador[]); setVersaoLista((v) => v + 1); } })
-      .catch((e) => ativa && setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."))
+      .catch((e) => ativa && setErro(mensagemDeErro(e, "Não foi possível carregar as pastas.")))
       .finally(() => { if (ativa) setAtualizando(false); });
     return () => { ativa = false; };
   }, [tipo, espaco, pastaAtual, versao]);
@@ -55,7 +56,7 @@ export function OrganizationScreen() {
       await pastas.criar({ tipo, espaco, pasta_pai: pastaAtual, nome: nome.trim() });
       setNome(""); setNovaAberta(false); notificar(); avisar(pastaAtual ? "Subpasta criada com sucesso." : "Pasta criada com sucesso.", "sucesso");
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
+      setErro(mensagemDeErro(e, "Não foi possível criar a pasta."));
     } finally { setCriando(false); }
   }
 

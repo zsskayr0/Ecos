@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { CheckSquare, FileText, Loader2 } from "lucide-react";
-import { ApiError, notas, tarefas } from "@/lib/api";
+import { notas, tarefas } from "@/lib/api";
 import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
+import { mensagemDeErro } from "@/lib/erros";
 const TITULO_MAX = 120;
 
 /** Primeira linha vira título; o resto, corpo. Linha única longa demais vai inteira para o corpo. */
@@ -35,7 +36,7 @@ export function CapturaRapida() {
       else await tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo });
       setTexto(""); notificar();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível salvar.");
+      setErro(mensagemDeErro(e, "Não foi possível salvar."));
     } finally {
       setEnviando(false);
       campo.current?.focus();

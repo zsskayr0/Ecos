@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, RotateCcw, StickyNote } from "lucide-react";
-import { ApiError, tarefas as tarefasApi } from "@/lib/api";
+import { tarefas as tarefasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { movimentoReduzido } from "@/lib/movimento";
 import type { FeedItem, PrioridadeTarefa, Tarefa } from "@/lib/types";
 import { CLASSE_PRIORIDADE, ROTULO_PRIORIDADE, RANKING_PRIORIDADE, caminhoDoItem, nomeDaPasta, pastaDoItem, prazoDaTarefa } from "./util";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Selecionar = (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean;
 
 interface Comum {
@@ -224,7 +225,7 @@ export function KanbanItens(comum: Comum) {
     if (!tarefa || coluna.itens.some((t) => t.id === id)) return;
     setErro(null);
     try { await coluna.aplicar(id); notificar(); }
-    catch (err) { setErro(err instanceof ApiError ? err.message : "Não foi possível mover a tarefa."); }
+    catch (err) { setErro(mensagemDeErro(err, "Não foi possível mover a tarefa.")); }
   }
 
   return (

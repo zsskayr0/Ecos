@@ -1,8 +1,9 @@
 import { useRef, useState, type ReactNode } from "react";
 import { FileUp } from "lucide-react";
-import { ApiError, notas } from "@/lib/api";
+import { notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 const EXTENSAO_MD = /\.(md|markdown)$/i;
 const LIMITE_BYTES = 2 * 1024 * 1024;
 
@@ -32,7 +33,7 @@ export function SoltarMarkdown({ pasta, children, className }: { pasta?: string;
         await notas.importar({ nome: arquivo.name, conteudo: await arquivo.text(), pasta });
         ok++;
       } catch (e) {
-        falhas.push(`${arquivo.name}: ${e instanceof ApiError ? e.message : "não foi possível importar"}`);
+        falhas.push(`${arquivo.name}: ${mensagemDeErro(e, "não foi possível importar")}`);
       }
     }
     if (ok) notificar();

@@ -3,11 +3,12 @@ import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, ChevronLeft } from "lucide-react";
-import { notificacoes as notificacoesApi, ApiError, type NotificacaoApi } from "@/lib/api";
+import { notificacoes as notificacoesApi, type NotificacaoApi } from "@/lib/api";
 import { formatTempoRelativo } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 const ABAS: { valor: NotificacaoApi["categoria"] | "tudo"; label: string }[] = [
   { valor: "tudo", label: "Tudo" },
   { valor: "cofre", label: "Cofre" },
@@ -49,7 +50,7 @@ export function NotificationsScreen() {
     notificacoesApi
       .listar({ categoria: aba === "tudo" ? undefined : aba, limit: 100 })
       .then((p) => setItens(p.items))
-      .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar."));
+      .catch((e) => setErro(mensagemDeErro(e, "Não foi possível carregar.")));
   }, [aba, versao, tentativa]);
 
   const grupos = useMemo(() => agruparPorData(itens ?? []), [itens]);

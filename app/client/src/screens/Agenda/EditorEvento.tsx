@@ -286,6 +286,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
               disabled={travaTexto}
               placeholder="Ex.: Reunião de planejamento"
               aria-label="Título"
+              maxLength={300}
               className={`ecos-input w-full text-lg font-medium ${tremer ? "ecos-tremer border-error" : ""}`}
             />
           </div>
@@ -390,7 +391,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
           )}
 
           <Secao i={6} icone={<MapPin size={13} />} rotulo="Local">
-            <input value={local} onChange={(e) => setLocal(e.target.value)} disabled={travaTexto} placeholder="Sala, endereço ou link" aria-label="Local" className="ecos-input w-full" />
+            <input value={local} onChange={(e) => setLocal(e.target.value)} disabled={travaTexto} placeholder="Sala, endereço ou link" aria-label="Local" maxLength={300} className="ecos-input w-full" />
           </Secao>
 
           <Secao i={7} icone={<AlignLeft size={13} />} rotulo="Descrição">

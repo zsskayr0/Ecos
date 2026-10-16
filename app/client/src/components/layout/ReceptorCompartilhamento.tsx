@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ImagePlus } from "lucide-react";
-import { ApiError, media } from "@/lib/api";
+import { media } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useCompartilhados } from "@/lib/compartilhar";
 import { enfileirarComprovantes } from "@/lib/fila-comprovantes";
 import { useAppUI } from "@/lib/ui-context";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Aviso = { tipo: "enviando" | "erro"; texto: string };
 
 /**
@@ -46,7 +47,7 @@ export function ReceptorCompartilhamento() {
         empilharAnexosDeCaptura([media.referencia(item)]);
       } catch (e) {
         falhas += 1;
-        ultimoErro = e instanceof ApiError ? e.message : "Não foi possível enviar a imagem. O ecos-app está acessível?";
+        ultimoErro = mensagemDeErro(e, "Não foi possível enviar a imagem. O ecos-app está acessível?");
       }
     }
     setAviso(falhas ? { tipo: "erro", texto: falhas === arquivos.length ? ultimoErro : `${falhas} de ${arquivos.length} imagens não foram enviadas.` } : null);

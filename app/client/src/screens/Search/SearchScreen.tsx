@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { ChevronLeft, Search as SearchIcon, Clock, Sparkles } from "lucide-react";
-import { busca, vault, ApiError, type TransacaoApi } from "@/lib/api";
+import { busca, vault, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { EmptyState } from "@/components/common/EmptyState";
 
+import { mensagemDeErro } from "@/lib/erros";
 const ATALHOS = ["Notas órfãs", "Tarefas de hoje", "Transações desse mês"];
 
 interface Resultado {
@@ -69,7 +70,7 @@ export function SearchScreen() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErro(e instanceof ApiError ? e.message : "Não foi possível buscar.");
+        setErro(mensagemDeErro(e, "Não foi possível buscar."));
       });
     return () => {
       vivo = false;

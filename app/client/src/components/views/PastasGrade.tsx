@@ -1,13 +1,14 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
-import { ApiError, pastas as pastasApi } from "@/lib/api";
+import { pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { TOM, misturar } from "@/components/common/MenuSuspenso";
 
+import { mensagemDeErro } from "@/lib/erros";
 export interface PastaResumo {
   caminho: string;
   nome: string;
@@ -149,7 +150,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
     const pai = pastaAtiva.caminho.split("/").slice(0, -1).join("/");
     setOcupado(true); setErro(null);
     try { await pastasApi.renomear({ tipo, espaco, caminho_atual: pastaAtiva.caminho, novo_caminho: pai ? `${pai}/${novoNome.trim()}` : novoNome.trim() }); notificar(); fecharAcao(); avisar("Pasta renomeada com sucesso.", "sucesso"); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível renomear a pasta."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível renomear a pasta.")); }
     finally { setOcupado(false); }
   }
   async function mover(destino: string) {
@@ -158,14 +159,14 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
     if (novoCaminho === pastaAtiva.caminho || novoCaminho.startsWith(`${pastaAtiva.caminho}/`)) { setErro("Uma pasta não pode ser movida para dentro dela mesma."); return; }
     setOcupado(true); setErro(null);
     try { await pastasApi.renomear({ tipo, espaco, caminho_atual: pastaAtiva.caminho, novo_caminho: novoCaminho }); notificar(); fecharAcao(); avisar("Pasta movida com sucesso.", "sucesso"); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível mover a pasta."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível mover a pasta.")); }
     finally { setOcupado(false); }
   }
   async function excluir() {
     if (!pastaAtiva || ocupado) return;
     setOcupado(true); setErro(null);
     try { await pastasApi.excluir({ tipo, espaco, caminho: pastaAtiva.caminho }); notificar(); fecharAcao(); avisar("Pasta excluída com sucesso.", "sucesso"); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível excluir a pasta. Ela pode precisar estar vazia."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível excluir a pasta. Ela pode precisar estar vazia.")); }
     finally { setOcupado(false); }
   }
 

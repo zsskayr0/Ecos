@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError, auth } from "@/lib/api";
+import { auth } from "@/lib/api";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
 import { AceiteTermosCampo } from "./AceiteTermosCampo";
 import { DocumentoLegalDialog, type DocumentoLegal } from "./DocumentoLegalDialog";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** Bloqueia o app depois do login enquanto a pessoa não aceitar a versão vigente dos Termos e da Política. */
 export function ReaceiteTermos() {
   const { perfil, recarregarPerfil, logout } = useAuth();
@@ -21,7 +22,7 @@ export function ReaceiteTermos() {
       await auth.aceitarTermos(perfil.termos_versao);
       await recarregarPerfil();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível registrar o aceite. Tente de novo.");
+      setErro(mensagemDeErro(e, "Não foi possível registrar o aceite. Tente de novo."));
     } finally {
       setEnviando(false);
     }

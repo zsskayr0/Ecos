@@ -10,7 +10,7 @@ import { useIsDesktop } from "@/lib/use-viewport";
 import type { FeedItem } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Check, ChevronDown, Flag, FolderInput, Loader2, Users, X } from "lucide-react";
-import { ApiError, equipes, pastas, tarefas, notas } from "@/lib/api";
+import { equipes, pastas, tarefas, notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { GradeItens } from "./GradeItens";
 import { BarraFiltros } from "./filtros/BarraFiltros";
@@ -19,6 +19,7 @@ import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, p
 import { TabelaItens } from "./TabelaItens";
 import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Props {
   itens: FeedItem[];
   modo: ModoVisualizacao;
@@ -133,7 +134,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
         },
         { aoDesfazer: notificar, sucesso: "Movimento desfeito." },
       );
-    } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível mover os itens selecionados."); }
+    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível mover os itens selecionados.")); }
     finally { setProcessando(false); setMenuMoverAberto(false); }
   }
   async function alterarPrioridade(prioridade: "baixa" | "media" | "alta") {
@@ -143,7 +144,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
       for (const item of tarefasSelecionadas) await tarefas.atualizar(item.id, { prioridade });
       notificar();
       avisar("Prioridade alterada.", "sucesso");
-    } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível alterar a prioridade."); }
+    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível alterar a prioridade.")); }
     finally { setProcessando(false); setMenuPrioridadeAberto(false); }
   }
   async function mudarEquipe(espaco: string) {
@@ -156,7 +157,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
       }
       setSelecionados(new Set()); ancora.current = null; notificar();
       avisar("Equipe alterada.", "sucesso");
-    } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível alterar a equipe."); }
+    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível alterar a equipe.")); }
     finally { setProcessando(false); setMenuEquipeAberto(false); }
   }
   async function concluirSelecionadas() {
@@ -171,7 +172,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
         async () => { for (const item of concluidas) await tarefas.atualizarStatus(item.id, "pendente"); },
         { aoDesfazer: notificar, sucesso: concluidas.length === 1 ? "Tarefa reaberta." : "Tarefas reabertas." },
       );
-    } catch (e) { setErroAcao(e instanceof ApiError ? e.message : "Não foi possível concluir as tarefas."); }
+    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível concluir as tarefas.")); }
     finally { setProcessando(false); }
   }
 

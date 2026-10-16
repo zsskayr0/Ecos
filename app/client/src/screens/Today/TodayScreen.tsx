@@ -1,7 +1,7 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { AlertTriangle, CalendarCheck2, CalendarClock, Check, CheckCircle2, Clock, Flag, TimerReset } from "lucide-react";
-import { agenda as agendaApi, rotina as rotinaApi, tarefas, ApiError, type BlocoPlanejado, type TarefaResumo } from "@/lib/api";
+import { agenda as agendaApi, rotina as rotinaApi, tarefas, type BlocoPlanejado, type TarefaResumo } from "@/lib/api";
 import { dataLocalISO, diaEMinutosLocais, duracaoParaAlocar, instanteLocalISO, rotuloHorario, somarDiasISO } from "@/lib/agenda-tempo";
 import { montarPlanejamento, proximoHorarioLivre, type ItemDoDia } from "@/lib/planejamento-dia";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
@@ -13,6 +13,7 @@ import { avisarComDesfazer } from "@/lib/desfazer";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { EventoDialog } from "@/screens/Eventos/EventoDialog";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Capacidade = Awaited<ReturnType<typeof tarefas.capacidade>>;
 const fmtDuracao = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}min` : ""}` : `${min}min`);
 const fmtDia = (iso: string) => iso.split("-").reverse().slice(0, 2).join("/");
@@ -51,7 +52,7 @@ export function TodayScreen() {
       if (!ativo) return;
       const vistos = new Set<string>();
       setLista([...atrasadas.items, ...doDia.items].filter((t) => !vistos.has(t.id) && !!vistos.add(t.id)));
-    }).catch((e) => { if (ativo) { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o dia."); setLista([]); } });
+    }).catch((e) => { if (ativo) { setErro(mensagemDeErro(e, "Não foi possível carregar o dia.")); setLista([]); } });
     tarefas.listar({ concluida_de: hoje, concluida_ate: hoje, status: "concluida", espaco, tz, limit: 200 })
       .then((resultado) => { if (ativo) setConcluidas(resultado.items); })
       .catch(() => { if (ativo) setConcluidas([]); });
@@ -66,7 +67,7 @@ export function TodayScreen() {
 
   const executar = async (acao: () => Promise<unknown>, falha: string) => {
     setAviso(null);
-    try { await acao(); } catch (e) { setAviso(e instanceof ApiError ? e.message : falha); }
+    try { await acao(); } catch (e) { setAviso(mensagemDeErro(e, falha)); }
     notificar(); // em caso de falha o refetch desfaz a atualização otimista
   };
   const concluir = (t: TarefaResumo) => {

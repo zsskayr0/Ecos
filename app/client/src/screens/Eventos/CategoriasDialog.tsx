@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Check, Plus, Trash2, X } from "lucide-react";
-import { ApiError, eventos, type CategoriaEvento } from "@/lib/api";
+import { eventos, type CategoriaEvento } from "@/lib/api";
 import { PALETAS_CORES } from "@/components/common/PaletaCores";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Props {
   aberto: boolean;
   categorias: CategoriaEvento[];
@@ -34,7 +35,7 @@ export function CategoriasDialog({ aberto, categorias, espaco, onFechar, onAlter
     setOcupado(true);
     setErro(null);
     try { await acao(); onAlterado(); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível concluir. Tente novamente."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível concluir. Tente novamente.")); }
     finally { setOcupado(false); }
   }
 

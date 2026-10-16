@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError, auth } from "@/lib/api";
+import { auth } from "@/lib/api";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
+import { validarSenhaNova } from "@/lib/validacao";
 
+import { mensagemDeErro } from "@/lib/erros";
 const BOTAO = "rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-steel-500 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-text-muted disabled:hover:bg-surface-3";
 
 /** Editar perfil: o nome de usuário (login e pasta em disco) é fixo; aqui ele só aparece, e a senha é trocada. */
@@ -19,8 +21,10 @@ export function EditarPerfilScreen() {
   const [nova, setNova] = useState("");
   const [mostrar, setMostrar] = useState(false);
 
+  const erroNova = nova ? validarSenhaNova(nova, perfil?.nome_usuario) : null;
+
   async function trocarSenha() {
-    if (trocando || !atual || nova.length < 12) return;
+    if (trocando || !atual || !nova || erroNova) return;
     setTrocando(true); setMensagem(null);
     try {
       await auth.trocarSenha(atual, nova);
@@ -28,7 +32,7 @@ export function EditarPerfilScreen() {
       setMensagem({ tipo: "sucesso", texto: "Senha alterada." });
       avisar("Senha alterada.", "sucesso");
     } catch (e) {
-      setMensagem({ tipo: "erro", texto: e instanceof ApiError ? e.message : "Não foi possível alterar a senha." });
+      setMensagem({ tipo: "erro", texto: mensagemDeErro(e, "Não foi possível alterar a senha.") });
     } finally { setTrocando(false); }
   }
 
@@ -64,8 +68,10 @@ export function EditarPerfilScreen() {
         <label className="mt-3 block text-sm text-text-secondary">Nova senha
           <input type={mostrar ? "text" : "password"} value={nova} onChange={(e) => setNova(e.target.value.replace(/\s/g, ""))} autoComplete="new-password" placeholder="12 ou mais caracteres, sem espaços" className="ecos-input mt-1 w-full" />
         </label>
-        <p className="mt-2 text-xs text-text-muted">Mínimo de 12 caracteres, sem espaços; não pode ser uma senha comum nem conter o seu nome de usuário.</p>
-        <button type="button" onClick={() => void trocarSenha()} disabled={trocando || !atual || nova.length < 12} className={`mt-3 ${BOTAO}`}>{trocando ? "Alterando…" : "Alterar senha"}</button>
+        {erroNova
+          ? <p role="alert" className="mt-2 text-xs text-error">{erroNova}</p>
+          : <p className="mt-2 text-xs text-text-muted">Mínimo de 12 caracteres, sem espaços; não pode ser uma senha comum nem conter o seu nome de usuário.</p>}
+        <button type="button" onClick={() => void trocarSenha()} disabled={trocando || !atual || !nova || !!erroNova} className={`mt-3 ${BOTAO}`}>{trocando ? "Alterando…" : "Alterar senha"}</button>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { EmptyState } from "@/components/common/EmptyState";
-import { tarefas as tarefasApi, pastas as pastasApi, ApiError, type TarefaResumo } from "@/lib/api";
+import { tarefas as tarefasApi, pastas as pastasApi, type TarefaResumo } from "@/lib/api";
 import { tarefaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,7 @@ import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** Inside a Tarefa folder — same shape as `FolderScreen` (Notas, section 3.2), reusing the Feed's own `TaskCard`. */
 export function TaskFolderScreen() {
   const { "*": caminho = "" } = useParams();
@@ -46,7 +47,7 @@ export function TaskFolderScreen() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErro(e instanceof ApiError ? e.message : "Não foi possível carregar esta pasta.");
+        setErro(mensagemDeErro(e, "Não foi possível carregar esta pasta."));
         setItens([]);
       });
     return () => {

@@ -9,6 +9,7 @@ import type { TarefaResumo } from "@/lib/api";
 import { useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
 import { formatarHoras } from "@/lib/agenda-planejamento";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** Quanto o dedo precisa ficar parado sobre um bloco para "pegá-lo" (antes disso, arrastar rola a tela). */
 export const LONGO_TOQUE_MS = 350;
 /** Quanto o ponteiro anda (px) antes de um clique de mouse virar arrasto, e quanto o dedo pode andar durante a pressão longa. */
@@ -918,7 +919,7 @@ function CriacaoRapida({ pos, ancora, hoje, onFechar, onSalvar, onAbrirCompleto,
       const dados = { titulo: limpo, corpo: corpo.trim(), prioridade };
       await (abrirCompleto && onAbrirCompleto ? onAbrirCompleto(dados) : onSalvar(dados));
     }
-    catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível criar a tarefa."); setSalvando(false); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível criar a tarefa.")); setSalvando(false); }
   }
 
   return (

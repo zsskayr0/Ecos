@@ -3,7 +3,7 @@ import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { notas, tarefas, vault, ApiError, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
+import { notas, tarefas, vault, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
 import { avisar } from "@/lib/toast";
 import { hojeISO } from "@/lib/format";
 import { taskTags } from "@/lib/task-fields";
@@ -16,6 +16,7 @@ import { TaskForm } from "./TaskForm";
 import { TransactionForm } from "./TransactionForm";
 import { AnexosPendentes, enviarAnexosPendentes } from "@/screens/Vault/comprovantes/AnexosPendentes";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * A single, persistent Capture draft (rule 5, section 2.4): switching
  * type never loses what's already been typed. Each form only shows/edits
@@ -327,7 +328,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
       return true;
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível salvar. O ecos-app está rodando?");
+      setErro(mensagemDeErro(e, "Não foi possível salvar. O ecos-app está rodando?"));
       // Com o servidor fora do ar, o texto não pode sumir se a janela for fechada: fica neste aparelho até ser recuperado.
       if ((tipo === "nota" || tipo === "tarefa") && draft.texto.trim()) {
         try { localStorage.setItem(CHAVE_RASCUNHO_FALHA, JSON.stringify({ tipo, draft })); } catch { /* cache indisponível */ }

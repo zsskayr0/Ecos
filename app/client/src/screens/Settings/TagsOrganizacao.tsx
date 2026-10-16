@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { GitMerge, Pencil, Tag, Trash2, X } from "lucide-react";
-import { ApiError, tagsApi, type TagCatalogo } from "@/lib/api";
+import { tagsApi, type TagCatalogo } from "@/lib/api";
 import { canonicaTag } from "@/lib/tags";
 import { useCatalogoTags } from "@/lib/use-catalogo-tags";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Acao = { tipo: "renomear"; tag: string } | { tipo: "mesclar" } | null;
 
 function resumoUso(t: { notas: number; tarefas: number }) {
@@ -43,7 +44,7 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
       setAcao(null); setNome(""); setMarcadas([]); setRemovendo(null);
       recarregar(); notificar();
     } catch (e) {
-      setFalha(e instanceof ApiError ? e.message : "Não foi possível concluir. Nada foi alterado.");
+      setFalha(mensagemDeErro(e, "Não foi possível concluir. Nada foi alterado."));
     } finally { setOcupado(false); }
   }
 

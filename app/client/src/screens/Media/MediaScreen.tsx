@@ -3,11 +3,12 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FileText, Image as ImageIcon, Library, Trash2, X } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
-import { ApiError, media, notas, tarefas, type Midia } from "@/lib/api";
+import { media, notas, tarefas, type Midia } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 
+import { mensagemDeErro } from "@/lib/erros";
 function tamanho(n: number) { return n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`; }
 
 function MenuProprio<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
@@ -39,7 +40,7 @@ export function MediaScreen() {
       const textos = [...listaNotas.items.map((n) => n.corpo), ...detalhes.flatMap((t) => t ? [t.corpo] : [])].join("\n");
       setUso(new Set(lista.filter((item) => textos.includes(item.caminho)).map((item) => item.caminho))); setItens(lista); setErro(null);
     } }).catch((e) => {
-      if (ativo) { setItens([]); setErro(e instanceof ApiError ? e.message : "Não foi possível carregar os arquivos. Tente novamente."); }
+      if (ativo) { setItens([]); setErro(mensagemDeErro(e, "Não foi possível carregar os arquivos. Tente novamente.")); }
     });
     return () => { ativo = false; };
   }, [versao, espaco]);
@@ -57,7 +58,7 @@ export function MediaScreen() {
       setConfirmando(null);
       notificar();
       avisar("Arquivo movido para a lixeira.", "sucesso");
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível excluir o arquivo. Tente novamente."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível excluir o arquivo. Tente novamente.")); }
     finally { setExcluindo(false); }
   }
 

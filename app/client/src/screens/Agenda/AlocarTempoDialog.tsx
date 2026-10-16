@@ -1,7 +1,7 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, CalendarClock, CalendarDays, ChevronDown, Folder, Search, Timer, X } from "lucide-react";
-import { ApiError, tarefas as tarefasApi, type TarefaResumo } from "@/lib/api";
+import { tarefas as tarefasApi, type TarefaResumo } from "@/lib/api";
 import { MINUTOS_DIA, dataLocalISO, rotuloHorario, type Posicao } from "@/lib/agenda-tempo";
 import type { TarefaArrastavel } from "@/lib/arraste-tarefa";
 import { DatePicker } from "@/components/common/DatePicker";
@@ -9,6 +9,7 @@ import { TimePicker } from "@/components/common/TimePicker";
 import { MenuSuspenso, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { estiloAcento, useCorDoEspaco } from "@/lib/cor";
 
+import { mensagemDeErro } from "@/lib/erros";
 const DURACOES_MENU = [
   ...Array.from({ length: 6 }, (_, i) => (i + 1) * 5),
   ...Array.from({ length: 6 }, (_, i) => 45 + i * 15),
@@ -74,7 +75,7 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
     let vivo = true;
     tarefasApi.listar({ status: "pendente", limit: 200 })
       .then((r) => { if (vivo) { setLista(r.items); if (r.items[0]) setTarefaId(r.items[0].id); } })
-      .catch((e) => { if (vivo) { setLista([]); setFalhou(e instanceof ApiError ? e.message : "Não foi possível carregar as tarefas."); } });
+      .catch((e) => { if (vivo) { setLista([]); setFalhou(mensagemDeErro(e, "Não foi possível carregar as tarefas.")); } });
     return () => { vivo = false; };
   }, []);
   useEffect(() => { if (lista) campoBusca.current?.focus(); }, [lista]);

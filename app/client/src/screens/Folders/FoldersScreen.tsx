@@ -2,10 +2,11 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ChevronRight, FileText, Folder, FolderTree, Image, ListChecks, StickyNote } from "lucide-react";
-import { ApiError, media, pastas, type Midia } from "@/lib/api";
+import { media, pastas, type Midia } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Pasta = { caminho: string; nome: string; contagem_itens: number };
 
 function Grupo({ titulo, Icone, cor, pastas, raiz, onAbrir }: { titulo: string; Icone: typeof Folder; cor: string; pastas: Pasta[]; raiz: string; onAbrir: (caminho: string) => void }) {
@@ -28,7 +29,7 @@ export function FoldersScreen() {
     Promise.all([pastas.listar({ tipo: "nota", espaco }), pastas.listar({ tipo: "tarefa", espaco }), media.listar(espaco)]).then(([notasResposta, tarefasResposta, arquivosResposta]) => {
       if (!ativo) return;
       setNotas(notasResposta.subpastas); setTarefas(tarefasResposta.subpastas); setArquivos(arquivosResposta.sort((a, b) => a.caminho.localeCompare(b.caminho, "pt-BR"))); setErro(null);
-    }).catch((e) => { if (ativo) { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."); setNotas([]); setTarefas([]); setArquivos([]); } });
+    }).catch((e) => { if (ativo) { setErro(mensagemDeErro(e, "Não foi possível carregar as pastas.")); setNotas([]); setTarefas([]); setArquivos([]); } });
     return () => { ativo = false; };
   }, [versao, espaco]);
 

@@ -10,6 +10,7 @@ import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, Relatorio
  * user configured in Configurações instead.
  */
 import type { TipoEquipe } from "./tipo-equipe";
+import { mensagemDeCampos, mensagemLimiteDeTentativas } from "./erros";
 import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
 import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
 import { invoke } from "@tauri-apps/api/core";
@@ -94,8 +95,9 @@ export class ApiError extends Error {
     /** Só em 429 (`RateLimited`) — segundos até poder tentar de novo. */
     public retryAfterSegundos?: number,
   ) {
-    const detalhes = campos?.map((c) => `${c.campo}: ${c.motivo}`).join("; ");
-    super(detalhes || (!message || /^Erro \d+$/.test(message) || status === 401 || (status >= 500 && /^Erro interno/i.test(message)) ? mensagemHttp(status) : message));
+    const detalhes = campos?.length ? mensagemDeCampos(campos) : "";
+    const limite = status === 429 || code === "RATE_LIMITED" ? mensagemLimiteDeTentativas(retryAfterSegundos) : "";
+    super(detalhes || limite || (!message || /^Erro \d+$/.test(message) || status === 401 || (status >= 500 && /^Erro interno/i.test(message)) ? mensagemHttp(status) : message));
   }
 }
 

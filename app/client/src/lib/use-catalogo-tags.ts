@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { tagsApi, type TagCatalogo } from "./api";
 import { useRefreshBus } from "./refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Catálogo único de tags (notas + tarefas) que a pessoa enxerga. Recarrega quando algo muda no app
  * (`versao` do refresh bus), então uma tag criada numa nota já aparece no editor de tarefas.
@@ -18,7 +19,7 @@ export function useCatalogoTags(espaco?: string) {
     setCarregando(true);
     tagsApi.listar(espaco)
       .then((r) => { if (vivo) { setTags(r); setErro(null); } })
-      .catch((e: unknown) => { if (vivo) setErro(e instanceof Error ? e.message : "Não foi possível carregar as tags."); })
+      .catch((e: unknown) => { if (vivo) setErro(mensagemDeErro(e, "Não foi possível carregar as tags.")); })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
   }, [espaco, versao, local]);

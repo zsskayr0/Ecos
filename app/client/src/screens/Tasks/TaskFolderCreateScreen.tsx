@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
-import { pastas, ApiError } from "@/lib/api";
+import { pastas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /** `POST /api/v1/pastas` with `tipo: "tarefa"` — same mechanism as `FolderCreateScreen` (Notas). */
 export function TaskFolderCreateScreen() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export function TaskFolderCreateScreen() {
       notificar();
       navigate(pai ? `/tarefas/pasta/${caminhoPastaNaRota(pai)}` : "/tarefas");
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
+      setErro(mensagemDeErro(e, "Não foi possível criar a pasta."));
     } finally {
       setSalvando(false);
     }

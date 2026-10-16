@@ -16,6 +16,7 @@ import { EquipeSelector } from "@/components/editor/EquipeSelector";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 
+import { mensagemDeErro } from "@/lib/erros";
 type NotaApi = Awaited<ReturnType<typeof notas.obter>>;
 
 interface CamposNota {
@@ -131,7 +132,7 @@ export function NoteEditorDesktop() {
         if (valorRef.current && iguais(valorRef.current, atual)) removerRascunho(id);
         notificar();
       } catch (e) {
-        setErro(e instanceof ApiError ? e.message : "Não foi possível sincronizar as alterações.");
+        setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações."));
       } finally { setSalvando(false); }
     })();
     emCurso.current = pedido;
@@ -158,7 +159,7 @@ export function NoteEditorDesktop() {
       setNota(await notas.obter(id));
       notificar();
       avisar("Nota marcada como revisada.", "sucesso");
-    } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível marcar como revisada.", "erro"); }
+    } catch (e) { avisar(mensagemDeErro(e, "Não foi possível marcar como revisada."), "erro"); }
   }
 
   async function excluir() {
@@ -171,7 +172,7 @@ export function NoteEditorDesktop() {
       notificar();
       navigate(-1);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível apagar.");
+      setErro(mensagemDeErro(e, "Não foi possível apagar."));
       setSalvando(false);
     }
   }
@@ -183,7 +184,7 @@ export function NoteEditorDesktop() {
       notificar();
       avisar("Nota duplicada.", "sucesso");
       navigate(`/notas/${criada.id}`);
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a nota."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível duplicar a nota.")); }
   }
 
   const mudar = (patch: Partial<CamposNota>) => setValor((v) => (v ? { ...v, ...patch } : v));

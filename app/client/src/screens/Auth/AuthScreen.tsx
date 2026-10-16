@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
+import { validarNomeUsuario, validarSenhaNova } from "@/lib/validacao";
 import logoIcone from "@/assets/brand/ecos-icone.svg";
 import { AceiteTermosCampo } from "@/components/legal/AceiteTermosCampo";
 import { DocumentoLegalDialog, type DocumentoLegal } from "@/components/legal/DocumentoLegalDialog";
@@ -54,6 +55,10 @@ export function AuthScreen() {
     return () => clearInterval(id);
   }, [bloqueadoAte]);
 
+  // Mesmas regras do servidor, avisadas sob o campo (só ao criar credenciais; no login nada é validado).
+  const erroUsuario = modo === "registro" && nomeUsuario ? validarNomeUsuario(nomeUsuario) : null;
+  const erroSenha = modo !== "login" && senha ? validarSenhaNova(senha, modo === "registro" ? nomeUsuario : undefined) : null;
+
   const restanteSegundos = bloqueadoAte !== null ? Math.max(0, Math.ceil((bloqueadoAte - agora) / 1000)) : 0;
   useEffect(() => {
     if (bloqueadoAte !== null && restanteSegundos === 0) setBloqueadoAte(null);
@@ -105,9 +110,9 @@ export function AuthScreen() {
           setBloqueadoAte(Date.now() + e.retryAfterSegundos * 1000);
           setAgora(Date.now());
         }
-        setErroLocal(e.campos?.map((c) => `${c.campo}: ${c.motivo}`).join(" · ") || e.message);
+        setErroLocal(e.message);
       } else {
-        setErroLocal("Não foi possível conectar ao ecos-app. Ele está rodando?");
+        setErroLocal("Não consegui falar com o servidor. Confira o endereço e sua conexão.");
       }
     } finally {
       setCarregando(false);
@@ -203,7 +208,9 @@ export function AuthScreen() {
                 spellCheck={false}
                 autoFocus={modo === "login"}
               />
-              {modo === "registro" && <span className="text-xs text-text-muted">De 3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o nome da sua pasta e não poderá ser alterado.</span>}
+              {modo === "registro" && (erroUsuario
+                ? <span role="alert" className="text-xs text-error">{erroUsuario}</span>
+                : <span className="text-xs text-text-muted">De 3 a 32 caracteres: letras, números, ponto, hífen e sublinhado. Vira o nome da sua pasta e não poderá ser alterado.</span>)}
             </label>
             )}
             <label className="flex flex-col gap-2">
@@ -227,7 +234,9 @@ export function AuthScreen() {
                   {mostrarSenha ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
                 </button>
               </div>
-              {modo !== "login" && <span className="text-xs text-text-muted">Mínimo 12 caracteres, sem espaços. Evite senhas comuns e o seu nome de usuário.</span>}
+              {modo !== "login" && (erroSenha
+                ? <span role="alert" className="text-xs text-error">{erroSenha}</span>
+                : <span className="text-xs text-text-muted">Mínimo 12 caracteres, sem espaços. Evite senhas comuns e o seu nome de usuário.</span>)}
             </label>
             {modo === "login" && (
               <button
@@ -278,6 +287,8 @@ export function AuthScreen() {
               disabled={
                 carregando ||
                 bloqueadoAte !== null ||
+                !!erroUsuario ||
+                !!erroSenha ||
                 (modo === "recuperar" ? chaveRecuperacao.trim().split(/\s+/).filter(Boolean).length < 24 : !nomeUsuario.trim()) ||
                 Array.from(senha).length < (modo === "login" ? 1 : 12) ||
                 (modo === "registro" && (!primeiroNome.trim() || !sobrenome.trim() || !declaraIdade || !aceitaTermos))

@@ -7,6 +7,7 @@ import { registrarCoresDasEquipes } from "./team-color";
 import { definirUsuarioDasFotos } from "./profile-avatar";
 import { sincronizarPreferenciasCalendario } from "./preferencias-calendario";
 
+import { mensagemDeErro } from "@/lib/erros";
 export interface Perfil {
   id: string;
   nome_usuario: string;
@@ -79,10 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         gravarSessaoAtiva(false);
       } else if (lerSessaoAtiva()) {
         // Servidor fora do ar (conexão recusada, 502/503/504) para quem já estava logado: a sessão pode estar ótima.
-        setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
+        setErro(mensagemDeErro(e, "Não foi possível falar com o servidor."));
         setStatus((previous) => previous === "carregando" ? "indisponivel" : previous);
       } else {
-        setErro(e instanceof ApiError ? e.message : "Não foi possível falar com o servidor.");
+        setErro(mensagemDeErro(e, "Não foi possível falar com o servidor."));
         // No authenticated session exists during first load. A connection
         // failure must not leave startup stuck forever in "carregando".
         setStatus((previous) => previous === "carregando" ? "deslogado" : previous);
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       gravarSessaoAtiva(true);
       void prepararConteudoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível entrar.");
+      setErro(mensagemDeErro(e, "Não foi possível entrar."));
       throw e;
     }
   }, []);
@@ -132,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await auth.login(nomeUsuario, senha);
       return { recovery_key: resposta.recovery_key };
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a conta.");
+      setErro(mensagemDeErro(e, "Não foi possível criar a conta."));
       throw e;
     }
   }, []);

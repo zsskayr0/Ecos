@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEve
 import { ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
-import { ApiError, pastas } from "@/lib/api";
+import { pastas } from "@/lib/api";
 import { descriptionTags, type TaskFields } from "@/lib/task-fields";
 import { canonicaTag } from "@/lib/tags";
 import { useCatalogoTags } from "@/lib/use-catalogo-tags";
@@ -17,6 +17,7 @@ import { EquipeSelector } from "./EquipeSelector";
 import { TitleField } from "@/components/common/TitleField";
 import { formatDataHoraCompleta } from "@/lib/format";
 
+import { mensagemDeErro } from "@/lib/erros";
 const LABELS = { baixa: "Baixa", media: "Média", alta: "Alta" };
 const FIELD = "ecos-input min-w-0 !rounded-lg border border-border !text-[16px] text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400";
 const LARGURA_SIDEBAR_PADRAO = 250;
@@ -91,7 +92,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
       onChange({ pasta: r.caminho });
       setNewFolder("");
       setFolderMenuOpen(false);
-    } catch (e) { setFolderError(e instanceof ApiError ? e.message : "Não foi possível criar a pasta."); } finally { setCreatingFolder(false); }
+    } catch (e) { setFolderError(mensagemDeErro(e, "Não foi possível criar a pasta.")); } finally { setCreatingFolder(false); }
   }
 
   useEffect(() => {

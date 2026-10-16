@@ -2,8 +2,9 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Briefcase, ChevronDown, ChevronLeft, Clock3, Moon, Sun, Utensils, Car, Sparkles, Coffee } from "lucide-react";
-import { ApiError, rotina, type BlocoRotina } from "@/lib/api";
+import { rotina, type BlocoRotina } from "@/lib/api";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Janela { inicio: string; fim: string }
 interface Estado {
   sono: Janela;
@@ -96,7 +97,7 @@ export function RotinaScreen() {
 
   useEffect(() => {
     rotina.listar().then((b) => { setExistentes(b); setEstado(doServidor(b)); })
-      .catch((e) => { setErro(e instanceof ApiError ? e.message : "Não foi possível carregar sua rotina."); setEstado(structuredClone(PADRAO)); });
+      .catch((e) => { setErro(mensagemDeErro(e, "Não foi possível carregar sua rotina.")); setEstado(structuredClone(PADRAO)); });
   }, []);
 
   const sair = () => navigate(primeiraVez ? "/feed" : location.pathname.startsWith("/configuracoes") ? "/configuracoes" : "/perfil");
@@ -133,7 +134,7 @@ export function RotinaScreen() {
       }
       sair();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível salvar sua rotina.");
+      setErro(mensagemDeErro(e, "Não foi possível salvar sua rotina."));
     } finally {
       setSalvando(false);
     }

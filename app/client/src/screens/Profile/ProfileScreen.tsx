@@ -7,13 +7,14 @@ import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { corDaEquipe } from "@/lib/team-color";
 import { limparFotoLegada, notificarFotoPerfilAtualizada, prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import type { Cargo } from "@/lib/types";
-import { ApiError, auth, avatarPerfil, equipes as equipesApi, notas, tarefas } from "@/lib/api";
+import { auth, avatarPerfil, equipes as equipesApi, notas, tarefas } from "@/lib/api";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Personal Profile — same visual structure as a Team's profile (section
  * 3.8). `usuario.nome` (migração 0004) is the real display name when set;
@@ -37,8 +38,8 @@ export function ProfileScreen() {
   const [mensagemPerfil, setMensagemPerfil] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const { url: urlFoto } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   useEffect(() => { let vivo = true; setCarregandoMetricas(true); setErroMetricas(null); Promise.all([notas.listar({ limit: 500 }), tarefas.listar({ limit: 500 })]).then(([paginaNotas, paginaTarefas]) => { if (!vivo) return; const texto = paginaNotas.items.map((nota) => `${nota.titulo} ${nota.corpo}`).join(" "); const primeira = paginaNotas.items.map((nota) => nota.criado_em).sort()[0] ?? null; setMetricas({ notas: paginaNotas.items.length, tarefas: paginaTarefas.items.length, palavras: texto.trim() ? texto.trim().split(/\s+/).length : 0, caracteres: texto.length, primeiraNota: primeira }); }).catch(() => { if (vivo) setErroMetricas("Não foi possível carregar o resumo do seu espaço."); }).finally(() => { if (vivo) setCarregandoMetricas(false); }); return () => { vivo = false; }; }, [tentativa]);
-  async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); avisar("Equipe criada.", "sucesso"); } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível criar a equipe.", "erro"); } finally { setOcupado(false); } }
-  async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); avisar(dialogoEquipe.tipo === "editar" ? "Equipe renomeada." : "Equipe excluída.", "sucesso"); } catch (e) { avisar(e instanceof ApiError ? e.message : "Não foi possível concluir a ação.", "erro"); } finally { setOcupado(false); } }
+  async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); avisar("Equipe criada.", "sucesso"); } catch (e) { avisar(mensagemDeErro(e, "Não foi possível criar a equipe."), "erro"); } finally { setOcupado(false); } }
+  async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); avisar(dialogoEquipe.tipo === "editar" ? "Equipe renomeada." : "Equipe excluída.", "sucesso"); } catch (e) { avisar(mensagemDeErro(e, "Não foi possível concluir a ação."), "erro"); } finally { setOcupado(false); } }
   async function escolherFoto(arquivo?: File) {
     if (!arquivo || !perfil || salvandoFoto) return;
     setMensagemPerfil(null);
@@ -53,7 +54,7 @@ export function ProfileScreen() {
       setMensagemPerfil({ tipo: "sucesso", texto: "Foto atualizada." });
       avisar("Foto atualizada.", "sucesso");
     } catch (e) {
-      setMensagemPerfil({ tipo: "erro", texto: e instanceof Error ? e.message : "Não foi possível guardar a imagem." });
+      setMensagemPerfil({ tipo: "erro", texto: mensagemDeErro(e, "Não foi possível guardar a imagem.") });
     } finally { setSalvandoFoto(false); }
   }
   if (!perfil) return status === "carregando"

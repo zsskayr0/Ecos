@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import { ApiError, eventos, type TempoPorCategoria as Tempo } from "@/lib/api";
+import { eventos, type TempoPorCategoria as Tempo } from "@/lib/api";
 import { EmptyState } from "@/components/common/EmptyState";
 import { formatarDuracao, larguraRelativa } from "@/lib/eventos";
 
+import { mensagemDeErro } from "@/lib/erros";
 const COR_SEM_CATEGORIA = "#64748B";
 
 interface Props {
@@ -27,7 +28,7 @@ export function TempoPorCategoria({ de, ate, versao, espaco, onEscolherCategoria
     let ativo = true;
     setDados(null);
     eventos.tempo({ de: deIso, ate: ateIso, espaco }).then((d) => { if (ativo) { setDados(d); setErro(null); } })
-      .catch((e) => { if (ativo) setErro(e instanceof ApiError ? e.message : "Não foi possível calcular o tempo. Tente novamente."); });
+      .catch((e) => { if (ativo) setErro(mensagemDeErro(e, "Não foi possível calcular o tempo. Tente novamente.")); });
     return () => { ativo = false; };
   }, [deIso, ateIso, versao, espaco]);
 

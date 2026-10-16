@@ -1,11 +1,12 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Folder, Plus, X } from "lucide-react";
-import { ApiError, pastas } from "@/lib/api";
+import { pastas } from "@/lib/api";
 import { canonicaTag } from "@/lib/tags";
 import { useCatalogoTags } from "@/lib/use-catalogo-tags";
 import { useIsMobile } from "@/lib/use-viewport";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Props {
   /** Espaço (Pessoal/equipe) cujas pastas são listadas e onde novas pastas nascem. */
   espaco?: string;
@@ -80,7 +81,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
       setNovaPasta("");
       setMenuAberto(false);
     } catch (e) {
-      setErroPasta(e instanceof ApiError ? e.message : "Não foi possível criar a pasta.");
+      setErroPasta(mensagemDeErro(e, "Não foi possível criar a pasta."));
     } finally {
       setCriando(false);
     }

@@ -6,7 +6,7 @@ import { useMinhasEquipes, type MinhaEquipe } from "@/lib/use-minhas-equipes";
 import { corDaEquipe, registrarCoresDasEquipes } from "@/lib/team-color";
 import { Avatar } from "@/components/common/Avatar";
 import { PaletaCores } from "@/components/common/PaletaCores";
-import { ApiError, avatarPerfil, equipes as equipesApi } from "@/lib/api";
+import { avatarPerfil, equipes as equipesApi } from "@/lib/api";
 import { limparFotoLegada, notificarFotoPerfilAtualizada, prepararFotoPerfil, useFotoPerfil } from "@/lib/profile-avatar";
 import { enviarAvatarEquipe, useAvatarEquipe } from "@/lib/team-avatar";
 import { ToggleItem } from "@/screens/Settings/SettingsScreen";
@@ -14,6 +14,7 @@ import { useAppUI } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { nomeExibicao, useAuth } from "@/lib/auth-context";
 
+import { mensagemDeErro } from "@/lib/erros";
 type Dialogo = { tipo: "renomear" | "excluir"; equipe: MinhaEquipe };
 const CHAVE_COR_PESSOAL = "ecos:cor-equipe-pessoal";
 
@@ -47,7 +48,7 @@ export function TeamsScreen() {
       const preparada = await prepararFotoPerfil(arquivo);
       await enviarAvatarEquipe(equipe.id, preparada);
       notificar();
-    } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível alterar a foto da equipe."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível alterar a foto da equipe.")); }
     finally { setEnviandoFoto(null); }
   }
 
@@ -58,7 +59,7 @@ export function TeamsScreen() {
       registrarCoresDasEquipes([{ id: equipe.id, cor: cor.toUpperCase() }]);
       aplicar(cor);
       notificar();
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível salvar a cor da equipe."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível salvar a cor da equipe.")); }
   }
 
   async function trocarFotoPessoal(arquivo?: File) {
@@ -70,7 +71,7 @@ export function TeamsScreen() {
       limparFotoLegada(perfil.id);
       await recarregarPerfil();
       notificarFotoPerfilAtualizada(perfil.id);
-    } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível alterar a foto pessoal."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível alterar a foto pessoal.")); }
     finally { setEnviandoFoto(null); }
   }
 
@@ -86,7 +87,7 @@ export function TeamsScreen() {
       if (dialogo.tipo === "renomear") await equipesApi.atualizar(dialogo.equipe.id, valor.trim());
       else await equipesApi.excluir(dialogo.equipe.id);
       setDialogo(null); notificar();
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível atualizar a equipe."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível atualizar a equipe.")); }
   }
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">

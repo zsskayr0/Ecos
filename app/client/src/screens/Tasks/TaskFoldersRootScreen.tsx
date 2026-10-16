@@ -2,7 +2,7 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { pastas, tarefas as tarefasApi, ApiError, type TarefaResumo } from "@/lib/api";
+import { pastas, tarefas as tarefasApi, type TarefaResumo } from "@/lib/api";
 import { tarefaResumoParaView } from "@/lib/adapters";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
@@ -13,6 +13,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Tarefas — root-level folder grid, same shape as `NotesRootScreen` (section
  * 3.2) but for the `Tarefas/` tree. Reachable from the Drawer (section 3.9)
@@ -44,7 +45,7 @@ export function TaskFoldersRootScreen() {
         setSubpastas(p.subpastas);
         setTarefas(t.items);
       })
-      .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
+      .catch((e) => setErro(mensagemDeErro(e, "Não foi possível carregar as pastas.")));
   }, [versao, tentativa, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (

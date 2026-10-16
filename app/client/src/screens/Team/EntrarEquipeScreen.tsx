@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { equipes, ApiError } from "@/lib/api";
+import { equipes } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Destino do QR code de convite (`/entrar/<código>`): a pessoa já tem conta e sessão (senão o app pede o login antes,
  * com o endereço preservado), então basta aceitar o convite e abrir a equipe.
@@ -28,7 +29,7 @@ export function EntrarEquipeScreen() {
         const minhas = await equipes.listarMinhas();
         navigate(minhas.length ? "/equipes" : "/feed", { replace: true });
       } catch (e) {
-        setErro(e instanceof ApiError ? e.message : "Não foi possível entrar na equipe.");
+        setErro(mensagemDeErro(e, "Não foi possível entrar na equipe."));
       }
     })();
   }, [codigo, navigate, recarregarPerfil, notificar]);

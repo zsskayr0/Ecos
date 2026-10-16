@@ -2,7 +2,7 @@ import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { pastas, notas as notasApi, ApiError, type NotaResumo } from "@/lib/api";
+import { pastas, notas as notasApi, type NotaResumo } from "@/lib/api";
 import { notaResumoParaView } from "@/lib/adapters";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
@@ -14,6 +14,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * Notas — root-level folder grid (section 3.2), reading the real
  * `GET /api/v1/pastas`. GAP-10: the real response doesn't mark a subfolder
@@ -49,7 +50,7 @@ export function NotesRootScreen() {
         setSubpastas(p.subpastas);
         setSoltas(n.items);
       })
-      .catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar as pastas."));
+      .catch((e) => setErro(mensagemDeErro(e, "Não foi possível carregar as pastas.")));
   }, [versao, tentativa, espacoAtivo, intercalarEquipes, filtroEquipeId]);
 
   return (

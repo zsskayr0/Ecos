@@ -1,9 +1,10 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, CheckCircle2, ExternalLink, Link2, Loader2, RefreshCw, Unplug } from "lucide-react";
-import { ApiError, calendario, type CalendarioConectado, type ResumoSyncCalendario } from "@/lib/api";
+import { calendario, type CalendarioConectado, type ResumoSyncCalendario } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 const LIMITE_ESPERA_MS = 3 * 60_000;
 
 const quando = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "ainda não sincronizou");
@@ -48,7 +49,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
 
   const pararEspera = useCallback(() => { if (espera.current) { clearInterval(espera.current); espera.current = null; } setUrlPendente(null); }, []);
   useEffect(() => () => { if (espera.current) clearInterval(espera.current); }, []);
-  useEffect(() => { carregar().catch((e) => setErro(e instanceof ApiError ? e.message : "Não foi possível carregar o estado do Google Calendar.")); }, [carregar]);
+  useEffect(() => { carregar().catch((e) => setErro(mensagemDeErro(e, "Não foi possível carregar o estado do Google Calendar."))); }, [carregar]);
 
   async function conectar() {
     setErro(null);
@@ -69,7 +70,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
         } catch { /* uma falha de rede isolada não cancela a espera */ }
       }, intervaloPollMs);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível iniciar a conexão com o Google.");
+      setErro(mensagemDeErro(e, "Não foi possível iniciar a conexão com o Google."));
     } finally { setOcupado(null); }
   }
 
@@ -82,7 +83,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
       setMensagem(`Sincronizado: ${resumoDoSync(r)}`);
       notificar();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível sincronizar agora. Tente novamente.");
+      setErro(mensagemDeErro(e, "Não foi possível sincronizar agora. Tente novamente."));
     } finally { setOcupado(null); await carregar().catch(() => undefined); }
   }
 
@@ -97,7 +98,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
       notificar();
       await carregar();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível desconectar. Tente novamente.");
+      setErro(mensagemDeErro(e, "Não foi possível desconectar. Tente novamente."));
     } finally { setOcupado(null); }
   }
 

@@ -2,10 +2,11 @@ import { avisar } from "@/lib/toast";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useState } from "react";
 import { FileText, Image as ImageIcon, RotateCcw, Trash2 } from "lucide-react";
-import { ApiError, lixeira, type ItemLixeira } from "@/lib/api";
+import { lixeira, type ItemLixeira } from "@/lib/api";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
+import { mensagemDeErro } from "@/lib/erros";
 export function TrashScreen() {
   const [itens, setItens] = useState<ItemLixeira[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -15,7 +16,7 @@ export function TrashScreen() {
   useEffect(() => {
     let ativo = true;
     lixeira.listar().then((lista) => { if (ativo) { setItens(lista); setErro(null); } }).catch((e) => {
-      if (ativo) { setItens([]); setErro(e instanceof ApiError ? e.message : "Não foi possível carregar a lixeira. Tente novamente."); }
+      if (ativo) { setItens([]); setErro(mensagemDeErro(e, "Não foi possível carregar a lixeira. Tente novamente.")); }
     });
     return () => { ativo = false; };
   }, [versao]);
@@ -28,7 +29,7 @@ export function TrashScreen() {
       setMensagem(`${item.nome} foi restaurado em ${item.tipo === "nota" ? "Notas" : item.tipo === "tarefa" ? "Tarefas" : item.tipo === "evento" ? "Eventos" : "Media"}.`);
       notificar();
       avisar(`${item.nome} restaurado.`, "sucesso");
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível restaurar o arquivo. Tente novamente."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível restaurar o arquivo. Tente novamente.")); }
     finally { setRestaurando(null); }
   }
   return <div className="px-4 pt-1 pb-nav-safe">

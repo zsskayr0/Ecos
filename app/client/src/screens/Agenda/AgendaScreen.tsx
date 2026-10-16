@@ -26,6 +26,7 @@ import { EventoDialog } from "../Eventos/EventoDialog";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAppUI } from "@/lib/ui-context";
 
+import { mensagemDeErro } from "@/lib/erros";
 type ModoAgenda = "dia" | "tres_dias" | "semana" | "quinzenal" | "mes" | "seis_meses" | "anual";
 type AncoraPopup = { left: number; top: number; width: number; height: number };
 
@@ -250,7 +251,7 @@ export function AgendaScreen() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErro(e instanceof ApiError ? e.message : "Não foi possível carregar a Agenda.");
+        setErro(mensagemDeErro(e, "Não foi possível carregar a Agenda."));
         setBlocos([]);
       });
     return () => {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Paperclip, X } from "lucide-react";
-import { ApiError, media, notas, tarefas } from "@/lib/api";
+import { media, notas, tarefas } from "@/lib/api";
 
+import { mensagemDeErro } from "@/lib/erros";
 interface Props {
   corpo: string;
   onCorpoChange: (corpo: string) => void;
@@ -81,7 +82,7 @@ export function AttachmentsField(props: Props) {
       onCorpoChange(inserirReferencia(corpo, media.referencia(item), posicao));
       setArquivoFalhou(null);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível enviar o arquivo. Tente novamente.");
+      setErro(mensagemDeErro(e, "Não foi possível enviar o arquivo. Tente novamente."));
       setArquivoFalhou(arquivo);
     } finally {
       ocupado.current = false;

@@ -1,11 +1,12 @@
 import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ChevronLeft, Download, Loader2 } from "lucide-react";
-import { ApiError, FRASE_EXCLUIR_CONTA, conta } from "@/lib/api";
+import { FRASE_EXCLUIR_CONTA, conta } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
 
-const mensagem = (e: unknown, padrao: string) => (e instanceof ApiError || e instanceof Error ? e.message : padrao);
+import { mensagemDeErro } from "@/lib/erros";
+const mensagem = mensagemDeErro;
 
 /**
  * Conta e dados (LGPD): a pessoa leva os próprios dados embora (`GET /me/export`, um `.zip` com notas, tarefas e

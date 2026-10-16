@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle, ScanLine } from "lucide-react";
-import { equipes, ApiError } from "@/lib/api";
+import { equipes } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAuth } from "@/lib/auth-context";
 import { TIPOS_DE_EQUIPE, type TipoEquipe } from "@/lib/tipo-equipe";
 
+import { mensagemDeErro } from "@/lib/erros";
 /**
  * GAP-05 (resolved): "Criar ou entrar numa Equipe" — the spec (section
  * 3.9) only defined the drawer entry point, without the flow. Now real:
@@ -36,7 +37,7 @@ export function TeamCreateJoinScreen() {
       await recarregarPerfil();
       navigate(`${baseEquipe}/${r.id}`);
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível criar a Equipe.");
+      setErro(mensagemDeErro(e, "Não foi possível criar a Equipe."));
     } finally {
       setCarregando(false);
     }
@@ -51,7 +52,7 @@ export function TeamCreateJoinScreen() {
       await recarregarPerfil();
       navigate(dentro ? "/configuracoes/equipes" : "/perfil");
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Código inválido ou expirado.");
+      setErro(mensagemDeErro(e, "Código inválido ou expirado."));
     } finally {
       setCarregando(false);
     }

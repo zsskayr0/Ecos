@@ -3,7 +3,7 @@ import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, ChevronLeft, ChevronRight, Cloud, ListChecks, Lock, Plus, Repeat, StickyNote, Tags } from "lucide-react";
-import { ApiError, eventos, type CategoriaEvento, type Evento } from "@/lib/api";
+import { eventos, type CategoriaEvento, type Evento } from "@/lib/api";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { agruparPorDia, deslocarAncora, formatarDuracao, intervaloDoPeriodo, type Periodo } from "@/lib/eventos";
@@ -12,6 +12,7 @@ import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { EventoDialog } from "./EventoDialog";
 import { TempoPorCategoria } from "./TempoPorCategoria";
 
+import { mensagemDeErro } from "@/lib/erros";
 const COR_SEM_CATEGORIA = "#64748B";
 type Aba = "lista" | "tempo";
 
@@ -60,7 +61,7 @@ export function EventosScreen() {
     setLista(null);
     eventos.listar({ de: deIso, ate: ateIso, categoria: filtroCategoria || undefined, espaco })
       .then((itens) => { if (ativo) { setLista(itens); setErro(null); } })
-      .catch((e) => { if (ativo) { setLista([]); setErro(e instanceof ApiError ? e.message : "Não foi possível carregar os eventos. Tente novamente."); } });
+      .catch((e) => { if (ativo) { setLista([]); setErro(mensagemDeErro(e, "Não foi possível carregar os eventos. Tente novamente.")); } });
     return () => { ativo = false; };
   }, [deIso, ateIso, filtroCategoria, versao, recarga, espaco]);
 

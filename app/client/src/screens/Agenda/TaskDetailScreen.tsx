@@ -15,6 +15,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { FecharDocumentoContext, TituloJanelaContext } from "@/lib/documento-popup";
 
+import { mensagemDeErro } from "@/lib/erros";
 const chaveRascunho = (id: string) => `ecos.task-draft.v1:${id}`;
 function lerRascunho(id: string): TaskFields | null { try { const draft = JSON.parse(localStorage.getItem(chaveRascunho(id)) ?? "null"); return draft && typeof draft.titulo === "string" ? draft as TaskFields : null; } catch { return null; } }
 function guardarRascunho(id: string, value: TaskFields) { try { localStorage.setItem(chaveRascunho(id), JSON.stringify(value)); } catch { /* cache indisponível */ } }
@@ -52,7 +53,7 @@ export function TaskDetailScreen() {
     if (!id || registrandoTempo) return;
     setRegistrandoTempo(true);
     try { await tarefas.timeEntries.criar(id, { tipo, inicio_em: new Date().toISOString(), duracao_min: value.duracao }); await carregarTempo(); notificar(); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível registrar o tempo."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível registrar o tempo.")); }
     finally { setRegistrandoTempo(false); }
   }
   useEffect(() => { definirTituloJanela?.(value.titulo.trim()); }, [definirTituloJanela, value.titulo]);
@@ -69,7 +70,7 @@ export function TaskDetailScreen() {
     }).catch((e) => {
       if (!active) return;
       if (e instanceof ApiError && e.status === 404) setNaoEncontrada(true);
-      else setErro(e instanceof ApiError ? e.message : "Não foi possível carregar a tarefa.");
+      else setErro(mensagemDeErro(e, "Não foi possível carregar a tarefa."));
     });
     return () => { active = false; };
   }, [id, desktop]);
@@ -93,7 +94,7 @@ export function TaskDetailScreen() {
         setSalvo(snapshot); notificar();
         setTarefa((t) => t ? { ...t, atualizado_em: new Date().toISOString() } : t);
         if (iguais(valueRef.current, snapshot)) removerRascunho(id);
-      } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível sincronizar as alterações."); }
+      } catch (e) { setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações.")); }
       finally { setSalvando(false); }
     })();
     salvamentoEmCurso.current = pedido;
@@ -117,14 +118,14 @@ export function TaskDetailScreen() {
     const status = tarefa.status === "concluida" ? "pendente" : "concluida";
     setAtualizandoStatus(true); setErro(null);
     try { await tarefas.atualizarStatus(id, status); setTarefa((t) => t ? { ...t, status, concluida_em: status === "concluida" ? new Date().toISOString() : null } : t); notificar(); if (status === "concluida") fecharDocumento?.(); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível atualizar o status."); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível atualizar o status.")); }
     finally { setAtualizandoStatus(false); }
   }
   async function excluir() {
     if (!id || salvando) return;
     setSalvando(true); setErro(null);
     try { await tarefas.excluir(id); removerRascunho(id); notificar(); avisarExcluido("tarefa", tarefa?.titulo ?? "", notificar); navigate(-1); }
-    catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível apagar."); setSalvando(false); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível apagar.")); setSalvando(false); }
   }
   async function duplicar() {
     if (!tarefa) return;
@@ -134,7 +135,7 @@ export function TaskDetailScreen() {
       notificar();
       avisar("Tarefa duplicada.", "sucesso");
       navigate(`/tarefa/${criada.id}`);
-    } catch (e) { setErro(e instanceof ApiError ? e.message : "Não foi possível duplicar a tarefa."); }
+    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível duplicar a tarefa.")); }
   }
 
   const conteudo = <div className="ecos-detail-content">
