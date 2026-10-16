@@ -54,6 +54,7 @@ const ContaDadosScreen = carregar(() => import("@/screens/Settings/ContaDadosScr
 const AparenciaScreen = carregar(() => import("@/screens/Settings/AparenciaScreen"), "AparenciaScreen");
 const AboutScreen = carregar(() => import("@/screens/Settings/AboutScreen"), "AboutScreen");
 const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"), "LicensesScreen");
+const ProblemasSincronizacaoScreen = carregar(() => import("@/screens/Settings/ProblemasSincronizacaoScreen"), "ProblemasSincronizacaoScreen");
 const CalendarPreferencesScreen = carregar(() => import("@/screens/Settings/CalendarPreferencesScreen"), "CalendarPreferencesScreen");
 const UsoDiarioScreen = carregar(() => import("@/screens/Settings/UsoDiarioScreen"), "UsoDiarioScreen");
 const NotificacoesPreferenciasScreen = carregar(() => import("@/screens/Settings/NotificacoesPreferenciasScreen"), "NotificacoesPreferenciasScreen");
@@ -133,6 +134,7 @@ export const screenRoutes = (
       <Route path="conta" element={tela(ContaDadosScreen)} />
       <Route path="aparencia" element={tela(AparenciaScreen)} />
       <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
+      <Route path="calendario/problemas" element={tela(ProblemasSincronizacaoScreen)} />
       <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
       <Route path="organizacao" element={tela(OrganizationScreen)} />
       <Route path="sobre" element={tela(AboutScreen)} />

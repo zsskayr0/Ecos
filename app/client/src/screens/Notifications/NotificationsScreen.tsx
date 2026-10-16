@@ -14,6 +14,7 @@ const ABAS: { valor: NotificacaoApi["categoria"] | "tudo"; label: string }[] = [
   { valor: "cofre", label: "Cofre" },
   { valor: "agenda", label: "Agenda" },
   { valor: "equipes", label: "Equipes" },
+  { valor: "sync", label: "Sincronização" },
 ];
 
 /** Color by area — violet is exclusive to the Vault everywhere in the UI (rule 3, section 1.3). */
@@ -21,6 +22,7 @@ const COR_AREA: Record<NotificacaoApi["categoria"], string> = {
   cofre: "text-violet",
   agenda: "text-cyan",
   equipes: "text-steel-300",
+  sync: "text-warning",
 };
 
 function agruparPorData(itens: NotificacaoApi[]) {
@@ -66,6 +68,22 @@ export function NotificationsScreen() {
     }
   }
 
+  /** "Resolver": marca como lido e leva à tela onde o aviso se resolve (só rotas internas). */
+  async function resolver(n: NotificacaoApi) {
+    await abrir(n);
+    if (n.acao_url?.startsWith("/")) navigate(n.acao_url);
+  }
+
+  async function marcarTodas() {
+    try {
+      await notificacoesApi.marcarTodasLidas();
+      notificar();
+    } catch (e) {
+      setErro(mensagemDeErro(e, "Não consegui marcar os avisos como lidos. Tente de novo."));
+    }
+  }
+  const naoLidas = (itens ?? []).filter((n) => !n.lida).length;
+
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
       <div className="mb-4 flex items-center gap-2">
@@ -73,6 +91,7 @@ export function NotificationsScreen() {
           <ChevronLeft size={22} />
         </button>
         <h1 className="font-display text-xl text-text-primary">Notificações</h1>
+        {naoLidas > 0 && <button type="button" onClick={() => void marcarTodas()} className="ml-auto text-sm font-medium text-steel-300">Marcar todas como lidas</button>}
       </div>
 
       <div className="mb-4 flex gap-2 overflow-x-auto no-scrollbar">
@@ -97,7 +116,7 @@ export function NotificationsScreen() {
         <EmptyState
           icon={Bell}
           title="Nada por aqui ainda."
-          subtitle="Alertas de Cofre, Agenda e Equipes vão aparecer aqui assim que acontecerem."
+          subtitle="Prazos próximos, mudanças de equipe e problemas de sincronização vão aparecer aqui assim que acontecerem."
         />
       ) : (
         Object.entries(grupos)
@@ -107,14 +126,15 @@ export function NotificationsScreen() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{grupo}</p>
               <div className="flex flex-col gap-1">
                 {lista.map((n) => (
-                  <button key={n.id} onClick={() => abrir(n)} className="flex w-full items-start gap-3 rounded-2xl px-2 py-2.5 text-left">
-                    <div className="min-w-0 flex-1">
+                  <div key={n.id} className="flex w-full items-start gap-3 rounded-2xl px-2 py-2.5">
+                    <button onClick={() => abrir(n)} className="min-w-0 flex-1 text-left" aria-label={`${n.titulo}${n.lida ? "" : " (não lida)"}`}>
                       <p className={`text-[15px] font-medium ${COR_AREA[n.categoria]}`}>{n.titulo}</p>
                       <p className="text-sm text-text-secondary">{n.corpo}</p>
                       <p className="mt-0.5 text-xs text-text-muted">{formatTempoRelativo(n.criado_em)}</p>
-                    </div>
+                    </button>
+                    {n.acao_url?.startsWith("/") && <button type="button" onClick={() => void resolver(n)} className="min-h-10 shrink-0 self-center rounded-xl bg-surface-2 px-3 text-sm font-medium text-text-primary hover:bg-surface-3">Resolver</button>}
                     {!n.lida && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-cyan" />}
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

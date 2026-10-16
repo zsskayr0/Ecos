@@ -978,6 +978,13 @@ export interface CalendarioConectado {
   ultimo_erro: string | null;
   /** O Google revogou ou expirou o acesso: só reconectando. */
   precisa_reconectar: boolean;
+  /** `reautorizar` = o Google recusou o acesso (só reconectando); `temporario` = rede/5xx/limite, tenta de novo sozinho. */
+  erro_tipo?: "reautorizar" | "temporario" | null;
+  erro_em?: string | null;
+  erros_seguidos?: number;
+  ultima_tentativa_em?: string | null;
+  /** Resumo do último ciclo bem-sucedido. */
+  ultimo_resumo?: ResumoSyncCalendario | null;
 }
 export interface ResumoSyncCalendario {
   criados: number;
@@ -987,6 +994,7 @@ export interface ResumoSyncCalendario {
   /** Edição local pendente e mais nova que a do Google: foi mantida. */
   conflitos_mantidos_locais: number;
   excecoes_ignoradas: number;
+  excecoes_aplicadas?: number;
   completa: boolean;
   /** Ecos → Google (opcionais: servidores anteriores ao envio não mandam). */
   enviados_criados?: number;
@@ -997,15 +1005,46 @@ export interface ResumoSyncCalendario {
   envios_adiados?: number;
   /** Recusados pelo Google: continuam pendentes. */
   envios_com_erro?: number;
+  problemas_novos?: number;
+  problemas_resolvidos?: number;
+  problemas_abertos?: number;
+}
+
+export type AcaoProblema = "tentar_de_novo" | "abrir" | "manter_local" | "manter_google" | "manter_ambos" | "desvincular" | "ignorar" | "reautorizar";
+export interface ProblemaSync {
+  id: string;
+  item_tipo: "evento" | "exclusao";
+  item_id: string;
+  item_titulo: string;
+  direcao: "envio" | "recebimento";
+  operacao: string;
+  provider: string;
+  codigo: string;
+  titulo: string;
+  explicacao: string;
+  acoes: AcaoProblema[];
+  http_status: number | null;
+  motivo_google: string | null;
+  tentativas: number;
+  primeira_vez: string;
+  ultima_vez: string;
 }
 
 export const calendario = {
-  config: () => get<{ conectados: CalendarioConectado[]; google_configurado: boolean }>("/calendario/config"),
+  config: () => get<{ conectados: CalendarioConectado[]; google_configurado: boolean; intervalo_secs?: number | null; problemas_abertos?: number }>("/calendario/config"),
   /** URL de autorização do Google (abrir no navegador). Exige abrir o Ecos por localhost/127.0.0.1. */
   conectar: (provider: "google") => get<{ url: string }>(`/calendario/conectar/${provider}`),
   sincronizar: () => post<ResumoSyncCalendario>("/calendario/sincronizar"),
   /** Os eventos ficam no Ecos, privados e sem vínculo; só a conexão some. */
   desconectar: (provider: "google") => del<{ ok: true }>(`/calendario/${provider}`),
+};
+
+/** Problemas de sincronização por item e as ações sobre eles. As que sobrescrevem algo exigem `confirmar`. */
+export const problemasSync = {
+  listar: () => get<{ items: ProblemaSync[]; ignorados: number }>("/sync/problemas"),
+  tentarTodos: () => post<ResumoSyncCalendario>("/sync/problemas/tentar-novamente"),
+  agir: (id: string, acao: Exclude<AcaoProblema, "abrir" | "reautorizar">, confirmar = false) =>
+    post<{ ok: true; estado: "aberto" | "ignorado" | "resolvido"; problemas_abertos: number; resumo: ResumoSyncCalendario | null }>(`/sync/problemas/${encodeURIComponent(id)}/acao`, { acao, confirmar }),
 };
 
 export const rotina = {
@@ -1108,11 +1147,13 @@ export function prepararConteudoOffline(espacos: string[]): Promise<void> {
 
 export interface NotificacaoApi {
   id: string;
-  categoria: "cofre" | "agenda" | "equipes";
+  categoria: "cofre" | "agenda" | "equipes" | "sync";
   titulo: string;
   corpo: string;
   lida: boolean;
   criado_em: string;
+  /** Rota interna do app com a tela para resolver o aviso (ex. problemas de sincronização). */
+  acao_url?: string | null;
 }
 
 export const notificacoes = {

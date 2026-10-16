@@ -54,9 +54,10 @@ describe("GoogleCalendarCard", () => {
     desenhar();
     expect(await screen.findByText(/Conectado como eu@gmail.com/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Sincronizar agora/ }));
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("2 novos, 1 atualizado");
-    expect(status.textContent).toContain("1 ocorrência editada de série não importada");
+    const lista = (await screen.findByRole("list", { name: "Resultado da sincronização" })).textContent ?? "";
+    expect(lista).toContain("2 eventos criados a partir do Google");
+    expect(lista).toContain("1 evento atualizado a partir do Google");
+    expect(lista).toContain("1 ocorrência editada de série não importada");
     expect(calendario.sincronizar).toHaveBeenCalledTimes(1);
   });
 
@@ -65,17 +66,26 @@ describe("GoogleCalendarCard", () => {
     vi.mocked(calendario.sincronizar).mockResolvedValue({ criados: 0, atualizados: 0, removidos: 0, inalterados: 3, conflitos_mantidos_locais: 0, excecoes_ignoradas: 0, completa: false, enviados_criados: 2, enviados_atualizados: 1, removidos_no_google: 1, envios_adiados: 1, envios_com_erro: 2 });
     desenhar();
     fireEvent.click(await screen.findByRole("button", { name: /Sincronizar agora/ }));
-    const texto = (await screen.findByRole("status")).textContent ?? "";
-    expect(texto).toContain("3 enviados ao Google");
-    expect(texto).toContain("1 apagado no Google");
-    expect(texto).toContain("1 adiado");
-    expect(texto).toContain("2 recusados pelo Google");
+    const texto = (await screen.findByRole("list", { name: "Resultado da sincronização" })).textContent ?? "";
+    expect(texto).toContain("3 alterações enviadas ao Google");
+    expect(texto).toContain("1 evento apagado no Google");
+    expect(texto).toContain("1 envio adiado");
+    expect(texto).toContain("2 problemas: o Google recusou");
+  });
+
+  it("sem nada a mudar, o resultado diz isso em vez de só 'Sincronizado'", async () => {
+    vi.mocked(calendario.config).mockResolvedValue({ conectados: [conexao()], google_configurado: true, intervalo_secs: 300 });
+    vi.mocked(calendario.sincronizar).mockResolvedValue({ criados: 0, atualizados: 0, removidos: 0, inalterados: 4, conflitos_mantidos_locais: 0, excecoes_ignoradas: 0, completa: false });
+    desenhar();
+    expect(await screen.findByText(/Automática a cada 5 min/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Sincronizar agora/ }));
+    expect((await screen.findByRole("list", { name: "Resultado da sincronização" })).textContent).toContain("Nada mudou (4 eventos já em dia)");
   });
 
   it("acesso revogado pede reconexão e esconde 'sincronizar agora'", async () => {
     vi.mocked(calendario.config).mockResolvedValue({ conectados: [conexao({ precisa_reconectar: true })], google_configurado: true });
     desenhar();
-    expect((await screen.findByRole("alert")).textContent).toContain("revogado");
+    expect((await screen.findByRole("alert")).textContent).toContain("revogou");
     expect(screen.getByRole("button", { name: /Reconectar/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Sincronizar agora/ })).toBeNull();
   });

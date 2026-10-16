@@ -1,6 +1,7 @@
 import { SkeletonLista } from "@/components/common/Skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, CheckCircle2, ExternalLink, Link2, Loader2, RefreshCw, Unplug } from "lucide-react";
+import { Link } from "react-router-dom";
 import { calendario, type CalendarioConectado, type ResumoSyncCalendario } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
@@ -11,30 +12,37 @@ const quando = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-B
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
-function resumoDoSync(r: ResumoSyncCalendario): string {
+/** Linhas do resultado detalhado: o que entrou, o que saiu e o que deu problema. */
+export function linhasDoSync(r: ResumoSyncCalendario): string[] {
   const enviados = (r.enviados_criados ?? 0) + (r.enviados_atualizados ?? 0);
-  const partes = [
-    // Google → Ecos
-    r.criados && plural(r.criados, "novo", "novos"),
-    r.atualizados && plural(r.atualizados, "atualizado", "atualizados"),
-    r.removidos && plural(r.removidos, "removido", "removidos"),
-    r.conflitos_mantidos_locais && `${r.conflitos_mantidos_locais} com edição local mantida`,
-    // Ecos → Google
-    enviados && `${plural(enviados, "enviado", "enviados")} ao Google`,
-    r.removidos_no_google && `${plural(r.removidos_no_google, "apagado", "apagados")} no Google`,
-    r.envios_adiados && `${plural(r.envios_adiados, "adiado", "adiados")} (mudou no Google; o próximo ciclo decide)`,
-    r.envios_com_erro && `${plural(r.envios_com_erro, "recusado", "recusados")} pelo Google (continua pendente)`,
-  ].filter(Boolean);
-  const base = partes.length ? partes.join(", ") : "tudo em dia";
-  return r.excecoes_ignoradas ? `${base}. ${r.excecoes_ignoradas} ocorrência${r.excecoes_ignoradas === 1 ? "" : "s"} editada${r.excecoes_ignoradas === 1 ? "" : "s"} de série não importada${r.excecoes_ignoradas === 1 ? "" : "s"} (ainda não suportado).` : `${base}.`;
+  const l: string[] = [];
+  if (r.criados) l.push(`${plural(r.criados, "evento criado", "eventos criados")} a partir do Google`);
+  if (r.atualizados) l.push(`${plural(r.atualizados, "evento atualizado", "eventos atualizados")} a partir do Google`);
+  if (r.removidos) l.push(`${plural(r.removidos, "evento removido", "eventos removidos")} (apagados no Google; foram para a Lixeira)`);
+  if (r.excecoes_aplicadas) l.push(`${plural(r.excecoes_aplicadas, "ocorrência de série aplicada", "ocorrências de série aplicadas")}`);
+  if (enviados) l.push(`${plural(enviados, "alteração enviada", "alterações enviadas")} ao Google`);
+  if (r.removidos_no_google) l.push(`${plural(r.removidos_no_google, "evento apagado", "eventos apagados")} no Google`);
+  if (r.conflitos_mantidos_locais) l.push(`${plural(r.conflitos_mantidos_locais, "edição local mantida", "edições locais mantidas")} (mais nova que a do Google)`);
+  if (r.envios_adiados) l.push(`${plural(r.envios_adiados, "envio adiado", "envios adiados")}: o evento mudou no Google; o próximo ciclo decide`);
+  if (r.envios_com_erro) l.push(`${plural(r.envios_com_erro, "problema", "problemas")}: o Google recusou (continua pendente)`);
+  if (r.problemas_resolvidos) l.push(`${plural(r.problemas_resolvidos, "problema resolvido", "problemas resolvidos")}`);
+  if (r.excecoes_ignoradas) l.push(`${plural(r.excecoes_ignoradas, "ocorrência editada de série não importada", "ocorrências editadas de série não importadas")} (ainda não suportado)`);
+  if (l.length === 0) l.push(`Nada mudou (${plural(r.inalterados, "evento já em dia", "eventos já em dia")})`);
+  return l;
+}
+
+function intervaloTexto(segundos?: number | null): string {
+  if (!segundos) return "Automática";
+  return segundos < 120 ? `Automática a cada ${segundos} s` : `Automática a cada ${Math.round(segundos / 60)} min`;
 }
 
 /** Conexão com o Google Calendar: conectar (OAuth no navegador), sincronizar agora e desconectar. */
 export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs?: number }) {
   const { notificar } = useRefreshBus();
-  const [config, setConfig] = useState<{ conectado: CalendarioConectado | null; configurado: boolean } | null>(null);
+  const [config, setConfig] = useState<{ conectado: CalendarioConectado | null; configurado: boolean; intervalo: number | null; problemas: number } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState<string[] | null>(null);
   const [ocupado, setOcupado] = useState<null | "conectar" | "sincronizar" | "desconectar">(null);
   const [urlPendente, setUrlPendente] = useState<string | null>(null);
   const [confirmaDesconectar, setConfirmaDesconectar] = useState(false);
@@ -43,7 +51,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
   const carregar = useCallback(async () => {
     const c = await calendario.config();
     const conectado = c.conectados.find((x) => x.provider === "google") ?? null;
-    setConfig({ conectado, configurado: c.google_configurado });
+    setConfig({ conectado, configurado: c.google_configurado, intervalo: c.intervalo_secs ?? null, problemas: c.problemas_abertos ?? 0 });
     return conectado;
   }, []);
 
@@ -77,10 +85,12 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
   async function sincronizar() {
     setErro(null);
     setMensagem(null);
+    setDetalhe(null);
     setOcupado("sincronizar");
     try {
       const r = await calendario.sincronizar();
-      setMensagem(`Sincronizado: ${resumoDoSync(r)}`);
+      setMensagem(r.problemas_abertos ? `Sincronizado com ${plural(r.problemas_abertos, "problema aberto", "problemas abertos")}.` : "Sincronizado.");
+      setDetalhe(linhasDoSync(r));
       notificar();
     } catch (e) {
       setErro(mensagemDeErro(e, "Não foi possível sincronizar agora. Tente novamente."));
@@ -125,15 +135,27 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
       )}
 
       {conectado?.precisa_reconectar && (
-        <p role="alert" className="mt-3 flex items-start gap-2 text-xs text-warning"><AlertTriangle size={14} className="mt-0.5 shrink-0" />O acesso ao Google foi revogado ou expirou. Reconecte para voltar a sincronizar.</p>
+        <div role="alert" className="mt-3 text-xs text-warning">
+          <p className="flex items-start gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" />O Google revogou ou expirou o acesso do Ecos. Reconecte para voltar a sincronizar; seus eventos continuam aqui.</p>
+          <p className="mt-1 text-text-muted">Se isso se repete a cada poucos dias, o app OAuth do Google pode estar em modo de teste (acessos expiram em 7 dias). Só publicar o app no Google resolve isso; reconectar é o que dá para fazer daqui.</p>
+        </div>
       )}
       {conectado && !conectado.precisa_reconectar && (
-        <p className="mt-3 text-xs text-text-muted">Última sincronização: {quando(conectado.ultima_sync_em)}. Automática a cada poucos minutos.</p>
+        <p className="mt-3 text-xs text-text-muted">Última sincronização: {quando(conectado.ultima_sync_em)}. {intervaloTexto(config?.intervalo)}.</p>
       )}
-      {conectado?.ultimo_erro && !conectado.precisa_reconectar && <p className="mt-1 text-xs text-error">Última tentativa falhou: {conectado.ultimo_erro}</p>}
+      {conectado?.ultimo_erro && !conectado.precisa_reconectar && (
+        <p className="mt-1 text-xs text-error">
+          {conectado.erro_tipo === "temporario" ? "Falha temporária, o Ecos tenta de novo sozinho" : "Última tentativa falhou"}
+          {conectado.ultima_tentativa_em ? ` (${quando(conectado.ultima_tentativa_em)}${conectado.erros_seguidos ? `, ${plural(conectado.erros_seguidos, "tentativa seguida", "tentativas seguidas")}` : ""})` : ""}: {conectado.ultimo_erro}
+        </p>
+      )}
+      {conectado && (config?.problemas ?? 0) > 0 && (
+        <p className="mt-2 text-xs"><Link to="/configuracoes/calendario/problemas" className="font-medium text-warning underline">{plural(config?.problemas ?? 0, "problema de sincronização", "problemas de sincronização")}: ver e resolver</Link></p>
+      )}
 
       {erro && <p role="alert" className="mt-3 text-sm text-error">{erro}</p>}
       {mensagem && <p role="status" className="mt-3 text-sm text-text-secondary">{mensagem}</p>}
+      {detalhe && <ul aria-label="Resultado da sincronização" className="mt-1 list-disc pl-5 text-xs text-text-secondary">{detalhe.map((x) => <li key={x}>{x}</li>)}</ul>}
 
       {aguardando && (
         <p role="status" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
