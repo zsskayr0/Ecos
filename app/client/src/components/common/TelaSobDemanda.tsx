@@ -1,6 +1,6 @@
 import { Component, Suspense, type ComponentType, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonTela } from "@/components/common/Skeleton";
 import { registrarErro } from "@/lib/registro-erro";
 
 /**
@@ -37,7 +37,7 @@ class FalhaDeCarregamento extends Component<{ children: ReactNode }, { erro: Err
 export function TelaSobDemanda({ children }: { children: ReactNode }) {
   return (
     <FalhaDeCarregamento>
-      <Suspense fallback={<EstadoCarregando />}>{children}</Suspense>
+      <Suspense fallback={<SkeletonTela atrasoMs={120} />}>{children}</Suspense>
     </FalhaDeCarregamento>
   );
 }
