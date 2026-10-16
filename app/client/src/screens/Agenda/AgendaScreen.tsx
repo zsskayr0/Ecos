@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonLista } from "@/components/common/Skeleton";
 ﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { EventoLocal } from "@/lib/eventos-locais";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
@@ -695,7 +695,7 @@ function ListaDeTarefas({ blocos, abrirDocumento, dia, concluidas, temEventos = 
   const vazio = textoDiaVazio(dia, paraISO(new Date()), concluidas);
   return (
     <div className="flex flex-col gap-2.5">
-      {blocos === null ? <EstadoCarregando texto="Carregando…" /> : blocos.length === 0 ? (
+      {blocos === null ? <SkeletonLista itens={3} rotulo="Carregando…" /> : blocos.length === 0 ? (
         vazio && !temEventos && <EmptyState icon={CalendarClock} title={vazio.title} subtitle={vazio.subtitle} />
       ) : blocos.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")).map((t) => <CartaoTarefa key={t.id} tarefa={t} abrirDocumento={abrirDocumento} />)}
     </div>

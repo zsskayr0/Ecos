@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonCards } from "@/components/common/Skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, AlertTriangle } from "lucide-react";
@@ -109,7 +109,7 @@ export function FeedScreen() {
         )}
 
         {itens === null ? (
-          <EstadoCarregando texto="Carregando Feed…" />
+          <SkeletonCards itens={4} rotulo="Carregando Feed…" />
         ) : itens.length === 0 && !erro ? (
           <EmptyState
             icon={Rss}

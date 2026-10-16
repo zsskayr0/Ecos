@@ -1,6 +1,6 @@
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonDocumento } from "@/components/common/Skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Copy, FileX, Trash2 } from "lucide-react";
@@ -202,7 +202,7 @@ export function NoteEditorDesktop() {
       </div>
     );
   }
-  if (!nota || !valor) return <div className="ecos-detail-content"><EstadoCarregando texto="Carregando…" /></div>;
+  if (!nota || !valor) return <div className="ecos-detail-content"><SkeletonDocumento rotulo="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";

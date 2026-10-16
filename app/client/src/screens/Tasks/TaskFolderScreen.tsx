@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonLista } from "@/components/common/Skeleton";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Folder, AlertTriangle } from "lucide-react";
@@ -86,7 +86,7 @@ export function TaskFolderScreen() {
 
       <div>
         {itens === null ? (
-          <EstadoCarregando texto="Carregando…" />
+          <SkeletonLista itens={4} rotulo="Carregando…" />
         ) : itens.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira tarefa aqui." />
         ) : (

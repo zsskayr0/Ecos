@@ -135,6 +135,58 @@ export function SkeletonGrade({ itens = 6, ...r }: Props & { itens?: number }) {
   );
 }
 
+/** Documento aberto (nota/tarefa/equipe em detalhe): título grande e parágrafos. */
+export function SkeletonDocumento({ rotulo, className = "", atrasoMs }: Props) {
+  return (
+    <SkeletonRegiao rotulo={rotulo} atrasoMs={atrasoMs} className={className}>
+      <div className="flex flex-col gap-5">
+        <Skeleton variante="linha" className="h-8 w-2/3" />
+        <SkeletonTexto linhas={4} />
+        <SkeletonTexto linhas={3} />
+      </div>
+    </SkeletonRegiao>
+  );
+}
+
+/** Perfil: avatar, nome e bloco de métricas 2x2. */
+export function SkeletonPerfil({ rotulo, className = "", atrasoMs }: Props) {
+  return (
+    <SkeletonRegiao rotulo={rotulo} atrasoMs={atrasoMs} className={`px-4 pt-1 ${className}`}>
+      <div className="mb-6 flex flex-col items-center gap-3">
+        <Skeleton variante="circulo" className="h-24 w-24" />
+        <Skeleton variante="linha" className="h-6 w-1/2" />
+        <Skeleton variante="texto" className="w-1/3" />
+      </div>
+      <SkeletonMetricasCorpo />
+    </SkeletonRegiao>
+  );
+}
+
+function SkeletonMetricasCorpo() {
+  return (
+    <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1">
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <Skeleton variante="circulo" className="h-5 w-5" />
+          <div className="flex flex-1 flex-col gap-2">
+            <Skeleton variante="texto" className="w-1/2" />
+            <Skeleton variante="linha" className="w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Bloco de métricas do perfil (grade 2x2 dentro de uma tela já montada). */
+export function SkeletonMetricas({ rotulo, className = "", atrasoMs }: Props) {
+  return (
+    <SkeletonRegiao rotulo={rotulo} atrasoMs={atrasoMs} className={className}>
+      <SkeletonMetricasCorpo />
+    </SkeletonRegiao>
+  );
+}
+
 /** Genérico de tela inteira (fallback das rotas lazy): título, subtítulo e alguns cards. */
 export function SkeletonTela({ rotulo, atrasoMs }: { rotulo?: string; atrasoMs?: number }) {
   return (
