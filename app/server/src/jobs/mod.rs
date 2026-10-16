@@ -3,5 +3,6 @@
 
 pub mod calendario;
 pub mod mdns;
+pub mod push;
 pub mod ranking;
 pub mod watch;

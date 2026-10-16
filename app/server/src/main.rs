@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     jobs::ranking::iniciar(state.clone());
     jobs::watch::iniciar(state.clone());
     jobs::calendario::iniciar(state.clone());
+    jobs::push::iniciar(state.clone());
     jobs::mdns::anunciar(&config);
 
     let mut app = routes::montar(state)

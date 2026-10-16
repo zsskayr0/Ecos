@@ -197,11 +197,21 @@ pub async fn atualizar_push(State(state): State<AppState>, Extension(usuario): E
     if !["unifiedpush", "fcm", "nenhum"].contains(&payload.push_tipo.as_str()) {
         return Err(AppError::validation(vec![CampoInvalido { campo: "push_tipo".into(), motivo: "inválido".into() }]));
     }
+    if payload.push_tipo == "unifiedpush" {
+        let motivo = match payload.push_endpoint.as_deref() {
+            Some(e) => crate::push::validar_endpoint(e).err(),
+            None => Some("informe o endereço do UnifiedPush"),
+        };
+        if let Some(motivo) = motivo {
+            return Err(AppError::validation(vec![CampoInvalido { campo: "push_endpoint".into(), motivo: motivo.into() }]));
+        }
+    }
     let afetadas = state
         .db
         .with(move |conn| {
+            // Registrar de novo reativa o aparelho: zera as falhas e o motivo de ter sido desativado.
             conn.execute(
-                "UPDATE dispositivo SET push_tipo = ?1, push_endpoint = ?2 WHERE id = ?3 AND usuario_id = ?4",
+                "UPDATE dispositivo SET push_tipo = ?1, push_endpoint = ?2, push_falhas = 0, push_desativado_em = NULL WHERE id = ?3 AND usuario_id = ?4",
                 rusqlite::params![payload.push_tipo, payload.push_endpoint, id, usuario.0],
             )
         })

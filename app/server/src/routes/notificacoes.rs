@@ -19,12 +19,67 @@ pub struct ListarQuery {
 }
 
 /// Grava uma notificação. Com `chave`, é idempotente por pessoa (a mesma chave nunca gera duas linhas).
+/// Respeita as preferências da categoria: com a caixa desligada nada é gravado; com o push desligado grava mas não
+/// enfileira entrega. Falha ao enfileirar push nunca derruba a ação que gerou o aviso (o polling cobre).
 pub fn criar(conn: &rusqlite::Connection, usuario_id: &str, categoria: &str, titulo: &str, corpo: &str, chave: Option<&str>) -> rusqlite::Result<bool> {
+    let (caixa, push) = crate::push::preferencia(conn, usuario_id, categoria).unwrap_or((true, true));
+    if !caixa {
+        return Ok(false);
+    }
+    let (id, agora) = (ecos_core::new_id(), chrono::Utc::now());
     let n = conn.execute(
         "INSERT OR IGNORE INTO notificacao (id, usuario_id, categoria, titulo, corpo, lida, criado_em, chave) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
-        rusqlite::params![ecos_core::new_id(), usuario_id, categoria, titulo, corpo, chrono::Utc::now().to_rfc3339(), chave],
+        rusqlite::params![id, usuario_id, categoria, titulo, corpo, agora.to_rfc3339(), chave],
     )?;
+    if n > 0 && push {
+        if let Err(e) = crate::push::enfileirar(conn, usuario_id, &id, agora) {
+            tracing::error!(error = %e, "push: não foi possível enfileirar a entrega");
+        }
+    }
     Ok(n > 0)
+}
+
+/// `GET /notificacoes/preferencias` — por categoria, se o aviso vai para a caixa e se vai por push.
+pub async fn listar_preferencias(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
+    let itens: Vec<serde_json::Value> = state
+        .db
+        .with(move |conn| {
+            crate::push::CATEGORIAS
+                .iter()
+                .map(|c| {
+                    let (caixa, push) = crate::push::preferencia(conn, &usuario.0, c)?;
+                    Ok(serde_json::json!({ "categoria": c, "caixa": caixa, "push": push }))
+                })
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "items": itens })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PreferenciaPayload {
+    pub caixa: Option<bool>,
+    pub push: Option<bool>,
+}
+
+/// `PATCH /notificacoes/preferencias/:categoria` — só os campos enviados mudam.
+pub async fn atualizar_preferencia(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(categoria): Path<String>, Json(payload): Json<PreferenciaPayload>) -> AppResult<Json<serde_json::Value>> {
+    if !crate::push::CATEGORIAS.contains(&categoria.as_str()) {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
+    state
+        .db
+        .with(move |conn| {
+            let (caixa, push) = crate::push::preferencia(conn, &usuario.0, &categoria)?;
+            let (caixa, push) = (payload.caixa.unwrap_or(caixa) as i64, payload.push.unwrap_or(push) as i64);
+            conn.execute(
+                "INSERT INTO notificacao_preferencia (usuario_id, categoria, caixa, push) VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT (usuario_id, categoria) DO UPDATE SET caixa = excluded.caixa, push = excluded.push",
+                rusqlite::params![usuario.0, categoria, caixa, push],
+            )
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 /// Produtor de "prazo próximo": tarefas pendentes da pessoa com prazo hoje ou amanhã (data civil no fuso das
