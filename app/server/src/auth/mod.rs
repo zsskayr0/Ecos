@@ -335,7 +335,13 @@ pub async fn recuperar_senha(State(state): State<AppState>, Json(payload): Json<
     // A pessoa acabou de escolher a senha: se a conta estava com senha temporária, a troca obrigatória está cumprida.
     state
         .db
-        .with(move |conn| conn.execute("UPDATE usuario SET senha_hash = ?1, deve_trocar_senha = 0 WHERE id = ?2", rusqlite::params![nova_senha_hash, usuario_id]))
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("UPDATE usuario SET senha_hash = ?1, deve_trocar_senha = 0 WHERE id = ?2", rusqlite::params![nova_senha_hash, usuario_id])?;
+            // Quem recupera a conta pode ser outra pessoa que achou a chave: nenhuma sessão anterior sobrevive.
+            tx.execute("UPDATE sessao SET revogado_em = datetime('now') WHERE usuario_id = ?1 AND revogado_em IS NULL", [&usuario_id])?;
+            tx.commit()
+        })
         .await?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
