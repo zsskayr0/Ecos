@@ -146,3 +146,38 @@ async fn wikilink_para_nota_criada_depois_nao_quebra_o_indice() {
     let (_, g) = e.chamar("GET", "/api/v1/grafico", Some(&a), None).await;
     assert!(tem_aresta(&g, &origem, &destino, "wikilink") && tem_aresta(&g, &destino, &origem, "wikilink"));
 }
+
+#[tokio::test]
+async fn parametros_de_escala_reduzem_sem_furar_a_visibilidade() {
+    let e = nova();
+    let (_, a) = e.admin("diogo").await;
+    let (_, b) = e.pessoa(&a, "thaty").await;
+    let eq = equipe(&e, &a, "Casa").await;
+    for i in 0..3 {
+        criar(&e, "/api/v1/notas", &a, json!({ "titulo": format!("N{i}") })).await;
+    }
+    let nota_eq = criar(&e, "/api/v1/notas", &a, json!({ "titulo": "Da equipe", "espaco": format!("equipe:{eq}") })).await;
+    let t_aberta = criar(&e, "/api/v1/tarefas", &a, json!({ "titulo": "Aberta" })).await;
+    let t_feita = criar(&e, "/api/v1/tarefas", &a, json!({ "titulo": "Feita" })).await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{t_feita}/status"), Some(&a), Some(json!({ "status": "concluida" }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    criar(&e, "/api/v1/notas", &b, json!({ "titulo": "De B" })).await;
+
+    let (_, g) = e.chamar("GET", "/api/v1/grafico", Some(&a), None).await;
+    assert_eq!(g["nos"].as_array().unwrap().len(), 6, "contrato padrão: tudo o que A vê");
+    assert_eq!(g["truncado"], false);
+
+    let (_, g) = e.chamar("GET", "/api/v1/grafico?incluir_concluidas=false", Some(&a), None).await;
+    assert!(nos(&g).contains(&t_aberta) && !nos(&g).contains(&t_feita));
+
+    let (_, g) = e.chamar("GET", &format!("/api/v1/grafico?espaco=equipe:{eq}"), Some(&a), None).await;
+    assert_eq!(nos(&g), HashSet::from([nota_eq.clone()]));
+
+    let (_, g) = e.chamar("GET", "/api/v1/grafico?limite=2", Some(&a), None).await;
+    assert_eq!(g["nos"].as_array().unwrap().len(), 2);
+    assert_eq!(g["truncado"], true);
+
+    // Pedir o espaço de outra pessoa não revela nada.
+    let (_, g) = e.chamar("GET", &format!("/api/v1/grafico?espaco=equipe:{eq}"), Some(&b), None).await;
+    assert!(g["nos"].as_array().unwrap().is_empty());
+}
