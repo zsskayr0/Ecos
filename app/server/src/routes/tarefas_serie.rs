@@ -633,7 +633,8 @@ mod testes {
         assert_eq!(status, StatusCode::OK);
         let todas = ocorrencias(&state).await;
         assert_eq!(todas.len(), 2, "{todas:?}");
-        let hoje = Utc::now().date_naive().to_string();
+        // "Hoje" no fuso da série (o da regra de `semanal()`), não em UTC: à noite no Brasil a data UTC já é a de amanhã.
+        let hoje = data_local(Utc::now(), tz_de("America/Sao_Paulo")).to_string();
         assert!(todas[1].1 >= hoje, "a nova ocorrência não nasce no passado: {todas:?}");
         // Retomar de novo não duplica (já há uma pendente).
         chamar(&state, "POST", &format!("/api/v1/tarefas/{id}/serie/acao"), Some(&token), serde_json::json!({ "acao": "retomar" })).await;
