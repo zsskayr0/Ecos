@@ -111,7 +111,7 @@ export function FeedScreen() {
         ) : itens.length === 0 && !erro ? (
           <EmptyState
             icon={Rss}
-            title="Zero notas. Sabe aquele grupo sozinho no WhatsApp? Não precisa mais."
+            title="Zero notas e zero tarefas. Sabe aquele grupo sozinho no WhatsApp? Não precisa mais."
             subtitle="Toque no + e capture a primeira coisa que estiver na sua cabeça agora."
           />
         ) : (

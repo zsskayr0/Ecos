@@ -173,7 +173,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         <button type="button" aria-expanded={expanded} aria-controls={`${id}-subtasks ${id}-planning`} onClick={() => setExpanded(!expanded)}
           className="flex min-h-12 w-full flex-col gap-2 border-t border-border pt-5 text-left md:hidden">
           <span className="flex w-full items-center gap-2 text-sm font-medium text-text-primary"><SlidersHorizontal size={17} />Mais detalhes<ChevronDown size={18} className={`ml-auto transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} /></span>
-          <span className="text-sm text-text-secondary">"Agenda, subtarefas e organização"{value.subtarefas.length > 0 ? ` · ${value.subtarefas.length} subtarefas` : ""}</span>
+          <span className="text-sm text-text-secondary">Agenda, subtarefas e organização{value.subtarefas.length > 0 ? ` · ${value.subtarefas.length} subtarefas` : ""}</span>
         </button>
       </div>
       {largo && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar descrição e planejamento"

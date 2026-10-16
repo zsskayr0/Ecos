@@ -115,7 +115,7 @@ export function TodayScreen() {
         {item.tipo === "evento" && <span className="ml-2 text-[10px] uppercase tracking-wide text-text-muted">Evento</span>}
         {item.tipo === "bloco" && <span className="ml-2 text-[10px] uppercase tracking-wide text-text-muted">Tempo alocado</span>}
         {item.comPrazo && <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">Prazo hoje</span>}
-        {alta && <span className="ml-2 rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">ALTA</span>}
+        {alta && <span className="ml-2 rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">Alta</span>}
       </button> : <span className="min-w-0 flex-1 text-sm text-text-primary">{item.titulo}</span>}
       {t && <span className="flex items-center gap-1">
         <button type="button" aria-label={`Concluir ${item.titulo}`} title="Concluir" onClick={() => concluir(t)} className={`${botao} hover:text-success`}><Check size={16} /></button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { ChevronLeft, Search as SearchIcon, Clock, Sparkles } from "lucide-react";
+import { ChevronLeft, Search as SearchIcon, Clock } from "lucide-react";
 import { busca, vault, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
@@ -9,7 +9,15 @@ import { EstadoErro } from "@/components/common/EstadoErro";
 import { EmptyState } from "@/components/common/EmptyState";
 
 import { mensagemDeErro } from "@/lib/erros";
-const ATALHOS = ["Notas órfãs", "Tarefas de hoje", "Transações desse mês"];
+type Escopo = "tudo" | "notas" | "tarefas" | "transacoes";
+const ESCOPOS: { id: Escopo; rotulo: string }[] = [
+  { id: "tudo", rotulo: "Tudo" },
+  { id: "notas", rotulo: "Só notas" },
+  { id: "tarefas", rotulo: "Só tarefas" },
+  { id: "transacoes", rotulo: "Só transações" },
+];
+const CHAVE_RECENTES = "ecos-buscas-recentes";
+const ROTULO_STATUS: Record<string, string> = { pendente: "Pendente", concluida: "Concluída" };
 
 interface Resultado {
   notas: { id: string; titulo: string; espaco: string; trecho: string }[];
@@ -26,9 +34,10 @@ export function SearchScreen() {
   const [resultados, setResultados] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
+  const [escopo, setEscopo] = useState<Escopo>("tudo");
   const [recentes, setRecentes] = useState<string[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem("ecos-buscas-recentes") ?? "[]");
+      return JSON.parse(localStorage.getItem(CHAVE_RECENTES) ?? "[]");
     } catch {
       return [];
     }
@@ -46,16 +55,17 @@ export function SearchScreen() {
     }
     let vivo = true;
     setErro(null);
+    const semTransacoes = escopo === "notas" || escopo === "tarefas";
     Promise.all([
-      busca.buscar(debounced),
-      vault.transacoes.listar({ limit: 200 }).catch(() => ({ items: [] as TransacaoApi[] })),
+      escopo === "transacoes" ? Promise.resolve({ notas: [], tarefas: [] }) : busca.buscar(debounced, escopo === "notas" ? { tipo: "nota" } : escopo === "tarefas" ? { tipo: "tarefa" } : {}),
+      semTransacoes ? Promise.resolve({ items: [] as TransacaoApi[] }) : vault.transacoes.listar({ limit: 200 }).catch(() => ({ items: [] as TransacaoApi[] })),
     ])
       .then(([r, tx]) => {
         if (!vivo) return;
         const termoBaixo = debounced.toLowerCase();
         setResultados({
-          notas: r.notas,
-          tarefas: r.tarefas,
+          notas: escopo === "tarefas" ? [] : r.notas,
+          tarefas: escopo === "notas" ? [] : r.tarefas,
           transacoes: tx.items.filter((t) => t.descricao.toLowerCase().includes(termoBaixo)),
         });
         setRecentes((prev) => {
@@ -75,7 +85,12 @@ export function SearchScreen() {
     return () => {
       vivo = false;
     };
-  }, [debounced, tentativa]);
+  }, [debounced, tentativa, escopo]);
+
+  function limparRecentes() {
+    setRecentes([]);
+    try { localStorage.removeItem(CHAVE_RECENTES); } catch { /* sem armazenamento local: nada a limpar */ }
+  }
 
   const totalResultados = useMemo(
     () => (resultados ? resultados.notas.length + resultados.tarefas.length + resultados.transacoes.length : 0),
@@ -100,13 +115,18 @@ export function SearchScreen() {
         </div>
       </div>
 
+      {debounced && <div className="mb-4"><FiltroEscopo escopo={escopo} aoMudar={setEscopo} /></div>}
+
       {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       {!debounced ? (
         <div className="flex flex-col gap-6">
           {recentes.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Buscas recentes</p>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Buscas recentes</p>
+                <button type="button" onClick={limparRecentes} className="min-h-11 px-2 text-xs font-medium text-text-muted hover:text-text-primary">Limpar</button>
+              </div>
               <div className="flex flex-col gap-1">
                 {recentes.map((b) => (
                   <button key={b} onClick={() => setTermo(b)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-left text-sm text-text-secondary hover:bg-surface-1">
@@ -117,17 +137,7 @@ export function SearchScreen() {
               </div>
             </div>
           )}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Atalhos rápidos</p>
-            <div className="flex flex-wrap gap-2">
-              {ATALHOS.map((a) => (
-                <button key={a} onClick={() => setTermo(a)} className="flex items-center gap-1.5 rounded-pill border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-secondary">
-                  <Sparkles size={13} className="text-steel-300" />
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FiltroEscopo escopo={escopo} aoMudar={setEscopo} />
         </div>
       ) : erro ? null : !resultados ? (
         <EstadoCarregando texto="Buscando…" />
@@ -147,7 +157,7 @@ export function SearchScreen() {
             {resultados.tarefas.map((t) => (
               <button key={t.id} onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} className="w-full rounded-xl bg-surface-1 px-3.5 py-3 text-left">
                 <p className="text-[15px] font-medium text-text-primary">{destacar(t.titulo, debounced)}</p>
-                <p className="text-xs text-text-muted">{t.status}</p>
+                <p className="text-xs text-text-muted">{ROTULO_STATUS[t.status] ?? "Pendente"}</p>
               </button>
             ))}
           </Grupo>
@@ -161,6 +171,25 @@ export function SearchScreen() {
           </Grupo>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Escopo da busca: filtra de verdade o que a pesquisa procura (e o que aparece nos resultados). */
+function FiltroEscopo({ escopo, aoMudar }: { escopo: Escopo; aoMudar: (e: Escopo) => void }) {
+  return (
+    <div role="group" aria-label="Buscar em" className="flex flex-wrap gap-2">
+      {ESCOPOS.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          aria-pressed={escopo === e.id}
+          onClick={() => aoMudar(e.id)}
+          className={`min-h-9 rounded-pill border px-3 py-1.5 text-sm ${escopo === e.id ? "border-cyan bg-cyan/10 text-text-primary" : "border-border bg-surface-1 text-text-secondary"}`}
+        >
+          {e.rotulo}
+        </button>
+      ))}
     </div>
   );
 }
