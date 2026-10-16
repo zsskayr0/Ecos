@@ -28,7 +28,7 @@ vi.mock("@/components/common/PullToRefresh", () => ({ PullToRefresh: ({ children
 
 import { RefreshProvider, useRefreshBus } from "@/lib/refresh-bus";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
-import { FeedScreen } from "./FeedScreen";
+import { FeedScreen, INTERVALO_POLL_MS } from "./FeedScreen";
 
 let notificarFora: () => void = () => undefined;
 function Outro() {
@@ -63,5 +63,32 @@ describe("Feed — contagem de chamadas", () => {
     console.log("[perf] chamadas por notificar():", { equipes: api.listarMinhas.mock.calls.length, feed: api.feed.mock.calls.length, total: total() });
     expect(api.listarMinhas.mock.calls.length).toBeLessThanOrEqual(1);
     expect(api.feed.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it("poll de 30 s pausa com a janela oculta e atualiza ao voltar", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let visibilidade: DocumentVisibilityState = "visible";
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibilidade });
+      render(<MemoryRouter><RefreshProvider><FeedScreen /></RefreshProvider></MemoryRouter>);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(api.feed).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(INTERVALO_POLL_MS - 1000);
+      expect(api.feed).toHaveBeenCalledTimes(1); // 10 s depois do início não há poll: o intervalo é 30 s
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(api.feed).toHaveBeenCalledTimes(2);
+
+      visibilidade = "hidden";
+      await vi.advanceTimersByTimeAsync(INTERVALO_POLL_MS * 2);
+      expect(api.feed).toHaveBeenCalledTimes(2); // oculta: nada
+
+      visibilidade = "visible";
+      await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await vi.advanceTimersByTimeAsync(50); });
+      expect(api.feed).toHaveBeenCalledTimes(3); // voltou: uma atualização imediata
+    } finally {
+      vi.useRealTimers();
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+    }
   });
 });

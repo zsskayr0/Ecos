@@ -32,10 +32,10 @@ import { estaOnline } from "@/lib/use-conectividade";
  * the Feed might not have the new item on the first refetch yet, because
  * the real job hasn't run — without repolling, the screen felt like it
  * "only updated when I reset the page" (the user had to force a manual
- * refetch after the job had already run). This polls every 10s while the
+ * refetch after the job had already run). This polls every 30s (paused while the window is hidden or offline) while the
  * Feed is open, no gesture required.
  */
-const INTERVALO_POLL_MS = 10_000;
+export const INTERVALO_POLL_MS = 30_000;
 const JANELA_RECENTE_MS = 10 * 60_000;
 export function FeedScreen() {
   const navigate = useNavigate();
@@ -85,8 +85,17 @@ export function FeedScreen() {
     if (carregandoEquipes) return;
     carregar();
     // Sem conexão o poll só gastaria tentativas: pausa e retoma sozinho ao voltar.
-    const id = window.setInterval(() => { if (estaOnline()) void carregar(); }, INTERVALO_POLL_MS);
-    return () => window.clearInterval(id);
+    const oculta = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+    const id = window.setInterval(() => { if (!oculta() && estaOnline()) void carregar(); }, INTERVALO_POLL_MS);
+    // Ao voltar a ficar visível (ou a rede voltar) atualiza uma vez na hora, sem esperar o próximo tick.
+    const aoVoltar = () => { if (!oculta() && estaOnline()) void carregar(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("online", aoVoltar);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("online", aoVoltar);
+    };
   }, [carregar, versao, carregandoEquipes]);
 
   return (
