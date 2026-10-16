@@ -99,9 +99,26 @@ fn varrer_prazos(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite::Res
     let (h, a) = (hoje.format("%Y-%m-%d").to_string(), amanha.format("%Y-%m-%d").to_string());
     let mut stmt = conn.prepare("SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1 AND status = 'pendente' AND due_date IN (?2, ?3)")?;
     let tarefas = stmt.query_map(rusqlite::params![usuario_id, h, a], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+    // Cada GET do contador/lista passa por aqui: depois da primeira varredura do dia, as tarefas já processadas
+    // não voltam a gravar (o `INSERT OR IGNORE` por chave continua sendo a garantia de idempotência).
+    static JA_VARRIDAS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (String, std::collections::HashSet<String>)>>> = std::sync::OnceLock::new();
+    let memo = JA_VARRIDAS.get_or_init(Default::default);
+    let mut vistos: std::collections::HashSet<String> = {
+        let mut mapa = memo.lock().unwrap_or_else(|e| e.into_inner());
+        match mapa.get(usuario_id) {
+            Some((dia, set)) if *dia == h => set.clone(),
+            _ => { mapa.insert(usuario_id.to_string(), (h.clone(), Default::default())); Default::default() }
+        }
+    };
     for (id, titulo, due) in tarefas {
+        let chave = format!("prazo:{id}:{due}");
+        if vistos.contains(&chave) { continue; }
         let quando = if due == h { "vence hoje" } else { "vence amanhã" };
-        criar(conn, usuario_id, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&format!("prazo:{id}:{due}")))?;
+        criar(conn, usuario_id, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&chave))?;
+        // Só lembra depois de gravar com sucesso. (Quem desliga a caixa de "agenda" e religa no mesmo dia só volta a
+        // receber estes avisos no dia seguinte ou após reiniciar o servidor.)
+        vistos.insert(chave.clone());
+        memo.lock().unwrap_or_else(|e| e.into_inner()).entry(usuario_id.to_string()).and_modify(|(_, set)| { set.insert(chave); });
     }
     Ok(())
 }

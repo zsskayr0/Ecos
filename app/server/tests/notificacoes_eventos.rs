@@ -34,6 +34,24 @@ async fn prazo_proximo_gera_uma_notificacao_e_o_contador_reflete_a_leitura() {
 }
 
 #[tokio::test]
+async fn varredura_repetida_nao_regrava_mas_tarefa_nova_do_dia_ainda_notifica() {
+    let e = nova();
+    let (_, token) = e.admin("ana").await;
+    e.chamar("PATCH", "/api/v1/me/preferencias/calendario", Some(&token), Some(json!({ "pais": "Brasil", "fuso": "UTC", "inicio": "07:00", "deadlines": true }))).await;
+    let hoje = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    e.chamar("POST", "/api/v1/tarefas", Some(&token), Some(json!({ "titulo": "Primeira", "due_date": hoje }))).await;
+    for _ in 0..3 {
+        let (_, c) = e.chamar("GET", "/api/v1/notificacoes/nao-lidas", Some(&token), None).await;
+        assert_eq!(c["total"].as_i64(), Some(1));
+    }
+    e.chamar("POST", "/api/v1/tarefas", Some(&token), Some(json!({ "titulo": "Segunda", "due_date": hoje }))).await;
+    let (_, c) = e.chamar("GET", "/api/v1/notificacoes/nao-lidas", Some(&token), None).await;
+    assert_eq!(c["total"].as_i64(), Some(2), "a tarefa criada depois da primeira varredura também notifica");
+    let linhas: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM notificacao WHERE chave LIKE 'prazo:%'", [], |r| r.get(0))).await.unwrap();
+    assert_eq!(linhas, 2);
+}
+
+#[tokio::test]
 async fn adicionar_pessoa_a_equipe_notifica_a_pessoa() {
     let e = nova();
     let (_, admin) = e.admin("ana").await;
