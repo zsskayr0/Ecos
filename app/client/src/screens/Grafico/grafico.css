@@ -1,0 +1,51 @@
+/* Gráfico: controle deslizante, animações do painel flutuante e destaque da seção aberta pelo atalho. */
+
+@keyframes grafico-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes grafico-destaque {
+  0% { box-shadow: 0 0 0 0 rgb(var(--ecos-steel-400-rgb) / 0.55); }
+  60% { box-shadow: 0 0 0 6px rgb(var(--ecos-steel-400-rgb) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--ecos-steel-400-rgb) / 0); }
+}
+
+.grafico-secao-destaque { border-radius: 1rem; animation: grafico-destaque 1.1s ease-out 1; }
+
+.ecos-grafico-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.ecos-grafico-slider:focus-visible { outline: 2px solid rgb(var(--ecos-steel-400-rgb)); outline-offset: 3px; border-radius: 999px; }
+.ecos-grafico-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, rgb(var(--ecos-steel-400-rgb)) var(--preenchido, 50%), rgb(var(--ecos-border-rgb)) var(--preenchido, 50%));
+}
+.ecos-grafico-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: rgb(var(--ecos-steel-300-rgb));
+  border: 2px solid rgb(var(--ecos-surface-1-rgb));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  transition: transform 120ms ease-out;
+}
+.ecos-grafico-slider:hover::-webkit-slider-thumb,
+.ecos-grafico-slider:active::-webkit-slider-thumb { transform: scale(1.18); }
+.ecos-grafico-slider::-moz-range-track { height: 4px; border-radius: 999px; background: rgb(var(--ecos-border-rgb)); }
+.ecos-grafico-slider::-moz-range-progress { height: 4px; border-radius: 999px; background: rgb(var(--ecos-steel-400-rgb)); }
+.ecos-grafico-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgb(var(--ecos-steel-300-rgb));
+  border: 2px solid rgb(var(--ecos-surface-1-rgb));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+}

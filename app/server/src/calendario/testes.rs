@@ -739,14 +739,19 @@ async fn envio_imediato_manda_sem_esperar_o_proximo_ciclo() {
     conectar_direto(&e, em_uma_hora()).await;
     let (status, _) = api(&e, "POST", "/api/v1/eventos", Some(evento_json("Agora", "2026-09-21T16:00:00Z", "2026-09-21T17:00:00Z", json!({})))).await;
     assert_eq!(status, StatusCode::OK);
+    // Espera o ESTADO FINAL no banco, não só a inserção no Google simulado: o servidor grava `origem_google` e
+    // `sync_pendente` depois de a inserção acontecer, então ler logo após a inserção corre contra essa gravação.
+    let mut lista = Value::Null;
     for _ in 0..60 {
-        if !e.mock.lock().unwrap().insercoes.is_empty() {
+        let (_, l) = api(&e, "GET", "/api/v1/eventos", None).await;
+        let pronto = l.as_array().and_then(|a| a.first()).map(|x| x["origem_google"] == true && x["sync_pendente"] == false).unwrap_or(false);
+        lista = l;
+        if pronto {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     assert_eq!(e.mock.lock().unwrap().insercoes.len(), 1, "o evento deveria ter ido ao Google sozinho");
-    let (_, lista) = api(&e, "GET", "/api/v1/eventos", None).await;
     assert_eq!((lista[0]["origem_google"].as_bool(), lista[0]["sync_pendente"].as_bool()), (Some(true), Some(false)));
     let _ = std::fs::remove_dir_all(&e.raiz);
 }

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Bell, CalendarClock, ListChecks, CalendarDays, DatabaseBackup, FolderTree, Info, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
+import { Bell, CalendarClock, ListChecks, CalendarDays, DatabaseBackup, FolderTree, Info, Network, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAuth } from "@/lib/auth-context";
 import { ABAS_COFRE } from "./abas-cofre";
@@ -15,6 +15,7 @@ export const GRUPOS: { titulo: string; abas: Aba[] }[] = [
   ] },
   { titulo: "Geral", abas: [
     { para: "/configuracoes/aparencia", rotulo: "Aparência", Icone: Palette },
+    { para: "/configuracoes/grafico", rotulo: "Gráfico", Icone: Network },
     { para: "/configuracoes/calendario", rotulo: "Calendário e localização", Icone: CalendarDays },
     { para: "/configuracoes/uso-diario", rotulo: "Uso diário", Icone: ListChecks },
     { para: "/configuracoes/organizacao", rotulo: "Organização", Icone: FolderTree },

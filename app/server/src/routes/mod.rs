@@ -18,6 +18,7 @@ mod admin_testes;
 #[cfg(test)]
 mod tags_testes;
 pub mod feed;
+pub mod grafico;
 pub mod health;
 pub mod media;
 pub mod metricas;
@@ -134,6 +135,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/busca", get(busca::buscar))
         .route("/tags", get(tags::listar).patch(tags::renomear).delete(tags::remover))
         .route("/tags/mesclar", post(tags::mesclar))
+        .route("/grafico", get(grafico::obter))
         .route("/rotina/blocos", get(rotina::listar).post(rotina::criar))
         .route("/rotina/blocos/:id", patch(rotina::atualizar).delete(rotina::excluir))
         .route("/equipes", get(equipes::listar_minhas).post(equipes::criar))
