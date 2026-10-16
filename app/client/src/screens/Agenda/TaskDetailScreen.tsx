@@ -4,7 +4,8 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Copy, Loader2 } from "lucide-react";
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
-import { tarefas, ApiError, type TarefaDetalhe } from "@/lib/api";
+import { tarefas, ApiError, type EscopoSerie, type TarefaDetalhe } from "@/lib/api";
+import { RecorrenciaTarefa } from "@/components/editor/RecorrenciaTarefa";
 import { TaskComposer } from "@/components/editor/TaskComposer";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -35,6 +36,7 @@ export function TaskDetailScreen() {
   const [salvando, setSalvando] = useState(false);
   const [atualizandoStatus, setAtualizandoStatus] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [escopo, setEscopo] = useState<EscopoSerie>("esta");
   const [enviandoArquivo, setEnviandoArquivo] = useState(false);
   const [timeEntries, setTimeEntries] = useState<{ id: string; tipo: "planejado" | "real"; inicio_em: string; duracao_min: number }[]>([]);
   const [registrandoTempo, setRegistrandoTempo] = useState(false);
@@ -44,6 +46,8 @@ export function TaskDetailScreen() {
   const valueRef = useRef(value);
   const salvoRef = useRef(salvo);
   const salvamentoEmCurso = useRef<Promise<void> | null>(null);
+  const tarefaRef = useRef<TarefaDetalhe | null>(null);
+  useEffect(() => { tarefaRef.current = tarefa; }, [tarefa]);
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { salvoRef.current = salvo; }, [salvo]);
   const carregarTempo = useCallback(() => { if (id) tarefas.timeEntries.listar(id).then(setTimeEntries).catch(() => {}); }, [id]);
@@ -90,7 +94,7 @@ export function TaskDetailScreen() {
     const pedido = (async () => {
       setSalvando(true); setErro(null);
       try {
-        await tarefas.atualizar(id, payload(snapshot));
+        await tarefas.atualizar(id, tarefaRef.current?.serie ? { ...payload(snapshot), escopo } : payload(snapshot));
         setSalvo(snapshot); notificar();
         setTarefa((t) => t ? { ...t, atualizado_em: new Date().toISOString() } : t);
         if (iguais(valueRef.current, snapshot)) removerRascunho(id);
@@ -99,7 +103,7 @@ export function TaskDetailScreen() {
     })();
     salvamentoEmCurso.current = pedido;
     try { await pedido; } finally { salvamentoEmCurso.current = null; }
-  }, [id, notificar]);
+  }, [id, notificar, escopo]);
 
   const sujo = tarefa ? !iguais(value, salvo) : false;
 
@@ -121,10 +125,22 @@ export function TaskDetailScreen() {
     catch (e) { setErro(mensagemDeErro(e, "Não foi possível atualizar o status.")); }
     finally { setAtualizandoStatus(false); }
   }
+  /** A série mudou no servidor (regra, pausa, pulo...): recarrega só o que ela afeta, sem perder o que está sendo digitado. */
+  async function recarregarSerie() {
+    if (!id) return;
+    notificar();
+    try {
+      const t = await tarefas.obter(id);
+      setTarefa((atual) => atual ? { ...atual, serie: t.serie ?? null, status: t.status, concluida_em: t.concluida_em } : t);
+    } catch (e) {
+      // "Pular esta" manda a ocorrência para a Lixeira: não há mais o que mostrar aqui.
+      if (e instanceof ApiError && e.status === 404) { removerRascunho(id); navigate(-1); }
+    }
+  }
   async function excluir() {
     if (!id || salvando) return;
     setSalvando(true); setErro(null);
-    try { await tarefas.excluir(id); removerRascunho(id); notificar(); avisarExcluido("tarefa", tarefa?.titulo ?? "", notificar); navigate(-1); }
+    try { await tarefas.excluir(id, tarefa?.serie ? escopo : undefined); removerRascunho(id); notificar(); avisarExcluido("tarefa", tarefa?.titulo ?? "", notificar); navigate(-1); }
     catch (e) { setErro(mensagemDeErro(e, "Não foi possível apagar.")); setSalvando(false); }
   }
   async function duplicar() {
@@ -141,7 +157,8 @@ export function TaskDetailScreen() {
   const conteudo = <div className="ecos-detail-content">
     {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
     {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? (erro ? <p className="py-10 text-sm text-text-secondary">Volte e tente abrir a tarefa novamente.</p> : <EstadoCarregando texto="Carregando…" />) : <>
-      <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta tarefa?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir} />
+      <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta tarefa?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir}
+        description={!tarefa.serie ? undefined : escopo === "esta" ? "Só esta ocorrência vai para a Lixeira; a série continua com a próxima. Para encerrar a série, mude \"Ao editar, aplicar a\" em Repetir." : escopo === "proximas" ? "Esta ocorrência vai para a Lixeira e a série é encerrada: nenhuma próxima será criada." : "Esta e as outras ocorrências pendentes vão para a Lixeira e a série é encerrada. As já concluídas ficam."} />
       {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}
       <TaskComposer key={id} itemId={id} editing createdAt={tarefa.criado_em} editedAt={tarefa.atualizado_em ?? tarefa.criado_em} completedAt={tarefa.status === "concluida" ? tarefa.concluida_em : null} dirty={sujo} value={value} onChange={(patch) => setValue((previous) => ({ ...previous, ...patch }))} onSave={sincronizar} saving={salvando && !confirmandoDelete} floatingSave={false} showPriority={!desktop} onUploadingChange={setEnviandoArquivo} timePanel={<><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-text-primary">Tempo</h2><p className="text-sm text-text-secondary">Planejado {timeEntries.filter((e) => e.tipo === "planejado").reduce((n, e) => n + e.duracao_min, 0)} min · Realizado {timeEntries.filter((e) => e.tipo === "real").reduce((n, e) => n + e.duracao_min, 0)} min</p></div><div className="flex gap-2"><button type="button" onClick={() => adicionarTempo("planejado")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-steel-400 px-3 text-sm text-steel-300 disabled:opacity-40">Planejar {value.duracao} min</button><button type="button" onClick={() => adicionarTempo("real")} disabled={registrandoTempo} className="min-h-10 rounded-lg border border-success px-3 text-sm text-success disabled:opacity-40">Registrar tempo</button></div></div>{timeEntries.length > 0 && <div className="overflow-hidden rounded-lg border border-border">{timeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-sm last:border-0"><span className="text-text-secondary">{new Date(entry.inicio_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span><span className={entry.tipo === "planejado" ? "text-steel-300" : "text-success"}>{entry.tipo === "planejado" ? "Planejado" : "Real"} · {entry.duracao_min} min</span></div>)}</div>}</>} titleActions={desktop && <div className="flex shrink-0 items-center gap-2">
         <TaskPriority compact value={value.prioridade} onChange={(prioridade) => setValue((anterior) => ({ ...anterior, prioridade }))} disabled={salvando} />
@@ -149,6 +166,7 @@ export function TaskDetailScreen() {
         <button type="button" onClick={alternarStatus} disabled={atualizandoStatus || enviandoArquivo || salvando} aria-pressed={tarefa.status === "concluida"} className="flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-success px-4 text-sm font-semibold text-success transition-colors hover:bg-success hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-success disabled:opacity-40">{atualizandoStatus ? <Loader2 size={16} className="animate-spin motion-reduce:animate-none" /> : <Check size={16} />}{tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"}</button>
         <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar tarefa" className="flex min-h-[52px] min-w-[52px] items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>
       </div>} />
+      <RecorrenciaTarefa tarefaId={tarefa.id} serie={tarefa.serie ?? null} temData={!!value.data} concluida={tarefa.status === "concluida"} escopo={escopo} onEscopo={setEscopo} onMudou={() => void recarregarSerie()} />
     </>}
   </div>;
 

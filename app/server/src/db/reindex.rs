@@ -518,8 +518,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             let fm = &item.front_matter;
             tx.execute(
                 "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
-                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em, concluida_em) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, (SELECT id FROM usuario WHERE id = ?15), ?16, ?17)",
+                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em, concluida_em, serie_id, ocorrencia_data) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, (SELECT id FROM usuario WHERE id = ?15), ?16, ?17, ?18, ?19)",
                 params![
                     fm.id,
                     item.caminho_relativo,
@@ -539,6 +539,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                     fm.atualizado_em.or(item.modificado_em).unwrap_or(fm.criado_em).to_rfc3339(),
                     // Concluída antes do campo existir: a última edição é a melhor aproximação até a próxima mudança de status.
                     (if fm.status == TarefaStatus::Concluida { fm.concluida_em.or(fm.atualizado_em).or(item.modificado_em) } else { None }).map(|d| d.to_rfc3339()),
+                    fm.serie.as_ref().map(|s| s.serie_id.clone()),
+                    fm.serie.as_ref().map(|s| s.data.to_string()),
                 ],
             )?;
 

@@ -30,6 +30,7 @@ pub mod rotina;
 pub mod sync;
 pub mod tags;
 pub mod tarefas;
+pub mod tarefas_serie;
 pub mod vault_proxy;
 
 use crate::middleware::auth_guard::exigir_sessao;
@@ -102,6 +103,8 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/tarefas", get(tarefas::listar).post(tarefas::criar))
         .route("/tarefas/:id", get(tarefas::obter).patch(tarefas::atualizar).delete(tarefas::excluir))
         .route("/tarefas/:id/status", patch(tarefas::atualizar_status))
+        .route("/tarefas/:id/serie", get(tarefas_serie::obter).put(tarefas_serie::definir))
+        .route("/tarefas/:id/serie/acao", post(tarefas_serie::acao))
         .route("/tarefas/:id/time-entries", get(tarefas::listar_time_entries).post(tarefas::criar_time_entry))
         .route("/tarefas/:id/time-entries/:entrada", patch(tarefas::atualizar_time_entry).delete(tarefas::excluir_time_entry))
         .route("/tarefas/:id/anexos", post(tarefas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))

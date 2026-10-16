@@ -215,6 +215,9 @@ pub struct TarefaFrontMatter {
     /// See `NotaFrontMatter::criado_por` — same rationale, same migration.
     #[serde(default)]
     pub criado_por: Option<String>,
+    /// Ocorrência de uma série recorrente (a regra mora no arquivo da série, ver `tarefa_serie`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serie: Option<crate::tarefa_serie::OcorrenciaRef>,
 }
 
 /// Que tipo de tempo um registro guarda: `Planejado` é tempo ALOCADO num dia/horário do calendário (um bloco, que não

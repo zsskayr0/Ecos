@@ -14,6 +14,7 @@ pub mod ids;
 pub mod naming;
 pub mod ranking;
 pub mod tags;
+pub mod tarefa_serie;
 pub mod recurrence;
 pub mod types;
 pub mod wikilink;

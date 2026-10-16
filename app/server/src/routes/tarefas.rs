@@ -22,7 +22,7 @@ fn tarefas_dir(state: &AppState) -> PathBuf {
     state.config.notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas")
 }
 
-fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
+pub(crate) fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
     state.config.notes_root.join(caminho_relativo)
 }
 
@@ -31,7 +31,7 @@ fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
 /// BLOB em banco (isso é exclusivo do Cofre). Referenciado no corpo via
 /// link relativo Markdown; o backend nunca precisa entender a referência,
 /// só preservar o arquivo.
-fn anexos_dir(state: &AppState, tarefa_id: &str, caminho_relativo: &str) -> PathBuf {
+pub(crate) fn anexos_dir(state: &AppState, tarefa_id: &str, caminho_relativo: &str) -> PathBuf {
     let pai = absoluto(state, caminho_relativo).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| tarefas_dir(state));
     pai.join("_anexos").join(tarefa_id)
 }
@@ -225,7 +225,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             let mut sql = String::from(
                 "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
                  t.criado_em, t.prioridade, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, \
-                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em \
+                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em, t.serie_id, t.ocorrencia_data \
                  FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
             let mut condicoes = vec![visivel.clone()];
@@ -296,6 +296,8 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                         "pasta": r.get::<_, Option<String>>(13)?,
                         "tags": serde_json::from_str::<Vec<String>>(&r.get::<_, String>(14)?).unwrap_or_default(),
                         "concluida_em": r.get::<_, Option<String>>(15)?,
+                        "serie_id": r.get::<_, Option<String>>(16)?,
+                        "ocorrencia_data": r.get::<_, Option<String>>(17)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -335,6 +337,9 @@ pub struct CriarTarefaPayload {
     pub subtarefas: Vec<SubtarefaPayload>,
     #[serde(default)]
     pub espaco: Option<String>,
+    /// Repetição já na criação (equivale a criar e depois `PUT /tarefas/:id/serie`).
+    #[serde(default)]
+    pub recorrencia: Option<crate::routes::tarefas_serie::RegraPayload>,
 }
 
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
@@ -382,11 +387,20 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         tempo: Vec::new(),
         concluida_em: None,
         criado_por: Some(usuario.0.clone()),
+        serie: None,
     };
     let conteudo = frontmatter::serialize(&fm, payload.corpo.as_deref().unwrap_or(""))?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    if let Some(regra) = payload.recorrencia {
+        // Regra inválida: a Tarefa já foi criada; desfaz para não deixar uma tarefa que a pessoa não conseguiu criar.
+        if let Err(err) = crate::routes::tarefas_serie::aplicar_regra(&state, &usuario.0, &fm.id, regra).await {
+            let _ = std::fs::remove_file(&caminho_absoluto);
+            reindexar_tudo(&state.db, &state.config.notes_root).await?;
+            return Err(err);
+        }
+    }
 
     Ok(Json(serde_json::json!({
         "id": fm.id, "tipo": "tarefa", "titulo": fm.titulo, "scheduled_at": fm.scheduled_at,
@@ -395,7 +409,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     })))
 }
 
-async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
+pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
     let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
@@ -431,6 +445,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         "caminho_arquivo": caminho_relativo,
         "pasta": pasta,
         "corpo": doc.body,
+        "serie": crate::routes::tarefas_serie::resumo_da_tarefa(&state, &fm),
     })))
 }
 
@@ -495,6 +510,19 @@ pub struct AtualizarTarefaPayload {
     pub prioridade: Option<TarefaPrioridade>,
     #[serde(default)]
     pub subtarefas: Option<Vec<SubtarefaPayload>>,
+    /// Em Tarefa recorrente, o que a edição atinge: `esta` (padrão), `proximas` ou `serie`.
+    #[serde(default)]
+    pub escopo: Option<String>,
+}
+
+/// A edição mexeu em algo que o molde da série copia para cada ocorrência?
+fn mudou_molde(antes: &TarefaFrontMatter, corpo_antes: &str, fm: &TarefaFrontMatter, corpo: &str) -> bool {
+    antes.titulo != fm.titulo
+        || antes.duration_min != fm.duration_min
+        || antes.prioridade != fm.prioridade
+        || antes.tags != fm.tags
+        || corpo_antes != corpo
+        || antes.subtarefas.iter().map(|s| &s.titulo).ne(fm.subtarefas.iter().map(|s| &s.titulo))
 }
 
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
@@ -505,6 +533,8 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let mut fm = doc.front_matter;
     let mut corpo = doc.body;
+    let escopo = crate::routes::tarefas_serie::Escopo::de_texto(payload.escopo.as_deref())?;
+    let (fm_antes, corpo_antes) = (fm.clone(), corpo.clone());
 
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
@@ -563,6 +593,20 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     };
 
     fm.atualizado_em = Some(Utc::now());
+    // Tarefa de série: "esta" vira exceção se mexeu no molde; "esta e próximas"/"toda a série" reescrevem o molde.
+    let mut outras_da_serie: Vec<String> = Vec::new();
+    if fm.serie.is_some() {
+        use crate::routes::tarefas_serie::Escopo;
+        if escopo == Escopo::Esta {
+            if mudou_molde(&fm_antes, &corpo_antes, &fm, &corpo) {
+                if let Some(s) = fm.serie.as_mut() {
+                    s.excecao = true;
+                }
+            }
+        } else {
+            outras_da_serie = crate::routes::tarefas_serie::propagar_edicao(&state, &usuario.0, &fm_antes, &mut fm, &corpo, escopo).await?;
+        }
+    }
     let conteudo = frontmatter::serialize(&fm, &corpo)?;
     if caminho_absoluto_destino == caminho_absoluto_atual {
         std::fs::write(&caminho_absoluto_atual, conteudo)?;
@@ -591,6 +635,9 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         }
     }
 
+    for caminho in &outras_da_serie {
+        crate::routes::tarefas_serie::aplicar_molde_em_outra(&state, caminho, &fm, &corpo)?;
+    }
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "id": fm.id, "titulo": fm.titulo })))
 }
@@ -620,16 +667,33 @@ pub async fn atualizar_status(State(state): State<AppState>, Extension(usuario):
     let conteudo = frontmatter::serialize(&fm, &doc.body)?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
+    // Concluir uma ocorrência gera a próxima da série (idempotente: reabrir e concluir de novo não duplica).
+    let mut proxima_id = None;
+    if novo_status == TarefaStatus::Concluida {
+        if let Some(ocorrencia) = &fm.serie {
+            proxima_id = crate::routes::tarefas_serie::gerar_proxima(&state, &ocorrencia.serie_id, ocorrencia.data, &caminho_relativo).await?;
+        }
+    }
+
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
-    Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status, "concluida_em": fm.concluida_em })))
+    Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status, "concluida_em": fm.concluida_em, "proxima_id": proxima_id })))
 }
 
-pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+#[derive(Debug, Deserialize)]
+pub struct ExcluirQuery {
+    /// Em Tarefa recorrente: `esta` (padrão, a série continua), `proximas` ou `serie` (encerram a série).
+    pub escopo: Option<String>,
+}
+
+pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Query(q): Query<ExcluirQuery>) -> AppResult<Json<serde_json::Value>> {
+    let escopo = crate::routes::tarefas_serie::Escopo::de_texto(q.escopo.as_deref())?;
     let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
+    let extras = crate::routes::tarefas_serie::ao_excluir(&state, &usuario.0, &doc.front_matter, &caminho_relativo, escopo).await?;
     let dir_anexos = anexos_dir(&state, &id, &caminho_relativo);
     crate::routes::lixeira::mover(&state, &caminho_relativo, "tarefa", &doc.front_matter.titulo, &dir_anexos)?;
+    crate::routes::tarefas_serie::mover_para_lixeira(&state, &extras)?;
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

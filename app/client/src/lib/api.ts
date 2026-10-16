@@ -622,6 +622,37 @@ export interface TarefaResumo {
   prioridade: PrioridadeTarefa;
   criado_por: string | null;
   criado_por_nome: string | null;
+  /** Ocorrência de uma série recorrente; `null`/ausente = tarefa avulsa. */
+  serie_id?: string | null;
+  ocorrencia_data?: string | null;
+}
+
+export type FrequenciaSerie = "diaria" | "semanal" | "mensal" | "anual";
+export type FimDeMesSerie = "ajustar" | "pular" | "ultimo_dia";
+export type EstadoSerie = "ativa" | "pausada" | "encerrada";
+/** Qual parte de uma série a edição ou a exclusão atinge. */
+export type EscopoSerie = "esta" | "proximas" | "serie";
+
+export interface RegraSerie {
+  frequencia: FrequenciaSerie;
+  intervalo: number;
+  /** 1 = segunda ... 7 = domingo (só semanal). */
+  dias_semana: number[];
+  fim_de_mes: FimDeMesSerie;
+  data_fim: string | null;
+  max_ocorrencias: number | null;
+  timezone: string;
+}
+
+export interface SerieResumo {
+  serie_id: string;
+  estado: EstadoSerie;
+  regra: RegraSerie & { data_inicio: string };
+  ocorrencia_data: string;
+  excecao: boolean;
+  total_geradas: number;
+  puladas: string[];
+  proxima_data: string | null;
 }
 
 export interface TarefaDetalhe {
@@ -641,6 +672,8 @@ export interface TarefaDetalhe {
   caminho_arquivo: string;
   pasta: string | null;
   corpo: string;
+  /** Resumo da série quando a tarefa é recorrente; `null` caso contrário (servidores antigos não enviam). */
+  serie?: SerieResumo | null;
 }
 
 export interface CriarTarefaPayload {
@@ -654,6 +687,7 @@ export interface CriarTarefaPayload {
   prioridade?: PrioridadeTarefa;
   subtarefas?: SubtarefaInput[];
   espaco?: string;
+  recorrencia?: RegraSerie;
 }
 
 export interface AtualizarTarefaPayload {
@@ -667,9 +701,18 @@ export interface AtualizarTarefaPayload {
   tags?: string[];
   prioridade?: PrioridadeTarefa;
   subtarefas?: SubtarefaInput[];
+  /** Em tarefa recorrente: o que a edição atinge (padrão do servidor: só esta). */
+  escopo?: EscopoSerie;
 }
 
 export const tarefas = {
+  /** Repetição: regra e estado da série de uma tarefa recorrente. */
+  serie: {
+    obter: (id: string) => get<SerieResumo>(`/tarefas/${id}/serie`),
+    /** Cria a repetição ou, numa tarefa já recorrente, troca a regra para esta ocorrência e as próximas. */
+    definir: (id: string, regra: RegraSerie) => put<SerieResumo>(`/tarefas/${id}/serie`, regra),
+    acao: (id: string, acao: "pular" | "pausar" | "retomar" | "encerrar" | "remover") => post<{ ok: true; proxima_id: string | null }>(`/tarefas/${id}/serie/acao`, { acao }),
+  },
   listar: (params: { pasta?: string; data_de?: string; data_ate?: string; concluida_de?: string; concluida_ate?: string; tz?: number; status?: string; espaco?: string; cursor?: string; limit?: number } = {}) => {
     // `pasta=` vazio é o filtro "só as sem pasta" (`COALESCE(pasta_id, '') = ''` no servidor); `qs` descarta vazios, então ele vai à parte.
     const { pasta, ...resto } = params;
@@ -688,7 +731,8 @@ export const tarefas = {
     atualizar: (id: string, entradaId: string, payload: { inicio_em?: string; duracao_min?: number; foco?: string }) => patch<{ id: string }>(`/tarefas/${id}/time-entries/${entradaId}`, payload),
     excluir: (id: string, entradaId: string) => del<{ ok: true }>(`/tarefas/${id}/time-entries/${entradaId}`),
   },
-  excluir: (id: string) => del<{ ok: true }>(`/tarefas/${id}`),
+  /** `escopo` só importa em tarefa recorrente: `esta` (padrão) mantém a série; `proximas`/`serie` a encerram. */
+  excluir: (id: string, escopo?: EscopoSerie) => del<{ ok: true }>(`/tarefas/${id}${escopo ? `?escopo=${escopo}` : ""}`),
   capacidade: (data: string, tz?: number) =>
     get<{
       data: string;
