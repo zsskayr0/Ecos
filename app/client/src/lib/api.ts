@@ -86,6 +86,8 @@ function mensagemHttp(status: number): string {
   }
 }
 
+export interface MetricasPerfil { escopo: "pessoal" | "pessoal_e_equipes"; entrou_em: string; primeira_nota_em: string | null; notas: number; tarefas: number; palavras: number; caracteres: number }
+
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -425,6 +427,9 @@ export const auth = {
     get<{ id: string; nome_usuario: string; nome: string | null; cofre_ativado: boolean; avatar_atualizado_em: number | null; equipes: { id: string; nome: string; cargo: string; tipo?: TipoEquipe; cor?: string; avatar_atualizado_em?: number | null }[]; papel: "admin" | "usuario"; deve_trocar_senha: boolean; termos_pendente: boolean; termos_versao: string }>("/me"),
   aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
+  /** Resumo agregado no servidor (não depende de paginação). `escopo` diz o que as contagens cobrem. */
+  metricas: (escopo: "pessoal" | "pessoal_e_equipes" = "pessoal") =>
+    get<MetricasPerfil>(`/me/metricas?escopo=${escopo}`),
   /** Troca a própria senha. Com senha temporária (conta criada pela administração) devolve uma recovery key nova, que só aparece uma vez. */
   trocarSenha: (senha_atual: string, nova_senha: string) => post<{ ok: true; recovery_key: string | null }>("/me/senha", { senha_atual, nova_senha }),
 };

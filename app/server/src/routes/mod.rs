@@ -20,6 +20,7 @@ mod tags_testes;
 pub mod feed;
 pub mod health;
 pub mod media;
+pub mod metricas;
 pub mod lixeira;
 pub mod notas;
 pub mod notificacoes;
@@ -72,6 +73,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
         .route("/me/senha", post(crate::auth::trocar_senha))
+        .route("/me/metricas", get(metricas::obter))
         .route("/me/preferencias/calendario", get(preferencias::obter).patch(preferencias::atualizar))
         .route("/me/aceites/termos", post(crate::auth::aceitar_termos))
         .route("/admin/usuarios", get(crate::admin::listar).post(crate::admin::criar))
