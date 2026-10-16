@@ -1092,6 +1092,7 @@ export interface NotificacaoApi {
 export const notificacoes = {
   listar: (params: { categoria?: string; lida?: boolean; cursor?: string; limit?: number } = {}) =>
     get<Pagina<NotificacaoApi>>(`/notificacoes${qs({ ...params, lida: params.lida === undefined ? undefined : String(params.lida) })}`),
+  naoLidas: () => get<{ total: number }>("/notificacoes/nao-lidas"),
   marcarLida: (id: string) => patch<{ ok: true }>(`/notificacoes/${id}/lida`),
   marcarTodasLidas: () => post<{ ok: true }>("/notificacoes/marcar-todas-lidas"),
 };

@@ -518,6 +518,17 @@ pub async fn aceitar_convite(State(state): State<AppState>, Extension(usuario): 
             let consumido = tx.execute("UPDATE convite_equipe SET estado = 'aceito' WHERE id = ?1 AND estado = 'pendente'", [&convite_id])?;
             if consumido != 1 { return Ok(ResultadoConvite::Indisponivel); }
             tx.execute("INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, 'membro')", rusqlite::params![equipe_id, usuario.0])?;
+            // Quem administra a equipe fica sabendo de quem entrou.
+            let nome_equipe: String = tx.query_row("SELECT nome FROM equipe WHERE id = ?1", [&equipe_id], |r| r.get(0)).unwrap_or_default();
+            let nome_pessoa: String = tx.query_row("SELECT COALESCE(NULLIF(nome, ''), nome_usuario) FROM usuario WHERE id = ?1", [&usuario.0], |r| r.get(0)).unwrap_or_default();
+            let gestores: Vec<String> = {
+                let mut s = tx.prepare("SELECT usuario_id FROM membro_equipe WHERE equipe_id = ?1 AND cargo IN ('dono', 'admin') AND usuario_id != ?2")?;
+                let v = s.query_map(rusqlite::params![equipe_id, usuario.0], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+                v
+            };
+            for g in gestores {
+                crate::routes::notificacoes::criar(&tx, &g, "equipes", "Nova pessoa na equipe", &format!("{nome_pessoa} entrou em {nome_equipe} pelo convite."), Some(&format!("convite:{convite_id}")))?;
+            }
             tx.commit()?;
             Ok(ResultadoConvite::Aceito)
         })

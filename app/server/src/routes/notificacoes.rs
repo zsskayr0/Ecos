@@ -18,6 +18,46 @@ pub struct ListarQuery {
     pub limit: Option<i64>,
 }
 
+/// Grava uma notificação. Com `chave`, é idempotente por pessoa (a mesma chave nunca gera duas linhas).
+pub fn criar(conn: &rusqlite::Connection, usuario_id: &str, categoria: &str, titulo: &str, corpo: &str, chave: Option<&str>) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "INSERT OR IGNORE INTO notificacao (id, usuario_id, categoria, titulo, corpo, lida, criado_em, chave) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
+        rusqlite::params![ecos_core::new_id(), usuario_id, categoria, titulo, corpo, chrono::Utc::now().to_rfc3339(), chave],
+    )?;
+    Ok(n > 0)
+}
+
+/// Produtor de "prazo próximo": tarefas pendentes da pessoa com prazo hoje ou amanhã (data civil no fuso das
+/// preferências dela; sem preferência, America/Sao_Paulo). Uma notificação por tarefa e dia de prazo.
+fn varrer_prazos(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite::Result<()> {
+    let fuso: String = conn
+        .query_row("SELECT fuso FROM preferencia_calendario WHERE usuario_id = ?1", [usuario_id], |r| r.get(0))
+        .unwrap_or_else(|_| "America/Sao_Paulo".to_string());
+    let tz: chrono_tz::Tz = fuso.parse().unwrap_or(chrono_tz::America::Sao_Paulo);
+    let hoje = chrono::Utc::now().with_timezone(&tz).date_naive();
+    let amanha = hoje + chrono::Duration::days(1);
+    let (h, a) = (hoje.format("%Y-%m-%d").to_string(), amanha.format("%Y-%m-%d").to_string());
+    let mut stmt = conn.prepare("SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1 AND status = 'pendente' AND due_date IN (?2, ?3)")?;
+    let tarefas = stmt.query_map(rusqlite::params![usuario_id, h, a], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+    for (id, titulo, due) in tarefas {
+        let quando = if due == h { "vence hoje" } else { "vence amanhã" };
+        criar(conn, usuario_id, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&format!("prazo:{id}:{due}")))?;
+    }
+    Ok(())
+}
+
+/// `GET /notificacoes/nao-lidas` — contador do sino.
+pub async fn nao_lidas(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
+    let total: i64 = state
+        .db
+        .with(move |conn| {
+            let _ = varrer_prazos(conn, &usuario.0);
+            conn.query_row("SELECT COUNT(*) FROM notificacao WHERE usuario_id = ?1 AND lida = 0", [&usuario.0], |r| r.get(0))
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "total": total })))
+}
+
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
@@ -25,6 +65,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let linhas: Vec<serde_json::Value> = state
         .db
         .with(move |conn| {
+            let _ = varrer_prazos(conn, &usuario.0);
             let mut sql = String::from("SELECT id, categoria, titulo, corpo, lida, criado_em FROM notificacao WHERE usuario_id = ?");
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(usuario.0.clone())];
 

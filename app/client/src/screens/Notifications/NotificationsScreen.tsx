@@ -60,8 +60,8 @@ export function NotificationsScreen() {
       try {
         await notificacoesApi.marcarLida(n.id);
         notificar();
-      } catch {
-        /* silent — doesn't block reading it */
+      } catch (e) {
+        setErro(mensagemDeErro(e, "Não consegui marcar o aviso como lido. Tente de novo."));
       }
     }
   }

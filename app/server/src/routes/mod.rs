@@ -140,6 +140,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/equipes/:id/convites/:convite_id", delete(equipes::revogar_convite))
         .route("/convites/:codigo/aceitar", post(equipes::aceitar_convite))
         .route("/notificacoes", get(notificacoes::listar))
+        .route("/notificacoes/nao-lidas", get(notificacoes::nao_lidas))
         .route("/notificacoes/:id/lida", patch(notificacoes::marcar_lida))
         .route("/notificacoes/marcar-todas-lidas", post(notificacoes::marcar_todas_lidas))
         .route("/sync/status", get(sync::status))

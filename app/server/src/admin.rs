@@ -212,7 +212,16 @@ pub async fn adicionar_membro(State(state): State<AppState>, Extension(usuario):
     let (eid, uid) = (equipe_id, payload.usuario_id);
     state
         .db
-        .with(move |conn| conn.execute("INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, ?3) ON CONFLICT (equipe_id, usuario_id) DO UPDATE SET cargo = CASE WHEN cargo = 'dono' THEN cargo ELSE excluded.cargo END", rusqlite::params![eid, uid, cargo]))
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let ja_era: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM membro_equipe WHERE equipe_id = ?1 AND usuario_id = ?2)", [&eid, &uid], |r| r.get(0))?;
+            tx.execute("INSERT INTO membro_equipe (equipe_id, usuario_id, cargo) VALUES (?1, ?2, ?3) ON CONFLICT (equipe_id, usuario_id) DO UPDATE SET cargo = CASE WHEN cargo = 'dono' THEN cargo ELSE excluded.cargo END", rusqlite::params![eid, uid, cargo])?;
+            if !ja_era {
+                let nome: String = tx.query_row("SELECT nome FROM equipe WHERE id = ?1", [&eid], |r| r.get(0)).unwrap_or_default();
+                crate::routes::notificacoes::criar(&tx, &uid, "equipes", "Você entrou em uma equipe", &format!("A administração adicionou você à equipe {nome}."), Some(&format!("membro:{eid}:{}", ecos_core::new_id())))?;
+            }
+            tx.commit()
+        })
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

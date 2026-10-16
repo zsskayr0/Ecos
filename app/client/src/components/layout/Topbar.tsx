@@ -29,8 +29,8 @@ export function Topbar() {
 
   useEffect(() => {
     notificacoes
-      .listar({ lida: false, limit: 50 })
-      .then((p) => setNaoLidas(p.items.length))
+      .naoLidas()
+      .then((r) => setNaoLidas(r.total))
       .catch(() => setNaoLidas(0));
   }, [versao]);
 
