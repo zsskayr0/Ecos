@@ -8,7 +8,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 const pendentes = vi.hoisted(() => vi.fn());
 vi.mock("./offline-store", async (importOriginal) => {
   const o = await importOriginal<typeof import("./offline-store")>();
-  return { ...o, prepararConteudoOffline: vi.fn().mockResolvedValue(undefined), limparDadosOffline: vi.fn().mockResolvedValue(undefined), listarMutacoesPendentes: pendentes };
+  return { ...o, prepararConteudoOffline: vi.fn().mockResolvedValue(undefined), agendarPreparacaoOffline: vi.fn(), limparDadosOffline: vi.fn().mockResolvedValue(undefined), listarMutacoesPendentes: pendentes };
 });
 import { auth } from "@/lib/api";
 import { AuthProvider, useAuth } from "./auth-context";

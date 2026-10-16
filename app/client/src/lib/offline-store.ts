@@ -48,7 +48,52 @@ function abrirDb(): Promise<IDBDatabase | null> {
   return dbPromessa;
 }
 
+/**
+ * Mesclagens de coleção (notas, tarefas, eventos, pastas) ficam em memória e são gravadas em lote: várias páginas
+ * seguidas viram uma única leitura+escrita da coleção, fora do caminho crítico da resposta. Qualquer leitura do
+ * cache espera o lote pendente, então ninguém enxerga dado velho.
+ */
+type MesclagemPendente = { chaveItem: "id" | "caminho"; itens: Map<string, Record<string, unknown>> };
+const mesclagens = new Map<string, MesclagemPendente>();
+const escritasEmCurso = new Set<Promise<unknown>>();
+let temporizadorLote: ReturnType<typeof setTimeout> | null = null;
+const ATRASO_LOTE_MS = 300;
+
+function agendarMesclagem(chaveColecao: string, chaveItem: "id" | "caminho", itens: Record<string, unknown>[]): void {
+  let pendente = mesclagens.get(chaveColecao);
+  if (!pendente) { pendente = { chaveItem, itens: new Map() }; mesclagens.set(chaveColecao, pendente); }
+  for (const item of itens) pendente.itens.set(String(item[chaveItem]), item);
+  if (temporizadorLote === null) temporizadorLote = setTimeout(() => { void liberarMesclagens(); }, ATRASO_LOTE_MS);
+}
+
+let liberacao: Promise<void> = Promise.resolve();
+function liberarMesclagens(): Promise<void> {
+  if (temporizadorLote !== null) { clearTimeout(temporizadorLote); temporizadorLote = null; }
+  liberacao = liberacao.then(async () => {
+    const lote = [...mesclagens.entries()];
+    mesclagens.clear();
+    for (const [chaveColecao, { chaveItem, itens }] of lote) {
+      const anterior = (await obterBruto<CacheRegistro>(CACHE, chaveColecao))?.valor;
+      const porChave = new Map((Array.isArray(anterior) ? anterior as Record<string, unknown>[] : []).map((item) => [String(item[chaveItem]), item]));
+      itens.forEach((item, chave) => porChave.set(chave, item));
+      await gravar(CACHE, { chave: chaveColecao, valor: [...porChave.values()], salvoEm: Date.now() });
+    }
+  }).catch(() => undefined);
+  return liberacao;
+}
+
+async function aguardarCache(): Promise<void> {
+  if (escritasEmCurso.size) await Promise.all([...escritasEmCurso]);
+  if (mesclagens.size || temporizadorLote !== null) await liberarMesclagens();
+  else await liberacao;
+}
+
 async function obter<T>(loja: string, chave: IDBValidKey): Promise<T | undefined> {
+  if (loja === CACHE) await aguardarCache();
+  return obterBruto<T>(loja, chave);
+}
+
+async function obterBruto<T>(loja: string, chave: IDBValidKey): Promise<T | undefined> {
   const db = await abrirDb();
   if (!db) return (loja === CACHE ? memoriaCache : memoriaFila).get(String(chave)) as T | undefined;
   return new Promise((resolve) => {
@@ -59,6 +104,11 @@ async function obter<T>(loja: string, chave: IDBValidKey): Promise<T | undefined
 }
 
 async function todos<T>(loja: string): Promise<T[]> {
+  if (loja === CACHE) await aguardarCache();
+  return todosBruto<T>(loja);
+}
+
+async function todosBruto<T>(loja: string): Promise<T[]> {
   const db = await abrirDb();
   if (!db) return [...(loja === CACHE ? memoriaCache : memoriaFila).values()] as T[];
   return new Promise((resolve) => {
@@ -124,33 +174,25 @@ export function marcarSincronizacao(sincronizando: boolean, erro: string | null 
   emitir();
 }
 
-export async function guardarRespostaOffline(chave: string, valor: unknown): Promise<void> {
+export function guardarRespostaOffline(chave: string, valor: unknown): Promise<void> {
+  const escrita = guardarRespostaOfflineAgora(chave, valor);
+  escritasEmCurso.add(escrita);
+  void escrita.finally(() => escritasEmCurso.delete(escrita));
+  return escrita;
+}
+
+async function guardarRespostaOfflineAgora(chave: string, valor: unknown): Promise<void> {
   await gravar(CACHE, { chave, valor, salvoEm: Date.now() });
   const url = new URL(chave, "https://offline.ecos");
   const tipo = url.pathname === "/notas" ? "notas" : url.pathname === "/tarefas" ? "tarefas" : null;
   if (tipo && pagina(valor)) {
-    const chaveColecao = `__colecao__:${tipo}`;
-    const anterior = (await obter<CacheRegistro>(CACHE, chaveColecao))?.valor;
-    const itensAnteriores = Array.isArray(anterior) ? anterior as Record<string, unknown>[] : [];
-    const porId = new Map(itensAnteriores.map((item) => [String(item.id), item]));
-    valor.items.forEach((item) => porId.set(String(item.id), item));
-    await gravar(CACHE, { chave: chaveColecao, valor: [...porId.values()], salvoEm: Date.now() });
+    agendarMesclagem(`__colecao__:${tipo}`, "id", valor.items);
   } else if (url.pathname === "/eventos" && Array.isArray(valor)) {
-    const chaveColecao = "__colecao__:eventos";
-    const anterior = (await obter<CacheRegistro>(CACHE, chaveColecao))?.valor;
-    const itensAnteriores = Array.isArray(anterior) ? anterior as Record<string, unknown>[] : [];
-    const porId = new Map(itensAnteriores.map((item) => [String(item.id), item]));
-    (valor as Record<string, unknown>[]).forEach((item) => porId.set(String(item.id), item));
-    await gravar(CACHE, { chave: chaveColecao, valor: [...porId.values()], salvoEm: Date.now() });
+    agendarMesclagem("__colecao__:eventos", "id", valor as Record<string, unknown>[]);
   } else if (url.pathname === "/pastas" && valor && typeof valor === "object" && Array.isArray((valor as { subpastas?: unknown }).subpastas)) {
     const tipoPasta = url.searchParams.get("tipo") ?? "nota";
     const espaco = url.searchParams.get("espaco") ?? "pessoal";
-    const chaveColecao = `__pastas__:${tipoPasta}:${espaco}`;
-    const anterior = (await obter<CacheRegistro>(CACHE, chaveColecao))?.valor;
-    const pastasAnteriores = Array.isArray(anterior) ? anterior as Record<string, unknown>[] : [];
-    const porCaminho = new Map(pastasAnteriores.map((item) => [String(item.caminho), item]));
-    ((valor as { subpastas: Record<string, unknown>[] }).subpastas).forEach((item) => porCaminho.set(String(item.caminho), item));
-    await gravar(CACHE, { chave: chaveColecao, valor: [...porCaminho.values()], salvoEm: Date.now() });
+    agendarMesclagem(`__pastas__:${tipoPasta}:${espaco}`, "caminho", (valor as { subpastas: Record<string, unknown>[] }).subpastas);
   }
 }
 
@@ -431,6 +473,9 @@ export async function substituirIdTemporario(tempId: string, realId: string): Pr
 }
 
 export async function limparDadosOffline(): Promise<void> {
+  mesclagens.clear();
+  if (temporizadorLote !== null) { clearTimeout(temporizadorLote); temporizadorLote = null; }
+  await liberacao;
   await Promise.all([limparLoja(CACHE), limparLoja(FILA)]);
   estado = { servidorDisponivel: typeof navigator === "undefined" ? true : navigator.onLine, sincronizando: false, pendentes: 0, erro: null };
   emitir();

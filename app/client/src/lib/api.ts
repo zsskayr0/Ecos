@@ -281,7 +281,8 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
   if (!ehJson) {
     throw new ApiError("RESPOSTA_INESPERADA", "O servidor respondeu, mas não como a API do Ecos esperava — confira o endereço em Configurações → Servidor.", resp.status);
   }
-  if (!sincronizando && (init?.method ?? "GET") === "GET" && podeUsarCacheOffline(path)) await guardarRespostaOffline(path, body);
+  // Fora do caminho crítico: a resposta não espera o IndexedDB (leituras do cache aguardam a gravação).
+  if (!sincronizando && (init?.method ?? "GET") === "GET" && podeUsarCacheOffline(path)) void guardarRespostaOffline(path, body).catch(() => undefined);
   return body as T;
 }
 
@@ -1110,9 +1111,41 @@ export const equipes = {
 
 let preparacaoOffline: Promise<void> | null = null;
 
+const PREFIXO_PREPARO = "ecos:offline-preparado:";
+export const INTERVALO_PREPARO_OFFLINE_MS = 24 * 60 * 60 * 1000;
+
+function preparadoRecentemente(espaco: string, agora: number): boolean {
+  try { return agora - Number(localStorage.getItem(PREFIXO_PREPARO + espaco) ?? 0) < INTERVALO_PREPARO_OFFLINE_MS; } catch { return false; }
+}
+function marcarPreparado(espacos: string[], agora: number) {
+  try { for (const espaco of espacos) localStorage.setItem(PREFIXO_PREPARO + espaco, String(agora)); } catch { /* sem armazenamento: só repete na próxima abertura */ }
+}
+
+/** Conexão ruim ou modo de economia de dados: não vale gastar banda com a preparação em segundo plano. */
+function conexaoRuim(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (navigator.onLine === false) return true;
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  return !!c && (c.saveData === true || c.effectiveType === "slow-2g" || c.effectiveType === "2g");
+}
+
+/**
+ * Agenda a preparação para depois que o app já renderizou (ocioso, com teto de espera), no máximo 1x por dia por espaço,
+ * e só com boa conectividade.
+ */
+export function agendarPreparacaoOffline(espacos: string[]): void {
+  const executar = () => { if (!conexaoRuim()) void prepararConteudoOffline(espacos); };
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === "function") ric(executar, { timeout: 15_000 });
+  else setTimeout(executar, 5_000);
+}
+
 /** Atualiza silenciosamente o conjunto que permite navegar e trabalhar quando o servidor ficar inacessível. */
-export function prepararConteudoOffline(espacos: string[]): Promise<void> {
+export function prepararConteudoOffline(todosEspacos: string[]): Promise<void> {
   if (preparacaoOffline) return preparacaoOffline;
+  const agora = Date.now();
+  const espacos = todosEspacos.filter((espaco) => !preparadoRecentemente(espaco, agora));
+  if (!espacos.length) return Promise.resolve();
   preparacaoOffline = (async () => {
     const carregarPaginas = async <T>(listar: (cursor?: string) => Promise<Pagina<T>>) => {
       let cursor: string | undefined;
@@ -1138,7 +1171,9 @@ export function prepararConteudoOffline(espacos: string[]): Promise<void> {
       equipes.listarMinhas(),
       agenda.blocos({ data_de: data(inicio), data_ate: data(fim), tz: -hoje.getTimezoneOffset() }),
     );
-    await Promise.allSettled(tarefasPreparacao);
+    const resultados = await Promise.allSettled(tarefasPreparacao);
+    // Só vale o carimbo se tudo chegou; uma falha tenta de novo na próxima abertura.
+    if (resultados.every((r) => r.status === "fulfilled")) marcarPreparado(espacos, agora);
   })().finally(() => { preparacaoOffline = null; });
   return preparacaoOffline;
 }

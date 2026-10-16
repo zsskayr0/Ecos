@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, auth, definirUsuarioDoCofre, prepararConteudoOffline } from "./api";
+import { ApiError, auth, definirUsuarioDoCofre, agendarPreparacaoOffline } from "./api";
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
 import { limparDadosOffline, listarMutacoesPendentes } from "./offline-store";
@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);
-      void prepararConteudoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
+      agendarPreparacaoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
       // Uma perda temporária de rede não deve apagar uma sessão válida nem
       // mandar a pessoa de volta ao login. Apenas 401 significa credencial
@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(p);
       setStatus("autenticado");
       gravarSessaoAtiva(true);
-      void prepararConteudoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
+      agendarPreparacaoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
       setErro(mensagemDeErro(e, "Não foi possível entrar."));
       throw e;
