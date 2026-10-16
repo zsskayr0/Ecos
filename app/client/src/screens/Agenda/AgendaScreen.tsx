@@ -510,7 +510,7 @@ export function AgendaScreen() {
 const PERIODOS: OpcaoMenu<ModoAgenda>[] = [
   { valor: "dia", rotulo: "Dia", icone: Sun, cor: TOM.alerta }, { valor: "tres_dias", rotulo: "3 dias", icone: Columns3, cor: TOM.ciano },
   { valor: "semana", rotulo: "Semana", icone: CalendarDays, cor: TOM.sucesso }, { valor: "quinzenal", rotulo: "Quinzenal", icone: CalendarRange, cor: TOM.violeta },
-  { valor: "mes", rotulo: "Mensal", icone: LayoutGrid, cor: TOM.aco }, { valor: "seis_meses", rotulo: "6 meses", icone: PanelTop, cor: TOM.ciano }, { valor: "anual", rotulo: "Anual", icone: CalendarDays, cor: TOM.erro },
+  { valor: "mes", rotulo: "Mensal", icone: LayoutGrid, cor: TOM.aco }, { valor: "seis_meses", rotulo: "6 meses", icone: PanelTop, cor: TOM.ciano }, { valor: "anual", rotulo: "Anual", icone: CalendarClock, cor: TOM.erro },
 ];
 /** Relógio que reage ao botão pai (`group`): no hover os ponteiros avançam um pouco; ao apertar, dão voltas (as horas passam). */
 function RelogioAnimado() {

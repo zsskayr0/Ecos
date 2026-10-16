@@ -49,6 +49,10 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  // Divulgação progressiva: tarefa nova mostra só título, prioridade e data; o resto fica em "Mais opções".
+  // Abre completo ao editar ou quando o rascunho já traz algo do bloco avançado.
+  const [maisOpcoes, setMaisOpcoes] = useState(() => editing || Boolean(value.corpo.trim() || value.subtarefas.length || value.pasta || value.tags.length));
+  const simples = !maisOpcoes;
   const [descriptionOpened, setDescriptionOpened] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [folders, setFolders] = useState<{ caminho: string; nome: string }[]>([]);
@@ -163,8 +167,14 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
       {titleActions}
     </div>
     {showPriority && <TaskPriority value={value.prioridade} onChange={(prioridade) => onChange({ prioridade })} disabled={saving} />}
-    <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} compact />
-    <div ref={grade} className="grid min-w-0 gap-7 md:gap-0" style={largo ? { gridTemplateColumns: `minmax(0,1fr) ${LARGURA_DIVISORIA}px ${larguraSidebar}px` } : undefined}>
+    {simples && <div className="flex flex-col gap-4" data-task-simples>
+      <label className="flex min-w-0 flex-col gap-2 text-sm text-text-secondary">Data e horário (opcional)<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} disabled={saving} /></label>
+      <button type="button" aria-expanded={false} onClick={() => setMaisOpcoes(true)} className="flex min-h-11 w-fit items-center gap-2 text-sm font-medium text-steel-300 hover:underline">
+        <SlidersHorizontal size={16} aria-hidden />Mais opções<span className="font-normal text-text-muted">descrição, anexos, duração, pasta, tags e subtarefas</span>
+      </button>
+    </div>}
+    {!simples && <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} compact />}
+    {!simples && <div ref={grade} className="grid min-w-0 gap-7 md:gap-0" style={largo ? { gridTemplateColumns: `minmax(0,1fr) ${LARGURA_DIVISORIA}px ${larguraSidebar}px` } : undefined}>
       <div className="min-w-0 space-y-6 md:pr-3">
         <section aria-label="Descrição" className="block">
           <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => { setDescriptionOpened(true); onChange({ corpo }); }} initialPreview
@@ -220,7 +230,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
         </section>
       </aside>
-    </div>
+    </div>}
     <footer className="flex flex-col gap-3 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">
       <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>
     </footer>

@@ -44,7 +44,9 @@ describe("editor de evento — criar", () => {
   it("tem os blocos de sempre e os novos: categoria, sincronização e vínculos", async () => {
     abrir(null);
     await titulo();
-    for (const rotulo of ["Quando", "Repetir", "Cor", "Local", "Descrição", "Categoria", "Sincronização", "Vínculos"]) expect(screen.getByText(rotulo), rotulo).toBeTruthy();
+    for (const rotulo of ["Quando", "Cor", "Local", "Descrição", "Categoria", "Sincronização", "Vínculos"]) expect(screen.getByText(rotulo), rotulo).toBeTruthy();
+    // A repetição fica escondida enquanto não houver como criá-la aqui (só séries já existentes a mostram).
+    expect(screen.queryByText("Repetir")).toBeNull();
     expect(screen.getByPlaceholderText("Buscar tarefa ou nota para vincular")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Criar evento" })).toBeTruthy();
   });

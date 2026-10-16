@@ -327,7 +327,8 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
             </div>
           </Secao>
 
-          <Secao i={2} icone={<Repeat size={13} />} rotulo="Repetir">
+          {/* Repetição só aparece quando já existe uma série: criar repetição ainda não é possível aqui (chega pelo Google Calendar). */}
+          {evento?.rrule && <Secao i={2} icone={<Repeat size={13} />} rotulo="Repetir">
             {evento?.rrule ? (
               <div className="rounded-xl border border-border bg-surface-1 p-3">
                 <p role="status" className="flex items-start gap-2 text-sm text-text-primary"><Repeat size={14} className="mt-0.5 shrink-0 text-cyan" /><span>{repeticao ? resumoRepeticao(repeticao, data) : "Repete com uma regra personalizada"}</span></p>
@@ -342,7 +343,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
                 <p className="mt-2 text-[11px] text-text-muted">Eventos que se repetem são criados no Google Calendar e chegam aqui sozinhos; cada ocorrência se edita separadamente.</p>
               </>
             )}
-          </Secao>
+          </Secao>}
 
           {!emOcorrencia && (
             <Secao i={3} icone={privado ? <Lock size={13} /> : <Cloud size={13} />} rotulo="Sincronização">
