@@ -15,6 +15,9 @@ pub struct FeedQuery {
     pub espaco: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// `true` inclui os cards de transação do Cofre (cada um custa 2 chamadas internas ao Cofre). O cliente atual
+    /// os descarta, então por padrão ficam de fora (e deixam de ocupar o limite da página).
+    pub transacoes: Option<bool>,
 }
 
 struct LinhaFeed {
@@ -44,6 +47,9 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         .with(move |conn| {
             let mut sql = String::from("SELECT id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em FROM feed_item");
             let mut condicoes = vec![visivel];
+            if q.transacoes != Some(true) {
+                condicoes.push("tipo != 'transacao'".to_string());
+            }
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(espaco) = &q.espaco {

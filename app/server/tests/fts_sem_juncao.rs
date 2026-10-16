@@ -7,6 +7,25 @@ use comum::*;
 use serde_json::json;
 
 #[tokio::test]
+async fn feed_omite_cards_de_transacao_a_menos_que_pedidos() {
+    let e = nova();
+    let (uid, token) = e.admin("diogo").await;
+    let (st, r) = e.chamar("POST", "/api/v1/notas", Some(&token), Some(json!({ "titulo": "Uma nota" }))).await;
+    assert!(st.is_success(), "{r}");
+    ecos_app::jobs::ranking::executar_ciclo(&e.state).await.unwrap();
+    let u = uid.clone();
+    e.state.db.with(move |c| {
+        c.execute("INSERT INTO feed_item (id, tipo, score_dominante, espaco, atualizado_em, usuario_id) VALUES ('T1', 'transacao', 99, 'pessoal', '2026-01-01T00:00:00Z', ?1)", [&u])
+    }).await.unwrap();
+
+    let (_, padrao) = e.chamar("GET", "/api/v1/feed", Some(&token), None).await;
+    assert!(padrao["items"].as_array().unwrap().iter().all(|c| c["tipo"] != "transacao"), "{padrao}");
+    assert_eq!(padrao["items"].as_array().unwrap().len(), 1);
+    let (_, com) = e.chamar("GET", "/api/v1/feed?transacoes=true", Some(&token), None).await;
+    assert!(com["items"].as_array().unwrap().iter().any(|c| c["tipo"] == "transacao"), "{com}");
+}
+
+#[tokio::test]
 async fn notas_feed_e_metricas_devolvem_titulo_corpo_tags_e_contagens() {
     let e = nova();
     let (_, token) = e.admin("diogo").await;
