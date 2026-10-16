@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api";
-import { mensagemDeCampos, mensagemDeErro, mensagemLimiteDeTentativas } from "@/lib/erros";
+import { errosDaTrocaDeSenha, mensagemDeCampos, mensagemDeErro, mensagemLimiteDeTentativas } from "@/lib/erros";
 import { validarNomeUsuario, validarSenhaNova } from "@/lib/validacao";
 
 describe("mensagens de erro", () => {
@@ -55,5 +55,18 @@ describe("validação espelhando o servidor", () => {
     expect(validarSenhaNova("472916385027")).toContain("Só números");
     expect(validarSenhaNova("Xdiogo-Zq9#wLp", "diogo")).toContain("nome de usuário");
     expect(validarSenhaNova("x".repeat(129))).toContain("no máximo 128");
+  });
+});
+
+describe("errosDaTrocaDeSenha", () => {
+  it("senha atual errada vai para o campo da senha atual", () => {
+    expect(errosDaTrocaDeSenha(new ApiError("INVALID_CREDENTIALS", "A senha atual não confere.", 401), "x")).toEqual({ atual: "A senha atual não confere." });
+  });
+  it("erro de nova_senha vai para o campo da nova senha", () => {
+    const e = new ApiError("VALIDATION_ERROR", "x", 422, [{ campo: "nova_senha", motivo: "deve ser diferente da senha atual" }]);
+    expect(errosDaTrocaDeSenha(e, "x")).toEqual({ nova: "Deve ser diferente da senha atual." });
+  });
+  it("o resto vira aviso geral", () => {
+    expect(errosDaTrocaDeSenha(new Error("boom"), "Falhou.")).toEqual({ geral: "Falhou." });
   });
 });

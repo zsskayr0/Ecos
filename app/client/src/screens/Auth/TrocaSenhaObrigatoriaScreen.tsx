@@ -5,7 +5,7 @@ import { auth } from "@/lib/api";
 import { validarSenhaNova } from "@/lib/validacao";
 import { RecoveryKeyReveal } from "./AuthScreen";
 
-import { mensagemDeErro } from "@/lib/erros";
+import { errosDaTrocaDeSenha, type ErrosDaTrocaDeSenha } from "@/lib/erros";
 /**
  * Primeiro acesso de uma conta criada pela administração: a senha que a pessoa recebeu é temporária, e o app não abre
  * nada antes de ela definir a própria (o servidor também recusa o resto até lá). Ao terminar, a pessoa recebe uma
@@ -19,6 +19,7 @@ export function TrocaSenhaObrigatoriaScreen() {
   const [mostrar, setMostrar] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [errosCampo, setErrosCampo] = useState<ErrosDaTrocaDeSenha>({});
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const { recarregarPerfil } = useAuth();
 
@@ -31,13 +32,15 @@ export function TrocaSenhaObrigatoriaScreen() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (salvando || invalido) return;
-    setSalvando(true); setErro(null);
+    setSalvando(true); setErro(null); setErrosCampo({});
     try {
       const r = await auth.trocarSenha(atual, nova);
       if (r.recovery_key) setRecoveryKey(r.recovery_key);
       else await recarregarPerfil();
     } catch (err) {
-      setErro(mensagemDeErro(err, "Não foi possível trocar a senha."));
+      const erros = errosDaTrocaDeSenha(err, "Não foi possível trocar a senha.");
+      setErrosCampo(erros);
+      setErro(erros.geral ?? null);
     } finally { setSalvando(false); }
   }
 
@@ -56,18 +59,19 @@ export function TrocaSenhaObrigatoriaScreen() {
       <form onSubmit={enviar} className="flex flex-col gap-4">
         <label className="flex flex-col gap-2">
           <span className="text-sm font-semibold text-text-primary">Senha temporária</span>
-          <input type={mostrar ? "text" : "password"} value={atual} onChange={(e) => setAtual(semEspacos(e.target.value))} autoComplete="current-password" className="ecos-input" autoFocus />
+          <input type={mostrar ? "text" : "password"} value={atual} onChange={(e) => { setAtual(semEspacos(e.target.value)); setErrosCampo((x) => ({ ...x, atual: undefined })); }} autoComplete="current-password" aria-invalid={!!errosCampo.atual} className="ecos-input" autoFocus />
+          {errosCampo.atual && <span role="alert" className="text-xs text-error">{errosCampo.atual}</span>}
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-sm font-semibold text-text-primary">Nova senha</span>
           <div className="relative">
-            <input type={mostrar ? "text" : "password"} value={nova} onChange={(e) => setNova(semEspacos(e.target.value))} autoComplete="new-password" placeholder="Mínimo 12 caracteres, sem espaços" className="ecos-input pr-12" />
+            <input type={mostrar ? "text" : "password"} value={nova} onChange={(e) => { setNova(semEspacos(e.target.value)); setErrosCampo((x) => ({ ...x, nova: undefined })); }} autoComplete="new-password" placeholder="Mínimo 12 caracteres, sem espaços" className="ecos-input pr-12" />
             <button type="button" onClick={() => setMostrar((v) => !v)} aria-label={mostrar ? "Ocultar senhas" : "Mostrar senhas"} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
               {mostrar ? <Eye size={18} strokeWidth={1.75} /> : <EyeOff size={18} strokeWidth={1.75} />}
             </button>
           </div>
-          {erroNova
-            ? <span role="alert" className="text-xs text-error">{erroNova}</span>
+          {erroNova || errosCampo.nova
+            ? <span role="alert" className="text-xs text-error">{erroNova ?? errosCampo.nova}</span>
             : <span className="text-xs text-text-muted">Evite senhas comuns e o seu nome de usuário.</span>}
         </label>
         <label className="flex flex-col gap-2">

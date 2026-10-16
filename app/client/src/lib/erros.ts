@@ -75,3 +75,22 @@ export function mensagemDeErro(erro: unknown, padrao: string): string {
   if (erro instanceof Error && "code" in erro && "status" in erro && erro.message) return erro.message;
   return padrao;
 }
+
+export interface ErrosDaTrocaDeSenha { atual?: string; nova?: string; geral?: string }
+
+/**
+ * Distribui a falha de `POST /me/senha` por campo: 401 (INVALID_CREDENTIALS) e a senha atual errada; `nova_senha`
+ * no 422 fica sob o campo da nova senha; o resto (rede, limite de tentativas) vai para o aviso geral.
+ */
+export function errosDaTrocaDeSenha(erro: unknown, padrao: string): ErrosDaTrocaDeSenha {
+  if (erro instanceof Error && "code" in erro && "status" in erro) {
+    const e = erro as Error & { code: string; status: number; campos?: { campo: string; motivo: string }[] };
+    if (e.code === "INVALID_CREDENTIALS") return { atual: "A senha atual não confere." };
+    const nova = e.campos?.find((c) => c.campo === "nova_senha");
+    if (nova) {
+      const m = nova.motivo.trim();
+      return { nova: m.charAt(0).toUpperCase() + m.slice(1) + (m.endsWith(".") ? "" : ".") };
+    }
+  }
+  return { geral: mensagemDeErro(erro, padrao) };
+}

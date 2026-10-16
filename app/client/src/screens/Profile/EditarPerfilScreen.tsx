@@ -8,7 +8,7 @@ import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
 import { validarSenhaNova } from "@/lib/validacao";
 
-import { mensagemDeErro } from "@/lib/erros";
+import { errosDaTrocaDeSenha, type ErrosDaTrocaDeSenha } from "@/lib/erros";
 const BOTAO = "rounded-lg bg-steel-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-steel-500 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-text-muted disabled:hover:bg-surface-3";
 
 /** Editar perfil: o nome de usuário (login e pasta em disco) é fixo; aqui ele só aparece, e a senha é trocada. */
@@ -20,19 +20,22 @@ export function EditarPerfilScreen() {
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
   const [mostrar, setMostrar] = useState(false);
+  const [errosCampo, setErrosCampo] = useState<ErrosDaTrocaDeSenha>({});
 
   const erroNova = nova ? validarSenhaNova(nova, perfil?.nome_usuario) : null;
 
   async function trocarSenha() {
     if (trocando || !atual || !nova || erroNova) return;
-    setTrocando(true); setMensagem(null);
+    setTrocando(true); setMensagem(null); setErrosCampo({});
     try {
       await auth.trocarSenha(atual, nova);
       setAtual(""); setNova("");
       setMensagem({ tipo: "sucesso", texto: "Senha alterada." });
       avisar("Senha alterada.", "sucesso");
     } catch (e) {
-      setMensagem({ tipo: "erro", texto: mensagemDeErro(e, "Não foi possível alterar a senha.") });
+      const erros = errosDaTrocaDeSenha(e, "Não foi possível alterar a senha.");
+      setErrosCampo(erros);
+      if (erros.geral) setMensagem({ tipo: "erro", texto: erros.geral });
     } finally { setTrocando(false); }
   }
 
@@ -61,15 +64,16 @@ export function EditarPerfilScreen() {
       <div className="rounded-2xl border border-border bg-surface-1 p-4">
         <label className="block text-sm text-text-secondary">Senha atual
           <div className="relative">
-            <input type={mostrar ? "text" : "password"} value={atual} onChange={(e) => setAtual(e.target.value.replace(/\s/g, ""))} autoComplete="current-password" className="ecos-input mt-1 w-full pr-10" />
+            <input type={mostrar ? "text" : "password"} value={atual} onChange={(e) => { setAtual(e.target.value.replace(/\s/g, "")); setErrosCampo((x) => ({ ...x, atual: undefined })); }} autoComplete="current-password" aria-invalid={!!errosCampo.atual} className="ecos-input mt-1 w-full pr-10" />
             <button type="button" onClick={() => setMostrar(!mostrar)} aria-label={mostrar ? "Ocultar senhas" : "Mostrar senhas"} className="absolute bottom-2 right-2 text-text-muted">{mostrar ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
         </label>
+        {errosCampo.atual && <p role="alert" className="mt-1 text-xs text-error">{errosCampo.atual}</p>}
         <label className="mt-3 block text-sm text-text-secondary">Nova senha
-          <input type={mostrar ? "text" : "password"} value={nova} onChange={(e) => setNova(e.target.value.replace(/\s/g, ""))} autoComplete="new-password" placeholder="12 ou mais caracteres, sem espaços" className="ecos-input mt-1 w-full" />
+          <input type={mostrar ? "text" : "password"} value={nova} onChange={(e) => { setNova(e.target.value.replace(/\s/g, "")); setErrosCampo((x) => ({ ...x, nova: undefined })); }} aria-invalid={!!(erroNova || errosCampo.nova)} autoComplete="new-password" placeholder="12 ou mais caracteres, sem espaços" className="ecos-input mt-1 w-full" />
         </label>
-        {erroNova
-          ? <p role="alert" className="mt-2 text-xs text-error">{erroNova}</p>
+        {erroNova || errosCampo.nova
+          ? <p role="alert" className="mt-2 text-xs text-error">{erroNova ?? errosCampo.nova}</p>
           : <p className="mt-2 text-xs text-text-muted">Mínimo de 12 caracteres, sem espaços; não pode ser uma senha comum nem conter o seu nome de usuário.</p>}
         <button type="button" onClick={() => void trocarSenha()} disabled={trocando || !atual || !nova || !!erroNova} className={`mt-3 ${BOTAO}`}>{trocando ? "Alterando…" : "Alterar senha"}</button>
       </div>
