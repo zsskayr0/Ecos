@@ -44,7 +44,7 @@ pub async fn reset(State(state): State<AppState>, Json(payload): Json<ConfirmarP
         .db
         .with(|conn| {
             let tx = conn.unchecked_transaction()?;
-            for tabela in ["pendencia_convertida", "ocorrencia_processada", "anexo", "transacao", "recorrencia_exclusao", "transacao_recorrente", "pendencia_avulsa", "beneficiario", "conta", "categoria"] {
+            for tabela in ["migracao_origem", "pendencia_convertida", "ocorrencia_processada", "anexo", "transacao", "recorrencia_exclusao", "transacao_recorrente", "pendencia_avulsa", "beneficiario", "conta", "categoria"] {
                 tx.execute(&format!("DELETE FROM {tabela}"), [])?;
             }
             tx.commit()

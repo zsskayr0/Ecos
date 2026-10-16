@@ -106,7 +106,7 @@ pub async fn encaminhar(State(state): State<AppState>, Extension(usuario): Exten
     let de_equipe = dono.starts_with("eq_");
     let rota = caminho.split('?').next().unwrap_or(caminho);
     if de_equipe {
-        let administrativa = ["/vault/ativar", "/vault/reset", "/vault/excluir", "/vault/backup/exportar"].iter().any(|p| rota.starts_with(p));
+        let administrativa = ["/vault/ativar", "/vault/reset", "/vault/excluir", "/vault/backup/exportar", "/vault/migracao"].iter().any(|p| rota.starts_with(p));
         if administrativa && !pode_administrar(&state, &usuario.0, &dono).await {
             return AppError::new(ErrorCode::Forbidden).with_message("Só o dono ou um administrador da equipe pode fazer isso no Cofre da equipe.").into_response();
         }

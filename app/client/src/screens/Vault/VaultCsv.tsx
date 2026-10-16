@@ -5,6 +5,7 @@ import { financeiro } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { VaultCsvRecorrencias } from "./VaultCsvRecorrencias";
+import { MigracaoNexus } from "./MigracaoNexus";
 import { baixarCsv, campos, modeloCsv, preparar, sugerirMapa, tokenizar, type Mapeamento } from "./csv";
 import type { Periodo, RelatorioImportacao } from "./types";
 const ROTULOS: Record<string, string> = { data: "Data", descricao: "Descrição", tipo: "Tipo", valor: "Valor", categoria: "Categoria", beneficiario: "Pagador/Recebedor", conta: "Conta", forma_pagamento: "Forma de pagamento", observacoes: "Observações", conciliada: "Conciliada", status: "Status" };
@@ -13,7 +14,7 @@ export function VaultCsv({ periodo, atualizar }: {
     periodo: Periodo;
     atualizar: () => void;
 }) {
-    const [modo, setModo] = useState<"lancamentos" | "recorrencias">("lancamentos");
+    const [modo, setModo] = useState<"lancamentos" | "recorrencias" | "nexus">("lancamentos");
     const [texto, setTexto] = useState("");
     const [nomeArquivo, setNomeArquivo] = useState("");
     const [separador, setSeparador] = useState(";");
@@ -92,8 +93,9 @@ export function VaultCsv({ periodo, atualizar }: {
     <div className="cofre-csv-modos" role="group" aria-label="O que importar">
       <button type="button" className="cofre-filter-chip" aria-pressed={modo === "lancamentos"} onClick={() => setModo("lancamentos")}>Lançamentos</button>
       <button type="button" className="cofre-filter-chip" aria-pressed={modo === "recorrencias"} onClick={() => setModo("recorrencias")}>Recorrências</button>
+      <button type="button" className="cofre-filter-chip" aria-pressed={modo === "nexus"} onClick={() => setModo("nexus")}>Nexus</button>
     </div>
-    {modo === "recorrencias" ? <VaultCsvRecorrencias atualizar={atualizar}/> : <>
+    {modo === "nexus" ? <MigracaoNexus atualizar={atualizar}/> : modo === "recorrencias" ? <VaultCsvRecorrencias atualizar={atualizar}/> : <>
     <div className="cofre-csv-duo">
       <article className="cofre-card cofre-csv-card">
         <span className="cofre-csv-icone"><FileText size={18} aria-hidden/></span>

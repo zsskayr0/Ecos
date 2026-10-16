@@ -68,3 +68,45 @@ export interface RelatorioImportacao {
         erro: string;
     }[];
 }
+/** Pacote do Nexus (formato do script `scripts/nexus-exportar.mjs`); só `attachments` carrega arquivos. */
+export interface PacoteNexus {
+    categories?: Record<string, unknown>[];
+    payees?: Record<string, unknown>[];
+    accounts?: Record<string, unknown>[];
+    recurringTransactions?: Record<string, unknown>[];
+    transactions?: Record<string, unknown>[];
+    pendingItems?: Record<string, unknown>[];
+    recurringExclusions?: Record<string, unknown>[];
+    attachments?: { id: string; transactionId: string; fileName: string; contentBase64?: string; checksumSha256?: string }[];
+}
+export interface ContagemNexus {
+    recebidas: number;
+    criadas: number;
+    reaproveitadas: number;
+    ja_migradas: number;
+    ignoradas: number;
+    com_erro: number;
+}
+export interface TotaisNexus {
+    lancamentos: number;
+    entradas_centavos: number;
+    saidas_centavos: number;
+    anexos?: number;
+}
+export interface RelatorioNexus {
+    dry_run: boolean;
+    aplicado: boolean;
+    backup: string | null;
+    entidades: Record<string, ContagemNexus>;
+    erros: { tabela: string; id: string; erro: string }[];
+    avisos: string[];
+    verificacao: {
+        antes: TotaisNexus;
+        depois: TotaisNexus;
+        origem: TotaisNexus;
+        criados: TotaisNexus;
+        confere: boolean;
+        projetado: boolean;
+    };
+}
+

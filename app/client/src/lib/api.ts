@@ -1,4 +1,4 @@
-import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, RelatorioImportacao } from "@/screens/Vault/types";
+import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, RelatorioImportacao, PacoteNexus, RelatorioNexus } from "@/screens/Vault/types";
 /**
  * Real HTTP client against `ecos-app` (and, via its proxy, `ecos-vault-db`).
  * Contract matches the code in `app/server/src/routes/*` and
@@ -1234,6 +1234,8 @@ export interface PreferenciasCofreApi {
 
 /** Frase digitada para confirmar o reset do Cofre; o servidor exige exatamente esta (`FRASE_CONFIRMACAO` em app/vault/src/routes/reset.rs). */
 export const FRASE_RESET_COFRE = "APAGAR TUDO";
+/** Frase que o Cofre exige para aplicar a migração do Nexus (`FRASE_CONFIRMACAO` em app/vault/src/routes/migracao_nexus.rs). */
+export const FRASE_MIGRACAO_NEXUS = "MIGRAR NEXUS";
 
 export const vault = {
   /** Apaga todas as transações, categorias e contas. O servidor tira um backup de segurança antes. */
@@ -1505,6 +1507,8 @@ export const financeiro = {
   lote: (ids: string[], acao: "conciliar" | "desconciliar" | "excluir" | "efetivar" | "previsto") => post<{aplicadas: number; erros: {linha: number; erro: string}[]}>("/vault/financeiro/lote", {ids, acao}),
   importar: (linhas: LinhaImportacao[], dry_run: boolean) => post<RelatorioImportacao>("/vault/financeiro/importar", {linhas, dry_run}),
   exportar: (p: Periodo) => get<{csv: string}>(`/vault/financeiro/exportar${qs({...p})}`),
+  /** Migração assistida do Nexus: `dry_run` só relata (nada é gravado); aplicar exige a frase `FRASE_MIGRACAO_NEXUS`. */
+  migrarNexus: (dados: PacoteNexus, dry_run: boolean, confirmar?: string) => post<RelatorioNexus>("/vault/migracao/nexus", {dry_run, confirmar, dados}),
   pendencias: {
     listar: () => get<Pendencia[]>("/vault/pendencias"),
     criar: (p: Omit<Pendencia,"id">) => post<{id: string}>("/vault/pendencias",p),

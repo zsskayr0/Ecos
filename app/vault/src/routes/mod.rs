@@ -20,6 +20,9 @@ pub mod transacoes;
 pub mod financeiro;
 pub mod fluxo;
 pub mod formas_pagamento;
+pub mod migracao_nexus;
+#[cfg(test)]
+mod migracao_nexus_testes;
 #[cfg(test)]
 mod formas_pagamento_testes;
 
@@ -117,6 +120,7 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/backup/historico", get(backup::historico))
         .route("/vault/backup/exportar", post(backup::exportar))
         .route("/vault/backup/exportar-csv", post(backup::exportar_csv))
+        .route("/vault/migracao/nexus", post(migracao_nexus::nexus))
         .route("/vault/reset", post(reset::reset))
         .route("/vault/excluir", post(reset::excluir_cofre))
         .layer(axum::extract::DefaultBodyLimit::max(crate::arquivo::LIMITE_CORPO_UPLOAD_BYTES))
