@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Copy, Download, Eye, EyeOff, KeyRound } from "lucide-react";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
+import { criarExemplosIniciais, pedirFocoNaCaptura } from "@/lib/primeiros-passos";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, auth } from "@/lib/api";
 import { validarNomeUsuario, validarSenhaNova } from "@/lib/validacao";
@@ -373,7 +374,11 @@ export function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
       </label>
 
       <button
-        onClick={recarregarPerfil}
+        onClick={() => {
+          // Primeiro resultado rápido: exemplos no Feed e foco já na captura rápida.
+          pedirFocoNaCaptura();
+          void criarExemplosIniciais().finally(() => void recarregarPerfil());
+        }}
         disabled={!confirmado}
         className="rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel disabled:opacity-40"
       >

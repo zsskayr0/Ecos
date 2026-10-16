@@ -70,6 +70,9 @@ export function OnboardingScreen() {
           >
             {passo === "splash" ? "Começar" : "Continuar"}
           </button>
+          <button onClick={() => setPasso("setup")} className="min-h-11 text-sm text-text-muted">
+            Pular
+          </button>
         </div>
       )}
     </div>

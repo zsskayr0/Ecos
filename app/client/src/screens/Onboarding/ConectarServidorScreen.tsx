@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Monitor, Wifi, HelpCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { definirServidorBaseUrl } from "@/lib/server-config";
+import { definirServidorBaseUrl, lembrarUltimoServidor, obterUltimoServidor } from "@/lib/server-config";
 import { ehAndroid } from "@/lib/platform";
 import { ApiError, auth } from "@/lib/api";
 
@@ -149,7 +149,7 @@ function Ajuda({ onVoltar }: { onVoltar: () => void }) {
 }
 
 function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onVoltar: () => void }) {
-  const [url, setUrl] = useState(valorInicial ?? "");
+  const [url, setUrl] = useState(valorInicial ?? obterUltimoServidor()?.replace(/^https?:\/\//, "") ?? "");
   const [testando, setTestando] = useState(false);
   const [resultado, setResultado] = useState<"ok" | "erro" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -166,6 +166,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
     definirServidorBaseUrl(candidato);
     try {
       await auth.testarConexao();
+      lembrarUltimoServidor(candidato);
       setResultado("ok");
       window.location.reload();
     } catch (e) {

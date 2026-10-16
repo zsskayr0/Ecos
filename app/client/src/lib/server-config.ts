@@ -10,6 +10,16 @@
  */
 
 const CHAVE = "ecos:servidor_base_url";
+const CHAVE_ULTIMO = "ecos:ultimo_servidor_base_url";
+
+/** Último endereço que respondeu como um Ecos: sugerido de novo se a pessoa voltar à tela de conexão. */
+export function obterUltimoServidor(): string | null {
+  try { return localStorage.getItem(CHAVE_ULTIMO); } catch { return null; }
+}
+
+export function lembrarUltimoServidor(url: string): void {
+  try { localStorage.setItem(CHAVE_ULTIMO, normalizarUrl(url)); } catch { /* sem armazenamento */ }
+}
 
 export function obterServidorBaseUrl(): string | null {
   try {

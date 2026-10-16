@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckSquare, FileText, Loader2 } from "lucide-react";
 import { notas, tarefas } from "@/lib/api";
@@ -8,6 +8,7 @@ import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 import { mensagemDeErro } from "@/lib/erros";
 import { avisar } from "@/lib/toast";
+import { consumirFocoNaCaptura } from "@/lib/primeiros-passos";
 const TITULO_MAX = 120;
 
 /** Primeira linha vira título; o resto, corpo. Linha única longa demais vai inteira para o corpo. */
@@ -29,6 +30,7 @@ export function CapturaRapida() {
   const [erro, setErro] = useState<string | null>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
+  useEffect(() => { if (consumirFocoNaCaptura()) campo.current?.focus(); }, []);
 
   async function criar(tipo: "nota" | "tarefa") {
     if (!texto.trim() || enviando) return;
