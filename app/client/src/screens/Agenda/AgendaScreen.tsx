@@ -9,6 +9,7 @@ import { agenda as agendaApi, eventos as eventosApi, tarefas as tarefasApi, roti
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CalendarClock } from "lucide-react";
+import { calcularVisiveis, classeDiaMes } from "./mes-celula";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
@@ -541,6 +542,18 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
     if (dia) onAlocarTarefa(e.tarefa, dia);
   });
   const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  // A altura de cada linha do mês decide quantos itens cabem por célula (o resto vira "+N itens").
+  const gradeMes = useRef<HTMLDivElement>(null);
+  const [alturaLinha, setAlturaLinha] = useState(0);
+  useEffect(() => {
+    const el = gradeMes.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const medir = () => setAlturaLinha(el.clientHeight / 6);
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, []);
   // Agrupa por dia uma única vez por mudança de dados: antes cada uma das 42 células refazia flatMap/filter sobre tudo.
   const { tarefasPorDia, eventosPorDia } = useMemo(() => {
     const tarefasPorDia = new Map<string, ItemAgenda[]>();
@@ -559,7 +572,7 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
       <div className="grid grid-cols-7 border-b border-border bg-surface-1">
         {(primeiroDiaDaSemana() ? ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"] : ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]).map((nome) => <div key={nome} className="border-r border-border px-1 py-2 text-center text-xs font-medium text-text-muted last:border-r-0 lg:px-3 lg:text-left"><span className="lg:hidden" aria-label={nome}>{nome[0]}</span><span className="hidden lg:inline">{nome}</span></div>)}
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden">
+      <div ref={gradeMes} className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden">
         {Array.from({ length: 42 }, (_, indice) => {
           const numeroDoDia = indice - offset + 1;
           if (numeroDoDia < 1 || numeroDoDia > totalDias) return <div key={`vazio-${indice}`} className="border-b border-r border-border bg-surface-1 last:border-r-0" />;
@@ -570,17 +583,16 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
           const eventosDoDia = (eventosPorDia.get(paraISO(data)) ?? []).slice().sort((a, b) => (a.minutos ?? -1) - (b.minutos ?? -1) || a.titulo.localeCompare(b.titulo, "pt-BR")).map(itemDoEvento);
           // Ordem fixa: eventos, tarefas e, por último, lançamentos do Cofre.
           const itensDoDia = [...eventosDoDia.filter((i) => !i.transacao), ...tarefasDoDia, ...eventosDoDia.filter((i) => i.transacao)];
-          const cabem = itensDoDia.length <= 3 ? 3 : 2; // com mais que 3, sobra espaço para o "+N itens"
-          const resto = Math.max(0, itensDoDia.length - cabem);
+          const { visiveis: cabem, resto } = calcularVisiveis(itensDoDia.length, alturaLinha);
           const ativo = paraISO(data) === paraISO(diaAtual);
           const ehHoje = paraISO(data) === paraISO(hoje);
           const iso = paraISO(data);
           const concluidasDoDia = concluidas.get(iso) ?? [];
           return <div key={numeroDoDia} data-dia-mes={iso} className={`group relative min-h-0 overflow-hidden border-b border-r border-border p-1 text-left lg:min-h-[84px] lg:p-2 transition-colors duration-200 ${diaSobre === iso ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : ativo ? "bg-surface-2" : "bg-base"}`}>
-            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => onSelecionar(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${ativo ? "bg-steel-500 font-semibold text-white" : ehHoje ? "bg-surface-2 font-semibold text-text-primary ring-1 ring-steel-400" : "text-text-secondary hover:bg-surface-2"}`}>{numeroDoDia}</button>{concluidasDoDia.length > 0 && <span data-concluidas={concluidasDoDia.length} title={`Concluída${concluidasDoDia.length === 1 ? "" : "s"}: ${concluidasDoDia.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-pill bg-success/15 px-1 py-0.5 text-[9px] font-semibold text-success lg:bottom-auto lg:right-1.5 lg:top-1.5 lg:px-1.5 lg:text-[10px]"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{concluidasDoDia.length}<span className="sr-only"> {concluidasDoDia.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>}{itensDoDia.length > 0 && <span aria-hidden className="mt-1 flex flex-wrap justify-center gap-0.5 lg:hidden">{itensDoDia.slice(0, 4).map((t) => <i key={t.chave} style={t.tipo === "evento" && t.corHex ? { backgroundColor: t.corHex } : undefined} className={`h-1.5 w-1.5 rounded-full ${t.tipo === "prazo" ? "bg-warning" : t.tipo === "evento" ? "bg-violet" : t.classe.includes("error") ? "bg-error" : "bg-cyan"}`} />)}</span>}{itensDoDia.slice(0, cabem).map((item) => {
+            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => onSelecionar(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${classeDiaMes({ ehHoje, ativo })}`}>{numeroDoDia}</button>{concluidasDoDia.length > 0 && <span data-concluidas={concluidasDoDia.length} title={`Concluída${concluidasDoDia.length === 1 ? "" : "s"}: ${concluidasDoDia.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-pill bg-success/15 px-1 py-0.5 text-[9px] font-semibold text-success lg:bottom-auto lg:right-1.5 lg:top-1.5 lg:px-1.5 lg:text-[10px]"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{concluidasDoDia.length}<span className="sr-only"> {concluidasDoDia.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>}{itensDoDia.length > 0 && <span aria-hidden className="mt-1 flex flex-wrap justify-center gap-0.5 lg:hidden">{itensDoDia.slice(0, 4).map((t) => <i key={t.chave} style={t.tipo === "evento" && t.corHex ? { backgroundColor: t.corHex } : undefined} className={`h-1.5 w-1.5 rounded-full ${t.tipo === "prazo" ? "bg-warning" : t.tipo === "evento" ? "bg-violet" : t.classe.includes("error") ? "bg-error" : "bg-cyan"}`} />)}</span>}{itensDoDia.slice(0, cabem).map((item) => {
               const ehEvento = item.tipo === "evento";
-              return <button type="button" key={item.chave} data-marca={item.tipo === "prazo" ? "prazo" : undefined} data-evento={ehEvento ? "" : undefined} title={item.titulo} onClick={(e) => onAbrirItem(item, e)} style={ehEvento && item.corHex ? { backgroundColor: `${item.corHex}26`, color: `color-mix(in srgb, ${item.corHex} 70%, var(--ecos-text-primary))`, boxShadow: `inset 3px 0 0 ${item.corHex}` } : undefined} className={`mt-1 hidden w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] lg:block font-medium transition-[filter] hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${ehEvento ? "pl-2" : item.classe}`}>{(item.tipo === "prazo" || item.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline" />}{ehEvento && item.inicioMin !== null && <span className="mr-1 font-mono-value opacity-70">{hhmm(item.inicioMin)}</span>}{item.transacao ? <><span className="fonte-cofre block truncate">{item.titulo}</span>{item.legenda && <span className="fonte-cofre block truncate text-[10px] opacity-80">{item.legenda}</span>}</> : item.titulo}</button>;
-            })}{resto > 0 && <span className="mt-1 hidden text-[11px] text-text-muted lg:block">+{resto} {resto === 1 ? "item" : "itens"}</span>}
+              return <button type="button" key={item.chave} data-marca={item.tipo === "prazo" ? "prazo" : undefined} data-evento={ehEvento ? "" : undefined} title={item.transacao && item.legenda ? `${item.titulo} · ${item.legenda}` : item.titulo} onClick={(e) => onAbrirItem(item, e)} style={ehEvento && item.corHex ? { backgroundColor: `${item.corHex}26`, color: `color-mix(in srgb, ${item.corHex} 70%, var(--ecos-text-primary))`, boxShadow: `inset 3px 0 0 ${item.corHex}` } : undefined} className={`mt-1 hidden h-5 w-full min-w-0 items-center overflow-hidden rounded px-1.5 text-left text-[11px] leading-5 lg:flex font-medium transition-[filter] hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${ehEvento ? "pl-2" : item.classe}`}><span className="min-w-0 flex-1 truncate">{(item.tipo === "prazo" || item.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline" />}{ehEvento && item.inicioMin !== null && <span className="mr-1 font-mono-value opacity-70">{hhmm(item.inicioMin)}</span>}{item.transacao ? <span className="fonte-cofre">{item.titulo}{item.legenda && <span className="text-[10px] opacity-80"> · {item.legenda}</span>}</span> : item.titulo}</span></button>;
+            })}{resto > 0 && <span className="mt-1 hidden h-5 truncate text-[11px] leading-5 text-text-muted lg:block">+{resto} {resto === 1 ? "item" : "itens"}</span>}
           </div>;
         })}
       </div>
