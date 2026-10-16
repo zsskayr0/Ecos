@@ -66,7 +66,7 @@ export function OnboardingScreen() {
           </div>
           <button
             onClick={avancar}
-            className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white"
+            className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel"
           >
             {passo === "splash" ? "Começar" : "Continuar"}
           </button>
@@ -111,7 +111,7 @@ function CameraPermissao({ onContinuar }: { onContinuar: () => void }) {
       </div>
       <button
         onClick={onContinuar}
-        className="w-full max-w-xs rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white"
+        className="w-full max-w-xs rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel"
       >
         Permitir câmera
       </button>

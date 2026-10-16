@@ -98,14 +98,14 @@ export function ViewModeToggle({ modo, onMudar, tarefas = false }: { modo: ModoV
       <button
         onClick={() => onMudar("cards")}
         aria-label="Ver em cards"
-        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "cards" ? "bg-steel-700 text-white" : "text-text-muted"}`}
+        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "cards" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
       >
         <LayoutGrid size={14} strokeWidth={1.75} />
       </button>
       <button
         onClick={() => onMudar("lista")}
         aria-label="Ver em lista"
-        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "lista" ? "bg-steel-700 text-white" : "text-text-muted"}`}
+        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "lista" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
       >
         <List size={14} strokeWidth={1.75} />
       </button>
@@ -113,7 +113,7 @@ export function ViewModeToggle({ modo, onMudar, tarefas = false }: { modo: ModoV
         <button
           onClick={() => onMudar("agrupada")}
           aria-label="Ver agrupada"
-          className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "agrupada" ? "bg-steel-700 text-white" : "text-text-muted"}`}
+          className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "agrupada" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
         >
           <ListTree size={14} strokeWidth={1.75} />
         </button>

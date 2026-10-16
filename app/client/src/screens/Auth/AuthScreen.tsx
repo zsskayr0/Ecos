@@ -360,7 +360,7 @@ export function RecoveryKeyReveal({ recoveryKey }: { recoveryKey: string }) {
       <button
         onClick={recarregarPerfil}
         disabled={!confirmado}
-        className="rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
+        className="rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel disabled:opacity-40"
       >
         Continuar
       </button>

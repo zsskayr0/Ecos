@@ -129,7 +129,7 @@ export function EscanearQrScreen() {
             <h2 className="font-display text-lg text-text-primary">{problema.titulo}</h2>
             <p className="text-sm text-text-secondary">{problema.corpo}</p>
             {estado !== "sem-camera" && estado !== "indisponivel" && (
-              <button type="button" onClick={() => setTentativa((n) => n + 1)} className="w-full rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">Tentar de novo</button>
+              <button type="button" onClick={() => setTentativa((n) => n + 1)} className="w-full rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-on-steel">Tentar de novo</button>
             )}
           </div>
         )}

@@ -197,7 +197,7 @@ export function TeamProfileScreen() {
           {enviandoFoto && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white"><Loader2 size={20} className="animate-spin" /></span>}
           {podeEditarFoto && <label className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-surface-1 text-text-secondary shadow-nav hover:text-text-primary" title="Trocar foto da equipe"><Camera size={15} /><span className="sr-only">Trocar foto da equipe</span><input type="file" accept="image/*" className="sr-only" onChange={(e) => { void trocarFoto(e.target.files?.[0]); e.target.value = ""; }} /></label>}
         </span>
-        {pessoal ? <h1 className="font-display text-2xl text-text-primary">Pessoal</h1> : editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-white">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
+        {pessoal ? <h1 className="font-display text-2xl text-text-primary">Pessoal</h1> : editando ? <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void salvarNome(); }}><input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-48 !rounded-lg !py-2 text-center" /><button className="rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel">Salvar</button></form> : <div className="flex items-center gap-2"><h1 className="font-display text-2xl text-text-primary">{equipe.nome}</h1><button aria-label="Editar equipe" onClick={() => { setNovoNome(equipe.nome); setEditando(true); }} className="rounded-lg p-2 text-text-muted hover:bg-surface-2"><Pencil size={16} /></button></div>}
       </div>
 
       <div className="-mt-2 mb-5 flex justify-center">
@@ -233,7 +233,7 @@ export function TeamProfileScreen() {
           <Rss size={16} strokeWidth={1.75} />
           Ver tudo
         </button>
-        {!pessoal && podeConvidar && <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-white">
+        {!pessoal && podeConvidar && <button onClick={convidar} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-steel-700 py-3 text-sm font-semibold text-on-steel">
           <UserPlus size={16} strokeWidth={1.75} />
           Convidar
         </button>}

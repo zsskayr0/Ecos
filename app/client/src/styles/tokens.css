@@ -84,6 +84,8 @@ html[data-theme="light"] {
      tema escuro eram luminosas demais sobre superfícies claras. */
   --ecos-steel-700: #d7e5f6;
   --ecos-steel-700-rgb: 215 229 246;
+  --ecos-on-steel-700: #0b1e36;
+  --ecos-on-steel-700-rgb: 11 30 54;
   --ecos-steel-500: #1f5c9e;
   --ecos-steel-500-rgb: 31 92 158;
   --ecos-steel-400: #2563a3;
@@ -124,6 +126,8 @@ html[data-theme="light"] {
 :root {
   --ecos-steel-700: #1e3a5f;
   --ecos-steel-700-rgb: 30 58 95;
+  --ecos-on-steel-700: #ffffff;
+  --ecos-on-steel-700-rgb: 255 255 255;
   /* steel-500 é preenchimento de botão com texto branco (5,3:1); clareá-lo
      para virar texto quebraria esses botões. Texto de acento usa steel-400+. */
   --ecos-steel-500: #3e6fa8;

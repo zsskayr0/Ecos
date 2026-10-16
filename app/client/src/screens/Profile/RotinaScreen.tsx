@@ -386,7 +386,7 @@ function Dias({ valor, onChange }: { valor: number[]; onChange: (d: number[]) =>
         return (
           <button key={n} type="button" aria-pressed={marcado}
             onClick={() => onChange(marcado ? valor.filter((d) => d !== n) : [...valor, n])}
-            className={`min-h-9 min-w-11 rounded-pill px-3 text-xs font-medium ${marcado ? "bg-steel-700 text-white" : "bg-surface-2 text-text-muted"}`}>
+            className={`min-h-9 min-w-11 rounded-pill px-3 text-xs font-medium ${marcado ? "bg-steel-700 text-on-steel" : "bg-surface-2 text-text-muted"}`}>
             {rotulo}
           </button>
         );

@@ -24,7 +24,7 @@ class FalhaDeCarregamento extends Component<{ children: ReactNode }, { erro: Err
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-2xl bg-steel-700 px-5 py-2.5 text-sm font-semibold text-white"
+          className="rounded-2xl bg-steel-700 px-5 py-2.5 text-sm font-semibold text-on-steel"
         >
           Recarregar
         </button>

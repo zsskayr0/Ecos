@@ -124,7 +124,7 @@ export function TeamCreateJoinScreen() {
       <button
         onClick={modo === "criar" ? criar : entrar}
         disabled={carregando || (modo === "criar" ? !nome.trim() : !codigo.trim())}
-        className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
+        className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel disabled:opacity-40"
       >
         {carregando ? "Um momento..." : modo === "criar" ? "Criar Equipe" : "Entrar na Equipe"}
       </button>

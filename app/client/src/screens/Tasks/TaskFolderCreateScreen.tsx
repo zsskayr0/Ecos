@@ -59,7 +59,7 @@ export function TaskFolderCreateScreen() {
       <button
         onClick={criar}
         disabled={!nome.trim() || salvando}
-        className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
+        className="mt-6 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel disabled:opacity-40"
       >
         {salvando ? "Criando..." : "Criar pasta"}
       </button>

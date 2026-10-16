@@ -71,14 +71,14 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
     <div className="rounded-2xl border border-border bg-surface-1 p-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Buscar tag…" aria-label="Buscar tag" className="ecos-input min-w-0 flex-1 !rounded-lg" />
-        <button type="button" disabled={selecionadas.length < 2 || ocupado} onClick={abrirMesclar} className="flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-white disabled:opacity-40"><GitMerge size={16} />Mesclar{selecionadas.length >= 2 ? ` (${selecionadas.length})` : ""}</button>
+        <button type="button" disabled={selecionadas.length < 2 || ocupado} onClick={abrirMesclar} className="flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40"><GitMerge size={16} />Mesclar{selecionadas.length >= 2 ? ` (${selecionadas.length})` : ""}</button>
       </div>
 
       {acao && <div role="group" aria-label={acao.tipo === "renomear" ? `Renomear #${acao.tag}` : "Mesclar tags"} className="mb-3 rounded-xl border border-border bg-surface-2 p-3">
         <p className="mb-2 text-sm text-text-secondary">{acao.tipo === "renomear" ? <>Novo nome para <span className="font-medium text-text-primary">#{acao.tag}</span>. Se já existir, as duas viram uma só.</> : <>{selecionadas.map((t) => `#${t}`).join(", ")} passam a ser:</>}</p>
         <div className="flex flex-wrap items-center gap-2">
           <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirmar(); else if (e.key === "Escape") setAcao(null); }} aria-label="Nome da tag" className="ecos-input min-w-0 flex-1 !rounded-lg" />
-          <button type="button" disabled={ocupado || !nome.trim()} onClick={confirmar} className="min-h-10 rounded-lg bg-steel-700 px-3 text-sm font-medium text-white disabled:opacity-40">{ocupado ? "Aplicando…" : acao.tipo === "renomear" ? "Renomear" : "Mesclar"}</button>
+          <button type="button" disabled={ocupado || !nome.trim()} onClick={confirmar} className="min-h-10 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40">{ocupado ? "Aplicando…" : acao.tipo === "renomear" ? "Renomear" : "Mesclar"}</button>
           <button type="button" onClick={() => setAcao(null)} aria-label="Cancelar" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3"><X size={16} /></button>
         </div>
         {canonicaTag(nome) && canonicaTag(nome) !== nome.trim() && <p className="mt-2 text-xs text-text-muted">Será salva como <span className="font-medium text-text-secondary">#{canonicaTag(nome)}</span>.</p>}

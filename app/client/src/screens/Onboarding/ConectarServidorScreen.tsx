@@ -72,7 +72,7 @@ function BoasVindas({ onContinuar }: { onContinuar: () => void }) {
         </p>
         <p className="mt-2 text-sm text-text-muted">Só precisamos saber onde ele está.</p>
       </div>
-      <button onClick={onContinuar} className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white transition-transform hover:bg-steel-600 active:scale-[0.98]">
+      <button onClick={onContinuar} className="w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel transition-transform hover:bg-steel-600 active:scale-[0.98]">
         Começar
       </button>
     </div>
@@ -141,7 +141,7 @@ function Ajuda({ onVoltar }: { onVoltar: () => void }) {
       </div>
       <p className="text-sm text-text-secondary">Se alguém da sua equipe já cuida do servidor, peça a essa pessoa o endereço dele e use "Em outro endereço".</p>
       <p className="text-xs text-text-muted">Depois de rodando, volta aqui e escolhe "Neste computador" ou "Em outro endereço".</p>
-      <button onClick={onVoltar} className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white">
+      <button onClick={onVoltar} className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel">
         Voltar
       </button>
     </div>
@@ -221,7 +221,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       <button
         onClick={() => testar(url)}
         disabled={testando || !url.trim()}
-        className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white disabled:opacity-40"
+        className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-on-steel disabled:opacity-40"
       >
         {testando ? "Testando..." : "Conectar"}
       </button>

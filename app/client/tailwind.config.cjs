@@ -33,6 +33,7 @@ module.exports = {
         border: withOpacity("--ecos-border-rgb"),
         "border-control": withOpacity("--ecos-border-control-rgb"),
         "on-accent": withOpacity("--ecos-on-accent-rgb"),
+        "on-steel": withOpacity("--ecos-on-steel-700-rgb"),
         "text-primary": withOpacity("--ecos-text-primary-rgb"),
         "text-secondary": withOpacity("--ecos-text-secondary-rgb"),
         "text-muted": withOpacity("--ecos-text-muted-rgb"),

@@ -79,4 +79,7 @@ describe.each([["dark", false], ["light", false], ["dark", true], ["light", true
       if (alto) return;
       expect(falhas(["on-accent"], ["cyan", "violet"], 4.5)).toEqual([]);
     });
+    it("texto sobre fundo steel-700 (on-steel-700) >= 4,5:1", () => {
+      expect(razao(t["on-steel-700"], t["steel-700"])).toBeGreaterThanOrEqual(4.5);
+    });
   });

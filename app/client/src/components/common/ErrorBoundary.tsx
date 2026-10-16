@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           <button
             onClick={() => this.setState({ erro: null })}
-            className="rounded-2xl bg-steel-700 px-5 py-2.5 text-sm font-semibold text-white"
+            className="rounded-2xl bg-steel-700 px-5 py-2.5 text-sm font-semibold text-on-steel"
           >
             Tentar de novo
           </button>
