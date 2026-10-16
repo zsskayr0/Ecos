@@ -1,0 +1,15 @@
+import fs from "node:fs"; import zlib from "node:zlib"; import path from "node:path";
+const dist = process.argv[2]; const A = path.join(dist, "assets");
+const files = fs.readdirSync(A).filter(f => f.endsWith(".js"));
+const html = fs.readFileSync(path.join(dist, "index.html"), "utf8");
+const ini = new Set(); const q = [...html.matchAll(/\/assets\/([^"]+\.js)/g)].map(m => m[1]);
+const stat = (f) => [...fs.readFileSync(path.join(A, f), "utf8").matchAll(/(?:from|import)\s*"\.\/([^"]+\.js)"/g)].map(m => m[1]);
+while (q.length) { const f = q.pop(); if (ini.has(f)) continue; ini.add(f); q.push(...stat(f)); }
+const closure = (f) => { const s = new Set(), st = [f]; while (st.length) { const x = st.pop(); if (s.has(x)) continue; s.add(x); st.push(...stat(x)); } return [...s].filter(x => !ini.has(x)); };
+const gz = (f) => zlib.gzipSync(fs.readFileSync(path.join(A, f))).length;
+const sz = (f) => fs.statSync(path.join(A, f)).size;
+const alvo = ["TodayScreen", "AgendaScreen", "NotesRootScreen", "NoteDetailScreen", "TaskFoldersRootScreen", "TaskDetailScreen", "SearchScreen", "VaultScreen", "ProfileScreen", "SettingsScreen", "NotificationsScreen", "MediaScreen", "TeamsScreen", "EventosScreen"];
+for (const a of alvo) {
+  const f = files.find(x => x.startsWith(a + "-")); if (!f) { console.log(a, "?"); continue; }
+  const c = closure(f); console.log(a.padEnd(22), "chunks:", c.length, "raw", c.reduce((s, x) => s + sz(x), 0), "gz", c.reduce((s, x) => s + gz(x), 0), c.length > 1 ? "(" + c.map(x => x.replace(/-[\w-]{8}\.js$/, "")).join(",") + ")" : "");
+}

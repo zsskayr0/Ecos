@@ -1,0 +1,186 @@
+//! MEDIÇÃO DESCARTÁVEL (não commitar): latência dos endpoints com dados sintéticos.
+mod comum;
+
+use comum::*;
+use serde_json::json;
+use std::time::Instant;
+
+fn n_env(nome: &str, padrao: usize) -> usize { std::env::var(nome).ok().and_then(|v| v.parse().ok()).unwrap_or(padrao) }
+
+async fn medir(e: &Instancia, rotulo: &str, metodo: &str, uri: &str, token: &str, reps: usize) {
+    let mut tempos = Vec::new();
+    let mut bytes = 0usize;
+    for _ in 0..reps {
+        let t = Instant::now();
+        let (st, corpo) = e.chamar(metodo, uri, Some(token), None).await;
+        tempos.push(t.elapsed().as_secs_f64() * 1000.0);
+        assert!(st.is_success(), "{rotulo}: {st} {corpo}");
+        bytes = corpo.to_string().len();
+    }
+    let primeiro = tempos[0];
+    tempos.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("MEDIDA | {rotulo:<42} | 1a {primeiro:8.2} ms | mediana {:8.2} ms | max {:8.2} ms | {bytes:>9} B", tempos[tempos.len() / 2], tempos[tempos.len() - 1]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn medicao() {
+    let n_notas = n_env("PERF_NOTAS", 3000);
+    let n_tarefas = n_env("PERF_TAREFAS", 2000);
+    let e = nova();
+    let (uid, token) = e.admin("diogo").await;
+
+    // Sonda: cria uma nota e uma tarefa pela API só para aprender o formato dos arquivos.
+    let (_, n) = e.chamar("POST", "/api/v1/notas", Some(&token), Some(json!({ "titulo": "SONDATITULO", "corpo": "corpo sonda", "tags": ["alfa"] }))).await;
+    let (_, t) = e.chamar("POST", "/api/v1/tarefas", Some(&token), Some(json!({ "titulo": "SONDATAREFA", "due_date": chrono::Utc::now().format("%Y-%m-%d").to_string() }))).await;
+    let (id_n, id_t) = (n["id"].as_str().unwrap().to_string(), t["id"].as_str().unwrap().to_string());
+    let achar = |dir: &std::path::Path, id: &str| -> std::path::PathBuf {
+        walk(dir).into_iter().find(|p| std::fs::read_to_string(p).map(|s| s.contains(id)).unwrap_or(false)).expect("arquivo da sonda")
+    };
+    fn walk(d: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut v = vec![];
+        if let Ok(rd) = std::fs::read_dir(d) { for x in rd.flatten() { let p = x.path(); if p.is_dir() { v.extend(walk(&p)); } else { v.push(p); } } }
+        v
+    }
+    let arq_n = achar(&e.raiz.join("diogo/Notas"), &id_n);
+    let arq_t = achar(&e.raiz.join("diogo/Tarefas"), &id_t);
+    let modelo_n = std::fs::read_to_string(&arq_n).unwrap();
+    let modelo_t = std::fs::read_to_string(&arq_t).unwrap();
+    println!("FORMATO NOTA:\n{modelo_n}\nFORMATO TAREFA:\n{modelo_t}");
+    let lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco. ";
+    let corpo = lorem.repeat(8); // ~1,4 KB por nota
+    let hoje = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let _ = std::fs::remove_file(&arq_n); let _ = std::fs::remove_file(&arq_t);
+    let nd = e.raiz.join("diogo/Notas"); let td = e.raiz.join("diogo/Tarefas");
+    for i in 0..n_notas {
+        let id = ecos_core::new_id();
+        let pasta = if i % 3 == 0 { nd.join(format!("Pasta {}", i % 10)) } else { nd.clone() };
+        std::fs::create_dir_all(&pasta).unwrap();
+        let s = modelo_n.replace(&id_n, &id).replace("SONDATITULO", &format!("Nota sintetica {i} palavra{}", i % 50)).replace("corpo sonda", &format!("{corpo} chave{i} [[Nota sintetica {}  palavra{}]]", (i + 1) % n_notas, (i + 1) % 50));
+        std::fs::write(pasta.join(format!("nota-{i}.md")), s).unwrap();
+    }
+    for i in 0..n_tarefas {
+        let id = ecos_core::new_id();
+        let due = if i % 7 == 0 { hoje.clone() } else { "2030-01-01".to_string() };
+        let s = modelo_t.replace(&id_t, &id).replace("SONDATAREFA", &format!("Tarefa sintetica {i}")).replace(&hoje, &due);
+        std::fs::write(td.join(format!("tarefa-{i}.md")), s).unwrap();
+    }
+    println!("SEMENTE | {n_notas} notas, {n_tarefas} tarefas (cerca de {} tarefas com prazo hoje)", n_tarefas / 7 + 1);
+
+    let t = Instant::now();
+    let r = ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();
+    println!("MEDIDA | reindexar_tudo (notas={}, tarefas={}, erros={}) | {:.1} ms", r.notas, r.tarefas, r.erros.len(), t.elapsed().as_secs_f64() * 1000.0);
+    let t = Instant::now();
+    let r = ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();
+    println!("MEDIDA | reindexar_tudo 2a vez (notas={})            | {:.1} ms", r.notas, t.elapsed().as_secs_f64() * 1000.0);
+    let t = Instant::now();
+    ecos_app::jobs::ranking::executar_ciclo(&e.state).await.unwrap();
+    println!("MEDIDA | ranking::executar_ciclo (reindex + rank)       | {:.1} ms", t.elapsed().as_secs_f64() * 1000.0);
+
+    // Correção proposta medida: página de ids sem tocar no FTS + UMA leitura do corpo só dos ids da página.
+    {
+        let u = uid.clone();
+        let (ms_atual, ms_novo, n_linhas) = e.state.db.with(move |c| {
+            let vis = ecos_app::espacos::visivel_sql("n", &u);
+            let t = Instant::now();
+            let atual: i64 = c.query_row(&format!("SELECT COUNT(*) FROM (SELECT n.id, COALESCE(nf.corpo,'') FROM nota n LEFT JOIN nota_fts nf ON nf.id = n.id WHERE {vis} AND n.pasta_id IS NULL ORDER BY n.atualizado_em DESC, n.id DESC LIMIT 11)"), [], |r| r.get(0))?;
+            let ms_atual = t.elapsed().as_secs_f64() * 1000.0;
+            let t = Instant::now();
+            let mut st = c.prepare(&format!("SELECT n.id FROM nota n WHERE {vis} AND n.pasta_id IS NULL ORDER BY n.atualizado_em DESC, n.id DESC LIMIT 11"))?;
+            let ids = st.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            let marc = vec!["?"; ids.len()].join(",");
+            let mut st2 = c.prepare(&format!("SELECT id, corpo FROM nota_fts WHERE id IN ({marc})"))?;
+            let n = st2.query_map(rusqlite::params_from_iter(ids.iter()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.count();
+            let _ = atual;
+            Ok((ms_atual, t.elapsed().as_secs_f64() * 1000.0, n))
+        }).await.unwrap();
+        println!("MEDIDA | SQL nota+FTS (atual) {ms_atual:.1} ms vs ids + corpo so da pagina (proposta) {ms_novo:.1} ms ({n_linhas} linhas)");
+    }
+    medir(&e, "GET /me/metricas", "GET", "/api/v1/me/metricas?escopo=pessoal", &token, 3).await;
+    if std::env::var("PERF_RAPIDO").is_ok() { return; }
+    let reps = 7;
+    medir(&e, "GET /me", "GET", "/api/v1/me", &token, reps).await;
+    medir(&e, "GET /notificacoes/nao-lidas", "GET", "/api/v1/notificacoes/nao-lidas", &token, reps).await;
+    medir(&e, "GET /notificacoes?limit=30", "GET", "/api/v1/notificacoes?limit=30", &token, reps).await;
+    medir(&e, "GET /feed?limit=40", "GET", "/api/v1/feed?limit=40", &token, reps).await;
+    medir(&e, "GET /notas?limit=10", "GET", "/api/v1/notas?limit=10", &token, reps).await;
+    medir(&e, "GET /notas (padrao 30)", "GET", "/api/v1/notas", &token, reps).await;
+    medir(&e, "GET /notas?limit=200", "GET", "/api/v1/notas?limit=200", &token, reps).await;
+    medir(&e, "GET /tarefas?limit=10", "GET", "/api/v1/tarefas?limit=10", &token, reps).await;
+    medir(&e, "GET /tarefas (padrao 30)", "GET", "/api/v1/tarefas", &token, reps).await;
+    medir(&e, "GET /tarefas?limit=200", "GET", "/api/v1/tarefas?limit=200", &token, reps).await;
+    medir(&e, "GET /busca?q=chave123", "GET", "/api/v1/busca?q=chave123", &token, reps).await;
+    medir(&e, "GET /busca?q=ipsum (muitos hits)", "GET", "/api/v1/busca?q=ipsum", &token, reps).await;
+    medir(&e, "GET /sync/status", "GET", "/api/v1/sync/status", &token, reps).await;
+    medir(&e, "GET /eventos (90d..180d)", "GET", "/api/v1/eventos?de=2026-07-01T00:00:00Z&ate=2027-04-01T00:00:00Z&limit=500", &token, reps).await;
+    medir(&e, "GET /tags", "GET", "/api/v1/tags", &token, reps).await;
+    medir(&e, "GET /pastas?tipo=nota&recursivo=true", "GET", "/api/v1/pastas?tipo=nota&recursivo=true", &token, reps).await;
+    medir(&e, "GET /rotina/blocos", "GET", "/api/v1/rotina/blocos", &token, reps).await;
+    medir(&e, "GET /equipes", "GET", "/api/v1/equipes", &token, reps).await;
+
+    // Paginação como o `prepararConteudoOffline` faz (limit=200, até 20 páginas) para notas e tarefas.
+    for (rot, base) in [("notas", "/api/v1/notas?limit=200"), ("tarefas", "/api/v1/tarefas?limit=200")] {
+        let t = Instant::now(); let mut cursor: Option<String> = None; let mut paginas = 0; let mut bytes = 0;
+        for _ in 0..20 {
+            let uri = match &cursor { Some(c) => format!("{base}&cursor={c}"), None => base.to_string() };
+            let (_, corpo) = e.chamar("GET", &uri, Some(&token), None).await;
+            paginas += 1; bytes += corpo.to_string().len();
+            match corpo["next_cursor"].as_str() { Some(c) => cursor = Some(c.to_string()), None => break }
+        }
+        println!("MEDIDA | prepararConteudoOffline {rot}: {paginas} paginas, {bytes} B | {:.1} ms (serial, sem rede)", t.elapsed().as_secs_f64() * 1000.0);
+    }
+
+    // Escrita: uma nota nova = gravar .md + reindexar_tudo.
+    let mut escritas = vec![];
+    for i in 0..5 {
+        let t = Instant::now();
+        let (st, c) = e.chamar("POST", "/api/v1/notas", Some(&token), Some(json!({ "titulo": format!("Escrita {i}"), "corpo": "x" }))).await;
+        assert!(st.is_success(), "{c}");
+        escritas.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    println!("MEDIDA | POST /notas (1 escrita) ms: {escritas:?}");
+
+    // Contenção: durante uma escrita (reindex completo) quanto espera uma leitura trivial (GET /me)?
+    let app = e.app.clone();
+    let tk = token.clone();
+    let esc = tokio::spawn(async move {
+        use tower::Service; use axum::{body::Body, http::Request};
+        let origem: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let r = Request::builder().method("POST").uri("/api/v1/notas").extension(axum::extract::ConnectInfo(origem))
+            .header("authorization", format!("Bearer {tk}")).header("content-type", "application/json")
+            .body(Body::from(json!({ "titulo": "Concorrente", "corpo": "y" }).to_string())).unwrap();
+        let t = Instant::now(); let _ = app.clone().call(r).await.unwrap(); t.elapsed().as_secs_f64() * 1000.0
+    });
+    let mut piores = 0f64; let mut amostras = 0; let ini = Instant::now();
+    while !esc.is_finished() {
+        let t = Instant::now();
+        let _ = e.chamar("GET", "/api/v1/me", Some(&token), None).await;
+        piores = piores.max(t.elapsed().as_secs_f64() * 1000.0); amostras += 1;
+        tokio::time::sleep(std::time::Duration::from_millis(3)).await;
+    }
+    let dur_esc = esc.await.unwrap();
+    println!("MEDIDA | contencao: pior GET /me durante 1 POST /notas ({amostras} amostras, {:.0} ms de janela): {piores:.1} ms (POST levou {dur_esc:.1} ms)", ini.elapsed().as_secs_f64() * 1000.0);
+
+    // EXPLAIN QUERY PLAN
+    let u = uid.clone();
+    let planos = e.state.db.with(move |c| {
+        let mut out = vec![];
+        let vis_n = ecos_app::espacos::visivel_sql("n", &u);
+        let vis_t = ecos_app::espacos::visivel_sql("t", &u);
+        let consultas = vec![
+            ("notas listar", format!("SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em, n.criado_por, u.nome_usuario, COALESCE(nf.corpo, '') FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por LEFT JOIN nota_fts nf ON nf.id = n.id WHERE {vis_n} AND n.pasta_id IS NULL ORDER BY n.atualizado_em DESC, n.id DESC LIMIT 11")),
+            ("feed", format!("SELECT id, tipo FROM feed_item WHERE ((tipo = 'transacao' AND usuario_id = '{u}') OR (tipo = 'nota' AND id IN (SELECT n.id FROM nota n WHERE {vis_n})) OR (tipo = 'tarefa_encaixada' AND id IN (SELECT t.id FROM tarefa t WHERE {vis_t}))) ORDER BY score_dominante DESC, id DESC LIMIT 41")),
+            ("varrer_prazos", "SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = 'x' AND status = 'pendente' AND due_date IN ('a','b')".to_string()),
+            ("nao-lidas", "SELECT COUNT(*) FROM notificacao WHERE usuario_id = 'x' AND lida = 0".to_string()),
+            ("guard usuario", "SELECT deve_trocar_senha != 0 FROM usuario WHERE id = 'x'".to_string()),
+            ("guard sessao", "SELECT revogado_em IS NULL FROM sessao WHERE id = 'x'".to_string()),
+            ("tarefas listar", format!("SELECT t.id FROM tarefa t WHERE {vis_t} ORDER BY COALESCE(t.atualizado_em, t.criado_em) DESC LIMIT 11")),
+        ];
+        for (nome, sql) in consultas {
+            let mut stmt = c.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))?;
+            let linhas = stmt.query_map([], |r| r.get::<_, String>(3))?.collect::<Result<Vec<_>, _>>()?;
+            out.push(format!("PLANO | {nome}: {}", linhas.join(" ; ")));
+        }
+        Ok(out)
+    }).await.unwrap();
+    for p in planos { println!("{p}"); }
+}

@@ -1,0 +1,18 @@
+import fs from "node:fs"; import zlib from "node:zlib"; import path from "node:path";
+const dist = process.argv[2]; const html = fs.readFileSync(path.join(dist,"index.html"),"utf8");
+const refs = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m=>m[1]);
+const gz=(f)=>zlib.gzipSync(fs.readFileSync(path.join(dist,f))).length;
+const sz=(f)=>fs.statSync(path.join(dist,f)).size;
+const seen=new Set(); const q=refs.filter(r=>r.endsWith(".js"));
+while(q.length){const r=q.pop(); if(seen.has(r))continue; seen.add(r); const c=fs.readFileSync(path.join(dist,r),"utf8");
+ for(const m of c.matchAll(/(?:from|import)\s*"\.\/([^"]+\.js)"/g)) q.push("/assets/"+m[1]);}
+const all=fs.readdirSync(path.join(dist,"assets"));
+const js=all.filter(f=>f.endsWith(".js")), css=all.filter(f=>f.endsWith(".css")), fonts=all.filter(f=>/\.woff2?$/.test(f));
+const tot=(a)=>a.reduce((s,f)=>s+sz("assets/"+f),0);
+console.log("index.html bytes",sz("index.html"));
+console.log("html refs",refs);
+let ij=0,ijg=0; for(const r of seen){ij+=sz(r.slice(1)); ijg+=gz(r.slice(1));}
+console.log("initial JS static graph:",[...seen].length,"files",ij,"raw",ijg,"gz",[...seen]);
+const cssI=refs.filter(r=>r.endsWith(".css")); console.log("initial css", cssI.map(r=>[r,sz(r.slice(1)),gz(r.slice(1))]));
+console.log("total js files",js.length,"raw",tot(js),"css files",css.length,tot(css),"font files",fonts.length,tot(fonts));
+console.log("js chunks <3kB:",js.filter(f=>sz("assets/"+f)<3000).length);
