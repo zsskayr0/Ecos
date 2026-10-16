@@ -15,7 +15,7 @@ const ITENS = [
 
 export function BottomNav() {
   return (
-    <nav aria-label="Principal" className="fixed inset-x-4 bottom-[calc(16px+var(--ecos-safe-bottom))] z-40 mx-auto max-w-md">
+    <nav aria-label="Principal" className="fixed inset-x-4 bottom-[calc(16px+var(--ecos-safe-bottom))] z-40 mx-auto max-w-md md:max-w-xl">
       <div className="flex items-center justify-between rounded-[28px] border border-border/60 bg-surface-1/70 px-2 py-1.5 shadow-nav backdrop-blur-nav">
         {ITENS.map(({ to, label, Icon }) => (
           <NavLink

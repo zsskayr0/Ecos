@@ -363,7 +363,7 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="max-h-[72vh] overflow-auto rounded-xl border border-border bg-surface-1">
+      <div className="max-h-[72dvh] overflow-auto rounded-xl border border-border bg-surface-1">
         <div role="table" aria-label="Itens" aria-rowcount={linhas.length + 1} style={{ minWidth: larguraTotal }}>
           <div role="row" className="sticky top-0 z-10 grid border-b border-border bg-surface-2" style={{ gridTemplateColumns: modelo }}>
             {colunas.map((coluna) => {

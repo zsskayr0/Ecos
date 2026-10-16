@@ -80,7 +80,7 @@ export function AppShell() {
   }, [navigate]);
 
   return (
-    <div className={`mx-auto min-h-full bg-base ${documentoAberto ? "max-w-6xl" : "max-w-md"}`}>
+    <div className={`mx-auto min-h-full bg-base ${documentoAberto ? "max-w-6xl" : "max-w-md md:max-w-2xl"}`}>
       {comTopbar && <Topbar />}
       <main className="pb-nav-safe">
         <Outlet />

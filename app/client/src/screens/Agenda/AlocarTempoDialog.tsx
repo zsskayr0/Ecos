@@ -129,7 +129,7 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
           onAlocar({ id: tarefa.id, titulo: tarefa.titulo, duracaoMin: tarefa.duration_min, prioridade: tarefa.prioridade }, { dia: data, inicioMin: minutos, duracaoMin: duracaoNum });
         }}
         style={estiloAcento(corEquipe)}
-        className="ecos-modal-in ecos-acento-evento flex h-full w-full flex-col bg-base lg:h-[min(42rem,calc(100vh-3rem))] lg:max-w-[60rem] lg:rounded-2xl lg:border lg:border-border lg:shadow-nav"
+        className="ecos-modal-in ecos-acento-evento flex h-full w-full flex-col bg-base lg:h-[min(42rem,calc(100dvh-3rem))] lg:max-w-[60rem] lg:rounded-2xl lg:border lg:border-border lg:shadow-nav"
       >
         <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-5 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:rounded-t-2xl lg:pt-3">
           <div className="flex min-w-0 items-center gap-3">

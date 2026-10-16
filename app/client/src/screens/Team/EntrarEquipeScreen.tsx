@@ -35,7 +35,7 @@ export function EntrarEquipeScreen() {
   }, [codigo, navigate, recarregarPerfil, notificar]);
 
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+    <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-3 px-6 text-center">
       {erro ? (
         <>
           <AlertTriangle className="text-error" size={28} strokeWidth={1.5} />

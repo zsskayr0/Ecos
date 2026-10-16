@@ -169,7 +169,29 @@ body {
   outline-offset: 1px;
 }
 
+/* Barras finas e discretas só onde há overflow rolável (menus, abas, listas).
+   A página em si mantém a rolagem sem barra visível. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(120 140 165 / 0.45) transparent;
+}
 ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(120 140 165 / 0.45);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+html,
+body {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
   width: 0;
   height: 0;
 }

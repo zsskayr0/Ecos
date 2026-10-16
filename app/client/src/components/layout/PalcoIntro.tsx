@@ -39,10 +39,10 @@ export function PalcoIntro({ etapa, direcao = "avancar", children }: { etapa: st
   }, [etapa, children]);
 
   return (
-    <div className="intro-palco min-h-screen bg-base lg:grid lg:h-screen lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)] lg:overflow-hidden">
+    <div className="intro-palco min-h-dvh bg-base lg:grid lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)] lg:overflow-hidden">
       <ArteAuth pulso={pulso} />
       {/* Só esta coluna rola (o cadastro é mais alto que o login) — a arte fica fixa na altura da janela. */}
-      <div className="flex min-h-screen flex-col overflow-y-auto px-6 py-10 lg:min-h-0 lg:px-14">
+      <div className="flex min-h-dvh flex-col overflow-y-auto px-6 py-10 lg:min-h-0 lg:px-14">
         <div className="mx-auto my-auto w-full max-w-sm">
           <div
             key={exibida.etapa}

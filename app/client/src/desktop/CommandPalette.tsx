@@ -194,10 +194,10 @@ export function CommandPalette({
     <Dialog
       rotulo="Paleta de comandos"
       onFechar={aoFechar}
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[12vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[12dvh] backdrop-blur-[2px]"
     >
       <div
-        className="flex max-h-[64vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-nav ecos-fade-in"
+        className="flex max-h-[64dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-nav ecos-fade-in"
       >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <Search size={16} className="text-text-muted" />

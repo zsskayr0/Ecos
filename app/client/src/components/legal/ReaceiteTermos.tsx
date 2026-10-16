@@ -31,7 +31,7 @@ export function ReaceiteTermos() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-6 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
-        <img src={logoIcone} alt="" className="h-14 w-14" />
+        <img src={logoIcone} alt="" width={56} height={56} className="h-14 w-14" />
         <h1 className="font-display text-2xl text-text-primary">Termos e Política atualizados</h1>
         <p className="text-sm text-text-secondary">Para continuar usando o Ecos, leia e aceite a versão atual ({perfil?.termos_versao}).</p>
       </div>

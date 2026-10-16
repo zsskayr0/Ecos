@@ -128,7 +128,7 @@ export function AuthScreen() {
       {/* A arte, a coluna e as transições vêm do palco da introdução (`PalcoIntro`), montado em `App.tsx`. */}
       <div className="intro-cascata flex w-full flex-col gap-7">
           <div className="flex flex-col items-center gap-3 text-center">
-            <img src={logoIcone} alt="" className="h-16 w-16" />
+            <img src={logoIcone} alt="" width={64} height={64} className="h-16 w-16" />
             <p className="font-display text-3xl font-bold text-text-primary">Ecos</p>
           </div>
 

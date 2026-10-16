@@ -19,6 +19,8 @@ export function Avatar({ nome, corFundo = "#3E6FA8", tamanho = 36, url }: Avatar
       <img
         src={url}
         alt={nome}
+        width={tamanho}
+        height={tamanho}
         className="rounded-full object-cover shrink-0"
         style={{ width: tamanho, height: tamanho }}
       />

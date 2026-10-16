@@ -24,7 +24,7 @@ export function OnboardingScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col justify-between bg-base px-6 py-10">
+    <div className="flex min-h-dvh flex-col justify-between bg-base px-6 py-10">
       <div className="flex-1">
         {passo === "splash" && <Splash />}
         {passo === "feed" && (

@@ -263,7 +263,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
 
   return createPortal(
     <Dialog rotulo={`Hoje, ${titulo}`} onFechar={fechar} className={`fixed inset-0 z-[45] flex items-center justify-center p-4 bg-black/55 backdrop-blur-[4px] ${saindo ? "opacity-0 transition-opacity duration-150" : "ecos-backdrop-in"}`}>
-      <section className={`flex h-[min(86vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav ${saindo ? "scale-95 opacity-0 transition-all duration-150" : "ecos-modal-in"}`}>
+      <section className={`flex h-[min(86dvh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav ${saindo ? "scale-95 opacity-0 transition-all duration-150" : "ecos-modal-in"}`}>
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-surface-1 px-5 pt-4">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{hoje ? "Hoje" : "Agenda"}</p>

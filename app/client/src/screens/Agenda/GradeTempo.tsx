@@ -741,7 +741,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
         const left = Math.max(8, Math.min(lista.ancora.left, window.innerWidth - largura - 8));
         return (
           // Durante um arrasto a lista fica translúcida e deixa o ponteiro passar: o horário de destino aparece por baixo dela.
-          <div data-lista-dia-todo role="group" aria-label={lista.dia ? `O dia todo, ${meioDiaLocal(lista.dia).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}` : "O dia todo, período inteiro"} style={{ left, top: lista.ancora.bottom + 4, width: largura }} className={`ecos-fade-in fixed z-[115] max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-base p-2 shadow-nav transition-opacity ${gesto ? "pointer-events-none opacity-30" : ""}`}>
+          <div data-lista-dia-todo role="group" aria-label={lista.dia ? `O dia todo, ${meioDiaLocal(lista.dia).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}` : "O dia todo, período inteiro"} style={{ left, top: lista.ancora.bottom + 4, width: largura }} className={`ecos-fade-in fixed z-[115] max-h-[60dvh] overflow-y-auto rounded-xl border border-border bg-base p-2 shadow-nav transition-opacity ${gesto ? "pointer-events-none opacity-30" : ""}`}>
             <p className="px-1 pb-1.5 text-xs text-text-muted">Arraste um prazo para um horário para reservar tempo.</p>
             <div className="flex flex-col gap-1">
               {dosDias.map(({ dia, itens }) => (

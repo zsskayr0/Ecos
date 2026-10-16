@@ -48,7 +48,7 @@ export function FileViewerScreen() {
   const link = <a href={url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm text-steel-300 underline">Abrir ou baixar arquivo</a>;
 
   return (
-    <div className={`flex h-full flex-col bg-base ${desktop ? "" : "min-h-[70vh]"}`}>
+    <div className={`flex h-full flex-col bg-base ${desktop ? "" : "min-h-[70dvh]"}`}>
       {!desktop && <DetailHeader onBack={() => navigate(-1)} />}
       <div className="min-h-0 flex-1">
         {!caminho ? (

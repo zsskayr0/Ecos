@@ -24,7 +24,7 @@ export function Fab() {
     <button
       onClick={onClick}
       aria-label={noCofre ? "Nova transação" : "Criar"}
-      className={`ecos-fab fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-on-accent shadow-nav ${noCofre ? "bottom-20 md:bottom-8" : "bottom-24"}`}
+      className={`ecos-fab fixed right-[max(1.25rem,calc(var(--ecos-safe-right)+1rem))] z-40 flex h-14 w-14 items-center justify-center rounded-full text-on-accent shadow-nav ${noCofre ? "bottom-[calc(5rem+var(--ecos-safe-bottom))] md:bottom-[calc(2rem+var(--ecos-safe-bottom))]" : "bottom-[calc(6rem+var(--ecos-safe-bottom))]"}`}
       style={{
         background: noCofre
           ? "linear-gradient(135deg, var(--ecos-violet), var(--ecos-cyan))"

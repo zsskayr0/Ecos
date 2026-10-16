@@ -135,7 +135,7 @@ function Barra({ abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal
   return (
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-surface-1 px-4">
       <span className="flex items-center gap-2 font-display text-base font-bold text-text-primary">
-        <img src={logoIcone} alt="" className="h-6 w-6" />
+        <img src={logoIcone} alt="" width={24} height={24} className="h-6 w-6" />
         {cofre ? "Cofre" : "Ecos"}
       </span>
 
@@ -190,7 +190,7 @@ function MenuContaItem({ Icon, label, onClick }: { Icon: typeof User; label: str
  * modais, centralizados e previsíveis, sem alças de arraste/redimensionamento. */
 function PainelConta({ path, aoFechar }: { path: string; aoFechar: () => void }) {
   return <Dialog rotulo="Painel da conta" onFechar={aoFechar} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6 backdrop-blur-md ecos-fade-in">
-    <section className="flex h-[min(780px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
+    <section className="flex h-[min(780px,calc(100dvh-48px))] w-[min(1200px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface-1 px-4"><span className="text-sm font-semibold text-text-primary">Conta</span><button type="button" onClick={aoFechar} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></header>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"><MemoryRouter initialEntries={[path]}><Routes>{screenRoutes}</Routes></MemoryRouter></div>
     </section>
@@ -273,13 +273,13 @@ function Conteudo() {
     <DocumentoPopupContext.Provider value={abrirDocumento}>
     <SoltarNoCofre />
     {cofreAberto ? (
-      <div className="flex h-screen flex-col overflow-hidden bg-base">
+      <div className="flex h-dvh flex-col overflow-hidden bg-base">
         <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={[cofreCaminhoInicial()]}><PathReporter chave="cofre" hist={[cofreCaminhoInicial()]} idx={0} /><Suspense fallback={<EstadoCarregando />}><VaultScreen embedded voltar={() => setCofreAberto(false)} /></Suspense></MemoryRouter></div>
         {janelas.map((j) => <DocumentoJanela key={j.id} path={j.path} ordem={j.ordem} z={j.z} aoFechar={() => fecharJanela(j.id)} aoFocar={() => trazerParaFrente(j.id)} />)}
         {capturaAberta === "transacao" && <DocumentoJanela path="/cofre/transacao/novo" titulo={tituloCaptura || "Novo lançamento"} ordem={janelas.length} z={contador.current + 1} aoFechar={fecharCaptura} aoFocar={() => {}} cabecalhoNoConteudo conteudo={<div className="cofre-app cofre-capture-scope"><CreateFlow embedded contextoDesktop="cofre" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto} /></div>} />}
       </div>
     ) : (
-    <div className="flex h-screen flex-col bg-base">
+    <div className="flex h-dvh flex-col bg-base">
       <Barra abrirPaleta={() => setPaletaAberta(true)} abrirOrganizacao={() => abrirDocumento("/configuracoes/organizacao", false)} />
       <div className="flex min-h-0 flex-1">
         <Rail abrirCofre={() => setCofreAberto(true)} />

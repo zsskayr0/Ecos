@@ -51,7 +51,7 @@ export function CategoriasDialog({ aberto, categorias, espaco, onFechar, onAlter
         <h2 className="text-base font-semibold">Categorias de evento</h2>
         <button type="button" onClick={onFechar} aria-label="Fechar" className="rounded-lg p-1.5 text-text-muted hover:bg-surface-2"><X size={18} /></button>
       </div>
-      <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+      <div className="max-h-[70dvh] overflow-y-auto px-5 py-4">
         {erro && <p role="alert" className="mb-3 text-sm text-error">{erro}</p>}
         {categorias.length === 0 ? (
           <p className="mb-4 text-sm text-text-muted">Nenhuma categoria ainda. Crie uma para saber quanto tempo vai em reuniões, estudos, foco…</p>
