@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { PADRAO_PREFERENCIAS_APLICATIVO as P, aplicarPreferenciasAplicativo } from "./preferencias-aplicativo";
-import { modoTemaSalvo, resolverTema } from "./theme";
+import { modoTemaSalvo, resolverTema, temaInicial } from "./theme";
 
 afterEach(() => { document.documentElement.removeAttribute("data-reduzir-movimento"); document.documentElement.style.fontSize = ""; localStorage.clear(); });
 
@@ -17,7 +17,18 @@ describe("conforto", () => {
     aplicarPreferenciasAplicativo({ ...P, reduzirMovimento: "desligado" });
     expect(document.documentElement.hasAttribute("data-reduzir-movimento")).toBe(false);
   });
-  it("tema: escuro por padrão, aceita claro e sistema", () => {
+  it("primeira abertura: com o sistema em tema claro, o tema inicial é claro", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("light"), media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      expect(temaInicial()).toBe("light");
+      localStorage.setItem("ecos-tema", "dark");
+      expect(temaInicial()).toBe("dark");
+    } finally { window.matchMedia = original; }
+  });
+  it("tema: sem preferência salva acompanha o sistema; aceita escuro, claro e sistema", () => {
+    expect(modoTemaSalvo()).toBe("sistema");
+    localStorage.setItem("ecos-tema", "dark");
     expect(modoTemaSalvo()).toBe("dark");
     localStorage.setItem("ecos-tema", "sistema");
     expect(modoTemaSalvo()).toBe("sistema");

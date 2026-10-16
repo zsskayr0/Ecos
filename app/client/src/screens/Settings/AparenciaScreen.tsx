@@ -55,7 +55,7 @@ export function AparenciaScreen() {
         >
           <Moon size={22} strokeWidth={1.5} className="text-steel-300" />
           <span className="text-sm font-medium text-text-primary">Escuro</span>
-          <span className="text-xs text-text-muted">Padrão do Ecos</span>
+          <span className="text-xs text-text-muted">Sempre escuro</span>
         </button>
         <button
           onClick={() => setTema("light")}
@@ -75,8 +75,8 @@ export function AparenciaScreen() {
           }`}
         >
           <Monitor size={22} strokeWidth={1.5} className="text-steel-300" />
-          <span className="text-sm font-medium text-text-primary">Sistema</span>
-          <span className="text-xs text-text-muted">Acompanha o aparelho</span>
+          <span className="text-sm font-medium text-text-primary">Automático</span>
+          <span className="text-xs text-text-muted">Acompanha o sistema</span>
         </button>
       </div>
 

@@ -8,8 +8,9 @@ const CHAVE = "ecos-tema";
 export function modoTemaSalvo(): ModoTema {
   try {
     const salvo = localStorage.getItem(CHAVE);
-    return salvo === "light" || salvo === "sistema" ? salvo : "dark";
-  } catch { return "dark"; }
+    // Sem preferência salva (primeira abertura), o app acompanha o sistema.
+    return salvo === "light" || salvo === "dark" || salvo === "sistema" ? salvo : "sistema";
+  } catch { return "sistema"; }
 }
 
 const sistemaPrefereClaro = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-color-scheme: light)").matches;
@@ -34,7 +35,7 @@ export function acompanharTemaDoSistema() {
   });
 }
 
-/** Dark is the product's default (section 1.3) — light and "follow the system" are opt-in. */
+/** Sem escolha salva o tema acompanha o sistema; quem escolhe Escuro ou Claro fica com o que escolheu. */
 export function useTema() {
   const [modo, setModo] = useState<ModoTema>(modoTemaSalvo);
   const [tema, setTema] = useState<Tema>(() => resolverTema(modoTemaSalvo()));
