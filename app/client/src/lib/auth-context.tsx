@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ApiError, auth, definirUsuarioDoCofre, prepararConteudoOffline } from "./api";
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
-import { limparDadosOffline } from "./offline-store";
+import { limparDadosOffline, listarMutacoesPendentes } from "./offline-store";
+import { Dialog } from "@/components/common/Dialog";
 import { registrarCoresDasEquipes } from "./team-color";
 import { definirUsuarioDasFotos } from "./profile-avatar";
 import { sincronizarPreferenciasCalendario } from "./preferencias-calendario";
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("carregando");
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [pedidoSaida, setPedidoSaida] = useState<PedidoSaida | null>(null);
 
   const recarregarPerfil = useCallback(async () => {
     try {
@@ -139,8 +141,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async (opcoes?: { semAviso?: boolean }) => {
-    const rascunhos = opcoes?.semAviso ? 0 : contarRascunhosLocais();
-    if (rascunhos > 0 && !window.confirm(`Há ${rascunhos} rascunho${rascunhos > 1 ? "s" : ""} de nota ou tarefa não salvo${rascunhos > 1 ? "s" : ""} neste aparelho. Sair da conta apaga ${rascunhos > 1 ? "esses rascunhos" : "esse rascunho"}. Sair mesmo assim?`)) return;
+    if (!opcoes?.semAviso) {
+      const rascunhos = contarRascunhosLocais();
+      let pendentes = 0;
+      try { pendentes = (await listarMutacoesPendentes()).length; } catch { /* sem fila legível: só os rascunhos contam */ }
+      if (rascunhos + pendentes > 0 && !(await new Promise<boolean>((resolver) => setPedidoSaida({ rascunhos, pendentes, resolver })))) return;
+    }
     try {
       // Quem sai da conta não deixa senha de Cofre guardada neste computador.
       if (perfil) await esquecerSenhasDaConta(perfil.id, ["pessoal", ...perfil.equipes.map((e) => `equipe:${e.id}`)]);
@@ -164,7 +170,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ status, perfil, erro, login, registrar, logout, recarregarPerfil }}>
       {children}
+      {pedidoSaida && <ConfirmarSaida pedido={pedidoSaida} aoResponder={(ok) => { pedidoSaida.resolver(ok); setPedidoSaida(null); }} />}
     </AuthContext.Provider>
+  );
+}
+
+interface PedidoSaida { rascunhos: number; pendentes: number; resolver: (ok: boolean) => void }
+
+/** Aviso antes de Sair quando há algo que só existe neste aparelho (rascunhos e alterações ainda não enviadas). */
+function ConfirmarSaida({ pedido, aoResponder }: { pedido: PedidoSaida; aoResponder: (ok: boolean) => void }) {
+  const { rascunhos, pendentes } = pedido;
+  const partes = [
+    rascunhos > 0 ? `${rascunhos} rascunho${rascunhos > 1 ? "s" : ""} de nota ou tarefa não salvo${rascunhos > 1 ? "s" : ""}` : "",
+    pendentes > 0 ? `${pendentes} alteraç${pendentes > 1 ? "ões" : "ão"} ainda não enviada${pendentes > 1 ? "s" : ""} ao servidor` : "",
+  ].filter(Boolean);
+  return (
+    <Dialog rotuloId="sair-titulo" descricaoId="sair-descricao" onFechar={() => aoResponder(false)}>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 text-text-primary">
+        <h2 id="sair-titulo" className="mb-2 text-lg font-semibold">Você tem alterações não enviadas</h2>
+        <p id="sair-descricao" className="mb-5 text-sm text-text-secondary">
+          Há {partes.join(" e ")} neste aparelho. Sair da conta descarta {partes.length > 1 || rascunhos > 1 || pendentes > 1 ? "tudo isso" : "isso"}. Sair mesmo assim?
+        </p>
+        <div className="flex gap-3">
+          <button type="button" autoFocus onClick={() => aoResponder(false)} className="min-h-12 flex-1 rounded-xl bg-surface-2 px-4 text-sm font-medium">Continuar na conta</button>
+          <button type="button" onClick={() => aoResponder(true)} className="min-h-12 flex-1 rounded-xl bg-error px-4 text-sm font-semibold text-on-accent">Sair mesmo assim</button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
