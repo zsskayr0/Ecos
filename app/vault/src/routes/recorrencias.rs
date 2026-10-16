@@ -74,7 +74,7 @@ pub struct RecorrenciaPayload {
     pub total_parcelas: Option<i64>,
     #[serde(default)]
     pub observacoes: Option<String>,
-    #[serde(default = "espaco_padrao")]
+    #[serde(default = "super::valores_padrao::espaco_padrao")]
     pub espaco: String,
     /// Só na edição: pausa (`false`) ou reativa a recorrência.
     #[serde(default)]
@@ -87,10 +87,6 @@ fn frequencia_padrao() -> String {
 fn intervalo_padrao() -> i64 {
     1
 }
-fn espaco_padrao() -> String {
-    "pessoal".to_string()
-}
-
 fn validar(payload: &RecorrenciaPayload) -> AppResult<()> {
     if !(1..=1200).contains(&payload.intervalo) || payload.total_parcelas.is_some_and(|n| n <= 0 || n > 10000) || payload.dia_vencimento.is_some_and(|d| !(1..=31).contains(&d)) || payload.data_fim.is_some_and(|d| d < payload.data_inicio) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("Intervalo, parcelas, vencimento ou término inválido"));

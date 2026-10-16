@@ -48,12 +48,8 @@ pub struct PendenciaPayload {
     pub beneficiario_id: Option<String>,
     #[serde(default)]
     pub observacoes: Option<String>,
-    #[serde(default = "espaco_padrao")]
+    #[serde(default = "super::valores_padrao::espaco_padrao")]
     pub espaco: String,
-}
-
-fn espaco_padrao() -> String {
-    "pessoal".to_string()
 }
 
 pub async fn criar(State(state): State<AppState>, Json(payload): Json<PendenciaPayload>) -> AppResult<Json<serde_json::Value>> {

@@ -41,7 +41,7 @@ pub struct CategoriaPayload {
     pub icone: Option<String>,
     #[serde(default = "cor_padrao")]
     pub cor: String,
-    #[serde(default = "espaco_padrao")]
+    #[serde(default = "super::valores_padrao::espaco_padrao")]
     pub espaco: String,
     /// Categoria-mãe. Ausente: na criação, categoria de topo; na edição, não muda. `null`: vira categoria de topo.
     #[serde(default, deserialize_with = "campo_opcional")]
@@ -85,10 +85,6 @@ fn tipo_padrao() -> String {
 fn cor_padrao() -> String {
     "#7DD3FC".to_string()
 }
-fn espaco_padrao() -> String {
-    "pessoal".to_string()
-}
-
 pub async fn criar(State(state): State<AppState>, Json(payload): Json<CategoriaPayload>) -> AppResult<Json<serde_json::Value>> {
     if !["entrada", "saida", "ambos"].contains(&payload.tipo.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("tipo deve ser 'entrada', 'saida' ou 'ambos'"));

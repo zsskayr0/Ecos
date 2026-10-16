@@ -17,6 +17,7 @@ pub mod busca;
 pub mod recorrencias;
 pub mod reset;
 pub mod transacoes;
+mod valores_padrao;
 pub mod financeiro;
 pub mod fluxo;
 pub mod formas_pagamento;

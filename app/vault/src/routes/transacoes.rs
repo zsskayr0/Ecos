@@ -152,7 +152,7 @@ pub struct TransacaoPayload {
     pub status: String,
     #[serde(default)]
     pub observacoes: Option<String>,
-    #[serde(default = "espaco_padrao")]
+    #[serde(default = "super::valores_padrao::espaco_padrao")]
     pub espaco: String,
     #[serde(default)]
     pub titulo: Option<String>, // aceito quando vem via Captura universal (seção 11.3) — vira `descricao`
@@ -164,10 +164,6 @@ fn moeda_padrao() -> String {
 fn status_padrao() -> String {
     "efetivada".to_string()
 }
-fn espaco_padrao() -> String {
-    "pessoal".to_string()
-}
-
 /// Último dia em que ainda se pode efetivar algo (hoje, com um dia de folga para o fuso). Depois disso só "prevista".
 pub(crate) fn limite_para_efetivar() -> NaiveDate {
     Utc::now().date_naive() + Days::new(1)

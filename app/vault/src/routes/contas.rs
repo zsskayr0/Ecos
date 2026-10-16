@@ -63,7 +63,7 @@ pub struct ContaPayload {
     pub numero_conta: Option<String>,
     #[serde(default = "cor_padrao")]
     pub cor: String,
-    #[serde(default = "espaco_padrao")]
+    #[serde(default = "super::valores_padrao::espaco_padrao")]
     pub espaco: String,
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
@@ -78,9 +78,6 @@ pub struct ContaPayload {
 
 fn cor_padrao() -> String {
     "#8f8f96".to_string()
-}
-fn espaco_padrao() -> String {
-    "pessoal".to_string()
 }
 fn tipo_padrao() -> String {
     "corrente".to_string()
