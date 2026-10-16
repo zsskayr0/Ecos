@@ -50,4 +50,6 @@ chrono-tz = "0.10"
 
 notify.workspace = true
 walkdir.workspace = true
+# Leitura de .zip de outros aplicativos (importador): só descompressão deflate.
+flate2 = "1.1"
 mdns-sd.workspace = true

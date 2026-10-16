@@ -180,6 +180,9 @@ pub struct EntradaZip {
     pub crc: u32,
     pub tamanho: u64,
     deslocamento_local: u64,
+    /// 0 = stored, 8 = deflate (só aceito por `abrir_com_deflate`).
+    metodo: u16,
+    comprimido: u64,
 }
 
 /// Leitor do mesmo subconjunto que o `ZipWriter` produz: método "stored", sem criptografia, sem ZIP64. Qualquer coisa
@@ -189,6 +192,9 @@ pub struct LeitorZip {
     tamanho_arquivo: u64,
     pub entradas: Vec<EntradaZip>,
 }
+
+/// Teto de entradas e de bytes descomprimidos de pacotes de outros aplicativos (proteção contra zip bomb).
+const MAX_DESCOMPRIMIDO_DECLARADO: u64 = 400 * 1024 * 1024;
 
 fn invalido(msg: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.into())
@@ -206,6 +212,15 @@ const MAX_ENTRADAS: usize = 100_000;
 
 impl LeitorZip {
     pub fn abrir(caminho: &Path) -> io::Result<Self> {
+        Self::abrir_impl(caminho, false)
+    }
+
+    /// Como `abrir`, mas aceita entradas deflate (exportações de Notion/Obsidian/Windows). Só `ler` as lê.
+    pub fn abrir_com_deflate(caminho: &Path) -> io::Result<Self> {
+        Self::abrir_impl(caminho, true)
+    }
+
+    fn abrir_impl(caminho: &Path, deflate: bool) -> io::Result<Self> {
         use std::io::{Seek, SeekFrom};
         let mut arquivo = std::fs::File::open(caminho)?;
         let tamanho_arquivo = arquivo.metadata()?.len();
@@ -249,16 +264,20 @@ impl LeitorZip {
             if flags & 1 != 0 {
                 return Err(invalido("pacote .zip criptografado não é aceito"));
             }
-            if metodo != 0 || comp != tamanho {
+            let metodo_ok = metodo == 0 && comp == tamanho || deflate && metodo == 8;
+            if !metodo_ok {
                 return Err(invalido("o pacote não foi gerado pelo Ecos (compressão não suportada)"));
             }
             if tamanho == 0xFFFF_FFFF || local == 0xFFFF_FFFF {
                 return Err(invalido("pacote ZIP64 não é aceito"));
             }
             if !nome.ends_with('/') {
-                entradas.push(EntradaZip { nome, crc, tamanho, deslocamento_local: local });
+                entradas.push(EntradaZip { nome, crc, tamanho, deslocamento_local: local, metodo: metodo as u16, comprimido: comp });
             }
             o += 46 + n_nome + n_extra + n_comentario;
+        }
+        if entradas.iter().map(|e| e.tamanho).sum::<u64>() > MAX_DESCOMPRIMIDO_DECLARADO && deflate {
+            return Err(invalido("o conteúdo descomprimido do pacote excede o limite"));
         }
         Ok(Self { arquivo, tamanho_arquivo, entradas })
     }
@@ -274,21 +293,32 @@ impl LeitorZip {
             return Err(invalido("cabeçalho do .zip inconsistente"));
         }
         let dados = e.deslocamento_local + 30 + u16_em(&c, 26) as u64 + u16_em(&c, 28) as u64;
-        if dados.checked_add(e.tamanho).is_none_or(|fim| fim > self.tamanho_arquivo) {
+        if dados.checked_add(e.comprimido).is_none_or(|fim| fim > self.tamanho_arquivo) {
             return Err(invalido("o .zip está truncado"));
         }
         self.arquivo.seek(SeekFrom::Start(dados))?;
-        Ok(e.tamanho)
+        Ok(e.comprimido)
     }
 
     /// Lê a entrada inteira (para arquivos pequenos: manifesto, Markdown) conferindo o CRC.
     pub fn ler(&mut self, i: usize, limite: u64) -> io::Result<Vec<u8>> {
-        let tamanho = self.posicionar(i)?;
-        if tamanho > limite {
+        let comprimido = self.posicionar(i)?;
+        let declarado = self.entradas[i].tamanho;
+        if declarado > limite {
             return Err(invalido("arquivo grande demais para leitura em memória"));
         }
-        let mut dados = vec![0u8; tamanho as usize];
+        let mut dados = vec![0u8; comprimido as usize];
         self.arquivo.read_exact(&mut dados)?;
+        if self.entradas[i].metodo == 8 {
+            // `take(declarado + 1)`: um fluxo que descomprime além do declarado é recusado, não alocado.
+            let mut saida = Vec::with_capacity(declarado as usize);
+            flate2::read::DeflateDecoder::new(&dados[..]).take(declarado + 1).read_to_end(&mut saida)
+                .map_err(|_| invalido(format!("{} está corrompido (deflate inválido)", self.entradas[i].nome)))?;
+            if saida.len() as u64 != declarado {
+                return Err(invalido(format!("{} está corrompido (tamanho não confere)", self.entradas[i].nome)));
+            }
+            dados = saida;
+        }
         if crc32_atualizar(!0, &dados) ^ !0 != self.entradas[i].crc {
             return Err(invalido(format!("{} está corrompido (CRC não confere)", self.entradas[i].nome)));
         }
@@ -298,6 +328,9 @@ impl LeitorZip {
     /// Copia a entrada para `destino` em blocos, conferindo o CRC; em caso de erro o destino parcial é apagado.
     pub fn copiar_para(&mut self, i: usize, destino: &Path) -> io::Result<()> {
         let tamanho = self.posicionar(i)?;
+        if self.entradas[i].metodo != 0 {
+            return Err(invalido("entrada comprimida não pode ser copiada diretamente"));
+        }
         let esperado = self.entradas[i].crc;
         let nome = self.entradas[i].nome.clone();
         let resultado = (|| {
@@ -327,6 +360,9 @@ impl LeitorZip {
     pub fn verificar_tudo(&mut self) -> io::Result<()> {
         let mut buffer = vec![0u8; 64 * 1024];
         for i in 0..self.entradas.len() {
+            if self.entradas[i].metodo != 0 {
+                return Err(invalido("entrada comprimida não suportada nesta verificação"));
+            }
             let mut restante = self.posicionar(i)?;
             let mut crc = !0u32;
             while restante > 0 {

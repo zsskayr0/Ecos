@@ -508,6 +508,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "ecos-core",
+ "flate2",
  "jsonwebtoken",
  "mdns-sd",
  "notify",

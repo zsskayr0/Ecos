@@ -12,6 +12,7 @@ pub mod eventos_fs;
 pub mod espacos;
 pub mod jobs;
 pub mod middleware;
+pub mod importacao;
 pub mod restauracao;
 pub mod routes;
 pub mod segredos;
