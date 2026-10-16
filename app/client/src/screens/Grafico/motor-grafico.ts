@@ -2,6 +2,7 @@ import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY
 
 import type { ArestaGrafico, NoGrafico } from "@/lib/api";
 import { corDoTipo, type PreferenciasGrafico } from "@/lib/preferencias-grafico";
+import { casaBusca, idsVisiveis, montarGrafo, normalizar } from "./grafo-puro";
 
 /**
  * Motor do Gráfico: física (d3-force, passo a passo no nosso próprio laço) + desenho em canvas.
@@ -57,7 +58,6 @@ interface Camera { x: number; y: number; k: number }
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const suave = (t: number) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
-const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const ESPERA_DESTAQUE_MS = 70;
 const TOLERANCIA_SAIDA_MS = 150;
@@ -158,7 +158,8 @@ export class MotorGrafico {
 
   /* ---------- API ---------- */
 
-  definirDados(nos: NoGrafico[], arestas: ArestaGrafico[]) {
+  definirDados(nosBrutos: NoGrafico[], arestasBrutas: ArestaGrafico[]) {
+    const { nos, arestas, vizinhos } = montarGrafo(nosBrutos, arestasBrutas);
     const agora = performance.now();
     const antigos = this.porId;
     const novos: NoMotor[] = [];
@@ -192,18 +193,13 @@ export class MotorGrafico {
 
     const reaproveitar = new Map(this.arestas.map((a) => [`${a.dado.origem}→${a.dado.destino}→${a.dado.tipo}`, a]));
     this.arestas = [];
-    this.vizinhos = new Map();
+    this.vizinhos = vizinhos;
     for (const dado of arestas) {
-      const s = porId.get(dado.origem);
-      const t = porId.get(dado.destino);
-      if (!s || !t) continue;
+      const s = porId.get(dado.origem)!;
+      const t = porId.get(dado.destino)!;
       const chave = `${dado.origem}→${dado.destino}→${dado.tipo}`;
       const antiga = reaproveitar.get(chave);
       this.arestas.push({ dado, source: s, target: t, s, t, rel: antiga?.rel ?? 1, hl: antiga?.hl ?? 0 });
-      if (!this.vizinhos.has(s.id)) this.vizinhos.set(s.id, new Set());
-      if (!this.vizinhos.has(t.id)) this.vizinhos.set(t.id, new Set());
-      this.vizinhos.get(s.id)!.add(t.id);
-      this.vizinhos.get(t.id)!.add(s.id);
     }
     for (const n of this.nos) {
       n.grau = this.vizinhos.get(n.id)?.size ?? 0;
@@ -252,7 +248,7 @@ export class MotorGrafico {
   /* ---------- interno: dados e forças ---------- */
 
   private aplicarBusca() {
-    for (const n of this.nos) n.casa = !this.busca || n.chave.includes(this.busca);
+    for (const n of this.nos) n.casa = casaBusca(n.chave, this.busca);
   }
 
   private aplicarForcas(reaquecer: boolean) {
@@ -267,14 +263,8 @@ export class MotorGrafico {
   /** Decide quem fica visível (filtros) e mantém na física só quem está visível ou ainda sumindo, para o layout fluir em vez de saltar. */
   private sincronizar() {
     const { tipos, mostrarSemConexao } = this.prefs;
-    const grauVisivel = new Map<string, number>();
-    for (const a of this.arestas) {
-      if (tipos[a.s.dado.tipo] && tipos[a.t.dado.tipo]) {
-        grauVisivel.set(a.s.id, (grauVisivel.get(a.s.id) ?? 0) + 1);
-        grauVisivel.set(a.t.id, (grauVisivel.get(a.t.id) ?? 0) + 1);
-      }
-    }
-    for (const n of this.nos) n.visAlvo = tipos[n.dado.tipo] && (mostrarSemConexao || (grauVisivel.get(n.id) ?? 0) > 0) ? 1 : 0;
+    const visiveis = idsVisiveis(this.nos.map((n) => n.dado), this.arestas.map((a) => a.dado), tipos, mostrarSemConexao);
+    for (const n of this.nos) n.visAlvo = visiveis.has(n.id) ? 1 : 0;
     const naFisica = this.nos.filter((n) => n.visAlvo > 0 || n.vis > 0.02);
     this.naFisica = new Set(naFisica);
     const ids = new Set(naFisica.map((n) => n.id));
