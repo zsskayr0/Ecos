@@ -26,6 +26,8 @@ interface Comando {
   grupo: string;
   rotulo: string;
   dica?: string;
+  /** Segunda linha (trecho da nota, por exemplo). */
+  detalhe?: string;
   atalho?: string;
   icone: ComponentType<LucideProps>;
   executar: (emAba: boolean) => void;
@@ -33,9 +35,27 @@ interface Comando {
 
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+export type FiltroPaleta = "tudo" | "comandos" | "notas" | "tarefas";
+
+const FILTROS: { valor: FiltroPaleta; rotulo: string; dica: string }[] = [
+  { valor: "tudo", rotulo: "Tudo", dica: "" },
+  { valor: "comandos", rotulo: "Comandos", dica: ">" },
+  { valor: "notas", rotulo: "Notas", dica: "n:" },
+  { valor: "tarefas", rotulo: "Tarefas", dica: "t:" },
+];
+
+/** Atalhos de prefixo (`>`, `n:`, `t:`) escolhem o filtro sem tirar a mão do teclado; sem prefixo vale o filtro dos botões. */
+export function interpretarConsulta(termo: string, filtro: FiltroPaleta): { texto: string; filtro: FiltroPaleta } {
+  const bruto = termo.trimStart();
+  if (bruto.startsWith(">")) return { texto: bruto.slice(1).trim(), filtro: "comandos" };
+  const prefixo = /^([nt]):\s*/i.exec(bruto);
+  if (prefixo) return { texto: bruto.slice(prefixo[0].length).trim(), filtro: prefixo[1].toLowerCase() === "n" ? "notas" : "tarefas" };
+  return { texto: bruto.trim(), filtro };
+}
+
 interface Resultados {
-  notas: { id: string; titulo: string; espaco: string }[];
-  tarefas: { id: string; titulo: string; espaco: string }[];
+  notas: { id: string; titulo: string; espaco: string; trecho?: string }[];
+  tarefas: { id: string; titulo: string; espaco: string; status?: string }[];
   transacoes?: { id: string; descricao: string; data: string; valor_centavos: number }[];
 }
 
@@ -59,36 +79,45 @@ export function CommandPalette({
   const [termo, setTermo] = useState("");
   const [ativo, setAtivo] = useState(0);
   const [resultados, setResultados] = useState<Resultados | null>(null);
+  const [filtroManual, setFiltroManual] = useState<FiltroPaleta>("tudo");
+  const [buscando, setBuscando] = useState(false);
+  const { texto: consultaTexto, filtro } = interpretarConsulta(termo, escopoCofre ? "tudo" : filtroManual);
   const inputRef = useRef<HTMLInputElement>(null);
   const listaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!aberta) return;
     setTermo("");
+    setFiltroManual("tudo");
     setAtivo(0);
     setResultados(null);
     inputRef.current?.focus();
   }, [aberta]);
 
   useEffect(() => {
-    const consulta = termo.trim();
-    if (!aberta || consulta.length < 2) {
+    const consulta = consultaTexto;
+    if (!aberta || consulta.length < 2 || filtro === "comandos") {
       setResultados(null);
+      setBuscando(false);
       return;
     }
     let vivo = true;
+    setBuscando(true);
     const t = setTimeout(() => {
       (escopoCofre
         ? vault.transacoes.listar({limit:100}).then(r=>({notas:[],tarefas:[],transacoes:r.items.filter(t=>`${t.descricao} ${t.observacoes??""}`.toLowerCase().includes(consulta.toLowerCase())).slice(0,12)}))
-        : busca.buscar(consulta).then(r=>({ notas: r.notas.slice(0, 5), tarefas: r.tarefas.slice(0, 5) })))
-        .then((r) => vivo && setResultados(r))
-        .catch(() => vivo && setResultados(null));
+        : busca.buscar(consulta, filtro === "notas" ? { tipo: "nota" } : filtro === "tarefas" ? { tipo: "tarefa" } : {}).then(r=>{
+            const limite = filtro === "tudo" ? 5 : 15;
+            return { notas: filtro === "tarefas" ? [] : r.notas.slice(0, limite), tarefas: filtro === "notas" ? [] : r.tarefas.slice(0, limite) };
+          }))
+        .then((r) => { if (vivo) { setResultados(r); setBuscando(false); } })
+        .catch(() => { if (vivo) { setResultados(null); setBuscando(false); } });
     }, 250);
     return () => {
       vivo = false;
       clearTimeout(t);
     };
-  }, [termo, aberta, escopoCofre]);
+  }, [consultaTexto, filtro, aberta, escopoCofre]);
 
   const comandos = useMemo<Comando[]>(() => {
     const abrir = (path: string) => dispatch({ type: "open", path, where: "focused", reuse: "modulo" });
@@ -149,10 +178,13 @@ export function CommandPalette({
   }, [state.panes, state.focusedPaneId, equipes, dispatch, abrirCaptura, logout, aoAbrirCofre, escopoCofre]);
 
   const itens = useMemo<Comando[]>(() => {
-    const q = semAcento(termo.trim());
-    const filtrados = q
-      ? comandos.filter((c) => semAcento(`${c.rotulo} ${c.grupo}`).includes(q))
-      : comandos.filter((c) => c.grupo === "Criar" || c.grupo === "Ir para");
+    const q = semAcento(consultaTexto);
+    const soConteudo = filtro === "notas" || filtro === "tarefas";
+    const filtrados = soConteudo
+      ? []
+      : q
+        ? comandos.filter((c) => semAcento(`${c.rotulo} ${c.grupo}`).includes(q))
+        : filtro === "comandos" ? comandos : comandos.filter((c) => c.grupo === "Criar" || c.grupo === "Ir para");
 
     const conteudo: Comando[] = [
       ...(resultados?.notas ?? []).map<Comando>((n) => ({
@@ -160,6 +192,7 @@ export function CommandPalette({
         grupo: "Notas",
         rotulo: n.titulo || "Sem título",
         dica: n.espaco,
+        detalhe: n.trecho?.trim() || undefined,
         icone: StickyNote,
         executar: (emAba) => aoAbrirDocumento(`/notas/nota/${n.id}`, emAba),
       })),
@@ -167,16 +200,16 @@ export function CommandPalette({
         id: `tarefa-${t.id}`,
         grupo: "Tarefas",
         rotulo: t.titulo,
-        dica: t.espaco,
+        dica: t.status === "concluida" ? "Concluída" : t.espaco,
         icone: ListChecks,
         executar: (emAba) => aoAbrirDocumento(`/tarefa/${t.id}`, emAba),
       })),
       ...(resultados?.transacoes ?? []).map<Comando>((t) => ({id:`transacao-${t.id}`,grupo:"Transações",rotulo:t.descricao,dica:new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(t.valor_centavos/100),icone:Wallet,executar:()=>aoAbrirDocumento(`/cofre/transacao/${t.id}`,false)})),
     ];
     return [...filtrados, ...conteudo];
-  }, [comandos, termo, resultados, aoAbrirDocumento]);
+  }, [comandos, consultaTexto, filtro, resultados, aoAbrirDocumento]);
 
-  useEffect(() => setAtivo(0), [termo]);
+  useEffect(() => setAtivo(0), [termo, filtroManual]);
   useEffect(() => {
     listaRef.current?.querySelector<HTMLElement>(`[data-indice="${ativo}"]`)?.scrollIntoView({ block: "nearest" });
   }, [ativo]);
@@ -223,8 +256,27 @@ export function CommandPalette({
           <kbd className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-muted">Esc</kbd>
         </div>
 
+        {!escopoCofre && (
+          <div role="group" aria-label="Filtrar resultados" className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+            {FILTROS.map((f) => (
+              <button
+                key={f.valor}
+                type="button"
+                aria-pressed={filtro === f.valor}
+                title={f.dica ? `Atalho: digite ${f.dica} antes do termo` : undefined}
+                onClick={() => { setFiltroManual(f.valor); inputRef.current?.focus(); }}
+                className={`min-h-7 rounded-pill px-2.5 text-xs ${filtro === f.valor ? "bg-cyan/15 font-medium text-text-primary" : "bg-surface-3 text-text-secondary hover:text-text-primary"}`}
+              >
+                {f.rotulo}
+              </button>
+            ))}
+            <span className="ml-auto hidden text-[10px] text-text-muted sm:inline">Ctrl+Enter abre em nova aba</span>
+          </div>
+        )}
+
         <div ref={listaRef} className="overflow-y-auto p-1.5">
-          {itens.length === 0 && <p className="px-3 py-8 text-center text-sm text-text-muted">Nada encontrado. Tente outro termo.</p>}
+          {buscando && <p role="status" className="px-3 py-2 text-xs text-text-muted">Buscando…</p>}
+          {itens.length === 0 && !buscando && <p className="px-3 py-8 text-center text-sm text-text-muted">{consultaTexto.length === 1 ? "Digite ao menos 2 letras para buscar." : "Nada encontrado. Tente outro termo ou outro filtro."}</p>}
           {itens.map((item, i) => {
             const cabecalho = item.grupo !== grupoAnterior;
             grupoAnterior = item.grupo;
@@ -244,7 +296,10 @@ export function CommandPalette({
                   }`}
                 >
                   <item.icone size={15} strokeWidth={1.75} className={i === ativo ? "text-cyan" : "text-text-muted"} />
-                  <span className="min-w-0 flex-1 truncate">{item.rotulo}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.rotulo}</span>
+                    {item.detalhe && <span className="block truncate text-xs text-text-muted">{item.detalhe}</span>}
+                  </span>
                   {item.dica && <span className="shrink-0 text-xs text-text-muted">{item.dica}</span>}
                   {item.atalho && (
                     <kbd className="shrink-0 rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
