@@ -43,6 +43,9 @@ pub fn cors_mesma_origem() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origens_tauri))
         .allow_credentials(true)
+        // Sem isto o Chromium guarda o preflight só 5 s e quase toda chamada do Tauri/Android vira dois round-trips.
+        // 7200 s é o teto aceito pelo Chromium.
+        .max_age(std::time::Duration::from_secs(7200))
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::PUT, Method::DELETE])
         .allow_headers([
             axum::http::header::CONTENT_TYPE,

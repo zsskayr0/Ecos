@@ -5,7 +5,7 @@
 
 use ecos_app::config::Config;
 use ecos_app::db::{self, IndexDb};
-use ecos_app::middleware::{self, rate_limit::RateLimitLayer, security_headers};
+use ecos_app::middleware::{self};
 use ecos_app::state::AppState;
 use ecos_app::{espacos, jobs, routes};
 use std::net::SocketAddr;
@@ -51,28 +51,14 @@ async fn main() -> anyhow::Result<()> {
     jobs::push::iniciar(state.clone());
     jobs::mdns::anunciar(&config);
 
-    let mut app = routes::montar(state)
-        .layer(security_headers::cors_mesma_origem())
-        .layer(security_headers::csp())
-        .layer(security_headers::nosniff())
-        .layer(security_headers::referrer_policy())
-        // limite global, frouxo — defesa em profundidade além dos limites
-        // específicos de cada grupo de rota sensível (seção 5.4).
-        .layer(RateLimitLayer::new(300, Duration::from_secs(60)));
-
-    // Uma porta só em produção (seção 2, modelo Jellyfin/Immich): serve a
-    // build estática do client como fallback de qualquer rota que `montar`
-    // não reconheceu — `/api/*` e `/health*` sempre respondem antes disso,
-    // então isto nunca intercepta a API, só as rotas de navegação do SPA
-    // (`index.html` via `not_found_service`, já que o client faz roteamento
-    // no próprio browser).
+    // Uma porta só em produção (seção 2, modelo Jellyfin/Immich): serve a build estática do client como fallback de
+    // qualquer rota que `montar` não reconheceu — `/api/*` e `/health*` sempre respondem antes disso, então isto
+    // nunca intercepta a API, só as rotas de navegação do SPA (`index.html` via `not_found_service`). A pilha de
+    // camadas (CORS, CSP, limite, gzip, cache de estáticos) vive em `middleware::camadas`.
     if let Some(static_dir) = &config.static_dir {
-        let index_html = static_dir.join("index.html");
-        let servico = tower_http::services::ServeDir::new(static_dir)
-            .not_found_service(tower_http::services::ServeFile::new(index_html));
-        app = app.fallback_service(servico);
         tracing::info!(static_dir = %static_dir.display(), "servindo build do client (uma porta só, seção 2)");
     }
+    let app = middleware::camadas::completar(routes::montar(state), config.static_dir.as_deref());
 
     let endereco = SocketAddr::from(([0, 0, 0, 0], config.porta));
     tracing::info!(endereco = %endereco, ambiente = ?config.ambiente, "ecos-app ouvindo");

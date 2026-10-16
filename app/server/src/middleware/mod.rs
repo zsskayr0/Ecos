@@ -2,6 +2,7 @@
 //! endpoint individual.
 
 pub mod auth_guard;
+pub mod camadas;
 pub mod log_sanitizer;
 pub mod rate_limit;
 pub mod security_headers;

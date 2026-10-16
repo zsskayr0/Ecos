@@ -102,7 +102,8 @@ where
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        let ip = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0.ip());
+        // Preflight de CORS (OPTIONS) não consome o limite: o navegador o dispara sozinho, sem ação da pessoa.
+        let ip = if req.method() == axum::http::Method::OPTIONS { None } else { req.extensions().get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0.ip()) };
         let limiter = self.limiter.clone();
         let mut inner = self.inner.clone();
 
