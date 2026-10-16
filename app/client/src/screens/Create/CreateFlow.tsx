@@ -328,7 +328,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
       return true;
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível salvar. O ecos-app está rodando?"));
+      setErro(mensagemDeErro(e, "Não consegui falar com o servidor. Confira o endereço e sua conexão."));
       // Com o servidor fora do ar, o texto não pode sumir se a janela for fechada: fica neste aparelho até ser recuperado.
       if ((tipo === "nota" || tipo === "tarefa") && draft.texto.trim()) {
         try { localStorage.setItem(CHAVE_RASCUNHO_FALHA, JSON.stringify({ tipo, draft })); } catch { /* cache indisponível */ }

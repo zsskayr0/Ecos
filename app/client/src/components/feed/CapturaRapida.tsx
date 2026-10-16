@@ -36,7 +36,7 @@ export function CapturaRapida() {
       else await tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo });
       setTexto(""); notificar();
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível salvar."));
+      setErro(mensagemDeErro(e, "Não consegui salvar a captura. Confira sua conexão e tente de novo."));
     } finally {
       setEnviando(false);
       campo.current?.focus();

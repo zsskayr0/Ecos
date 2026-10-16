@@ -54,8 +54,8 @@ export function ServerConfigScreen() {
 
       <p className="mb-6 text-sm leading-snug text-text-muted">
         {estaNoTauri()
-          ? "O Ecos roda local-first: esse app fala direto com o ecos-app rodando no seu computador (ou onde você hospedar). Aponte pro endereço certo — geralmente o IP do PC na sua rede, na porta 7023."
-          : "Deixe em branco pra usar o servidor padrão desta página. Só mexa aqui se você sabe que precisa apontar pra outro ecos-app."}
+          ? "O Ecos roda local-first: este app fala direto com o servidor do Ecos, que roda no seu computador ou onde você hospedar. Informe o endereço dele, geralmente o IP do computador na sua rede, com a porta 7023."
+          : "Deixe em branco para usar o servidor padrão desta página. Só altere se você precisa usar outro servidor do Ecos."}
       </p>
 
       <div className="flex items-end gap-3">

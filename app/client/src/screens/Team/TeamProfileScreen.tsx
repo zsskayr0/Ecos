@@ -35,6 +35,8 @@ export function TeamProfileScreen() {
   const { versao, notificar } = useRefreshBus();
   const [convidarAberto, setConvidarAberto] = useState(false);
   const [codigoConvite, setCodigoConvite] = useState<string | null>(null);
+  const [conviteFalhou, setConviteFalhou] = useState(false);
+  const [copiado, setCopiado] = useState(false);
   const [equipe, setEquipe] = useState<{ id: string; nome: string; tipo: TipoEquipe; cor?: string; avatar_atualizado_em?: number | null; estatisticas: { notas: number; tarefas: number } } | null>(null);
   const [membros, setMembros] = useState<Membro[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -82,12 +84,24 @@ export function TeamProfileScreen() {
     if (!equipeId) return;
     setConvidarAberto(true);
     if (codigoConvite) return;
+    setConviteFalhou(false);
     try {
       const r = await equipesApi.criarConvite(equipeId);
       setCodigoConvite(r.codigo);
       void carregarConvites();
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível gerar o convite."));
+      setConviteFalhou(true);
+      setErro(mensagemDeErro(e, "Não consegui gerar o convite. Confira sua conexão e tente de novo."));
+    }
+  }
+
+  async function copiarConvite(codigo: string) {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setErro("Não consegui copiar automaticamente. Selecione o código e copie à mão.");
     }
   }
 
@@ -237,7 +251,14 @@ export function TeamProfileScreen() {
           {codigoConvite ? (
             <QrConvite codigo={codigoConvite} base={obterServidorBaseUrl() ?? window.location.origin} />
           ) : (
-            <span className="font-mono-value text-sm text-text-primary">Gerando...</span>
+            conviteFalhou ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-text-secondary">Não consegui gerar o código de convite.</span>
+                <button type="button" onClick={() => { setConviteFalhou(false); void convidar(); }} className="min-h-11 shrink-0 rounded-lg px-3 text-xs font-medium text-steel-300">Tentar de novo</button>
+              </div>
+            ) : (
+              <span className="font-mono-value text-sm text-text-primary">Gerando...</span>
+            )
           )}
           {convites.length > 0 && (
             <ul aria-label="Convites ativos" className="mt-3 border-t border-border/60 pt-2">
@@ -252,9 +273,9 @@ export function TeamProfileScreen() {
           {codigoConvite && (
             <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
               <span className="font-mono-value text-sm text-text-primary">{codigoConvite}</span>
-              <button onClick={() => navigator.clipboard?.writeText(codigoConvite)} className="flex items-center gap-1.5 text-xs font-medium text-steel-300">
+              <button onClick={() => void copiarConvite(codigoConvite)} className="flex items-center gap-1.5 text-xs font-medium text-steel-300">
                 <Copy size={13} />
-                Copiar código
+                {copiado ? "Copiado" : "Copiar código"}
               </button>
             </div>
           )}

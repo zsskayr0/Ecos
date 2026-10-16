@@ -113,7 +113,7 @@ function NoteDetailMobile() {
       setEditando(false);
       notificar();
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível salvar."));
+      setErro(mensagemDeErro(e, "Não consegui salvar a nota. Confira sua conexão e tente de novo."));
     } finally {
       setSalvando(false);
     }
@@ -141,7 +141,7 @@ function NoteDetailMobile() {
       avisarExcluido("nota", nota?.titulo ?? "", notificar);
       navigate(-1);
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível apagar."));
+      setErro(mensagemDeErro(e, "Não consegui apagar a nota. Tente de novo em instantes."));
       setSalvando(false);
     }
   }

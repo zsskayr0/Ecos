@@ -32,8 +32,8 @@ export function AboutScreen() {
 
       <div className="mt-10 flex flex-col gap-1 text-sm text-text-muted">
         <p>Local-first: Notas e Tarefas vivem em arquivos .md nesta instância.</p>
-        <p>Sem conta em nuvem de terceiro — identidade é local (seção 5.1).</p>
-        <p>Rust em toda a base: cliente e servidor.</p>
+        <p>Sem conta em nuvem de terceiro: a sua identidade fica na sua instância.</p>
+        <p>Feito para funcionar mesmo sem internet, com os seus dados sempre com você.</p>
       </div>
 
       <Link

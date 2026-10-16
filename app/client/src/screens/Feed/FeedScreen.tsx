@@ -74,7 +74,7 @@ export function FeedScreen() {
       ];
       setItens([...novos, ...mapeados]);
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível carregar o Feed. O ecos-app está rodando?"));
+      setErro(mensagemDeErro(e, "Não consegui falar com o servidor. Confira o endereço e sua conexão."));
       setItens([]);
     }
   }, [filtroEquipeId, espacoAtivo, intercalarEquipes, equipes, perfil]);

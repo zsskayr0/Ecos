@@ -47,7 +47,7 @@ export function ReceptorCompartilhamento() {
         empilharAnexosDeCaptura([media.referencia(item)]);
       } catch (e) {
         falhas += 1;
-        ultimoErro = mensagemDeErro(e, "Não foi possível enviar a imagem. O ecos-app está acessível?");
+        ultimoErro = mensagemDeErro(e, "Não consegui enviar a imagem. Confira o endereço do servidor e sua conexão.");
       }
     }
     setAviso(falhas ? { tipo: "erro", texto: falhas === arquivos.length ? ultimoErro : `${falhas} de ${arquivos.length} imagens não foram enviadas.` } : null);

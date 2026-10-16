@@ -50,7 +50,7 @@ export function NotificationsScreen() {
     notificacoesApi
       .listar({ categoria: aba === "tudo" ? undefined : aba, limit: 100 })
       .then((p) => setItens(p.items))
-      .catch((e) => setErro(mensagemDeErro(e, "Não foi possível carregar.")));
+      .catch((e) => setErro(mensagemDeErro(e, "Não consegui carregar os avisos. Confira sua conexão e tente de novo.")));
   }, [aba, versao, tentativa]);
 
   const grupos = useMemo(() => agruparPorData(itens ?? []), [itens]);

@@ -92,7 +92,7 @@ function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolhe
           <OpcaoLocal
             Icon={Monitor}
             titulo="Neste computador"
-            desc="O ecos-app roda aqui mesmo, na porta 4090."
+            desc="O Ecos roda neste mesmo computador."
             onClick={onEscolherLocal}
           />
         )}
@@ -105,7 +105,7 @@ function Local({ onEscolherLocal, onEscolherRede, onEscolherAjuda }: { onEscolhe
         <OpcaoLocal
           Icon={HelpCircle}
           titulo="Ainda não tenho um Ecos rodando"
-          desc="Como subir o ecos-app antes de continuar."
+          desc="Como colocar o Ecos para rodar antes de continuar."
           onClick={onEscolherAjuda}
         />
       </div>
@@ -133,20 +133,13 @@ function Ajuda({ onVoltar }: { onVoltar: () => void }) {
         Voltar
       </button>
       <div>
-        <p className="mb-2 font-display text-2xl text-text-primary">Suba o ecos-app primeiro</p>
+        <p className="mb-2 font-display text-2xl text-text-primary">Coloque o servidor do Ecos para rodar primeiro</p>
         <p className="text-[15px] leading-snug text-text-secondary">
-          O Ecos é local-first de verdade: este app é só a interface. Em algum computador (o seu, um servidor em
-          casa, uma VPS) rode:
+          O Ecos guarda os seus dados no seu próprio servidor: este app é só a interface. Instale e ligue o servidor
+          em algum computador (o seu, um servidor em casa ou uma VPS), seguindo o guia de instalação do projeto.
         </p>
       </div>
-      <div className="rounded-2xl border border-border bg-surface-1 p-4">
-        <p className="font-mono-value text-xs leading-relaxed text-text-secondary">
-          ECOS_NOTES_PATH=./data/notes
-          <br />
-          cargo run -p ecos-app
-        </p>
-      </div>
-      <p className="text-sm text-text-secondary">Ou via Docker — veja o README do projeto (docker compose up).</p>
+      <p className="text-sm text-text-secondary">Se alguém da sua equipe já cuida do servidor, peça a essa pessoa o endereço dele e use "Em outro endereço".</p>
       <p className="text-xs text-text-muted">Depois de rodando, volta aqui e escolhe "Neste computador" ou "Em outro endereço".</p>
       <button onClick={onVoltar} className="mt-2 w-full rounded-2xl bg-steel-700 py-3.5 text-center font-body text-[15px] font-semibold text-white">
         Voltar
@@ -177,7 +170,7 @@ function Endereco({ valorInicial, onVoltar }: { valorInicial: string | null; onV
       window.location.reload();
     } catch {
       setResultado("erro");
-      setErro("Não consegui alcançar esse endereço. Confira se o ecos-app está rodando e se o celular/computador está na mesma rede (ou Tailscale).");
+      setErro("Não consegui alcançar esse endereço. Confira se o servidor do Ecos está ligado, se o endereço está certo e se este aparelho está na mesma rede (ou na mesma VPN).");
       definirServidorBaseUrl(null);
     } finally {
       setTestando(false);

@@ -70,7 +70,7 @@ export function SearchScreen() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErro(mensagemDeErro(e, "Não foi possível buscar."));
+        setErro(mensagemDeErro(e, "Não consegui buscar agora. Confira sua conexão e tente de novo."));
       });
     return () => {
       vivo = false;
