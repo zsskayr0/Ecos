@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonLista } from "@/components/common/Skeleton";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -92,7 +92,7 @@ export function NotificationsScreen() {
       {erro && <EstadoErro mensagem={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
 
       {itens === null ? (
-        erro ? null : <EstadoCarregando texto="Carregando…" />
+        erro ? null : <SkeletonLista itens={4} rotulo="Carregando…" />
       ) : itens.length === 0 ? (
         <EmptyState
           icon={Bell}

@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonDocumento } from "@/components/common/Skeleton";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { TIPOS_DE_EQUIPE, rotuloDoTipoDeEquipe, type TipoEquipe } from "@/lib/tipo-equipe";
@@ -166,7 +166,7 @@ export function TeamProfileScreen() {
         <button aria-label="Voltar" onClick={() => navigate(-1)} className="mb-4 text-text-muted">
           <ChevronLeft />
         </button>
-        <EstadoCarregando texto="Carregando…" />
+        <SkeletonDocumento rotulo="Carregando…" />
       </div>
     );
   }

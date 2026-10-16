@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonDocumento } from "@/components/common/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Briefcase, ChevronDown, ChevronLeft, Clock3, Moon, Sun, Utensils, Car, Sparkles, Coffee } from "lucide-react";
@@ -101,7 +101,7 @@ export function RotinaScreen() {
   }, []);
 
   const sair = () => navigate(primeiraVez ? "/feed" : location.pathname.startsWith("/configuracoes") ? "/configuracoes" : "/perfil");
-  if (!estado) return <EstadoCarregando texto="Carregando…" />;
+  if (!estado) return <div className="px-4 pt-1"><SkeletonDocumento rotulo="Carregando…" /></div>;
 
   const atualizar = (patch: Partial<Estado>) => setEstado((e) => (e ? { ...e, ...patch } : e));
   const valido = janelaValida(estado.sono)

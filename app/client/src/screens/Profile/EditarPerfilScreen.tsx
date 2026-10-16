@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { auth } from "@/lib/api";
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonPerfil } from "@/components/common/Skeleton";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
 import { validarSenhaNova } from "@/lib/validacao";
@@ -40,7 +40,7 @@ export function EditarPerfilScreen() {
   }
 
   if (!perfil) return status === "carregando"
-    ? <EstadoCarregando texto="Carregando perfil…" />
+    ? <SkeletonPerfil rotulo="Carregando perfil…" />
     : <div className="px-4 pt-1"><EstadoErro mensagem="Não foi possível carregar o perfil." onTentarDeNovo={() => void recarregarPerfil()} /></div>;
 
   return (

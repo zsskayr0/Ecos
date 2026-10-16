@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonLista } from "@/components/common/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Camera, ChevronLeft, ChevronRight, Loader2, MoreHorizontal, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -97,7 +97,7 @@ export function TeamsScreen() {
     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Suas equipes</p>
     <div ref={menus} className="overflow-visible rounded-2xl bg-surface-1">
       {perfil && <LinhaPessoal nome={nomeExibicao(perfil)} perfilId={perfil.id} versaoFoto={perfil.avatar_atualizado_em} cor={corPessoal} menuAberto={menuAberto === "pessoal"} enviandoFoto={enviandoFoto === "pessoal"} onAbrir={() => navigate(`${baseEquipe}/pessoal`)} onMenu={() => setMenuAberto((id) => id === "pessoal" ? null : "pessoal")} onFoto={(arquivo) => void trocarFotoPessoal(arquivo)} onCor={mudarCorPessoal} />}
-      {carregando ? <EstadoCarregando /> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`${baseEquipe}/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} onCor={(cor, aplicar) => void salvarCor(equipe, cor, aplicar)} />)}
+      {carregando ? <SkeletonLista itens={3} rotulo="Carregando equipes…" /> : equipes.map((equipe) => <LinhaEquipe key={equipe.id} equipe={equipe} menuAberto={menuAberto === equipe.id} enviandoFoto={enviandoFoto === equipe.id} onAbrir={() => navigate(`${baseEquipe}/${equipe.id}`)} onMenu={() => setMenuAberto((id) => id === equipe.id ? null : equipe.id)} onFoto={(arquivo) => void trocarFoto(equipe, arquivo)} onRenomear={() => { setDialogo({ tipo: "renomear", equipe }); setMenuAberto(null); }} onExcluir={() => { setDialogo({ tipo: "excluir", equipe }); setMenuAberto(null); }} onCor={(cor, aplicar) => void salvarCor(equipe, cor, aplicar)} />)}
     </div>
     <button onClick={() => navigate(`${baseEquipe}/nova`)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-steel-300 hover:bg-surface-1"><Plus size={17} />Criar ou entrar em uma equipe</button>
     <p className="mt-4 flex items-center gap-2 text-xs text-text-muted"><Users size={14} />Dono e administradores podem editar a equipe; somente o dono pode excluí-la.</p>
