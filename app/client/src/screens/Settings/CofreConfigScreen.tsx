@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { CircleDashed, ExternalLink, FileSpreadsheet, Github, HelpCircle, Lock, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ExternalLink, Github, Lock } from "lucide-react";
+import { ABAS_COFRE, type Aba } from "./abas-cofre";
 import { vault } from "@/lib/api";
 import { useAppUI } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -67,19 +68,13 @@ function ExibicaoValores() {
   );
 }
 
-export type Aba = "seguranca" | "valores" | "csv" | "github" | "ajuda";
+export type { Aba } from "./abas-cofre";
+export { ABAS_COFRE } from "./abas-cofre";
 type Estado = "carregando" | "desativado" | "ativar" | "bloqueado" | "aberto";
 
 /** Endereço do repositório do Ecos. Vazio enquanto ele não é publicado: a aba GitHub mostra o aviso em vez de um link quebrado. */
 const REPOSITORIO_URL = "";
 
-export const ABAS_COFRE: { id: Aba; rotulo: string; Icone: LucideIcon }[] = [
-  { id: "seguranca", rotulo: "Segurança", Icone: ShieldCheck },
-  { id: "valores", rotulo: "Exibição e valores", Icone: CircleDashed },
-  { id: "csv", rotulo: "Backup & CSV", Icone: FileSpreadsheet },
-  { id: "github", rotulo: "GitHub", Icone: Github },
-  { id: "ajuda", rotulo: "Ajuda & Suporte", Icone: HelpCircle },
-];
 
 const DUVIDAS: [string, string][] = [
   ["Esqueci a senha do Cofre. E agora?", "A senha do Cofre não pode ser recuperada: ela protege seus dados de ponta a ponta. Se você a perdeu, só é possível resetar o Cofre (Configurações › Privacidade e cofre), o que apaga os lançamentos. O servidor guarda um backup de segurança antes."],

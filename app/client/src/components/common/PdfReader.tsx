@@ -1,12 +1,25 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, ExternalLink, Minus, Plus } from "lucide-react";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
-// Build "legacy" (WebView do Android mais antigo) e worker do próprio bundle — o CSP do app só admite `script-src 'self'`.
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+type PdfJs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
+let pdfjsCarregado: Promise<PdfJs> | null = null;
+
+/**
+ * A biblioteca (e o worker) só são baixados quando o primeiro PDF é aberto, fora do pacote inicial.
+ * Build "legacy" (WebView do Android mais antigo) e worker do próprio bundle: o CSP do app só admite `script-src 'self'`.
+ */
+function carregarPdfjs(): Promise<PdfJs> {
+  pdfjsCarregado ??= Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
+  ]).then(([pdfjs, worker]) => {
+    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    return pdfjs;
+  }).catch((e) => { pdfjsCarregado = null; throw e; });
+  return pdfjsCarregado;
+}
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 4;
@@ -88,9 +101,15 @@ export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: A
     setPdf(null);
     setErro(false);
     // `data` é transferido para o worker (o buffer original fica inutilizável) — por isso a cópia.
-    const tarefa = pdfjs.getDocument({ data: new Uint8Array(dados.slice(0)), isEvalSupported: false });
-    tarefa.promise
+    let tarefa: PDFDocumentLoadingTask | null = null;
+    carregarPdfjs()
+      .then((pdfjs) => {
+        if (!vivo) return null;
+        tarefa = pdfjs.getDocument({ data: new Uint8Array(dados.slice(0)), isEvalSupported: false });
+        return tarefa.promise;
+      })
       .then(async (doc) => {
+        if (!doc) return;
         const primeira = await doc.getPage(1);
         const v = primeira.getViewport({ scale: 1 });
         if (!vivo) return;
@@ -101,7 +120,7 @@ export function PdfReader({ dados, nome, urlExterna, aoMedirPagina }: { dados: A
       .catch(() => vivo && setErro(true));
     return () => {
       vivo = false;
-      void tarefa.destroy();
+      void tarefa?.destroy();
     };
   }, [dados]);
 

@@ -1,46 +1,67 @@
-import { AdministracaoScreen } from "@/screens/Settings/AdministracaoScreen";
-import { EscanearQrScreen } from "@/screens/Team/EscanearQrScreen";
-import { EntrarEquipeScreen } from "@/screens/Team/EntrarEquipeScreen";
+import { lazy, type ComponentType, type ReactElement } from "react";
 import { Navigate, Route } from "react-router-dom";
 
+import { TelaSobDemanda } from "@/components/common/TelaSobDemanda";
+import { ABAS_COFRE } from "@/screens/Settings/abas-cofre";
 import { FeedScreen } from "@/screens/Feed/FeedScreen";
-import { TodayScreen } from "@/screens/Today/TodayScreen";
-import { NotesRootScreen } from "@/screens/Notes/NotesRootScreen";
-import { FolderScreen } from "@/screens/Notes/FolderScreen";
-import { NoteDetailScreen } from "@/screens/Notes/NoteDetailScreen";
-import { FolderCreateScreen } from "@/screens/Notes/FolderCreateScreen";
-import { SearchScreen } from "@/screens/Search/SearchScreen";
-import { AgendaScreen } from "@/screens/Agenda/AgendaScreen";
-import { EventosScreen } from "@/screens/Eventos/EventosScreen";
-import { TaskDetailScreen } from "@/screens/Agenda/TaskDetailScreen";
-import { TaskFoldersRootScreen } from "@/screens/Tasks/TaskFoldersRootScreen";
-import { TaskFolderScreen } from "@/screens/Tasks/TaskFolderScreen";
-import { TaskFolderCreateScreen } from "@/screens/Tasks/TaskFolderCreateScreen";
-import { VaultEntry, VaultTransacaoEntry } from "@/screens/Vault/VaultScreen";
-import { TeamProfileScreen } from "@/screens/Team/TeamProfileScreen";
-import { TeamCreateJoinScreen } from "@/screens/Team/TeamCreateJoinScreen";
-import { TeamsScreen } from "@/screens/Team/TeamsScreen";
-import { ProfileScreen } from "@/screens/Profile/ProfileScreen";
-import { RotinaScreen } from "@/screens/Profile/RotinaScreen";
-import { NotificationsScreen } from "@/screens/Notifications/NotificationsScreen";
-import { EditarPerfilScreen } from "@/screens/Profile/EditarPerfilScreen";
-import { ABAS_COFRE, CofreConfigScreen } from "@/screens/Settings/CofreConfigScreen";
-import { ConfiguracoesLayout } from "@/screens/Settings/ConfiguracoesLayout";
-import { SettingsScreen } from "@/screens/Settings/SettingsScreen";
-import { ServerConfigScreen } from "@/screens/Settings/ServerConfigScreen";
-import { PrivacyVaultScreen } from "@/screens/Settings/PrivacyVaultScreen";
-import { ContaDadosScreen } from "@/screens/Settings/ContaDadosScreen";
-import { AparenciaScreen } from "@/screens/Settings/AparenciaScreen";
-import { AboutScreen } from "@/screens/Settings/AboutScreen";
-import { LicensesScreen } from "@/screens/Settings/LicensesScreen";
-import { CalendarPreferencesScreen } from "@/screens/Settings/CalendarPreferencesScreen";
-import { UsoDiarioScreen } from "@/screens/Settings/UsoDiarioScreen";
-import { NotificacoesPreferenciasScreen } from "@/screens/Settings/NotificacoesPreferenciasScreen";
-import { OrganizationScreen } from "@/screens/Settings/OrganizationScreen";
-import { HelpScreen } from "@/screens/Help/HelpScreen";
-import { MediaScreen } from "@/screens/Media/MediaScreen";
-import { FileViewerScreen } from "@/screens/Media/FileViewerScreen";
-import { TrashScreen } from "@/screens/Trash/TrashScreen";
+
+/**
+ * Cada tela é um pedaço do pacote baixado só quando a rota é aberta (o Feed, que é a tela inicial, continua no pacote
+ * principal). `carregar` troca o `import()` nomeado por um componente preguiçoso; o `Suspense` de `tela` mostra o
+ * carregamento padrão enquanto o pedaço chega e o de erro (com "Recarregar") se o download falhar.
+ */
+type PropsDe<T> = T extends ComponentType<infer P> ? P : never;
+function carregar<M, K extends keyof M>(importar: () => Promise<M>, nome: K) {
+  return lazy(() => importar().then((m) => ({ default: m[nome] as unknown as ComponentType<PropsDe<M[K]>> })));
+}
+
+const tela = (Tela: ComponentType): ReactElement => (
+  <TelaSobDemanda>
+    <Tela />
+  </TelaSobDemanda>
+);
+
+const TodayScreen = carregar(() => import("@/screens/Today/TodayScreen"), "TodayScreen");
+const NotesRootScreen = carregar(() => import("@/screens/Notes/NotesRootScreen"), "NotesRootScreen");
+const FolderScreen = carregar(() => import("@/screens/Notes/FolderScreen"), "FolderScreen");
+const NoteDetailScreen = carregar(() => import("@/screens/Notes/NoteDetailScreen"), "NoteDetailScreen");
+const FolderCreateScreen = carregar(() => import("@/screens/Notes/FolderCreateScreen"), "FolderCreateScreen");
+const SearchScreen = carregar(() => import("@/screens/Search/SearchScreen"), "SearchScreen");
+const AgendaScreen = carregar(() => import("@/screens/Agenda/AgendaScreen"), "AgendaScreen");
+const EventosScreen = carregar(() => import("@/screens/Eventos/EventosScreen"), "EventosScreen");
+const TaskDetailScreen = carregar(() => import("@/screens/Agenda/TaskDetailScreen"), "TaskDetailScreen");
+const TaskFoldersRootScreen = carregar(() => import("@/screens/Tasks/TaskFoldersRootScreen"), "TaskFoldersRootScreen");
+const TaskFolderScreen = carregar(() => import("@/screens/Tasks/TaskFolderScreen"), "TaskFolderScreen");
+const TaskFolderCreateScreen = carregar(() => import("@/screens/Tasks/TaskFolderCreateScreen"), "TaskFolderCreateScreen");
+const VaultEntry = carregar(() => import("@/screens/Vault/VaultScreen"), "VaultEntry");
+const VaultTransacaoEntry = carregar(() => import("@/screens/Vault/VaultScreen"), "VaultTransacaoEntry");
+const TeamProfileScreen = carregar(() => import("@/screens/Team/TeamProfileScreen"), "TeamProfileScreen");
+const TeamCreateJoinScreen = carregar(() => import("@/screens/Team/TeamCreateJoinScreen"), "TeamCreateJoinScreen");
+const TeamsScreen = carregar(() => import("@/screens/Team/TeamsScreen"), "TeamsScreen");
+const EscanearQrScreen = carregar(() => import("@/screens/Team/EscanearQrScreen"), "EscanearQrScreen");
+const EntrarEquipeScreen = carregar(() => import("@/screens/Team/EntrarEquipeScreen"), "EntrarEquipeScreen");
+const ProfileScreen = carregar(() => import("@/screens/Profile/ProfileScreen"), "ProfileScreen");
+const RotinaScreen = carregar(() => import("@/screens/Profile/RotinaScreen"), "RotinaScreen");
+const EditarPerfilScreen = carregar(() => import("@/screens/Profile/EditarPerfilScreen"), "EditarPerfilScreen");
+const NotificationsScreen = carregar(() => import("@/screens/Notifications/NotificationsScreen"), "NotificationsScreen");
+const CofreConfigScreen = carregar(() => import("@/screens/Settings/CofreConfigScreen"), "CofreConfigScreen");
+const ConfiguracoesLayout = carregar(() => import("@/screens/Settings/ConfiguracoesLayout"), "ConfiguracoesLayout");
+const SettingsScreen = carregar(() => import("@/screens/Settings/SettingsScreen"), "SettingsScreen");
+const ServerConfigScreen = carregar(() => import("@/screens/Settings/ServerConfigScreen"), "ServerConfigScreen");
+const PrivacyVaultScreen = carregar(() => import("@/screens/Settings/PrivacyVaultScreen"), "PrivacyVaultScreen");
+const ContaDadosScreen = carregar(() => import("@/screens/Settings/ContaDadosScreen"), "ContaDadosScreen");
+const AparenciaScreen = carregar(() => import("@/screens/Settings/AparenciaScreen"), "AparenciaScreen");
+const AboutScreen = carregar(() => import("@/screens/Settings/AboutScreen"), "AboutScreen");
+const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"), "LicensesScreen");
+const CalendarPreferencesScreen = carregar(() => import("@/screens/Settings/CalendarPreferencesScreen"), "CalendarPreferencesScreen");
+const UsoDiarioScreen = carregar(() => import("@/screens/Settings/UsoDiarioScreen"), "UsoDiarioScreen");
+const NotificacoesPreferenciasScreen = carregar(() => import("@/screens/Settings/NotificacoesPreferenciasScreen"), "NotificacoesPreferenciasScreen");
+const OrganizationScreen = carregar(() => import("@/screens/Settings/OrganizationScreen"), "OrganizationScreen");
+const AdministracaoScreen = carregar(() => import("@/screens/Settings/AdministracaoScreen"), "AdministracaoScreen");
+const HelpScreen = carregar(() => import("@/screens/Help/HelpScreen"), "HelpScreen");
+const MediaScreen = carregar(() => import("@/screens/Media/MediaScreen"), "MediaScreen");
+const FileViewerScreen = carregar(() => import("@/screens/Media/FileViewerScreen"), "FileViewerScreen");
+const TrashScreen = carregar(() => import("@/screens/Trash/TrashScreen"), "TrashScreen");
 
 /**
  * The single route table for every content screen — the mobile shell
@@ -53,76 +74,82 @@ export const screenRoutes = (
     <Route path="/" element={<Navigate to="/feed" replace />} />
 
     <Route path="/feed" element={<FeedScreen />} />
-    <Route path="/hoje" element={<TodayScreen />} />
+    <Route path="/hoje" element={tela(TodayScreen)} />
     {/* Link legado: a administração agora pertence a Configurações. */}
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
 
-    <Route path="/notas" element={<NotesRootScreen />} />
-    <Route path="/notas/pasta/nova" element={<FolderCreateScreen />} />
-    <Route path="/notas/pasta/*" element={<FolderScreen />} />
-    <Route path="/notas/nota/:id" element={<NoteDetailScreen />} />
+    <Route path="/notas" element={tela(NotesRootScreen)} />
+    <Route path="/notas/pasta/nova" element={tela(FolderCreateScreen)} />
+    <Route path="/notas/pasta/*" element={tela(FolderScreen)} />
+    <Route path="/notas/nota/:id" element={tela(NoteDetailScreen)} />
 
-    <Route path="/busca" element={<SearchScreen />} />
+    <Route path="/busca" element={tela(SearchScreen)} />
 
-    <Route path="/agenda" element={<AgendaScreen />} />
-    <Route path="/eventos" element={<EventosScreen />} />
-    <Route path="/tarefa/:id" element={<TaskDetailScreen />} />
+    <Route path="/agenda" element={tela(AgendaScreen)} />
+    <Route path="/eventos" element={tela(EventosScreen)} />
+    <Route path="/tarefa/:id" element={tela(TaskDetailScreen)} />
 
     {/* Folder-browsing mode for Tarefas, reachable from the Drawer
         (section 3.9) — Agenda stays the calendar/time-blocking view; this
         is the by-folder view, same relationship Notas has to its own
         folder screens. */}
-    <Route path="/tarefas" element={<TaskFoldersRootScreen />} />
-    <Route path="/tarefas/pasta/nova" element={<TaskFolderCreateScreen />} />
-    <Route path="/tarefas/pasta/*" element={<TaskFolderScreen />} />
-    <Route path="/media" element={<MediaScreen />} />
-    <Route path="/media/ver" element={<FileViewerScreen />} />
-    <Route path="/lixeira" element={<TrashScreen />} />
+    <Route path="/tarefas" element={tela(TaskFoldersRootScreen)} />
+    <Route path="/tarefas/pasta/nova" element={tela(TaskFolderCreateScreen)} />
+    <Route path="/tarefas/pasta/*" element={tela(TaskFolderScreen)} />
+    <Route path="/media" element={tela(MediaScreen)} />
+    <Route path="/media/ver" element={tela(FileViewerScreen)} />
+    <Route path="/lixeira" element={tela(TrashScreen)} />
 
-    <Route path="/cofre" element={<VaultEntry />} />
-    <Route path="/cofre/transacao/:id" element={<VaultTransacaoEntry />} />
-    <Route path="/cofre/*" element={<VaultEntry />} />
+    <Route path="/cofre" element={tela(VaultEntry)} />
+    <Route path="/cofre/transacao/:id" element={tela(VaultTransacaoEntry)} />
+    <Route path="/cofre/*" element={tela(VaultEntry)} />
 
-    <Route path="/equipe/nova" element={<TeamCreateJoinScreen />} />
-    <Route path="/equipe/escanear" element={<EscanearQrScreen />} />
-    <Route path="/equipes" element={<TeamsScreen />} />
-    <Route path="/equipe/:equipeId" element={<TeamProfileScreen />} />
+    <Route path="/equipe/nova" element={tela(TeamCreateJoinScreen)} />
+    <Route path="/equipe/escanear" element={tela(EscanearQrScreen)} />
+    <Route path="/equipes" element={tela(TeamsScreen)} />
+    <Route path="/equipe/:equipeId" element={tela(TeamProfileScreen)} />
 
-    <Route path="/perfil" element={<ProfileScreen />} />
+    <Route path="/perfil" element={tela(ProfileScreen)} />
     <Route path="/perfil/editar" element={<Navigate to="/perfil" replace />} />
-    <Route path="/perfil/rotina" element={<RotinaScreen />} />
+    <Route path="/perfil/rotina" element={tela(RotinaScreen)} />
 
-    <Route path="/notificacoes" element={<NotificationsScreen />} />
+    <Route path="/notificacoes" element={tela(NotificationsScreen)} />
 
-    <Route path="/configuracoes" element={<ConfiguracoesLayout />}>
-      <Route index element={<SettingsScreen />} />
-      <Route path="servidor" element={<ServerConfigScreen />} />
+    <Route path="/configuracoes" element={tela(ConfiguracoesLayout)}>
+      <Route index element={tela(SettingsScreen)} />
+      <Route path="servidor" element={tela(ServerConfigScreen)} />
       <Route path="sync" element={<Navigate to="/configuracoes/servidor" replace />} />
-      <Route path="privacidade" element={<PrivacyVaultScreen />} />
+      <Route path="privacidade" element={tela(PrivacyVaultScreen)} />
       <Route path="cofre" element={<Navigate to="/configuracoes/cofre/seguranca" replace />} />
-      {ABAS_COFRE.map(({ id }) => <Route key={id} path={`cofre/${id}`} element={<CofreConfigScreen aba={id} />} />)}
-      <Route path="conta" element={<ContaDadosScreen />} />
-      <Route path="aparencia" element={<AparenciaScreen />} />
-      <Route path="calendario" element={<CalendarPreferencesScreen />} />
-      <Route path="uso-diario" element={<UsoDiarioScreen />} />
-      <Route path="organizacao" element={<OrganizationScreen />} />
-      <Route path="sobre" element={<AboutScreen />} />
-      <Route path="sobre/licencas" element={<LicensesScreen />} />
-      <Route path="perfil" element={<ProfileScreen />} />
-      <Route path="editar-perfil" element={<EditarPerfilScreen />} />
-      <Route path="rotina" element={<RotinaScreen />} />
-      <Route path="equipes" element={<TeamsScreen />} />
-      <Route path="equipes/nova" element={<TeamCreateJoinScreen />} />
-      <Route path="equipes/escanear" element={<EscanearQrScreen />} />
-      <Route path="equipes/:equipeId" element={<TeamProfileScreen />} />
-      <Route path="notificacoes" element={<NotificacoesPreferenciasScreen />} />
-      <Route path="administracao" element={<AdministracaoScreen />} />
+      {ABAS_COFRE.map(({ id }) => (
+        <Route
+          key={id}
+          path={`cofre/${id}`}
+          element={<TelaSobDemanda><CofreConfigScreen aba={id} /></TelaSobDemanda>}
+        />
+      ))}
+      <Route path="conta" element={tela(ContaDadosScreen)} />
+      <Route path="aparencia" element={tela(AparenciaScreen)} />
+      <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
+      <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
+      <Route path="organizacao" element={tela(OrganizationScreen)} />
+      <Route path="sobre" element={tela(AboutScreen)} />
+      <Route path="sobre/licencas" element={tela(LicensesScreen)} />
+      <Route path="perfil" element={tela(ProfileScreen)} />
+      <Route path="editar-perfil" element={tela(EditarPerfilScreen)} />
+      <Route path="rotina" element={tela(RotinaScreen)} />
+      <Route path="equipes" element={tela(TeamsScreen)} />
+      <Route path="equipes/nova" element={tela(TeamCreateJoinScreen)} />
+      <Route path="equipes/escanear" element={tela(EscanearQrScreen)} />
+      <Route path="equipes/:equipeId" element={tela(TeamProfileScreen)} />
+      <Route path="notificacoes" element={tela(NotificacoesPreferenciasScreen)} />
+      <Route path="administracao" element={tela(AdministracaoScreen)} />
     </Route>
 
     {/* Destino do QR code de convite de equipe: entra na equipe e abre a página dela. */}
-    <Route path="/entrar/:codigo" element={<EntrarEquipeScreen />} />
+    <Route path="/entrar/:codigo" element={tela(EntrarEquipeScreen)} />
 
-    <Route path="/ajuda" element={<HelpScreen />} />
+    <Route path="/ajuda" element={tela(HelpScreen)} />
 
     <Route path="*" element={<Navigate to="/feed" replace />} />
   </>

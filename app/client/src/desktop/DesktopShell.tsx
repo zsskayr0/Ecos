@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Routes } from "react-router-dom";
 import { ArrowLeft, Bell, ChevronDown, FolderTree, Lock, LogOut, Search, User, Users, Settings, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
@@ -22,7 +22,10 @@ import { WorkspaceProvider, useWorkspace } from "./workspace-store";
 import { PathReporter } from "./TabContent";
 import { definirTopoNavegacao, navegacaoDaAba, topoNavegacao } from "./navegacao-abas";
 import { screenRoutes } from "@/routes/screen-routes";
-import { VaultScreen } from "@/screens/Vault/VaultScreen";
+import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+
+// O Cofre é pesado e só abre sob demanda: fica fora do pacote inicial.
+const VaultScreen = lazy(() => import("@/screens/Vault/VaultScreen").then((m) => ({ default: m.VaultScreen })));
 
 const COFRE_ABERTO_KEY = "ecos.desktop.cofre-aberto.v1";
 const ehMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
@@ -270,7 +273,7 @@ function Conteudo() {
     <SoltarNoCofre />
     {cofreAberto ? (
       <div className="flex h-screen flex-col overflow-hidden bg-base">
-        <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={[cofreCaminhoInicial()]}><PathReporter chave="cofre" hist={[cofreCaminhoInicial()]} idx={0} /><VaultScreen embedded voltar={() => setCofreAberto(false)} /></MemoryRouter></div>
+        <div className="min-h-0 flex-1 overflow-hidden"><MemoryRouter initialEntries={[cofreCaminhoInicial()]}><PathReporter chave="cofre" hist={[cofreCaminhoInicial()]} idx={0} /><Suspense fallback={<EstadoCarregando />}><VaultScreen embedded voltar={() => setCofreAberto(false)} /></Suspense></MemoryRouter></div>
         {janelas.map((j) => <DocumentoJanela key={j.id} path={j.path} ordem={j.ordem} z={j.z} aoFechar={() => fecharJanela(j.id)} aoFocar={() => trazerParaFrente(j.id)} />)}
         {capturaAberta === "transacao" && <DocumentoJanela path="/cofre/transacao/novo" titulo={tituloCaptura || "Novo lançamento"} ordem={janelas.length} z={contador.current + 1} aoFechar={fecharCaptura} aoFocar={() => {}} cabecalhoNoConteudo conteudo={<div className="cofre-app cofre-capture-scope"><CreateFlow embedded contextoDesktop="cofre" onTitleChange={setTituloCaptura} pastaContexto={pastaContexto} /></div>} />}
       </div>

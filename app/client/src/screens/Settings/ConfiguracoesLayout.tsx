@@ -3,7 +3,7 @@ import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Bell, CalendarClock, ListChecks, CalendarDays, DatabaseBackup, FolderTree, Info, Palette, Server, ShieldCheck, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAuth } from "@/lib/auth-context";
-import { ABAS_COFRE } from "./CofreConfigScreen";
+import { ABAS_COFRE } from "./abas-cofre";
 
 export interface Aba { para: string; rotulo: string; Icone: LucideIcon; fim?: boolean }
 

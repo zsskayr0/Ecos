@@ -41,4 +41,18 @@ export default defineConfig({
     },
   },
   envPrefix: ["VITE_", "TAURI_"],
+  build: {
+    rollupOptions: {
+      output: {
+        // Bibliotecas estáveis em pedaços próprios: o pacote da aplicação muda a cada versão e elas, quase nunca,
+        // então o cache do navegador (e do Service Worker) reaproveita o que não mudou.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/node_modules\/(react|react-dom|react-router|react-router-dom|@remix-run|scheduler)\//.test(id)) return "vendor-react";
+          if (id.includes("node_modules/lucide-react/")) return "vendor-icones";
+          return undefined;
+        },
+      },
+    },
+  },
 });

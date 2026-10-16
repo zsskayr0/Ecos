@@ -1,5 +1,4 @@
-import { VaultScreen } from "@/screens/Vault/VaultScreen";
-import { useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
 import { ArmadilhaFoco } from "./components/common/ArmadilhaFoco";
@@ -9,6 +8,10 @@ import { useIsDesktop } from "@/lib/use-viewport";
 import { AppShell } from "@/components/layout/AppShell";
 import { DesktopShell } from "@/desktop/DesktopShell";
 import { screenRoutes } from "@/routes/screen-routes";
+import { TelaSobDemanda } from "@/components/common/TelaSobDemanda";
+
+// O Cofre é pesado e só abre sob demanda: fica fora do pacote inicial.
+const VaultScreen = lazy(() => import("@/screens/Vault/VaultScreen").then((m) => ({ default: m.VaultScreen })));
 import { AuthScreen } from "@/screens/Auth/AuthScreen";
 import { ReaceiteTermos } from "@/components/legal/ReaceiteTermos";
 import { TrocaSenhaObrigatoriaScreen } from "@/screens/Auth/TrocaSenhaObrigatoriaScreen";
@@ -99,7 +102,7 @@ function Shell() {
     window.addEventListener("popstate", navegar);
     return () => { window.removeEventListener("ecos:abrir-cofre", abrir); window.removeEventListener("popstate", navegar); };
   }, []);
-  if (cofre && !desktop) return <BrowserRouter><Routes><Route path="/cofre/transacao/:id" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /><Route path="*" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /></Routes></BrowserRouter>;
+  if (cofre && !desktop) return <BrowserRouter><TelaSobDemanda><Routes><Route path="/cofre/transacao/:id" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /><Route path="*" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /></Routes></TelaSobDemanda></BrowserRouter>;
   if (desktop) return <DesktopShell />;
 
   return (
