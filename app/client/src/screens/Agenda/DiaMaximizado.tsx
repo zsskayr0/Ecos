@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Dialog } from "@/components/common/Dialog";
 import { createPortal } from "react-dom";
 import { CalendarDays, CheckCircle2, ChevronDown, Clock, Hourglass, LayoutDashboard, ListChecks, Lock, Cloud, Repeat, Wallet, X } from "lucide-react";
 import type { EventoLocal } from "@/lib/eventos-locais";
@@ -119,7 +120,6 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   };
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); fechar(); }
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         if ((e.target as HTMLElement).closest("input, textarea, select")) return;
         const i = abas.findIndex((a) => a.id === aba);
@@ -262,8 +262,8 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   })();
 
   return createPortal(
-    <div className={`fixed inset-0 z-[45] flex items-center justify-center p-4 ${saindo ? "opacity-0 transition-opacity duration-150" : "ecos-backdrop-in"}`} style={{ backgroundColor: "rgb(0 0 0 / 0.55)", backdropFilter: "blur(4px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) fechar(); }}>
-      <section role="dialog" aria-modal="true" aria-label={`Hoje, ${titulo}`} className={`flex h-[min(86vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav ${saindo ? "scale-95 opacity-0 transition-all duration-150" : "ecos-modal-in"}`}>
+    <Dialog rotulo={`Hoje, ${titulo}`} onFechar={fechar} className={`fixed inset-0 z-[45] flex items-center justify-center p-4 bg-black/55 backdrop-blur-[4px] ${saindo ? "opacity-0 transition-opacity duration-150" : "ecos-backdrop-in"}`}>
+      <section className={`flex h-[min(86vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav ${saindo ? "scale-95 opacity-0 transition-all duration-150" : "ecos-modal-in"}`}>
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-surface-1 px-5 pt-4">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{hoje ? "Hoje" : "Agenda"}</p>
@@ -282,7 +282,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
         </header>
         <div key={aba} role="tabpanel" className="ecos-fade-in min-h-0 flex-1 overflow-y-auto p-5">{corpo}</div>
       </section>
-    </div>,
+    </Dialog>,
     document.body,
   );
 }

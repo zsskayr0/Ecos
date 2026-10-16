@@ -1,4 +1,5 @@
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { Dialog } from "@/components/common/Dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, CalendarClock, CalendarDays, ChevronDown, Folder, Search, Timer, X } from "lucide-react";
 import { tarefas as tarefasApi, type TarefaResumo } from "@/lib/api";
@@ -119,13 +120,9 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
   const opcoesDuracao: OpcaoMenu<string>[] = DURACOES_MENU.map((valor) => ({ valor: String(valor), rotulo: fmtDuracao(valor) }));
 
   return (
-    <div className="ecos-backdrop-in fixed inset-0 z-[120] flex bg-black/40 lg:items-center lg:justify-center lg:p-6 lg:backdrop-blur-[2px]" role="presentation" onPointerDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+    <Dialog rotulo="Alocar tempo para uma tarefa" onFechar={onFechar} className="ecos-backdrop-in fixed inset-0 z-[120] flex bg-black/40 lg:items-center lg:justify-center lg:p-6 lg:backdrop-blur-[2px]">
       <form
         noValidate
-        role="dialog"
-        aria-modal="true"
-        aria-label="Alocar tempo para uma tarefa"
-        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onFechar(); } }}
         onSubmit={(e) => {
           e.preventDefault();
           if (erro || !tarefa) return;
@@ -249,6 +246,6 @@ export function AlocarTempoDialog({ encaixe, onFechar, onAlocar }: { encaixe: nu
           <button type="submit" disabled={!!erro} className={`min-w-24 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-[background-color,border-color,color,transform,box-shadow] active:scale-95 ${erro ? "cursor-not-allowed border-border bg-surface-2 text-text-muted" : "border-[#1e4f82] bg-[#1e4f82] text-white shadow-sm hover:border-[#28679f] hover:bg-[#28679f] hover:shadow-md"}`}>Alocar</button>
         </footer>
       </form>
-    </div>
+    </Dialog>
   );
 }

@@ -1,4 +1,5 @@
 import { SeletorEcos } from "@/components/common/SeletorEcos";
+import { Dialog } from "@/components/common/Dialog";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { CheckCircle2, Expand, Flag, Inbox, ListChecks, MoreHorizontal, Trash2, X } from "lucide-react";
 import {
@@ -810,13 +811,9 @@ function MenuDeMovimento({ item, encaixe, podeRemover, onFechar, onAplicar, onRe
   const rotulo = item.tipo === "bloco" ? "Tempo alocado" : "Mover ou redimensionar";
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" role="presentation" onPointerDown={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+    <Dialog rotulo={`Mover ou redimensionar ${item.titulo}`} onFechar={onFechar} className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
       <form
         noValidate
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Mover ou redimensionar ${item.titulo}`}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onFechar(); } }}
         onSubmit={(e) => {
           e.preventDefault();
           if (erro) return;
@@ -861,7 +858,7 @@ function MenuDeMovimento({ item, encaixe, podeRemover, onFechar, onAplicar, onRe
           </div>
         </footer>
       </form>
-    </div>
+    </Dialog>
   );
 }
 

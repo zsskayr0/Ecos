@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Dialog } from "@/components/common/Dialog";
 import { MemoryRouter, Routes } from "react-router-dom";
 import { ArrowLeft, Bell, ChevronDown, FolderTree, Lock, LogOut, Search, User, Users, Settings, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
@@ -188,12 +189,12 @@ function MenuContaItem({ Icon, label, onClick }: { Icon: typeof User; label: str
 /** Painéis de conta não fazem parte do espaço de trabalho: são diálogos
  * modais, centralizados e previsíveis, sem alças de arraste/redimensionamento. */
 function PainelConta({ path, aoFechar }: { path: string; aoFechar: () => void }) {
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6 backdrop-blur-md ecos-fade-in" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) aoFechar(); }}>
-    <section role="dialog" aria-modal="true" aria-label="Painel da conta" className="flex h-[min(780px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
+  return <Dialog rotulo="Painel da conta" onFechar={aoFechar} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-6 backdrop-blur-md ecos-fade-in">
+    <section className="flex h-[min(780px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface-1 px-4"><span className="text-sm font-semibold text-text-primary">Conta</span><button type="button" onClick={aoFechar} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button></header>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"><MemoryRouter initialEntries={[path]}><Routes>{screenRoutes}</Routes></MemoryRouter></div>
     </section>
-  </div>;
+  </Dialog>;
 }
 
 interface JanelaAberta {

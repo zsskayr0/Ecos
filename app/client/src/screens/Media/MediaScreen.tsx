@@ -1,4 +1,5 @@
 import { avisar } from "@/lib/toast";
+import { Dialog } from "@/components/common/Dialog";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FileText, Image as ImageIcon, Library, Trash2, X } from "lucide-react";
@@ -71,12 +72,12 @@ export function MediaScreen() {
       <MenuProprio label="Ordenar por" value={ordem} onChange={setOrdem} options={[{ value: "recentes", label: "Upload mais recente" }, { value: "antigos", label: "Upload mais antigo" }, { value: "nome", label: "Nome A–Z" }, { value: "tamanho", label: "Maior tamanho" }]} />
     </section>
     {erro && <p role="alert" className="mb-4 text-sm text-error">{erro}</p>}
-    {confirmando && <div role="alertdialog" aria-modal="true" aria-label="Confirmar exclusão" className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-sm rounded-2xl border border-error/40 bg-surface-1 p-4">
+    {confirmando && <Dialog rotulo="Confirmar exclusão" onFechar={() => { if (!excluindo) setConfirmando(null); }} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-sm rounded-2xl border border-error/40 bg-surface-1 p-4">
       <p className="mb-2 break-words text-sm text-text-primary">Excluir {confirmando.nome}?</p>
       <p className="mb-3 text-xs text-text-secondary">O arquivo será movido para a lixeira e deixará de abrir nas notas ou tarefas que o utilizam.</p>
       {erro && <p role="alert" className="mb-3 text-sm text-error">{erro}</p>}
       <div className="flex gap-2"><button type="button" disabled={excluindo} onClick={() => setConfirmando(null)} className="rounded-xl bg-surface-2 px-4 py-2 text-sm text-text-primary">Cancelar</button><button type="button" disabled={excluindo} onClick={excluir} className="rounded-xl bg-error px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{excluindo ? "Excluindo..." : "Excluir"}</button></div>
-    </div></div>}
+    </div></Dialog>}
     {itens === null ? <EstadoCarregando texto="Carregando mídia…" /> : !itens.length && !erro ? <EmptyState icon={Library} title="Sua biblioteca está vazia" subtitle="Anexe imagens, PDFs e outros arquivos às notas ou tarefas para vê-los aqui." /> : <div className="grid grid-cols-2 gap-3">
       {filtrados.map((item) => <div key={item.caminho} className="overflow-hidden rounded-2xl border border-border bg-surface-1">
         <button type="button" onClick={(e) => abrirDocumento(`/media/ver?c=${encodeURIComponent(item.caminho)}`, e)} className="block w-full text-left">{item.mime.startsWith("image/") ? <img src={media.urlArquivo(item.caminho)} alt={item.nome} className="h-32 w-full object-cover" loading="lazy" /> : <div className="flex h-32 items-center justify-center bg-surface-2"><FileText size={34} className="text-steel-300" /></div>}</button>

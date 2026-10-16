@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { Dialog } from "@/components/common/Dialog";
 import {
   Columns2,
   FilePlus2,
@@ -190,15 +191,12 @@ export function CommandPalette({
 
   let grupoAnterior = "";
   return (
-    <div
+    <Dialog
+      rotulo="Paleta de comandos"
+      onFechar={aoFechar}
       className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-[12vh] backdrop-blur-[2px]"
-      onMouseDown={(e) => e.target === e.currentTarget && aoFechar()}
     >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Paleta de comandos"
-        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); aoFechar(); } }}
         className="flex max-h-[64vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-surface-2 shadow-nav ecos-fade-in"
       >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
@@ -219,8 +217,6 @@ export function CommandPalette({
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 executar(itens[ativo], e.ctrlKey || e.metaKey);
-              } else if (e.key === "Escape") {
-                aoFechar();
               }
             }}
           />
@@ -261,6 +257,6 @@ export function CommandPalette({
           })}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

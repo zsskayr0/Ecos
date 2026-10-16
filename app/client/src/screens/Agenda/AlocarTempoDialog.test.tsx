@@ -149,7 +149,7 @@ describe("Alocar tempo por diálogo", () => {
     fireEvent.keyDown(screen.getByRole("dialog", { name: /Alocar tempo/ }), { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    fireEvent.pointerDown(screen.getByRole("presentation"));
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: /Alocar tempo/ }));
     expect(onFechar).toHaveBeenCalledTimes(4);
     expect(onAlocar).not.toHaveBeenCalled();
   });
