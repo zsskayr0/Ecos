@@ -54,16 +54,30 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
             let tarefas: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM tarefa t WHERE {tarefa_vis}"), param.as_slice(), |r| r.get(0))?;
             let (notas, primeira): (i64, Option<String>) =
                 conn.query_row(&format!("SELECT COUNT(*), MIN(n.criado_em) FROM nota n WHERE {nota_vis}"), param.as_slice(), |r| Ok((r.get(0)?, r.get(1)?)))?;
-            // Palavras e caracteres vêm do índice de texto (sem abrir os .md), contados em streaming.
-            let mut stmt = conn.prepare(&format!(
-                "SELECT COALESCE(nf.titulo, n.titulo), COALESCE(nf.corpo, '') FROM nota n LEFT JOIN nota_fts nf ON nf.id = n.id WHERE {nota_vis}"
-            ))?;
+            // Palavras e caracteres vêm do índice de texto (sem abrir os .md). `nota_fts.id` é UNINDEXED: o FTS é
+            // varrido uma vez e cruzado com os ids visíveis em memória (juntar por linha era quadrático).
+            let mut stmt = conn.prepare(&format!("SELECT n.id, n.titulo FROM nota n WHERE {nota_vis}"))?;
+            let mut pendentes: std::collections::HashMap<String, String> = stmt
+                .query_map(param.as_slice(), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<_, _>>()?;
             let (mut palavras, mut caracteres) = (0i64, 0i64);
-            let linhas = stmt.query_map(param.as_slice(), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-            for l in linhas {
-                let (titulo, corpo) = l?;
+            let mut conta = |titulo: &str, corpo: &str| {
                 palavras += (titulo.split_whitespace().count() + corpo.split_whitespace().count()) as i64;
                 caracteres += (titulo.chars().count() + corpo.chars().count()) as i64;
+            };
+            if !pendentes.is_empty() {
+                let mut fts = conn.prepare("SELECT id, titulo, corpo FROM nota_fts")?;
+                let mut linhas = fts.query([])?;
+                while let Some(r) = linhas.next()? {
+                    let id: String = r.get(0)?;
+                    if pendentes.remove(&id).is_some() {
+                        conta(&r.get::<_, String>(1)?, &r.get::<_, String>(2)?);
+                    }
+                }
+            }
+            // Nota sem linha no FTS: conta só o título, como o COALESCE anterior.
+            for titulo in pendentes.values() {
+                conta(titulo, "");
             }
             Ok(Some((entrou_em, primeira, notas, tarefas, palavras, caracteres)))
         })

@@ -22,6 +22,7 @@ pub mod health;
 pub mod media;
 pub mod metricas;
 pub mod lixeira;
+pub mod nota_corpos;
 pub mod notas;
 pub mod notificacoes;
 pub mod pagination;

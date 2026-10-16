@@ -85,9 +85,13 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     let tem_mais = linhas.len() as i64 > limite;
     let visiveis: &[LinhaFeed] = if tem_mais { &linhas[..limite as usize] } else { &linhas[..] };
 
+    // Título e corpo das notas da página numa única passada pelo FTS (juntar por `nota_fts.id` varre tudo por card).
+    let ids_notas: Vec<String> = visiveis.iter().filter(|l| l.tipo == "nota").map(|l| l.id.clone()).collect();
+    let textos = state.db.with(move |conn| crate::routes::nota_corpos::ler_titulo_corpo(conn, ids_notas.iter().map(String::as_str))).await?;
+
     let mut items = Vec::with_capacity(visiveis.len());
     for linha in visiveis {
-        items.push(montar_card(&state, &usuario.0, linha).await?);
+        items.push(montar_card(&state, &usuario.0, linha, &textos).await?);
     }
 
     let next_cursor = if tem_mais {
@@ -99,7 +103,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     Ok(Json(Pagina { items, next_cursor }))
 }
 
-async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed) -> Result<serde_json::Value, crate::error::AppError> {
+async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed, textos: &std::collections::HashMap<String, (String, String)>) ->Result<serde_json::Value, crate::error::AppError> {
     let dado_bruto: Option<serde_json::Value> = linha.dado_bruto.as_deref().and_then(|s| serde_json::from_str(s).ok());
 
     match linha.tipo.as_str() {
@@ -112,16 +116,18 @@ async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed) -> R
                 .db
                 .with(move |conn| {
                     conn.query_row(
-                        "SELECT nf.titulo, nf.corpo, n.criado_por, u.nome_usuario, n.pasta_id, n.criado_em, n.ultima_revisao_em, \
+                        "SELECT '', '', n.criado_por, u.nome_usuario, n.pasta_id, n.criado_em, n.ultima_revisao_em, \
                          (SELECT json_group_array(tag) FROM nota_tag WHERE nota_id = n.id) \
-                         FROM nota_fts nf JOIN nota n ON n.id = nf.id LEFT JOIN usuario u ON u.id = n.criado_por \
-                         WHERE nf.id = ?1",
+                         FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por \
+                         WHERE n.id = ?1",
                         [&id],
                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
                     )
                     .optional()
                 })
                 .await?;
+            // Sem linha no FTS o card sai vazio, como antes (a junção interna descartava a nota).
+            let dados = textos.get(&linha.id).cloned().and_then(|(t, c)| dados.map(|mut d| { d.0 = t; d.1 = c; d }));
             let (titulo, preview, criado_por, criado_por_nome, pasta, criado_em, ultima_revisao_em, tags_json) = dados.unwrap_or_default();
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             Ok(serde_json::json!({

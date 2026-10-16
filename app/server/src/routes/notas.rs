@@ -67,8 +67,8 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         .with(move |conn| {
             let mut sql = String::from(
                 "SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em, \
-                 n.criado_por, u.nome_usuario, COALESCE(nf.corpo, '') \
-                 FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por LEFT JOIN nota_fts nf ON nf.id = n.id",
+                 n.criado_por, u.nome_usuario, '' \
+                 FROM nota n LEFT JOIN usuario u ON u.id = n.criado_por",
             );
             let mut condicoes: Vec<String> = vec![visivel.clone()];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -119,6 +119,13 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            // `nota_fts.id` é UNINDEXED: juntar por ele varre o FTS inteiro por linha (quadrático). O corpo
+            // é lido numa única passada, só dos ids da página.
+            let mut linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>, Option<String>, Option<String>, String)> = linhas;
+            let corpos = crate::routes::nota_corpos::ler(conn, linhas.iter().take(limite as usize).map(|l| l.0.as_str()))?;
+            for l in linhas.iter_mut() {
+                if let Some(c) = corpos.get(&l.0) { l.10 = c.clone(); }
+            }
             Ok(linhas)
         })
         .await?;
