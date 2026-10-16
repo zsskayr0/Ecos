@@ -159,9 +159,222 @@ impl<W: Write> ZipWriter<W> {
     }
 }
 
+/// CRC-32 de um arquivo em disco (leitura em blocos).
+pub fn crc32_arquivo(caminho: &Path) -> io::Result<(u32, u64)> {
+    let mut arquivo = std::fs::File::open(caminho)?;
+    let mut buffer = vec![0u8; 64 * 1024];
+    let (mut crc, mut total) = (!0u32, 0u64);
+    loop {
+        let n = arquivo.read(&mut buffer)?;
+        if n == 0 { break; }
+        crc = crc32_atualizar(crc, &buffer[..n]);
+        total += n as u64;
+    }
+    Ok((crc ^ !0, total))
+}
+
+/// Uma entrada (arquivo) do diretório central.
+#[derive(Debug, Clone)]
+pub struct EntradaZip {
+    pub nome: String,
+    pub crc: u32,
+    pub tamanho: u64,
+    deslocamento_local: u64,
+}
+
+/// Leitor do mesmo subconjunto que o `ZipWriter` produz: método "stored", sem criptografia, sem ZIP64. Qualquer coisa
+/// fora disso é recusada com mensagem clara — a restauração só aceita pacotes gerados pelo próprio Ecos.
+pub struct LeitorZip {
+    arquivo: std::fs::File,
+    tamanho_arquivo: u64,
+    pub entradas: Vec<EntradaZip>,
+}
+
+fn invalido(msg: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg.into())
+}
+
+fn u16_em(b: &[u8], o: usize) -> usize {
+    u16::from_le_bytes([b[o], b[o + 1]]) as usize
+}
+
+fn u32_em(b: &[u8], o: usize) -> u64 {
+    u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) as u64
+}
+
+const MAX_ENTRADAS: usize = 100_000;
+
+impl LeitorZip {
+    pub fn abrir(caminho: &Path) -> io::Result<Self> {
+        use std::io::{Seek, SeekFrom};
+        let mut arquivo = std::fs::File::open(caminho)?;
+        let tamanho_arquivo = arquivo.metadata()?.len();
+        if tamanho_arquivo < 22 {
+            return Err(invalido("o arquivo não é um .zip válido"));
+        }
+        // O registro de fim do diretório está nos últimos 22 bytes + comentário (até 64 KiB).
+        let janela = tamanho_arquivo.min(22 + 65_535);
+        arquivo.seek(SeekFrom::Start(tamanho_arquivo - janela))?;
+        let mut cauda = vec![0u8; janela as usize];
+        arquivo.read_exact(&mut cauda)?;
+        let eocd = (0..=cauda.len() - 22).rev().find(|&i| cauda[i..i + 4] == 0x0605_4B50u32.to_le_bytes()).ok_or_else(|| invalido("o arquivo não é um .zip válido"))?;
+        let disco = u16_em(&cauda, eocd + 4);
+        let total = u16_em(&cauda, eocd + 10);
+        let tam_dir = u32_em(&cauda, eocd + 12);
+        let ini_dir = u32_em(&cauda, eocd + 16);
+        if disco != 0 || total == 0xFFFF || tam_dir == 0xFFFF_FFFF || ini_dir == 0xFFFF_FFFF {
+            return Err(invalido("pacote .zip em partes ou ZIP64 não é aceito"));
+        }
+        if total > MAX_ENTRADAS || ini_dir.checked_add(tam_dir).is_none_or(|fim| fim > tamanho_arquivo) {
+            return Err(invalido("diretório do .zip inconsistente"));
+        }
+        arquivo.seek(SeekFrom::Start(ini_dir))?;
+        let mut dir = vec![0u8; tam_dir as usize];
+        arquivo.read_exact(&mut dir)?;
+        let mut entradas = Vec::with_capacity(total);
+        let mut o = 0usize;
+        for _ in 0..total {
+            if o + 46 > dir.len() || dir[o..o + 4] != 0x0201_4B50u32.to_le_bytes() {
+                return Err(invalido("diretório do .zip inconsistente"));
+            }
+            let flags = u16_em(&dir, o + 8);
+            let metodo = u16_em(&dir, o + 10);
+            let (crc, comp, tamanho) = (u32_em(&dir, o + 16) as u32, u32_em(&dir, o + 20), u32_em(&dir, o + 24));
+            let (n_nome, n_extra, n_comentario) = (u16_em(&dir, o + 28), u16_em(&dir, o + 30), u16_em(&dir, o + 32));
+            let local = u32_em(&dir, o + 42);
+            if o + 46 + n_nome + n_extra + n_comentario > dir.len() {
+                return Err(invalido("diretório do .zip inconsistente"));
+            }
+            let nome = String::from_utf8(dir[o + 46..o + 46 + n_nome].to_vec()).map_err(|_| invalido("nome de arquivo inválido no .zip"))?;
+            if flags & 1 != 0 {
+                return Err(invalido("pacote .zip criptografado não é aceito"));
+            }
+            if metodo != 0 || comp != tamanho {
+                return Err(invalido("o pacote não foi gerado pelo Ecos (compressão não suportada)"));
+            }
+            if tamanho == 0xFFFF_FFFF || local == 0xFFFF_FFFF {
+                return Err(invalido("pacote ZIP64 não é aceito"));
+            }
+            if !nome.ends_with('/') {
+                entradas.push(EntradaZip { nome, crc, tamanho, deslocamento_local: local });
+            }
+            o += 46 + n_nome + n_extra + n_comentario;
+        }
+        Ok(Self { arquivo, tamanho_arquivo, entradas })
+    }
+
+    /// Posiciona no início dos dados da entrada, conferindo o cabeçalho local, e devolve o tamanho.
+    fn posicionar(&mut self, i: usize) -> io::Result<u64> {
+        use std::io::{Seek, SeekFrom};
+        let e = self.entradas.get(i).ok_or_else(|| invalido("entrada inexistente"))?.clone();
+        self.arquivo.seek(SeekFrom::Start(e.deslocamento_local))?;
+        let mut c = [0u8; 30];
+        self.arquivo.read_exact(&mut c).map_err(|_| invalido("cabeçalho do .zip truncado"))?;
+        if c[0..4] != 0x0403_4B50u32.to_le_bytes() {
+            return Err(invalido("cabeçalho do .zip inconsistente"));
+        }
+        let dados = e.deslocamento_local + 30 + u16_em(&c, 26) as u64 + u16_em(&c, 28) as u64;
+        if dados.checked_add(e.tamanho).is_none_or(|fim| fim > self.tamanho_arquivo) {
+            return Err(invalido("o .zip está truncado"));
+        }
+        self.arquivo.seek(SeekFrom::Start(dados))?;
+        Ok(e.tamanho)
+    }
+
+    /// Lê a entrada inteira (para arquivos pequenos: manifesto, Markdown) conferindo o CRC.
+    pub fn ler(&mut self, i: usize, limite: u64) -> io::Result<Vec<u8>> {
+        let tamanho = self.posicionar(i)?;
+        if tamanho > limite {
+            return Err(invalido("arquivo grande demais para leitura em memória"));
+        }
+        let mut dados = vec![0u8; tamanho as usize];
+        self.arquivo.read_exact(&mut dados)?;
+        if crc32_atualizar(!0, &dados) ^ !0 != self.entradas[i].crc {
+            return Err(invalido(format!("{} está corrompido (CRC não confere)", self.entradas[i].nome)));
+        }
+        Ok(dados)
+    }
+
+    /// Copia a entrada para `destino` em blocos, conferindo o CRC; em caso de erro o destino parcial é apagado.
+    pub fn copiar_para(&mut self, i: usize, destino: &Path) -> io::Result<()> {
+        let tamanho = self.posicionar(i)?;
+        let esperado = self.entradas[i].crc;
+        let nome = self.entradas[i].nome.clone();
+        let resultado = (|| {
+            let mut saida = std::fs::File::create(destino)?;
+            let mut buffer = vec![0u8; 64 * 1024];
+            let (mut restante, mut crc) = (tamanho, !0u32);
+            while restante > 0 {
+                let n = buffer.len().min(restante as usize);
+                self.arquivo.read_exact(&mut buffer[..n])?;
+                crc = crc32_atualizar(crc, &buffer[..n]);
+                saida.write_all(&buffer[..n])?;
+                restante -= n as u64;
+            }
+            saida.sync_all()?;
+            if crc ^ !0 != esperado {
+                return Err(invalido(format!("{nome} está corrompido (CRC não confere)")));
+            }
+            Ok(())
+        })();
+        if resultado.is_err() {
+            let _ = std::fs::remove_file(destino);
+        }
+        resultado
+    }
+
+    /// Confere o CRC de todas as entradas sem gravar nada (validação prévia da restauração).
+    pub fn verificar_tudo(&mut self) -> io::Result<()> {
+        let mut buffer = vec![0u8; 64 * 1024];
+        for i in 0..self.entradas.len() {
+            let mut restante = self.posicionar(i)?;
+            let mut crc = !0u32;
+            while restante > 0 {
+                let n = buffer.len().min(restante as usize);
+                self.arquivo.read_exact(&mut buffer[..n])?;
+                crc = crc32_atualizar(crc, &buffer[..n]);
+                restante -= n as u64;
+            }
+            if crc ^ !0 != self.entradas[i].crc {
+                return Err(invalido(format!("{} está corrompido (CRC não confere)", self.entradas[i].nome)));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leitor_le_o_que_o_escritor_gerou_e_rejeita_corrupcao() {
+        let dir = std::env::temp_dir().join(format!("ecos-zip-{}", ecos_core::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut z = ZipWriter::new(Vec::new());
+        z.adicionar_bytes("a/nota.md", b"ola").unwrap();
+        z.adicionar_bytes("b/tarefa.md", "acentuação".as_bytes()).unwrap();
+        let mut bytes = z.finalizar().unwrap();
+        let caminho = dir.join("p.zip");
+        std::fs::write(&caminho, &bytes).unwrap();
+        let mut leitor = LeitorZip::abrir(&caminho).unwrap();
+        assert_eq!(leitor.entradas.len(), 2);
+        assert_eq!(leitor.ler(0, 1024).unwrap(), b"ola");
+        assert_eq!(leitor.ler(1, 1024).unwrap(), "acentuação".as_bytes());
+        leitor.verificar_tudo().unwrap();
+        drop(leitor);
+
+        // Um byte alterado nos dados quebra o CRC.
+        let pos = bytes.windows(3).position(|w| w == b"ola").unwrap();
+        bytes[pos] = b'X';
+        std::fs::write(&caminho, &bytes).unwrap();
+        let mut leitor = LeitorZip::abrir(&caminho).unwrap();
+        assert!(leitor.verificar_tudo().is_err());
+        // Lixo não é um .zip.
+        std::fs::write(&caminho, b"isto nao e um zip, mas tem mais de vinte e dois bytes").unwrap();
+        assert!(LeitorZip::abrir(&caminho).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn crc32_confere_com_valor_conhecido() {

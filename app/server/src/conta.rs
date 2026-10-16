@@ -23,7 +23,8 @@ const FRASE_RESET_COFRE: &str = "APAGAR TUDO";
 
 const LEIA_ME: &str = "Exportação de dados do Ecos\r\n\
 ===========================\r\n\r\n\
-manifesto.json          Seus dados de conta e o resumo do que está neste arquivo.\r\n\
+manifesto.json          Seus dados de conta, a versão do formato e o resumo do que está neste arquivo.\r\n\
+configuracoes.json      Suas preferências de calendário e a rotina.\r\n\
 Pessoal/                Suas Notas, Tarefas e anexos (src/Media), no formato original: arquivos .md.\r\n\
 <Nome da equipe>/       Notas e Tarefas de equipes que VOCÊ criou. O que outras pessoas criaram não entra.\r\n\
 perfil/                 Sua foto de perfil, se houver.\r\n\r\n\
@@ -40,12 +41,22 @@ fn relativo_seguro(rel: &str) -> bool {
     !rel.is_empty() && Path::new(rel).components().all(|c| matches!(c, Component::Normal(_)))
 }
 
+/// Identificação do formato do pacote: a restauração (`crate::restauracao`) só aceita o que traz isto.
+pub const FORMATO_PACOTE: &str = "ecos-exportacao";
+/// Sobe quando o conteúdo do pacote muda de forma incompatível; a restauração recusa versões mais novas que a sua.
+pub const VERSAO_FORMATO_PACOTE: u32 = 1;
+pub const ARQUIVO_CONFIGURACOES: &str = "configuracoes.json";
+
 struct DadosExportacao {
     nome_usuario: String,
     nome: Option<String>,
     criado_em: String,
     equipes: Vec<(String, String, String)>,
     itens_de_equipe: Vec<String>,
+    /// Preferências e rotina da pessoa (`configuracoes.json`).
+    configuracoes: serde_json::Value,
+    /// Nome da pasta pessoal no servidor de origem: a restauração a mapeia para a pasta de quem restaura.
+    pasta_pessoal: Option<String>,
 }
 
 fn coletar_arquivos(state: &AppState, dados: &DadosExportacao, usuario_id: &str) -> Vec<(String, PathBuf)> {
@@ -74,6 +85,11 @@ fn montar_zip(destino: &Path, dados: &DadosExportacao, arquivos: &[(String, Path
     let mut zip = ZipWriter::new(saida);
     let anexos = arquivos.iter().filter(|(nome, _)| nome.contains("/src/Media/")).count();
     let manifesto = serde_json::json!({
+        "formato": FORMATO_PACOTE,
+        "versao_formato": VERSAO_FORMATO_PACOTE,
+        "versao_app": env!("CARGO_PKG_VERSION"),
+        "pasta_pessoal": dados.pasta_pessoal,
+        "tem_configuracoes": true,
         "gerado_em": chrono::Utc::now().to_rfc3339(),
         "usuario": { "id": usuario_id, "nome_usuario": dados.nome_usuario, "nome": dados.nome, "criado_em": dados.criado_em },
         "equipes": dados.equipes.iter().map(|(id, nome, cargo)| serde_json::json!({ "id": id, "nome": nome, "cargo": cargo })).collect::<Vec<_>>(),
@@ -84,33 +100,54 @@ fn montar_zip(destino: &Path, dados: &DadosExportacao, arquivos: &[(String, Path
     });
     zip.adicionar_bytes("LEIA-ME.txt", LEIA_ME.as_bytes())?;
     zip.adicionar_bytes("manifesto.json", &serde_json::to_vec_pretty(&manifesto).map_err(std::io::Error::other)?)?;
+    zip.adicionar_bytes(ARQUIVO_CONFIGURACOES, &serde_json::to_vec_pretty(&dados.configuracoes).map_err(std::io::Error::other)?)?;
     for (nome, caminho) in arquivos { zip.adicionar_arquivo(nome, caminho)?; }
     zip.finalizar()?.into_inner().map_err(|e| e.into_error())?.sync_all()
 }
 
-/// `GET /me/export` — `.zip` com o que a pessoa tem no servidor.
-pub async fn exportar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Response> {
-    let id = usuario.0.clone();
-    let (nome_usuario, nome, criado_em, equipes, itens_de_equipe) = state.db.with(move |conn| {
+/// Gera o pacote de exportação da pessoa em `destino` (usado pelo download e pelo backup de segurança da restauração).
+pub(crate) async fn gerar_pacote(state: &AppState, usuario_id: &str, destino: &Path) -> AppResult<()> {
+    let id = usuario_id.to_string();
+    let (nome_usuario, nome, criado_em, equipes, itens_de_equipe, configuracoes) = state.db.with(move |conn| {
         let (nome_usuario, nome, criado_em) = conn.query_row("SELECT nome_usuario, nome, criado_em FROM usuario WHERE id = ?1", [&id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?)))?;
         let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
         let equipes = stmt.query_map([&id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
         let mut stmt = conn.prepare("SELECT caminho_arquivo FROM nota WHERE criado_por = ?1 AND espaco != 'pessoal' UNION ALL SELECT caminho_arquivo FROM tarefa WHERE criado_por = ?1 AND espaco != 'pessoal'")?;
         let itens = stmt.query_map([&id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
-        Ok((nome_usuario, nome, criado_em, equipes, itens))
+        let preferencias = conn.query_row(
+            "SELECT pais, fuso, inicio_dia, mostrar_prazos FROM preferencia_calendario WHERE usuario_id = ?1", [&id],
+            |r| Ok(serde_json::json!({ "pais": r.get::<_, String>(0)?, "fuso": r.get::<_, String>(1)?, "inicio_dia": r.get::<_, String>(2)?, "mostrar_prazos": r.get::<_, bool>(3)? })),
+        ).ok();
+        let mut stmt = conn.prepare("SELECT tipo, hora_inicio, hora_fim, dias_semana, classificacao FROM bloco_rotina WHERE usuario_id = ?1 ORDER BY id")?;
+        let rotina = stmt.query_map([&id], |r| Ok(serde_json::json!({
+            "tipo": r.get::<_, String>(0)?, "hora_inicio": r.get::<_, String>(1)?, "hora_fim": r.get::<_, String>(2)?,
+            "dias_semana": r.get::<_, String>(3)?, "classificacao": r.get::<_, String>(4)?,
+        })))?.collect::<Result<Vec<_>, _>>()?;
+        let configuracoes = serde_json::json!({ "versao": 1, "preferencias_calendario": preferencias, "rotina": rotina });
+        Ok((nome_usuario, nome, criado_em, equipes, itens, configuracoes))
     }).await.map_err(|_| AppError::new(ErrorCode::Unauthorized))?;
-    let dados = DadosExportacao { nome_usuario, nome, criado_em, equipes, itens_de_equipe };
+    let pasta_pessoal = crate::espacos::dir_existente(&state.config.notes_root, &crate::espacos::fisica("pessoal", usuario_id))
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().to_string()));
+    let dados = DadosExportacao { nome_usuario, nome, criado_em, equipes, itens_de_equipe, configuracoes, pasta_pessoal };
 
+    let (destino, cofre_ativo, usuario_id) = (destino.to_path_buf(), state.config.vault_enabled, usuario_id.to_string());
+    let arquivos = coletar_arquivos(state, &dados, &usuario_id);
+    let gerado = tokio::task::spawn_blocking(move || montar_zip(&destino, &dados, &arquivos, &usuario_id, cofre_ativo)).await;
+    match gerado {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(erro_interno("gerar .zip da exportação", e)),
+        Err(e) => Err(erro_interno("gerar .zip da exportação", e)),
+    }
+}
+
+/// `GET /me/export` — `.zip` com o que a pessoa tem no servidor.
+pub async fn exportar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Response> {
     let pasta_tmp = state.config.notes_root.join(".ecos").join("tmp");
     std::fs::create_dir_all(&pasta_tmp).map_err(|e| erro_interno("criar pasta temporária da exportação", e))?;
     let temporario = pasta_tmp.join(format!("exportacao-{}.zip", new_id()));
-    let (destino, cofre_ativo, usuario_id) = (temporario.clone(), state.config.vault_enabled, usuario.0.clone());
-    let arquivos = coletar_arquivos(&state, &dados, &usuario_id);
-    let gerado = tokio::task::spawn_blocking(move || montar_zip(&destino, &dados, &arquivos, &usuario_id, cofre_ativo)).await;
-    match gerado {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => { let _ = std::fs::remove_file(&temporario); return Err(erro_interno("gerar .zip da exportação", e)); }
-        Err(e) => { let _ = std::fs::remove_file(&temporario); return Err(erro_interno("gerar .zip da exportação", e)); }
+    if let Err(e) = gerar_pacote(&state, &usuario.0, &temporario).await {
+        let _ = std::fs::remove_file(&temporario);
+        return Err(e);
     }
 
     let arquivo = tokio::fs::File::open(&temporario).await.map_err(|e| erro_interno("abrir .zip da exportação", e))?;

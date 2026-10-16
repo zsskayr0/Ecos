@@ -454,6 +454,26 @@ export const conta = {
   excluir: () => del<{ ok: true; avisos: string[] }>("/me", { confirm: FRASE_EXCLUIR_CONTA }),
 };
 
+/** Restauração de um pacote de exportação: validar (nada é gravado), aplicar com a frase `RESTAURAR`, ou cancelar. */
+export const FRASE_RESTAURAR = "RESTAURAR";
+export interface RelatorioRestauracao {
+  token: string; formato_versao: number | null; gerado_em: string | null; origem: string | null; tamanho_bytes: number;
+  totais: Record<string, number>; novos: number; iguais: number; conflitos_total: number;
+  conflitos: { caminho: string; tipo: string; motivo: string; copiavel: boolean }[];
+  ignorados_total: number; ignorados: { caminho: string; motivo: string }[]; itens_de_equipe: number; tem_configuracoes: boolean;
+}
+export interface ResultadoRestauracao { ok: true; restaurados: number; copias: number; iguais: number; conflitos_ignorados: number; configuracoes_aplicadas: number; backup: string; avisos: string[] }
+export const restauracao = {
+  validar: (arquivo: File) => {
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    return req<RelatorioRestauracao>("/me/restauracao/validar", { method: "POST", body: dados });
+  },
+  aplicar: (token: string, opcoes: { conflitos: "ignorar" | "copiar"; restaurar_configuracoes: boolean }) =>
+    post<ResultadoRestauracao>(`/me/restauracao/${encodeURIComponent(token)}/aplicar`, { confirm: FRASE_RESTAURAR, ...opcoes }),
+  cancelar: (token: string) => del<{ ok: true }>(`/me/restauracao/${encodeURIComponent(token)}`),
+};
+
 export const avatarPerfil = {
   /** Sem `usuarioId`, a foto de quem está logado; com ele, a de outra pessoa. */
   obter: (usuarioId?: string) => reqBlob(usuarioId ? `/usuarios/${encodeURIComponent(usuarioId)}/avatar` : "/me/avatar"),
