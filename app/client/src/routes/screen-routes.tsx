@@ -21,6 +21,7 @@ const tela = (Tela: ComponentType): ReactElement => (
   </TelaSobDemanda>
 );
 
+const HomeScreen = carregar(() => import("@/screens/Home/HomeScreen"), "HomeScreen");
 const TodayScreen = carregar(() => import("@/screens/Today/TodayScreen"), "TodayScreen");
 const NotesRootScreen = carregar(() => import("@/screens/Notes/NotesRootScreen"), "NotesRootScreen");
 const FolderScreen = carregar(() => import("@/screens/Notes/FolderScreen"), "FolderScreen");
@@ -74,6 +75,7 @@ export const screenRoutes = (
     <Route path="/" element={<Navigate to="/feed" replace />} />
 
     <Route path="/feed" element={<FeedScreen />} />
+    <Route path="/inicio" element={tela(HomeScreen)} />
     <Route path="/hoje" element={tela(TodayScreen)} />
     {/* Link legado: a administração agora pertence a Configurações. */}
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />

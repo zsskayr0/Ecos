@@ -54,8 +54,11 @@ function novaPane(path: string, size: number): Pane {
   return { id: novoId(), tabs: [tab], activeTabId: tab.id, size };
 }
 
+/** Aba/estado inicial do workspace: quando não resta nenhuma aba, a Home ocupa o lugar (nunca reabre a aba fechada). */
+export const ROTA_HOME = "/inicio";
+
 export function estadoInicial(): WorkspaceState {
-  const pane = novaPane("/agenda", 1);
+  const pane = novaPane(ROTA_HOME, 1);
   return { panes: [pane], focusedPaneId: pane.id };
 }
 
@@ -132,6 +135,9 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
     }
 
     case "close-tab": {
+      // A Home é o estado de repouso: fechar a única aba que é a própria Home não faz nada (não pisca nem recria).
+      const unica = state.panes.length === 1 && state.panes[0].tabs.length === 1 ? state.panes[0].tabs[0] : null;
+      if (unica && unica.id === action.tabId && moduloDaRota(unica.path).id === "inicio") return state;
       const { state: semAba } = removerAba(state, action.tabId);
       return normalizar(semAba);
     }

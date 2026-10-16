@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CalendarDays,
   HelpCircle,
+  Home,
   Library,
   ListChecks,
   Newspaper,
@@ -19,6 +20,7 @@ import {
 import { nomeDoArquivo } from "@/lib/format";
 
 export type ModuloId =
+  | "inicio"
   | "feed"
   | "hoje"
   | "agenda"
@@ -43,6 +45,7 @@ interface Modulo {
 }
 
 const MODULOS: Record<ModuloId, Modulo> = {
+  inicio: { id: "inicio", titulo: "Início", icone: Home, raiz: "/inicio" },
   feed: { id: "feed", titulo: "Feed", icone: Newspaper, raiz: "/feed" },
   hoje: { id: "hoje", titulo: "Hoje", icone: CalendarCheck2, raiz: "/hoje" },
   agenda: { id: "agenda", titulo: "Agenda", icone: CalendarDays, raiz: "/agenda" },
@@ -61,7 +64,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
 };
 
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
-export const RAIL_PRINCIPAL: ModuloId[] = ["hoje", "agenda", "eventos", "tarefas", "notas", "feed", "cofre", "media"];
+export const RAIL_PRINCIPAL: ModuloId[] = ["inicio", "hoje", "agenda", "eventos", "tarefas", "notas", "feed", "cofre", "media"];
 export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira"];
 
 export function moduloDaRota(path: string): Modulo {

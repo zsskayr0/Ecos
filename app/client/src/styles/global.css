@@ -1,521 +1,526 @@
-@import "@fontsource/space-grotesk/700.css";
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/700.css";
-@import "@fontsource/poppins/400.css";
-@import "@fontsource/poppins/500.css";
-@import "@fontsource/poppins/600.css";
-@import "@fontsource/poppins/700.css";
-
-@import "./tokens.css";
-@import "./cofre.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --ecos-safe-top: env(safe-area-inset-top, 0px);
-  --ecos-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --ecos-safe-left: env(safe-area-inset-left, 0px);
-  --ecos-safe-right: env(safe-area-inset-right, 0px);
-  --ecos-editor-sticky-top: 12px;
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/700.css";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+
+@import "./tokens.css";
+@import "./cofre.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ecos-safe-top: env(safe-area-inset-top, 0px);
+  --ecos-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ecos-safe-left: env(safe-area-inset-left, 0px);
+  --ecos-safe-right: env(safe-area-inset-right, 0px);
+  --ecos-editor-sticky-top: 12px;
+}
+
+.ecos-detail-header {
+  padding-top: calc(max(var(--ecos-safe-top), 32px) + 16px);
+  padding-bottom: 12px;
+  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
+  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
+}
+
+.ecos-detail-content {
+  padding-top: 28px;
+  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
+  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
+  padding-bottom: 24px;
+}
+
+.ecos-capture-header {
+  padding-top: calc(max(var(--ecos-safe-top), 24px) + 16px);
+  padding-bottom: 16px;
+  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
+  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
+}
+
+.ecos-capture-content {
+  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
+  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
+}
+
+.ecos-confirm-dialog {
+  width: min(420px, calc(100% - var(--ecos-safe-left) - var(--ecos-safe-right) - 32px));
+  max-height: calc(100dvh - var(--ecos-safe-top) - var(--ecos-safe-bottom) - 48px);
+  margin: auto;
+  padding: 24px;
+  border-radius: 16px;
+}
+
+.ecos-editor-floating {
+  top: var(--ecos-editor-sticky-top);
+}
+
+.ecos-autogrow {
+  overflow: hidden;
+  resize: none;
+  scroll-margin-top: calc(var(--ecos-editor-sticky-top) + 160px);
+  scroll-margin-bottom: 180px;
+}
+
+.ecos-floating-save {
+  bottom: calc(88px + var(--ecos-safe-bottom));
+  right: max(20px, calc(var(--ecos-safe-right) + 16px));
+}
+
+.ecos-detail-page {
+  padding-bottom: 72px;
+}
+
+@media (min-width: 768px) {
+  .ecos-floating-save { right: max(32px, calc((100vw - 1152px) / 2 + 32px), calc(var(--ecos-safe-right) + 16px)); }
+  .ecos-detail-header, .ecos-capture-header { padding-top: calc(var(--ecos-safe-top) + 16px); }
+  .ecos-detail-content {
+    padding-top: 32px;
+    padding-bottom: 32px;
+    padding-left: max(32px, calc(var(--ecos-safe-left) + 16px));
+    padding-right: max(32px, calc(var(--ecos-safe-right) + 16px));
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ecos-base);
+  color: var(--ecos-text-primary);
+  font-family: "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
+}
+
+/* Menus and floating surfaces need a softer, blue-tinted elevation in the
+   light theme; the dark shadow would otherwise read as a grey smudge. */
+[data-theme="light"] .shadow-nav {
+  box-shadow: 0 10px 28px rgb(28 55 90 / 0.16);
+}
+
+/* Space Grotesk is only for the wordmark/H1/splash — never in a
+   paragraph or a dense UI label (fixed rule, section 1.2). */
+.font-display {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+}
+
+/* Monetary values, timestamps, and technical labels — JetBrains Mono,
+   even outside the Vault (rule 7 of section 4). */
+.font-mono-value {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lançamentos na Agenda: mesma fonte do Cofre (.cofre-mono). */
+.fonte-cofre {
+  font-family: "Poppins", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.ecos-input {
+  width: 100%;
+  border-radius: 8px;
+  background: var(--ecos-surface-2);
+  color: var(--ecos-text-primary);
+  padding: 0.75rem 1rem;
+  font-size: 15px;
+  font-family: "Inter", sans-serif;
+  /* Contorno de controle >= 3:1 sem mexer no layout (UI-1, WCAG 1.4.11). */
+  box-shadow: inset 0 0 0 1px var(--ecos-border-control);
+}
+.ecos-input::placeholder {
+  color: var(--ecos-text-muted);
+}
+/* Anel de foco padrão por teclado. :where() zera a especificidade, então
+   qualquer regra própria (ex.: Toggle, editor) continua valendo. */
+:where(a, button, summary, select, input, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="separator"][tabindex], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 2px;
+}
+/* A11Y-1: a utilidade `outline-none` do Tailwind (especificidade de classe)
+   vencia a regra :where() acima e deixava campos sem indicador. Campos nus
+   que não declaram anel próprio (`ring-`) ou realce de wrapper recuperam o
+   anel; os que têm alternativa (anel, fundo, wrapper focus-within) seguem
+   como estão. O Cofre tem CSS próprio e fica de fora. */
+:where(input, textarea, select, button).outline-none:not([class*="ring-"]):not([class*="focus-visible:bg"]):not([class*="focus:w-"]):not([class*="focus:border"]):focus-visible,
+:where(input, textarea, select, button).focus\:outline-none:not([class*="ring-"]):focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 2px;
+}
+.ecos-input:focus-visible {
+  outline: 2px solid rgb(var(--ecos-cyan-rgb));
+  outline-offset: 1px;
+}
+
+/* Barras finas e discretas só onde há overflow rolável (menus, abas, listas).
+   A página em si mantém a rolagem sem barra visível. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(120 140 165 / 0.45) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(120 140 165 / 0.45);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+html,
+body {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Reserved space at the bottom of every screen with the floating bottom
+   nav, so no content ends up hidden behind the bar. */
+.pb-nav-safe {
+  padding-bottom: calc(108px + var(--ecos-safe-bottom));
+}
+
+@keyframes ecos-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ecos-fade-in {
+  animation: ecos-fade-in 180ms ease-out;
+}
+
+/* Saída do Drawer: o contêiner some e o painel desliza para a esquerda. */
+@keyframes ecos-drawer-sai { from { opacity: 1; } to { opacity: 0; } }
+@keyframes ecos-drawer-painel-sai { from { transform: translateX(0); } to { transform: translateX(-24px); } }
+.ecos-drawer-sai { animation: ecos-drawer-sai 160ms ease-in forwards; pointer-events: none; }
+.ecos-drawer-sai > aside { animation: ecos-drawer-painel-sai 160ms ease-in forwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-drawer-sai, .ecos-drawer-sai > aside { animation: none; } }
+
+@keyframes ecos-item-entra {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ecos-item-sai {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-5px) scale(0.985); }
+}
+
+.ecos-item-entra { animation: ecos-item-entra 190ms ease-out; }
+.ecos-item-sai { animation: ecos-item-sai 190ms ease-in forwards; }
+
+/* Grade da agenda: entradas discretas ao trocar período, sem o efeito de
+   superfície translúcida. A preferência do sistema por menos movimento tem
+   precedência sobre essas transições. */
+@keyframes agenda-calendario-entra {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.agenda-calendario-entra { animation: agenda-calendario-entra 220ms cubic-bezier(0.2, 0.7, 0.25, 1); }
+@keyframes agenda-popup-entra {
+  from { opacity: 0; transform: scale(0.12); }
+  70% { opacity: 1; transform: scale(1.015); }
+  to { opacity: 1; transform: scale(1); }
+}
+.agenda-popup-entra { animation: agenda-popup-entra 240ms cubic-bezier(0.16, 0.8, 0.22, 1); }
+
+/* ---- Login: curvas de luz animadas (painel decorativo) ---- */
+.auth-arte {
+  background: #05060a;
+}
+.auth-arte-brilho {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.35;
+  animation: auth-deriva 26s ease-in-out infinite alternate;
+}
+.auth-arte-brilho-a {
+  width: 60%;
+  height: 45%;
+  left: 20%;
+  bottom: 5%;
+  background: radial-gradient(closest-side, rgb(var(--ecos-cyan-rgb) / 0.55), transparent);
+}
+.auth-arte-brilho-b {
+  width: 55%;
+  height: 40%;
+  right: -5%;
+  top: 8%;
+  background: radial-gradient(closest-side, rgb(var(--ecos-violet-rgb) / 0.5), transparent);
+  animation-duration: 32s;
+  animation-direction: alternate-reverse;
+}
+.auth-arte-vinheta {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 60% 45%, transparent 35%, rgb(5 6 10 / 0.75) 100%);
+  pointer-events: none;
+}
+.auth-linha-base {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.07);
+  stroke-width: 1.2;
+}
+.auth-linha-luz {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  animation: auth-varre 9s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+@keyframes auth-varre {
+  0% { stroke-dashoffset: var(--de); }
+  75%, 100% { stroke-dashoffset: var(--ate); }
+}
+@keyframes auth-deriva {
+  from { transform: translate3d(-4%, 3%, 0) scale(1); }
+  to { transform: translate3d(5%, -4%, 0) scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-linha-luz { animation: none; stroke-dashoffset: -0.6; }
+  .auth-arte-brilho { animation: none; }
+  .agenda-calendario-entra, .agenda-popup-entra { animation: none; }
+}
+
+/* ---- Saída de abas e janelas do desktop (durações em desktop/movimento.ts) ---- */
+@keyframes ecos-aba-sai {
+  from { max-width: var(--ecos-aba-w, 200px); opacity: 1; }
+  to { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; border-right-width: 0; }
+}
+.ecos-aba-saindo {
+  overflow: hidden;
+  pointer-events: none;
+  animation: ecos-aba-sai 180ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+@keyframes ecos-conteudo-sai {
+  to { opacity: 0; transform: scale(0.985); }
+}
+.ecos-conteudo-saindo {
+  pointer-events: none;
+  animation: ecos-conteudo-sai 180ms ease-in forwards;
+}
+@keyframes ecos-janela-sai {
+  to { opacity: 0; transform: translateZ(0) translateY(8px) scale(0.97); }
+}
+.ecos-janela-saindo {
+  pointer-events: none;
+  animation: ecos-janela-sai 160ms ease-in forwards;
+}
+@keyframes ecos-configuracoes-sai {
+  0% { opacity: 1; transform: translateZ(0) translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translateZ(0) translateY(14px) scale(0.955); filter: blur(2px); }
+}
+.ecos-configuracoes-saindo {
+  pointer-events: none;
+  transform-origin: 50% 45%;
+  animation: ecos-configuracoes-sai 240ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo, .ecos-configuracoes-saindo { animation: none; }
+}
+
+/* Editor de evento da Agenda: entrada/saída do modal, seções em cascata e blocos que abrem/fecham suavemente. */
+@keyframes ecos-modal-in { from { opacity: 0; transform: translateY(14px) scale(0.965); } to { opacity: 1; transform: none; } }
+@keyframes ecos-modal-out { to { opacity: 0; transform: translateY(8px) scale(0.975); } }
+@keyframes ecos-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ecos-backdrop-out { to { opacity: 0; } }
+@keyframes ecos-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes ecos-tremer { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.ecos-modal-in { animation: ecos-modal-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+.ecos-modal-out { animation: ecos-modal-out 160ms ease-in both; }
+.ecos-backdrop-in { animation: ecos-backdrop-in 200ms ease-out both; }
+.ecos-backdrop-out { animation: ecos-backdrop-out 160ms ease-in both; }
+.ecos-pop { animation: ecos-pop 260ms ease-out; }
+.ecos-tremer { animation: ecos-tremer 260ms ease-in-out; }
+.ecos-cascata { animation: ecos-fade-in 300ms ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.ecos-colapsa { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms ease, opacity 200ms ease; }
+.ecos-colapsa > div { min-height: 0; overflow: hidden; }
+.ecos-colapsa[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
+.ecos-colapsa[data-aberto="true"] > div { overflow: visible; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-modal-in, .ecos-modal-out, .ecos-backdrop-in, .ecos-backdrop-out, .ecos-pop, .ecos-tremer, .ecos-cascata { animation: none; }
+  .ecos-colapsa { transition: none; }
+}
+
+/* Editor de evento: a cor escolhida vira o acento (--ecos-cyan-rgb é sobrescrita no formulário); texto sobre o acento acompanha o contraste. */
+.ecos-acento-evento .text-black { color: var(--ev-contraste, #000); }
+
+/* Configurações no desktop: a navegação é a barra lateral, então o "voltar" das telas some. */
+.config-desktop [data-voltar] { display: none; }
+
+
+/* Busca expansível (BarraFiltros): a lupa vira uma barra de pesquisa. Largura e opacidades com curvas de mola suave. */
+.ecos-busca { position: relative; display: flex; align-items: center; box-sizing: border-box; height: 2.25rem; width: 2.25rem; flex-shrink: 0; overflow: hidden; border-radius: 0.5rem; transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, border-color 220ms ease, box-shadow 280ms ease; }
+.ecos-busca[data-aberta="true"] { width: min(18rem, calc(100vw - 4rem)); }
+.ecos-busca-lupa { position: relative; display: flex; height: 100%; width: calc(2.25rem - 2px); flex-shrink: 0; align-items: center; justify-content: center; }
+.ecos-busca-icone { transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1), color 200ms ease; }
+.ecos-busca[data-aberta="false"]:hover .ecos-busca-icone { transform: rotate(-14deg) scale(1.18); }
+.ecos-busca[data-aberta="true"] .ecos-busca-icone { transform: none; }
+/* Ao passar o mouse, uma onda sai da lupa (uma vez), como um "ping" de busca. */
+.ecos-busca-lupa::after { content: ""; position: absolute; inset: 0.45rem; border-radius: 9999px; border: 1.5px solid currentColor; opacity: 0; pointer-events: none; }
+.ecos-busca[data-aberta="false"]:hover .ecos-busca-lupa::after { animation: ecos-busca-onda 760ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+@keyframes ecos-busca-onda { 0% { opacity: 0.6; transform: scale(0.65); } 100% { opacity: 0; transform: scale(1.75); } }
+.ecos-busca-campo { min-width: 0; flex: 1; opacity: 0; transform: translateX(-10px); transition: opacity 200ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ecos-busca[data-aberta="true"] .ecos-busca-campo { opacity: 1; transform: none; transition-delay: 120ms; }
+.ecos-busca-limpar { flex-shrink: 0; opacity: 0; transform: scale(0.4) rotate(-90deg); pointer-events: none; transition: opacity 160ms ease, transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ecos-busca-limpar[data-visivel="true"] { opacity: 1; transform: none; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-busca, .ecos-busca-icone, .ecos-busca-campo, .ecos-busca-limpar { transition: none; }
+  .ecos-busca-lupa::after { animation: none !important; }
+}
+
+/* Expansão discreta da hierarquia, respeitando movimento reduzido. */
+@keyframes ecos-subpastas-entrada {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ecos-subpastas { animation: ecos-subpastas-entrada 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-subpastas { animation: none; }
+}
+
+/* Botão de criar (Fab): entra com mola, pulsa um anel discreto e gira o "+" ao pressionar/focar. */
+@keyframes ecos-fab-entra { from { transform: scale(.4) translateY(16px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes ecos-fab-anel { 0% { box-shadow: 0 0 0 0 rgb(139 92 246 / .45); } 70%,100% { box-shadow: 0 0 0 16px rgb(139 92 246 / 0); } }
+.ecos-fab { animation: ecos-fab-entra .45s cubic-bezier(.34,1.56,.64,1) both, ecos-fab-anel 2.6s ease-out 1s 2; transition: transform .18s ease, filter .18s ease; }
+.ecos-fab:hover { transform: scale(1.06); filter: brightness(1.08); }
+.ecos-fab:active { transform: scale(.92); }
+.ecos-fab .ecos-fab-icone { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
+.ecos-fab:hover .ecos-fab-icone, .ecos-fab:focus-visible .ecos-fab-icone { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .ecos-fab, .ecos-fab .ecos-fab-icone { animation: none !important; transition: none !important; } }
+
+/* ── Captura: slide de tipo e formulário de Transação ──────────────────────
+   Curvas com leve "mola" (overshoot) no toque, sempre curtas (< 350 ms). */
+.ecos-slide-indicador {
+  position: absolute; top: 0; bottom: 0; left: 0; border-radius: 9999px;
+  background: rgb(var(--slide-rgb) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--slide-rgb) / 0.5);
+  transition: transform 340ms cubic-bezier(0.34, 1.32, 0.64, 1), background-color 260ms ease, box-shadow 260ms ease;
+}
+/* Slide Nota/Tarefa/Transação: cantos no estilo do Cofre, menos arredondados que a pílula. */
+.ecos-capture-slide.ecos-capture-slide { border-radius: 12px; padding: 3px; }
+.ecos-capture-slide .ecos-slide-indicador, .ecos-capture-slide .ecos-slide-botao { border-radius: 9px; }
+.ecos-slide-trilho { touch-action: pan-y; user-select: none; }
+.ecos-slide-botao { transition: color 220ms ease, transform 160ms ease; }
+.ecos-slide-botao:active { transform: scale(0.94); }
+.ecos-slide-botao[data-ativo="false"] { color: var(--ecos-text-muted); }
+.ecos-slide-botao[data-ativo="false"]:hover { color: var(--ecos-text-primary); }
+
+@keyframes ecos-tipo-entra { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: none; } }
+.ecos-tipo-entra { animation: ecos-tipo-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+
+@keyframes ecos-secao-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ecos-secao-entra { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) 360ms both; }
+.ecos-tx-col > * { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+.ecos-tx-col > *:nth-child(2) { animation-delay: 45ms; } .ecos-tx-col > *:nth-child(3) { animation-delay: 90ms; }
+.ecos-tx-col > *:nth-child(4) { animation-delay: 135ms; } .ecos-tx-col > *:nth-child(5) { animation-delay: 180ms; }
+.ecos-tx-col > *:nth-child(n+6) { animation-delay: 225ms; }
+
+/* Layout: uma coluna no celular (colunas "somem" com display: contents); duas no PC. */
+.ecos-tx { container-type: inline-size; }
+.ecos-tx-grade { display: flex; flex-direction: column; gap: 1.25rem; }
+.ecos-tx-col { display: contents; }
+.ecos-tx-topo { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+.ecos-tx-toggle-teclado { display: none; }
+.ecos-valor { transition: color 300ms ease; }
+@container (min-width: 720px) {
+  .ecos-tx-grade { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
+  .ecos-tx-col { display: flex; flex-direction: column; gap: 1.25rem; }
+  .ecos-tx-topo { flex-direction: row; justify-content: space-between; align-items: center; }
+  .ecos-valor { text-align: left; font-size: 3rem; }
+  .ecos-tx-toggle-teclado {
+    display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.625rem 0.875rem; border-radius: 0.875rem;
+    background: var(--ecos-surface-2); color: var(--ecos-text-secondary); font-size: 0.875rem; font-weight: 500;
+    transition: background-color 180ms ease, color 180ms ease, transform 140ms ease;
+  }
+  .ecos-tx-toggle-teclado:hover { color: var(--ecos-text-primary); background: var(--ecos-surface-3); }
+  .ecos-tx-toggle-teclado:active { transform: scale(0.985); }
+  .ecos-tx-toggle-teclado span { flex: 1; text-align: left; }
+  .ecos-tx-seta { transition: transform 300ms cubic-bezier(0.34, 1.32, 0.64, 1); }
+  .ecos-tx-toggle-teclado[aria-expanded="true"] .ecos-tx-seta { transform: rotate(180deg); }
+  .ecos-tx-toggle-teclado[aria-expanded="true"] { color: rgb(var(--ecos-violet-rgb)); box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.4); }
+  .ecos-tx-teclado { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 340ms cubic-bezier(0.2, 0.7, 0.25, 1), opacity 240ms ease; }
+  .ecos-tx-teclado[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
+  .ecos-tx-teclado-miolo { min-height: 0; overflow: hidden; }
+  .ecos-tx-teclado[data-aberto="false"] .ecos-tx-teclado-miolo { visibility: hidden; transition: visibility 0s 340ms; }
+}
+
+.ecos-tecla { transition: background-color 150ms ease, transform 120ms ease, box-shadow 150ms ease; }
+.ecos-tecla:hover { box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.35); }
+.ecos-tecla:active { transform: scale(0.92); background-color: rgb(var(--ecos-violet-rgb) / 0.2); }
+
+.ecos-chip { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 140ms ease, box-shadow 200ms ease; }
+.ecos-chip:hover { transform: translateY(-1px); }
+.ecos-chip:active { transform: scale(0.95); }
+@keyframes ecos-chip-pop { 0% { transform: scale(0.94); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.ecos-chip[data-selected="true"] { animation: ecos-chip-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes ecos-chip-entra { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+.ecos-chips > * { animation: ecos-chip-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+.ecos-chips > *:nth-child(2) { animation-delay: 30ms; } .ecos-chips > *:nth-child(3) { animation-delay: 60ms; }
+.ecos-chips > *:nth-child(4) { animation-delay: 90ms; } .ecos-chips > *:nth-child(5) { animation-delay: 120ms; }
+.ecos-chips > *:nth-child(6) { animation-delay: 150ms; } .ecos-chips > *:nth-child(n+7) { animation-delay: 180ms; }
+
+.ecos-campo { transition: box-shadow 200ms ease, background-color 200ms ease; }
+.ecos-campo:focus { box-shadow: 0 0 0 2px rgb(var(--ecos-violet-rgb) / 0.55); }
+
+.ecos-salvar { transition: transform 160ms ease, box-shadow 220ms ease, opacity 200ms ease, filter 200ms ease ; }
+.ecos-salvar:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.08); }
+.ecos-salvar:not(:disabled):active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ecos-slide-indicador, .ecos-slide-botao, .ecos-tipo-entra, .ecos-secao-entra, .ecos-tx-col > *, .ecos-valor, .ecos-tx-seta,
+  .ecos-tx-teclado, .ecos-tx-toggle-teclado, .ecos-tecla, .ecos-chip, .ecos-chips > *, .ecos-campo, .ecos-salvar { animation: none !important; transition: none !important; }
+}
+
+
+/* Reduzir movimento (preferência do Ecos ou do sistema): animações e transições viram instantâneas. */
+[data-reduzir-movimento="true"] *,
+[data-reduzir-movimento="true"] *::before,
+[data-reduzir-movimento="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
 }
 
-.ecos-detail-header {
-  padding-top: calc(max(var(--ecos-safe-top), 32px) + 16px);
-  padding-bottom: 12px;
-  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
-  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
-}
-
-.ecos-detail-content {
-  padding-top: 28px;
-  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
-  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
-  padding-bottom: 24px;
-}
-
-.ecos-capture-header {
-  padding-top: calc(max(var(--ecos-safe-top), 24px) + 16px);
-  padding-bottom: 16px;
-  padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
-  padding-right: max(16px, calc(var(--ecos-safe-right) + 12px));
-}
-
-.ecos-capture-content {
-  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
-  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
-}
-
-.ecos-confirm-dialog {
-  width: min(420px, calc(100% - var(--ecos-safe-left) - var(--ecos-safe-right) - 32px));
-  max-height: calc(100dvh - var(--ecos-safe-top) - var(--ecos-safe-bottom) - 48px);
-  margin: auto;
-  padding: 24px;
-  border-radius: 16px;
-}
-
-.ecos-editor-floating {
-  top: var(--ecos-editor-sticky-top);
-}
-
-.ecos-autogrow {
-  overflow: hidden;
-  resize: none;
-  scroll-margin-top: calc(var(--ecos-editor-sticky-top) + 160px);
-  scroll-margin-bottom: 180px;
-}
-
-.ecos-floating-save {
-  bottom: calc(88px + var(--ecos-safe-bottom));
-  right: max(20px, calc(var(--ecos-safe-right) + 16px));
-}
-
-.ecos-detail-page {
-  padding-bottom: 72px;
-}
-
-@media (min-width: 768px) {
-  .ecos-floating-save { right: max(32px, calc((100vw - 1152px) / 2 + 32px), calc(var(--ecos-safe-right) + 16px)); }
-  .ecos-detail-header, .ecos-capture-header { padding-top: calc(var(--ecos-safe-top) + 16px); }
-  .ecos-detail-content {
-    padding-top: 32px;
-    padding-bottom: 32px;
-    padding-left: max(32px, calc(var(--ecos-safe-left) + 16px));
-    padding-right: max(32px, calc(var(--ecos-safe-right) + 16px));
-  }
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  background: var(--ecos-base);
-  color: var(--ecos-text-primary);
-  font-family: "Inter", sans-serif;
-  -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: contain;
-}
-
-/* Menus and floating surfaces need a softer, blue-tinted elevation in the
-   light theme; the dark shadow would otherwise read as a grey smudge. */
-[data-theme="light"] .shadow-nav {
-  box-shadow: 0 10px 28px rgb(28 55 90 / 0.16);
-}
-
-/* Space Grotesk is only for the wordmark/H1/splash — never in a
-   paragraph or a dense UI label (fixed rule, section 1.2). */
-.font-display {
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-}
-
-/* Monetary values, timestamps, and technical labels — JetBrains Mono,
-   even outside the Vault (rule 7 of section 4). */
-.font-mono-value {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Lançamentos na Agenda: mesma fonte do Cofre (.cofre-mono). */
-.fonte-cofre {
-  font-family: "Poppins", sans-serif;
-  font-variant-numeric: tabular-nums;
-}
-
-.ecos-input {
-  width: 100%;
-  border-radius: 8px;
-  background: var(--ecos-surface-2);
-  color: var(--ecos-text-primary);
-  padding: 0.75rem 1rem;
-  font-size: 15px;
-  font-family: "Inter", sans-serif;
-  /* Contorno de controle >= 3:1 sem mexer no layout (UI-1, WCAG 1.4.11). */
-  box-shadow: inset 0 0 0 1px var(--ecos-border-control);
-}
-.ecos-input::placeholder {
-  color: var(--ecos-text-muted);
-}
-/* Anel de foco padrão por teclado. :where() zera a especificidade, então
-   qualquer regra própria (ex.: Toggle, editor) continua valendo. */
-:where(a, button, summary, select, input, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="separator"][tabindex], [tabindex]:not([tabindex="-1"])):focus-visible {
-  outline: 2px solid rgb(var(--ecos-cyan-rgb));
-  outline-offset: 2px;
-}
-/* A11Y-1: a utilidade `outline-none` do Tailwind (especificidade de classe)
-   vencia a regra :where() acima e deixava campos sem indicador. Campos nus
-   que não declaram anel próprio (`ring-`) ou realce de wrapper recuperam o
-   anel; os que têm alternativa (anel, fundo, wrapper focus-within) seguem
-   como estão. O Cofre tem CSS próprio e fica de fora. */
-:where(input, textarea, select, button).outline-none:not([class*="ring-"]):not([class*="focus-visible:bg"]):not([class*="focus:w-"]):not([class*="focus:border"]):focus-visible,
-:where(input, textarea, select, button).focus\:outline-none:not([class*="ring-"]):focus-visible {
-  outline: 2px solid rgb(var(--ecos-cyan-rgb));
-  outline-offset: 2px;
-}
-.ecos-input:focus-visible {
-  outline: 2px solid rgb(var(--ecos-cyan-rgb));
-  outline-offset: 1px;
-}
-
-/* Barras finas e discretas só onde há overflow rolável (menus, abas, listas).
-   A página em si mantém a rolagem sem barra visível. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(120 140 165 / 0.45) transparent;
-}
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgb(120 140 165 / 0.45);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-html,
-body {
-  scrollbar-width: none;
-}
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Reserved space at the bottom of every screen with the floating bottom
-   nav, so no content ends up hidden behind the bar. */
-.pb-nav-safe {
-  padding-bottom: calc(108px + var(--ecos-safe-bottom));
-}
-
-@keyframes ecos-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.ecos-fade-in {
-  animation: ecos-fade-in 180ms ease-out;
-}
-
-/* Saída do Drawer: o contêiner some e o painel desliza para a esquerda. */
-@keyframes ecos-drawer-sai { from { opacity: 1; } to { opacity: 0; } }
-@keyframes ecos-drawer-painel-sai { from { transform: translateX(0); } to { transform: translateX(-24px); } }
-.ecos-drawer-sai { animation: ecos-drawer-sai 160ms ease-in forwards; pointer-events: none; }
-.ecos-drawer-sai > aside { animation: ecos-drawer-painel-sai 160ms ease-in forwards; }
-@media (prefers-reduced-motion: reduce) { .ecos-drawer-sai, .ecos-drawer-sai > aside { animation: none; } }
-
-@keyframes ecos-item-entra {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes ecos-item-sai {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(-5px) scale(0.985); }
-}
-
-.ecos-item-entra { animation: ecos-item-entra 190ms ease-out; }
-.ecos-item-sai { animation: ecos-item-sai 190ms ease-in forwards; }
-
-/* Grade da agenda: entradas discretas ao trocar período, sem o efeito de
-   superfície translúcida. A preferência do sistema por menos movimento tem
-   precedência sobre essas transições. */
-@keyframes agenda-calendario-entra {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.agenda-calendario-entra { animation: agenda-calendario-entra 220ms cubic-bezier(0.2, 0.7, 0.25, 1); }
-@keyframes agenda-popup-entra {
-  from { opacity: 0; transform: scale(0.12); }
-  70% { opacity: 1; transform: scale(1.015); }
-  to { opacity: 1; transform: scale(1); }
-}
-.agenda-popup-entra { animation: agenda-popup-entra 240ms cubic-bezier(0.16, 0.8, 0.22, 1); }
-
-/* ---- Login: curvas de luz animadas (painel decorativo) ---- */
-.auth-arte {
-  background: #05060a;
-}
-.auth-arte-brilho {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(70px);
-  opacity: 0.35;
-  animation: auth-deriva 26s ease-in-out infinite alternate;
-}
-.auth-arte-brilho-a {
-  width: 60%;
-  height: 45%;
-  left: 20%;
-  bottom: 5%;
-  background: radial-gradient(closest-side, rgb(var(--ecos-cyan-rgb) / 0.55), transparent);
-}
-.auth-arte-brilho-b {
-  width: 55%;
-  height: 40%;
-  right: -5%;
-  top: 8%;
-  background: radial-gradient(closest-side, rgb(var(--ecos-violet-rgb) / 0.5), transparent);
-  animation-duration: 32s;
-  animation-direction: alternate-reverse;
-}
-.auth-arte-vinheta {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 60% 45%, transparent 35%, rgb(5 6 10 / 0.75) 100%);
-  pointer-events: none;
-}
-.auth-linha-base {
-  fill: none;
-  stroke: rgb(255 255 255 / 0.07);
-  stroke-width: 1.2;
-}
-.auth-linha-luz {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  animation: auth-varre 9s cubic-bezier(0.45, 0, 0.25, 1) infinite;
-}
-@keyframes auth-varre {
-  0% { stroke-dashoffset: var(--de); }
-  75%, 100% { stroke-dashoffset: var(--ate); }
-}
-@keyframes auth-deriva {
-  from { transform: translate3d(-4%, 3%, 0) scale(1); }
-  to { transform: translate3d(5%, -4%, 0) scale(1.12); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .auth-linha-luz { animation: none; stroke-dashoffset: -0.6; }
-  .auth-arte-brilho { animation: none; }
-  .agenda-calendario-entra, .agenda-popup-entra { animation: none; }
-}
-
-/* ---- Saída de abas e janelas do desktop (durações em desktop/movimento.ts) ---- */
-@keyframes ecos-aba-sai {
-  from { max-width: var(--ecos-aba-w, 200px); opacity: 1; }
-  to { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; border-right-width: 0; }
-}
-.ecos-aba-saindo {
-  overflow: hidden;
-  pointer-events: none;
-  animation: ecos-aba-sai 180ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
-}
-@keyframes ecos-conteudo-sai {
-  to { opacity: 0; transform: scale(0.985); }
-}
-.ecos-conteudo-saindo {
-  pointer-events: none;
-  animation: ecos-conteudo-sai 180ms ease-in forwards;
-}
-@keyframes ecos-janela-sai {
-  to { opacity: 0; transform: translateZ(0) translateY(8px) scale(0.97); }
-}
-.ecos-janela-saindo {
-  pointer-events: none;
-  animation: ecos-janela-sai 160ms ease-in forwards;
-}
-@keyframes ecos-configuracoes-sai {
-  0% { opacity: 1; transform: translateZ(0) translateY(0) scale(1); filter: blur(0); }
-  100% { opacity: 0; transform: translateZ(0) translateY(14px) scale(0.955); filter: blur(2px); }
-}
-.ecos-configuracoes-saindo {
-  pointer-events: none;
-  transform-origin: 50% 45%;
-  animation: ecos-configuracoes-sai 240ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ecos-aba-saindo, .ecos-conteudo-saindo, .ecos-janela-saindo, .ecos-configuracoes-saindo { animation: none; }
-}
-
-/* Editor de evento da Agenda: entrada/saída do modal, seções em cascata e blocos que abrem/fecham suavemente. */
-@keyframes ecos-modal-in { from { opacity: 0; transform: translateY(14px) scale(0.965); } to { opacity: 1; transform: none; } }
-@keyframes ecos-modal-out { to { opacity: 0; transform: translateY(8px) scale(0.975); } }
-@keyframes ecos-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes ecos-backdrop-out { to { opacity: 0; } }
-@keyframes ecos-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-@keyframes ecos-tremer { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
-.ecos-modal-in { animation: ecos-modal-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
-.ecos-modal-out { animation: ecos-modal-out 160ms ease-in both; }
-.ecos-backdrop-in { animation: ecos-backdrop-in 200ms ease-out both; }
-.ecos-backdrop-out { animation: ecos-backdrop-out 160ms ease-in both; }
-.ecos-pop { animation: ecos-pop 260ms ease-out; }
-.ecos-tremer { animation: ecos-tremer 260ms ease-in-out; }
-.ecos-cascata { animation: ecos-fade-in 300ms ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
-.ecos-colapsa { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms ease, opacity 200ms ease; }
-.ecos-colapsa > div { min-height: 0; overflow: hidden; }
-.ecos-colapsa[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
-.ecos-colapsa[data-aberto="true"] > div { overflow: visible; }
-@media (prefers-reduced-motion: reduce) {
-  .ecos-modal-in, .ecos-modal-out, .ecos-backdrop-in, .ecos-backdrop-out, .ecos-pop, .ecos-tremer, .ecos-cascata { animation: none; }
-  .ecos-colapsa { transition: none; }
-}
-
-/* Editor de evento: a cor escolhida vira o acento (--ecos-cyan-rgb é sobrescrita no formulário); texto sobre o acento acompanha o contraste. */
-.ecos-acento-evento .text-black { color: var(--ev-contraste, #000); }
-
-/* Configurações no desktop: a navegação é a barra lateral, então o "voltar" das telas some. */
-.config-desktop [data-voltar] { display: none; }
-
-
-/* Busca expansível (BarraFiltros): a lupa vira uma barra de pesquisa. Largura e opacidades com curvas de mola suave. */
-.ecos-busca { position: relative; display: flex; align-items: center; box-sizing: border-box; height: 2.25rem; width: 2.25rem; flex-shrink: 0; overflow: hidden; border-radius: 0.5rem; transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, border-color 220ms ease, box-shadow 280ms ease; }
-.ecos-busca[data-aberta="true"] { width: min(18rem, calc(100vw - 4rem)); }
-.ecos-busca-lupa { position: relative; display: flex; height: 100%; width: calc(2.25rem - 2px); flex-shrink: 0; align-items: center; justify-content: center; }
-.ecos-busca-icone { transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1), color 200ms ease; }
-.ecos-busca[data-aberta="false"]:hover .ecos-busca-icone { transform: rotate(-14deg) scale(1.18); }
-.ecos-busca[data-aberta="true"] .ecos-busca-icone { transform: none; }
-/* Ao passar o mouse, uma onda sai da lupa (uma vez), como um "ping" de busca. */
-.ecos-busca-lupa::after { content: ""; position: absolute; inset: 0.45rem; border-radius: 9999px; border: 1.5px solid currentColor; opacity: 0; pointer-events: none; }
-.ecos-busca[data-aberta="false"]:hover .ecos-busca-lupa::after { animation: ecos-busca-onda 760ms cubic-bezier(0.2, 0.7, 0.3, 1); }
-@keyframes ecos-busca-onda { 0% { opacity: 0.6; transform: scale(0.65); } 100% { opacity: 0; transform: scale(1.75); } }
-.ecos-busca-campo { min-width: 0; flex: 1; opacity: 0; transform: translateX(-10px); transition: opacity 200ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
-.ecos-busca[data-aberta="true"] .ecos-busca-campo { opacity: 1; transform: none; transition-delay: 120ms; }
-.ecos-busca-limpar { flex-shrink: 0; opacity: 0; transform: scale(0.4) rotate(-90deg); pointer-events: none; transition: opacity 160ms ease, transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
-.ecos-busca-limpar[data-visivel="true"] { opacity: 1; transform: none; pointer-events: auto; }
-@media (prefers-reduced-motion: reduce) {
-  .ecos-busca, .ecos-busca-icone, .ecos-busca-campo, .ecos-busca-limpar { transition: none; }
-  .ecos-busca-lupa::after { animation: none !important; }
-}
-
-/* Expansão discreta da hierarquia, respeitando movimento reduzido. */
-@keyframes ecos-subpastas-entrada {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.ecos-subpastas { animation: ecos-subpastas-entrada 160ms ease-out; }
-@media (prefers-reduced-motion: reduce) {
-  .ecos-subpastas { animation: none; }
-}
-
-/* Botão de criar (Fab): entra com mola, pulsa um anel discreto e gira o "+" ao pressionar/focar. */
-@keyframes ecos-fab-entra { from { transform: scale(.4) translateY(16px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
-@keyframes ecos-fab-anel { 0% { box-shadow: 0 0 0 0 rgb(139 92 246 / .45); } 70%,100% { box-shadow: 0 0 0 16px rgb(139 92 246 / 0); } }
-.ecos-fab { animation: ecos-fab-entra .45s cubic-bezier(.34,1.56,.64,1) both, ecos-fab-anel 2.6s ease-out 1s 2; transition: transform .18s ease, filter .18s ease; }
-.ecos-fab:hover { transform: scale(1.06); filter: brightness(1.08); }
-.ecos-fab:active { transform: scale(.92); }
-.ecos-fab .ecos-fab-icone { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
-.ecos-fab:hover .ecos-fab-icone, .ecos-fab:focus-visible .ecos-fab-icone { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .ecos-fab, .ecos-fab .ecos-fab-icone { animation: none !important; transition: none !important; } }
-
-/* ── Captura: slide de tipo e formulário de Transação ──────────────────────
-   Curvas com leve "mola" (overshoot) no toque, sempre curtas (< 350 ms). */
-.ecos-slide-indicador {
-  position: absolute; top: 0; bottom: 0; left: 0; border-radius: 9999px;
-  background: rgb(var(--slide-rgb) / 0.18);
-  box-shadow: inset 0 0 0 1px rgb(var(--slide-rgb) / 0.5);
-  transition: transform 340ms cubic-bezier(0.34, 1.32, 0.64, 1), background-color 260ms ease, box-shadow 260ms ease;
-}
-/* Slide Nota/Tarefa/Transação: cantos no estilo do Cofre, menos arredondados que a pílula. */
-.ecos-capture-slide.ecos-capture-slide { border-radius: 12px; padding: 3px; }
-.ecos-capture-slide .ecos-slide-indicador, .ecos-capture-slide .ecos-slide-botao { border-radius: 9px; }
-.ecos-slide-trilho { touch-action: pan-y; user-select: none; }
-.ecos-slide-botao { transition: color 220ms ease, transform 160ms ease; }
-.ecos-slide-botao:active { transform: scale(0.94); }
-.ecos-slide-botao[data-ativo="false"] { color: var(--ecos-text-muted); }
-.ecos-slide-botao[data-ativo="false"]:hover { color: var(--ecos-text-primary); }
-
-@keyframes ecos-tipo-entra { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: none; } }
-.ecos-tipo-entra { animation: ecos-tipo-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
-
-@keyframes ecos-secao-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.ecos-secao-entra { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) 360ms both; }
-.ecos-tx-col > * { animation: ecos-secao-entra 320ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
-.ecos-tx-col > *:nth-child(2) { animation-delay: 45ms; } .ecos-tx-col > *:nth-child(3) { animation-delay: 90ms; }
-.ecos-tx-col > *:nth-child(4) { animation-delay: 135ms; } .ecos-tx-col > *:nth-child(5) { animation-delay: 180ms; }
-.ecos-tx-col > *:nth-child(n+6) { animation-delay: 225ms; }
-
-/* Layout: uma coluna no celular (colunas "somem" com display: contents); duas no PC. */
-.ecos-tx { container-type: inline-size; }
-.ecos-tx-grade { display: flex; flex-direction: column; gap: 1.25rem; }
-.ecos-tx-col { display: contents; }
-.ecos-tx-topo { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
-.ecos-tx-toggle-teclado { display: none; }
-.ecos-valor { transition: color 300ms ease; }
-@container (min-width: 720px) {
-  .ecos-tx-grade { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
-  .ecos-tx-col { display: flex; flex-direction: column; gap: 1.25rem; }
-  .ecos-tx-topo { flex-direction: row; justify-content: space-between; align-items: center; }
-  .ecos-valor { text-align: left; font-size: 3rem; }
-  .ecos-tx-toggle-teclado {
-    display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.625rem 0.875rem; border-radius: 0.875rem;
-    background: var(--ecos-surface-2); color: var(--ecos-text-secondary); font-size: 0.875rem; font-weight: 500;
-    transition: background-color 180ms ease, color 180ms ease, transform 140ms ease;
-  }
-  .ecos-tx-toggle-teclado:hover { color: var(--ecos-text-primary); background: var(--ecos-surface-3); }
-  .ecos-tx-toggle-teclado:active { transform: scale(0.985); }
-  .ecos-tx-toggle-teclado span { flex: 1; text-align: left; }
-  .ecos-tx-seta { transition: transform 300ms cubic-bezier(0.34, 1.32, 0.64, 1); }
-  .ecos-tx-toggle-teclado[aria-expanded="true"] .ecos-tx-seta { transform: rotate(180deg); }
-  .ecos-tx-toggle-teclado[aria-expanded="true"] { color: rgb(var(--ecos-violet-rgb)); box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.4); }
-  .ecos-tx-teclado { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 340ms cubic-bezier(0.2, 0.7, 0.25, 1), opacity 240ms ease; }
-  .ecos-tx-teclado[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
-  .ecos-tx-teclado-miolo { min-height: 0; overflow: hidden; }
-  .ecos-tx-teclado[data-aberto="false"] .ecos-tx-teclado-miolo { visibility: hidden; transition: visibility 0s 340ms; }
-}
-
-.ecos-tecla { transition: background-color 150ms ease, transform 120ms ease, box-shadow 150ms ease; }
-.ecos-tecla:hover { box-shadow: inset 0 0 0 1px rgb(var(--ecos-violet-rgb) / 0.35); }
-.ecos-tecla:active { transform: scale(0.92); background-color: rgb(var(--ecos-violet-rgb) / 0.2); }
-
-.ecos-chip { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 140ms ease, box-shadow 200ms ease; }
-.ecos-chip:hover { transform: translateY(-1px); }
-.ecos-chip:active { transform: scale(0.95); }
-@keyframes ecos-chip-pop { 0% { transform: scale(0.94); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
-.ecos-chip[data-selected="true"] { animation: ecos-chip-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
-@keyframes ecos-chip-entra { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
-.ecos-chips > * { animation: ecos-chip-entra 260ms cubic-bezier(0.2, 0.7, 0.25, 1) both; }
-.ecos-chips > *:nth-child(2) { animation-delay: 30ms; } .ecos-chips > *:nth-child(3) { animation-delay: 60ms; }
-.ecos-chips > *:nth-child(4) { animation-delay: 90ms; } .ecos-chips > *:nth-child(5) { animation-delay: 120ms; }
-.ecos-chips > *:nth-child(6) { animation-delay: 150ms; } .ecos-chips > *:nth-child(n+7) { animation-delay: 180ms; }
-
-.ecos-campo { transition: box-shadow 200ms ease, background-color 200ms ease; }
-.ecos-campo:focus { box-shadow: 0 0 0 2px rgb(var(--ecos-violet-rgb) / 0.55); }
-
-.ecos-salvar { transition: transform 160ms ease, box-shadow 220ms ease, opacity 200ms ease, filter 200ms ease ; }
-.ecos-salvar:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.08); }
-.ecos-salvar:not(:disabled):active { transform: scale(0.98); }
-
-@media (prefers-reduced-motion: reduce) {
-  .ecos-slide-indicador, .ecos-slide-botao, .ecos-tipo-entra, .ecos-secao-entra, .ecos-tx-col > *, .ecos-valor, .ecos-tx-seta,
-  .ecos-tx-teclado, .ecos-tx-toggle-teclado, .ecos-tecla, .ecos-chip, .ecos-chips > *, .ecos-campo, .ecos-salvar { animation: none !important; transition: none !important; }
-}
-
-
-/* Reduzir movimento (preferência do Ecos ou do sistema): animações e transições viram instantâneas. */
-[data-reduzir-movimento="true"] *,
-[data-reduzir-movimento="true"] *::before,
-[data-reduzir-movimento="true"] *::after {
-  animation-duration: 0.001ms !important;
-  animation-delay: 0ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
-  transition-delay: 0ms !important;
-  scroll-behavior: auto !important;
-}
+/* Home: entrada sutil (só opacity/transform). Sem movimento quando o usuário pede para reduzir. */
+@keyframes ecos-home-entrada { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ecos-home-entrada { animation: ecos-home-entrada 420ms cubic-bezier(.2,.8,.2,1) backwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-home-entrada { animation: none; } }
