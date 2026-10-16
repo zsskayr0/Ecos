@@ -16,6 +16,7 @@ import { CapturaRapida } from "@/components/feed/CapturaRapida";
 import type { FeedItem } from "@/lib/types";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { estaOnline } from "@/lib/use-conectividade";
 /**
  * Feed — vertical stream interleaving Nota/Tarefa (section 3.1), reading
  * the real `GET /api/v1/feed` (result pre-computed by the ranking job,
@@ -81,7 +82,8 @@ export function FeedScreen() {
 
   useEffect(() => {
     carregar();
-    const id = window.setInterval(carregar, INTERVALO_POLL_MS);
+    // Sem conexão o poll só gastaria tentativas: pausa e retoma sozinho ao voltar.
+    const id = window.setInterval(() => { if (estaOnline()) void carregar(); }, INTERVALO_POLL_MS);
     return () => window.clearInterval(id);
   }, [carregar, versao]);
 

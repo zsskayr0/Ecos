@@ -50,8 +50,8 @@ export function OfflineStatus() {
       : estado.servidorDisponivel
         ? `${estado.pendentes} alteração${estado.pendentes === 1 ? "" : "ões"} aguardando envio`
         : estado.pendentes > 0
-          ? `Offline · ${estado.pendentes} alteração${estado.pendentes === 1 ? " salva" : "ões salvas"} neste dispositivo`
-          : "Offline · usando os dados salvos neste dispositivo";
+          ? `Sem conexão. ${estado.pendentes} alteração${estado.pendentes === 1 ? " será enviada" : "ões serão enviadas"} quando voltar.`
+          : "Sem conexão. Suas alterações serão enviadas quando voltar.";
 
   return (
     <button

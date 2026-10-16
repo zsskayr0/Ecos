@@ -10,7 +10,7 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { tarefas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { alternarChecklist, cortarCorpo } from "@/lib/checklist";
-import { AvisoCortado, BotaoAcao, CLASSE_BARRA, ItemMenu, MenuAcao, PastaChip, TagsChips, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
+import { AvisoCortado, BotaoAcao, CLASSE_BARRA, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
 
 /** A borda esquerda carrega a prioridade (como o roxo/verde das notas) — o fundo vermelho quebrava o ritmo do feed. */
 const BORDA_POR_PRIORIDADE = { baixa: "border-cyan/40", media: "border-warning/50", alta: "border-error" } as const;
@@ -101,7 +101,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
         <button type="button" aria-label={concluida ? "Reabrir tarefa" : "Concluir tarefa"} onClick={(e) => { e.stopPropagation(); void alternarConclusao(); }} className="mt-px shrink-0 text-text-muted hover:text-success">
           {concluida ? <CheckCircle2 size={18} strokeWidth={1.75} className="text-success" /> : <Circle size={18} strokeWidth={1.75} />}
         </button>
-        <button type="button" onClick={(e) => { e.stopPropagation(); abrirDocumento(`/tarefa/${tarefa.id}`, e); }} className={`min-w-0 text-left font-body text-[15px] font-semibold leading-snug hover:underline ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo}</button>
+        <button type="button" onClick={(e) => { e.stopPropagation(); abrirDocumento(`/tarefa/${tarefa.id}`, e); }} className={`min-w-0 text-left font-body text-[15px] font-semibold leading-snug hover:underline ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo}<SeloNaoSincronizado id={tarefa.id} /></button>
       </div>
 
       {expandido ? (

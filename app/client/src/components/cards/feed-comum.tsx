@@ -1,9 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Folder, Globe, Tag } from "lucide-react";
+import { CloudUpload, ExternalLink, Folder, Globe, Tag } from "lucide-react";
 import { tarefas, type TarefaDetalhe } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 export interface PastaOpcao { caminho: string; nome: string }
+
+/** Itens criados offline ganham id "offline-…" até o servidor confirmar. */
+export const ehIdOffline = (id: string) => id.startsWith("offline-");
+
+/** Selo discreto para item que ainda não chegou ao servidor. */
+export function SeloNaoSincronizado({ id }: { id: string }) {
+  if (!ehIdOffline(id)) return null;
+  return (
+    <span title="Salvo neste dispositivo. Será enviado quando houver conexão." className="ml-2 inline-flex items-center gap-1 whitespace-nowrap rounded-pill bg-warning/15 px-2 py-0.5 align-middle text-[11px] font-medium text-warning no-underline">
+      <CloudUpload size={11} aria-hidden />
+      Aguardando envio
+    </span>
+  );
+}
 
 export const nomeDaPasta = (caminho?: string | null) => caminho?.split("/").filter(Boolean).pop();
 

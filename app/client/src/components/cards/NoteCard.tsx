@@ -12,7 +12,7 @@ import { anexosDaNota } from "@/lib/note-media";
 import { alternarChecklist, cortarCorpo, primeiroLink } from "@/lib/checklist";
 import { notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { BotaoAcao, CLASSE_BARRA, AvisoCortado, CartaoLink, ItemMenu, MenuAcao, PastaChip, TagsChips, type PastaOpcao } from "./feed-comum";
+import { BotaoAcao, CLASSE_BARRA, AvisoCortado, CartaoLink, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, type PastaOpcao } from "./feed-comum";
 
 const MAX_MINIATURAS = 3;
 
@@ -73,7 +73,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
         </div>
       </div>
 
-      <button type="button" onClick={(e) => { e.stopPropagation(); abrir(e); }} className="w-fit max-w-full text-left font-body text-[15px] font-semibold leading-snug text-text-primary hover:underline">{nota.titulo}</button>
+      <button type="button" onClick={(e) => { e.stopPropagation(); abrir(e); }} className="w-fit max-w-full text-left font-body text-[15px] font-semibold leading-snug text-text-primary hover:underline">{nota.titulo}<SeloNaoSincronizado id={nota.id} /></button>
 
       {corpoSemAnexos && (expandido
         ? <div className="text-sm leading-relaxed text-text-secondary"><MarkdownPreview corpo={corte.texto} itemId={nota.id} aoAlternarChecklist={(i) => void alternar(i)} />{corte.cortado && <AvisoCortado onAbrir={() => abrirDocumento(`/notas/nota/${nota.id}`)} tipo="nota" />}</div>
