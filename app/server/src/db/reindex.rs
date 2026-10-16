@@ -455,6 +455,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             contagem_pastas.entry(("tarefa", espaco.clone(), pasta.clone())).or_insert(0);
         }
 
+        // Links só entram depois de todas as notas: o destino pode vir depois da origem na ordem de leitura.
+        let mut links_pendentes: Vec<(String, String)> = Vec::new();
         for item in &notas {
             let fm = &item.front_matter;
             tx.execute(
@@ -484,10 +486,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             for titulo_destino in wikilink::extract_titles(&item.body) {
                 if let Some(id_destino) = titulo_para_id.get(&titulo_destino) {
                     if id_destino != &fm.id {
-                        tx.execute(
-                            "INSERT OR IGNORE INTO links_nota (nota_id_origem, nota_id_destino) VALUES (?1, ?2)",
-                            params![fm.id, id_destino],
-                        )?;
+                        links_pendentes.push((fm.id.clone(), id_destino.clone()));
                     }
                 }
             }
@@ -501,6 +500,13 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
                 *contagem_pastas.entry(("nota", chave, pasta.clone())).or_insert(0) += 1;
             }
+        }
+
+        for (origem, destino) in &links_pendentes {
+            tx.execute(
+                "INSERT OR IGNORE INTO links_nota (nota_id_origem, nota_id_destino) VALUES (?1, ?2)",
+                params![origem, destino],
+            )?;
         }
 
         for (espaco, item) in &documentos {
