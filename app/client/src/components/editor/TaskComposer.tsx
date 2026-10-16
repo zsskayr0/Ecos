@@ -1,6 +1,6 @@
 import { useEscFecha } from "@/components/common/Dialog";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
@@ -159,7 +159,9 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   }
   const summary = `${LABELS[value.prioridade]} · ${value.duracao} min · ${value.data ? value.data.split("-").reverse().join("/") + (value.horario ? ` às ${value.horario}` : "") : "Sem data"} · ${value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Sem pasta"}`;
 
-  return <div className="flex min-w-0 flex-col gap-6" data-task-composer>
+  // Tarefa nova começa sem o bloco de anexos: arrastar um arquivo sobre o formulário abre "Mais opções" para recebê-lo.
+  const abrirAoArrastarArquivo = (e: DragEvent<HTMLDivElement>) => { if (simples && Array.from(e.dataTransfer.types).includes("Files")) setMaisOpcoes(true); };
+  return <div className="flex min-w-0 flex-col gap-6" data-task-composer onDragEnter={abrirAoArrastarArquivo}>
     <div className="flex min-w-0 items-center gap-3">
       <TitleField id={`${id}-title`} value={value.titulo} onChange={(titulo) => onChange({ titulo })}
         placeholder="O que precisa ser feito?" ariaLabel="Título da tarefa" autoFocus={!editing}

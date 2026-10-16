@@ -58,6 +58,7 @@ export function AttachmentsField(props: Props) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [arquivoFalhou, setArquivoFalhou] = useState<File | null>(null);
+  const [arrastando, setArrastando] = useState(false);
   const anexos = [...props.corpo.matchAll(/(!?)\[([^\]]*)\]\(((?:src\/Media\/|_anexos\/)[^)]+)\)/g)];
 
   async function enviar(arquivo: File, posicao?: number) {
@@ -119,8 +120,48 @@ export function AttachmentsField(props: Props) {
       })();
     }
 
+    // Arrastar arquivos (da pasta Downloads, por exemplo) para qualquer ponto do formulário também anexa.
+    let profundidade = 0;
+    const trazArquivos = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    function aoEntrar(e: DragEvent) {
+      if (!trazArquivos(e) || atual.current.disabled) return;
+      e.preventDefault();
+      profundidade++;
+      setArrastando(true);
+    }
+    function aoSobrevoar(e: DragEvent) {
+      if (!trazArquivos(e) || atual.current.disabled) return;
+      e.preventDefault(); // sem isso o navegador abriria o arquivo no lugar de soltá-lo aqui
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    }
+    function aoSair(e: DragEvent) {
+      if (!trazArquivos(e)) return;
+      profundidade = Math.max(0, profundidade - 1);
+      if (!profundidade) setArrastando(false);
+    }
+    function aoSoltar(e: DragEvent) {
+      if (!trazArquivos(e)) return;
+      profundidade = 0;
+      setArrastando(false);
+      if (atual.current.disabled) return;
+      const arquivos = Array.from(e.dataTransfer?.files ?? []);
+      if (!arquivos.length) return;
+      e.preventDefault(); // marca como tratado: o "soltar no Cofre" da janela respeita isso
+      void (async () => { for (const arquivo of arquivos) await enviarRef.current(arquivo); })();
+    }
+
     escopo.addEventListener("paste", aoColar);
-    return () => escopo.removeEventListener("paste", aoColar);
+    escopo.addEventListener("dragenter", aoEntrar);
+    escopo.addEventListener("dragover", aoSobrevoar);
+    escopo.addEventListener("dragleave", aoSair);
+    escopo.addEventListener("drop", aoSoltar);
+    return () => {
+      escopo.removeEventListener("paste", aoColar);
+      escopo.removeEventListener("dragenter", aoEntrar);
+      escopo.removeEventListener("dragover", aoSobrevoar);
+      escopo.removeEventListener("dragleave", aoSair);
+      escopo.removeEventListener("drop", aoSoltar);
+    };
   }, []);
 
   function url(caminho: string) {
@@ -128,9 +169,10 @@ export function AttachmentsField(props: Props) {
     return props.itemId ? (props.tipo === "nota" ? notas : tarefas).anexos.urlDownload(props.itemId, caminho.split("/").slice(2).join("/")) : undefined;
   }
 
-  return <section ref={raiz} className={`flex min-w-0 flex-col gap-2 ${props.compact ? "rounded-xl border border-border bg-surface-1 p-4" : ""}`} aria-label="Anexos" aria-busy={enviando}>
+  return <section ref={raiz} className={`flex min-w-0 flex-col gap-2 ${props.compact ? "rounded-xl border border-border bg-surface-1 p-4" : ""} ${arrastando ? "outline outline-2 outline-dashed outline-cyan" : ""}`} aria-label="Anexos" aria-busy={enviando}>
+    {arrastando && <p role="status" className="text-sm font-medium text-cyan">Solte para anexar {props.tipo === "nota" ? "à nota" : "à tarefa"}.</p>}
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="flex items-center gap-2 text-sm font-medium text-text-secondary"><Paperclip size={17} />Anexos<span className="hidden text-xs font-normal text-text-muted md:inline">· cole uma captura com Ctrl+V</span></p>
+      <p className="flex items-center gap-2 text-sm font-medium text-text-secondary"><Paperclip size={17} />Anexos<span className="hidden text-xs font-normal text-text-muted md:inline">· cole com Ctrl+V ou arraste arquivos até aqui</span></p>
       <button type="button" disabled={enviando || props.disabled} onClick={() => input.current?.click()} className="flex min-h-11 items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm font-medium text-text-secondary disabled:opacity-40"><Paperclip size={16} />{enviando ? "Enviando arquivo..." : "Adicionar arquivo"}</button>
     </div>
     {anexos.map((a, i) => <div key={`${a[3]}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
