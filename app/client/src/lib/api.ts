@@ -479,6 +479,27 @@ export const restauracao = {
   cancelar: (token: string) => del<{ ok: true }>(`/me/restauracao/${encodeURIComponent(token)}`),
 };
 
+// --- Sincronização e dispositivos (seção 11.12) ----------------------------
+
+export type ModoSync = "local_unico" | "direto_lan" | "google_drive";
+export interface DispositivoSync { id: string; nome: string; papel: "primario" | "espelho"; ultima_sincronizacao: string | null; push_tipo: "unifiedpush" | "fcm" | "nenhum" }
+export interface StatusSync {
+  modo: ModoSync;
+  /** `ativo` é sempre o estado real: enquanto não existir transporte, vem `false` (e a tela não pode mostrar "sincronizado"). */
+  transporte: { ativo: boolean; estado: "nao_aplicavel" | "indisponivel" | "ativo"; motivo: string };
+  ultima_sincronizacao: string | null;
+  dispositivos: DispositivoSync[];
+}
+export const sync = {
+  status: () => get<StatusSync>("/sync/status"),
+  /** Gera um código de 6 dígitos (vale poucos minutos) para o outro aparelho confirmar. */
+  gerarCodigoPareamento: () => post<{ codigo: string; expira_em: string }>("/sync/dispositivos/parear"),
+  confirmarPareamento: (codigo: string, nome: string) => post<{ id: string; papel: "primario" | "espelho" }>("/sync/dispositivos/parear/confirmar", { codigo, nome }),
+  atualizarDispositivo: (id: string, dados: { nome?: string; papel?: "primario" | "espelho" }) => patch<{ ok: true }>(`/sync/dispositivos/${encodeURIComponent(id)}`, dados),
+  removerDispositivo: (id: string) => del<{ ok: true }>(`/sync/dispositivos/${encodeURIComponent(id)}`),
+  definirModo: (modo: ModoSync) => patch<{ ok: true }>("/sync/config", { modo }),
+};
+
 export const avatarPerfil = {
   /** Sem `usuarioId`, a foto de quem está logado; com ele, a de outra pessoa. */
   obter: (usuarioId?: string) => reqBlob(usuarioId ? `/usuarios/${encodeURIComponent(usuarioId)}/avatar` : "/me/avatar"),
