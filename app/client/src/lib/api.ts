@@ -1248,6 +1248,13 @@ export const vault = {
     salvarOcultarValoresFeed: (valor: boolean) => put<{ ok: true }>("/vault/preferencias/ocultar_valores_feed", { valor }),
     salvarOrdem: (chave: "ordem_contas" | "ordem_categorias", ids: string[]) => put<{ ok: true }>(`/vault/preferencias/${chave}`, { valor: ids }),
   },
+  /** Cópias de segurança do Cofre (arquivos `.enc` cifrados no servidor; o conteúdo nunca sai por aqui). */
+  backup: {
+    config: () => get<{ frequencia: string; retencao: string; proxima_execucao_automatica: string }>("/vault/backup/config"),
+    historico: () => get<{ nome: string; tamanho_bytes: number }[]>("/vault/backup/historico"),
+    /** Gera agora uma cópia cifrada no servidor. */
+    exportar: () => post<{ ok: true; arquivo: string | null }>("/vault/backup/exportar"),
+  },
   /** Pesquisa tolerante (acento, erro de digitação, texto lido dos comprovantes). Devolve os ids que casam, do melhor para o pior. */
   busca: (q: string, params: { data_de?: string; data_ate?: string; limit?: number } = {}) =>
     get<{ items: { id: string; pontuacao: number; so_no_anexo: boolean }[] }>(`/vault/busca${qs({ q, ...params })}`),

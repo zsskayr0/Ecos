@@ -9,6 +9,7 @@ import { chaveDoCofre, lembrarSenha, lembrarSenhaSuportado, limparBloqueioManual
 import { VaultLockScreen } from "@/screens/Vault/VaultLockScreen";
 import { SenhaLembrada } from "@/screens/Vault/SenhaLembrada";
 import { VaultCsv } from "@/screens/Vault/VaultCsv";
+import { BackupsCofre } from "@/screens/Vault/BackupsCofre";
 import { PeriodPicker } from "@/screens/Vault/nexus/PeriodPicker";
 import { defaultPeriod, periodRange, type Period } from "@/screens/Vault/nexus/period";
 import { TELAS_VALORES, salvarCategoriaTema, salvarModoValor, salvarMoeda, usePreferenciasCofre, type ModoValor, type TemaCategoria } from "@/lib/exibicao-valores";
@@ -170,6 +171,7 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
                 <SenhaLembrada />
                 <Linha titulo="Resetar o Cofre" descricao="Apagar tudo fica em Privacidade e cofre, com confirmação e backup de segurança." />
               </>}
+              {aba === "csv" && <BackupsCofre />}
               {aba === "csv" && (valido ? <VaultCsv periodo={periodo} atualizar={notificar} /> : <p role="alert">Selecione um período válido.</p>)}
               {aba === "github" && <div className="cofre-config-empty"><Github size={30} /><h3>Ecos no GitHub</h3>
                 {REPOSITORIO_URL
