@@ -23,6 +23,7 @@ import { WorkspaceProvider, useWorkspace } from "./workspace-store";
 import { PathReporter } from "./TabContent";
 import { definirTopoNavegacao, navegacaoDaAba, topoNavegacao } from "./navegacao-abas";
 import { screenRoutes } from "@/routes/screen-routes";
+import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 
 // O Cofre é pesado e só abre sob demanda: fica fora do pacote inicial.
@@ -223,6 +224,7 @@ function Conteudo() {
   const contador = useRef(0);
   const alternarPaleta = (global = false) => { if (global) setBuscaGlobal(true); setPaletaAberta((v) => !v); };
   useAtalhosGlobais(alternarPaleta);
+  useEffect(() => { prefetchRotasProvaveis(); }, []);
   useNavegacaoGlobal();
   // Comprovante solto na janela: abre o Cofre (a aba Comprovantes recolhe a fila sozinha).
   const comprovantesEsperando = useComprovantesEsperando();

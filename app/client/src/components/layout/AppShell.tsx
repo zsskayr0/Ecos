@@ -8,6 +8,7 @@ import { Fab } from "./Fab";
 import { Drawer } from "./Drawer";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
 import { useAppUI } from "@/lib/ui-context";
+import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
 
 const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/cofre", "/tarefas", "/media", "/busca", "/lixeira"];
 /** Folder-browsing sub-routes keep the topbar too (avatar/notifications
@@ -37,6 +38,8 @@ export function AppShell() {
   const timeoutDoAviso = useRef<ReturnType<typeof setTimeout>>();
   const comTopbar = temTopbar(location.pathname);
   const documentoAberto = location.pathname.startsWith("/tarefa/") || location.pathname.startsWith("/notas/nota/");
+
+  useEffect(() => { prefetchRotasProvaveis(); }, []);
 
   useEffect(() => {
     rotaAtual.current = location.pathname;

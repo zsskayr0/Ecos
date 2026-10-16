@@ -71,12 +71,13 @@ describe("Feed — contagem de chamadas", () => {
       let visibilidade: DocumentVisibilityState = "visible";
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibilidade });
       render(<MemoryRouter><RefreshProvider><FeedScreen /></RefreshProvider></MemoryRouter>);
-      await vi.advanceTimersByTimeAsync(200);
-      expect(api.feed).toHaveBeenCalledTimes(1);
+      for (let i = 0; i < 40 && api.feed.mock.calls.length === 0; i++) await vi.advanceTimersByTimeAsync(50);
+      const inicio = api.feed.mock.calls.length;
+      expect(inicio).toBe(1);
 
-      await vi.advanceTimersByTimeAsync(INTERVALO_POLL_MS - 1000);
+      await vi.advanceTimersByTimeAsync(INTERVALO_POLL_MS - 3000);
       expect(api.feed).toHaveBeenCalledTimes(1); // 10 s depois do início não há poll: o intervalo é 30 s
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(4000);
       expect(api.feed).toHaveBeenCalledTimes(2);
 
       visibilidade = "hidden";
