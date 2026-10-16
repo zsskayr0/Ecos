@@ -16,6 +16,7 @@ pub mod ranking;
 pub mod tags;
 pub mod tarefa_serie;
 pub mod recurrence;
+pub mod sync_plano;
 pub mod types;
 pub mod wikilink;
 
