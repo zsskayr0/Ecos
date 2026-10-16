@@ -42,6 +42,27 @@ function migrarCoresLocais(lista: MinhaEquipe[]) {
  * showed up in the Drawer and Profile after reloading the whole page (the
  * hook fetched only once, on first mount) — a real, unintentional bug.
  */
+/** Janela em que consumidores montados juntos (Topbar, Feed, Drawer…) dividem a mesma requisição. */
+const JANELA_COMPARTILHADA_MS = 1500;
+let pedido: { versao: number; em: number; promessa: Promise<MinhaEquipe[]> } | null = null;
+let ultima: MinhaEquipe[] = [];
+let consumidores = 0;
+
+/** Um único `GET /equipes` por versão do refresh-bus; a lista só muda de identidade quando o conteúdo muda. */
+function obterEquipes(versao: number): Promise<MinhaEquipe[]> {
+  const agora = Date.now();
+  if (pedido && pedido.versao === versao && agora - pedido.em < JANELA_COMPARTILHADA_MS) return pedido.promessa;
+  const promessa = equipesApi.listarMinhas().then((lista) => {
+    registrarCoresDasEquipes(lista);
+    migrarCoresLocais(lista);
+    if (JSON.stringify(lista) !== JSON.stringify(ultima)) ultima = lista;
+    return ultima;
+  });
+  pedido = { versao, em: agora, promessa };
+  promessa.catch(() => { if (pedido?.promessa === promessa) pedido = null; });
+  return promessa;
+}
+
 export function useMinhasEquipes() {
   const [equipes, setEquipes] = useState<MinhaEquipe[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -49,21 +70,15 @@ export function useMinhasEquipes() {
 
   useEffect(() => {
     let vivo = true;
-    equipesApi
-      .listarMinhas()
-      .then((lista) => {
-        registrarCoresDasEquipes(lista);
-        migrarCoresLocais(lista);
-        if (vivo) setEquipes(lista);
-      })
-      .catch(() => {
-        if (vivo) setEquipes([]);
-      })
-      .finally(() => {
-        if (vivo) setCarregando(false);
-      });
+    consumidores++;
+    obterEquipes(versao)
+      .then((lista) => { if (vivo) setEquipes(lista); })
+      .catch(() => { if (vivo) setEquipes([]); })
+      .finally(() => { if (vivo) setCarregando(false); });
     return () => {
       vivo = false;
+      // Sem nenhum consumidor montado o pedido compartilhado não vale mais (evita dado velho ao remontar).
+      if (--consumidores <= 0) { consumidores = 0; pedido = null; }
     };
   }, [versao]);
 

@@ -40,7 +40,7 @@ const JANELA_RECENTE_MS = 10 * 60_000;
 export function FeedScreen() {
   const navigate = useNavigate();
   const { filtroEquipeId, espacoAtivo, intercalarEquipes } = useAppUI();
-  const { equipes } = useMinhasEquipes();
+  const { equipes, carregando: carregandoEquipes } = useMinhasEquipes();
   const { perfil } = useAuth();
   const { versao } = useRefreshBus();
   const [itens, setItens] = useState<FeedItem[] | null>(null);
@@ -81,11 +81,13 @@ export function FeedScreen() {
   }, [filtroEquipeId, espacoAtivo, intercalarEquipes, equipes, perfil]);
 
   useEffect(() => {
+    // Espera as equipes (usadas nos rótulos) para carregar uma única vez na montagem.
+    if (carregandoEquipes) return;
     carregar();
     // Sem conexão o poll só gastaria tentativas: pausa e retoma sozinho ao voltar.
     const id = window.setInterval(() => { if (estaOnline()) void carregar(); }, INTERVALO_POLL_MS);
     return () => window.clearInterval(id);
-  }, [carregar, versao]);
+  }, [carregar, versao, carregandoEquipes]);
 
   return (
     <PullToRefresh onRefresh={carregar}>
