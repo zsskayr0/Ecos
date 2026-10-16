@@ -799,6 +799,15 @@ export const busca = {
 export interface TagCatalogo { tag: string; notas: number; tarefas: number; total: number; espacos: { espaco: string; notas: number; tarefas: number }[] }
 export interface AfetadosTag { notas: number; tarefas: number }
 
+export type TipoNoGrafico = "nota" | "tarefa" | "evento" | "tag";
+export interface NoGrafico { id: string; tipo: TipoNoGrafico; titulo: string; espaco: string | null; status: string | null }
+export interface ArestaGrafico { origem: string; destino: string; tipo: "wikilink" | "evento_nota" | "evento_tarefa" | "tag" }
+export interface GraficoDados { nos: NoGrafico[]; arestas: ArestaGrafico[] }
+
+export const graficoApi = {
+  obter: () => get<GraficoDados>("/grafico"),
+};
+
 export const tagsApi = {
   listar: (espaco?: string) => get<TagCatalogo[]>(`/tags${qs({ espaco })}`),
   renomear: (payload: { espaco: string; de: string; para: string }) => patch<{ tag: string; afetados: AfetadosTag }>("/tags", payload),

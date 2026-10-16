@@ -61,6 +61,8 @@ const AdministracaoScreen = carregar(() => import("@/screens/Settings/Administra
 const HelpScreen = carregar(() => import("@/screens/Help/HelpScreen"), "HelpScreen");
 const MediaScreen = carregar(() => import("@/screens/Media/MediaScreen"), "MediaScreen");
 const FileViewerScreen = carregar(() => import("@/screens/Media/FileViewerScreen"), "FileViewerScreen");
+const GraficoConfigScreen = carregar(() => import("@/screens/Settings/GraficoConfigScreen"), "GraficoConfigScreen");
+const GraficoScreen = carregar(() => import("@/screens/Grafico/GraficoScreen"), "GraficoScreen");
 const TrashScreen = carregar(() => import("@/screens/Trash/TrashScreen"), "TrashScreen");
 
 /**
@@ -82,6 +84,8 @@ export const screenRoutes = (
     <Route path="/notas/pasta/nova" element={tela(FolderCreateScreen)} />
     <Route path="/notas/pasta/*" element={tela(FolderScreen)} />
     <Route path="/notas/nota/:id" element={tela(NoteDetailScreen)} />
+
+    <Route path="/grafico" element={tela(GraficoScreen)} />
 
     <Route path="/busca" element={tela(SearchScreen)} />
 
@@ -130,6 +134,7 @@ export const screenRoutes = (
       ))}
       <Route path="conta" element={tela(ContaDadosScreen)} />
       <Route path="aparencia" element={tela(AparenciaScreen)} />
+      <Route path="grafico" element={tela(GraficoConfigScreen)} />
       <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
       <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
       <Route path="organizacao" element={tela(OrganizationScreen)} />
