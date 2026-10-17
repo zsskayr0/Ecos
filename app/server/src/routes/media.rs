@@ -255,7 +255,7 @@ mod tests {
         let excluded = app.clone().call(Request::delete(delete_uri).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(excluded.status(), StatusCode::OK);
         assert!(!temp.join("teste").join(caminho).exists());
-        let recuperavel = walkdir::WalkDir::new(temp.join(".ecos/lixeira/media")).into_iter().filter_map(Result::ok).find(|e| e.file_type().is_file()).unwrap();
+        let recuperavel = walkdir::WalkDir::new(temp.join(".ecos/lixeira/media")).into_iter().filter_map(Result::ok).find(|e| e.file_type().is_file() && e.path().ends_with(caminho.trim_start_matches("src/Media/"))).unwrap();
         assert_eq!(std::fs::read(recuperavel.path()).unwrap(), data);
         let trash = app.clone().call(Request::get("/api/v1/lixeira").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(trash.status(), StatusCode::OK);
