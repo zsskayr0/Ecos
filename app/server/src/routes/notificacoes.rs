@@ -48,7 +48,7 @@ pub fn criar_com_acao(conn: &rusqlite::Connection, usuario_id: &str, categoria: 
 pub async fn listar_preferencias(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
     let itens: Vec<serde_json::Value> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             crate::push::CATEGORIAS
                 .iter()
                 .map(|c| {
@@ -89,7 +89,50 @@ pub async fn atualizar_preferencia(State(state): State<AppState>, Extension(usua
 
 /// Produtor de "prazo próximo": tarefas pendentes da pessoa com prazo hoje ou amanhã (data civil no fuso das
 /// preferências dela; sem preferência, America/Sao_Paulo). Uma notificação por tarefa e dia de prazo.
-fn varrer_prazos(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite::Result<()> {
+///
+/// Duas fases para que o caminho comum (nada novo) seja SÓ leitura, sem pegar a trava de escrita: (1) numa conexão
+/// de leitura, acha as tarefas ainda não notificadas hoje; (2) só se houver alguma, grava na conexão de escrita.
+async fn varrer_prazos(state: &AppState, usuario_id: &str) -> rusqlite::Result<()> {
+    let uid = usuario_id.to_string();
+    let (dia, novos) = state.db.with_read(move |conn| prazos_a_notificar(conn, &uid)).await?;
+    if novos.is_empty() {
+        return Ok(());
+    }
+    let uid = usuario_id.to_string();
+    state
+        .db
+        .with(move |conn| {
+            for (chave, titulo, quando) in novos {
+                criar(conn, &uid, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&chave))?;
+                // Só lembra depois de gravar com sucesso. (Quem desliga a caixa de "agenda" e religa no mesmo dia só
+                // volta a receber estes avisos no dia seguinte ou após reiniciar o servidor.)
+                lembrar_prazo(&uid, &dia, chave);
+            }
+            Ok(())
+        })
+        .await
+}
+
+type MemoPrazos = std::sync::Mutex<std::collections::HashMap<String, (String, std::collections::HashSet<String>)>>;
+
+/// Depois da primeira varredura do dia por pessoa, as tarefas já processadas não voltam a gravar (o `INSERT OR
+/// IGNORE` por chave continua sendo a garantia de idempotência).
+fn memo_prazos() -> &'static MemoPrazos {
+    static JA_VARRIDAS: std::sync::OnceLock<MemoPrazos> = std::sync::OnceLock::new();
+    JA_VARRIDAS.get_or_init(Default::default)
+}
+
+fn lembrar_prazo(usuario_id: &str, dia: &str, chave: String) {
+    let mut mapa = memo_prazos().lock().unwrap_or_else(|e| e.into_inner());
+    let entrada = mapa.entry(usuario_id.to_string()).or_insert_with(|| (dia.to_string(), Default::default()));
+    if entrada.0 != dia {
+        *entrada = (dia.to_string(), Default::default());
+    }
+    entrada.1.insert(chave);
+}
+
+/// Leitura pura: `(dia de hoje, [(chave, título, "vence hoje"|"vence amanhã")])` das tarefas ainda sem aviso.
+fn prazos_a_notificar(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite::Result<(String, Vec<(String, String, &'static str)>)> {
     let fuso: String = conn
         .query_row("SELECT fuso FROM preferencia_calendario WHERE usuario_id = ?1", [usuario_id], |r| r.get(0))
         .unwrap_or_else(|_| "America/Sao_Paulo".to_string());
@@ -99,38 +142,26 @@ fn varrer_prazos(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite::Res
     let (h, a) = (hoje.format("%Y-%m-%d").to_string(), amanha.format("%Y-%m-%d").to_string());
     let mut stmt = conn.prepare("SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1 AND status = 'pendente' AND due_date IN (?2, ?3)")?;
     let tarefas = stmt.query_map(rusqlite::params![usuario_id, h, a], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
-    // Cada GET do contador/lista passa por aqui: depois da primeira varredura do dia, as tarefas já processadas
-    // não voltam a gravar (o `INSERT OR IGNORE` por chave continua sendo a garantia de idempotência).
-    static JA_VARRIDAS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (String, std::collections::HashSet<String>)>>> = std::sync::OnceLock::new();
-    let memo = JA_VARRIDAS.get_or_init(Default::default);
-    let mut vistos: std::collections::HashSet<String> = {
-        let mut mapa = memo.lock().unwrap_or_else(|e| e.into_inner());
-        match mapa.get(usuario_id) {
-            Some((dia, set)) if *dia == h => set.clone(),
-            _ => { mapa.insert(usuario_id.to_string(), (h.clone(), Default::default())); Default::default() }
-        }
+    let vistos: std::collections::HashSet<String> = match memo_prazos().lock().unwrap_or_else(|e| e.into_inner()).get(usuario_id) {
+        Some((dia, set)) if *dia == h => set.clone(),
+        _ => Default::default(),
     };
-    for (id, titulo, due) in tarefas {
-        let chave = format!("prazo:{id}:{due}");
-        if vistos.contains(&chave) { continue; }
-        let quando = if due == h { "vence hoje" } else { "vence amanhã" };
-        criar(conn, usuario_id, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&chave))?;
-        // Só lembra depois de gravar com sucesso. (Quem desliga a caixa de "agenda" e religa no mesmo dia só volta a
-        // receber estes avisos no dia seguinte ou após reiniciar o servidor.)
-        vistos.insert(chave.clone());
-        memo.lock().unwrap_or_else(|e| e.into_inner()).entry(usuario_id.to_string()).and_modify(|(_, set)| { set.insert(chave); });
-    }
-    Ok(())
+    let novos = tarefas
+        .into_iter()
+        .filter_map(|(id, titulo, due)| {
+            let chave = format!("prazo:{id}:{due}");
+            (!vistos.contains(&chave)).then(|| (chave, titulo, if due == h { "vence hoje" } else { "vence amanhã" }))
+        })
+        .collect();
+    Ok((h, novos))
 }
 
 /// `GET /notificacoes/nao-lidas` — contador do sino.
 pub async fn nao_lidas(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
+    let _ = varrer_prazos(&state, &usuario.0).await;
     let total: i64 = state
         .db
-        .with(move |conn| {
-            let _ = varrer_prazos(conn, &usuario.0);
-            conn.query_row("SELECT COUNT(*) FROM notificacao WHERE usuario_id = ?1 AND lida = 0", [&usuario.0], |r| r.get(0))
-        })
+        .with_read(move |conn| conn.query_row("SELECT COUNT(*) FROM notificacao WHERE usuario_id = ?1 AND lida = 0", [&usuario.0], |r| r.get(0)))
         .await?;
     Ok(Json(serde_json::json!({ "total": total })))
 }
@@ -139,10 +170,10 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
+    let _ = varrer_prazos(&state, &usuario.0).await;
     let linhas: Vec<serde_json::Value> = state
         .db
-        .with(move |conn| {
-            let _ = varrer_prazos(conn, &usuario.0);
+        .with_read(move |conn| {
             let mut sql = String::from("SELECT id, categoria, titulo, corpo, lida, criado_em, acao_url FROM notificacao WHERE usuario_id = ?");
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(usuario.0.clone())];
 

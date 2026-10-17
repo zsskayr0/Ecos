@@ -493,7 +493,7 @@ async fn aplicar(state: &AppState, usuario_id: &str, eventos: &[EventoGoogle], f
                     criado_por: Some(usuario_id.to_string()),
                 };
                 let caminho = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(&fm.titulo), "md");
-                std::fs::write(&caminho, frontmatter::serialize(&fm, &conv.descricao)?)?;
+                crate::eventos_fs::escrever_se_mudou(&caminho, frontmatter::serialize(&fm, &conv.descricao)?)?;
                 resumo.criados += 1;
                 mudou = true;
             }
@@ -536,10 +536,10 @@ async fn aplicar(state: &AppState, usuario_id: &str, eventos: &[EventoGoogle], f
                 if fm.titulo != l.titulo {
                     let pai = atual.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| dir.clone());
                     let destino = naming::caminho_sem_colisao(&pai, &naming::sanitizar_nome_arquivo(&fm.titulo), "md");
-                    std::fs::write(&destino, conteudo)?;
+                    crate::eventos_fs::escrever_se_mudou(&destino, conteudo)?;
                     std::fs::remove_file(&atual)?;
                 } else {
-                    std::fs::write(&atual, conteudo)?;
+                    crate::eventos_fs::escrever_se_mudou(&atual, conteudo)?;
                 }
                 mudou = true;
             }
@@ -594,7 +594,7 @@ async fn aplicar_excecao(state: &AppState, usuario_id: &str, ev: &EventoGoogle, 
             // Vale a edição local; só guardamos o etag novo para o envio não tomar 412.
             atual.google.etag = ev.etag.clone();
             resumo.conflitos_mantidos_locais += 1;
-            std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+            crate::eventos_fs::escrever_se_mudou(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
             return Ok(true);
         }
     }
@@ -641,7 +641,7 @@ async fn aplicar_excecao(state: &AppState, usuario_id: &str, ev: &EventoGoogle, 
         None => fm.excecoes.push(nova),
     }
     fm.excecoes.sort_by_key(|x| x.original);
-    std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+    crate::eventos_fs::escrever_se_mudou(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
     resumo.excecoes_aplicadas += 1;
     Ok(true)
 }
@@ -959,7 +959,7 @@ async fn enviar(state: &AppState, cfg: &GoogleConfig, usuario_id: &str, access: 
         }
         // O que já foi enviado é gravado mesmo se uma falha interrompeu o resto.
         if alterou {
-            std::fs::write(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
+            crate::eventos_fs::escrever_se_mudou(&arquivo, frontmatter::serialize(&fm, &corpo)?)?;
             mudou = true;
         }
         match erro {
@@ -1040,7 +1040,7 @@ pub async fn desvincular_eventos(state: &AppState, usuario_id: &str, calendar_id
             x.google = GoogleRef::default();
             x.sync_pendente = false;
         });
-        std::fs::write(&arquivo, frontmatter::serialize(&fm, &doc.body)?)?;
+        crate::eventos_fs::escrever_se_mudou(&arquivo, frontmatter::serialize(&fm, &doc.body)?)?;
     }
     if !caminhos.is_empty() {
         reindexar_tudo(&state.db, &state.config.notes_root).await?;

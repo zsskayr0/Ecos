@@ -16,6 +16,21 @@ pub fn ler_categorias(dir_eventos: &Path) -> Vec<CategoriaEvento> {
     })
 }
 
+/// Grava o arquivo só se o conteúdo mudou (ou se ele não existe). Devolve `true` quando gravou.
+///
+/// O sync do Google reescrevia o `.md` de cada evento a cada ciclo mesmo sem mudança; isso alterava o mtime,
+/// disparava o vigia de arquivos e uma reindexação inteira. Conteúdo idêntico agora não toca no disco.
+pub fn escrever_se_mudou(caminho: impl AsRef<Path>, conteudo: impl AsRef<[u8]>) -> std::io::Result<bool> {
+    let (caminho, conteudo) = (caminho.as_ref(), conteudo.as_ref());
+    if let Ok(atual) = std::fs::read(caminho) {
+        if atual == conteudo {
+            return Ok(false);
+        }
+    }
+    std::fs::write(caminho, conteudo)?;
+    Ok(true)
+}
+
 /// Gravação atômica (tmp + rename), como nas notas adotadas.
 pub fn escrever_categorias(dir_eventos: &Path, categorias: &[CategoriaEvento]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir_eventos)?;
@@ -29,6 +44,21 @@ pub fn escrever_categorias(dir_eventos: &Path, categorias: &[CategoriaEvento]) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escrever_se_mudou_nao_toca_no_arquivo_identico() {
+        let dir = std::env::temp_dir().join(format!("ecos-esm-{}", ecos_core::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("e.md");
+        assert!(escrever_se_mudou(&f, "a").unwrap(), "arquivo novo é gravado");
+        let antes = std::fs::metadata(&f).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        assert!(!escrever_se_mudou(&f, "a").unwrap(), "idêntico não grava");
+        assert_eq!(std::fs::metadata(&f).unwrap().modified().unwrap(), antes, "mtime intacto");
+        assert!(escrever_se_mudou(&f, "b").unwrap(), "mudou: grava");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "b");
+        std::fs::remove_dir_all(dir).ok();
+    }
 
     #[test]
     fn categorias_fazem_roundtrip_e_ausente_e_vazio() {

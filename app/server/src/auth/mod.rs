@@ -43,7 +43,7 @@ pub struct StatusResposta {
 }
 
 pub async fn status(State(state): State<AppState>) -> AppResult<Json<StatusResposta>> {
-    let total: i64 = state.db.with(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
+    let total: i64 = state.db.with_read(|conn| conn.query_row("SELECT COUNT(*) FROM usuario", [], |r| r.get(0))).await?;
     Ok(Json(StatusResposta { instancia_vazia: total == 0, versao: env!("CARGO_PKG_VERSION"), idade_minima: IDADE_MINIMA, termos_versao: TERMOS_VERSAO }))
 }
 
@@ -403,7 +403,7 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
     let usuario_id = usuario.0.clone();
     let linha: Option<(String, Option<String>, String, bool)> = state
         .db
-        .with({
+        .with_read({
             let usuario_id = usuario_id.clone();
             move |conn| conn.query_row("SELECT nome_usuario, nome, papel, deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&usuario_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional()
         })
@@ -412,7 +412,7 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
 
     let equipes: Vec<(String, String, String, String, Option<String>)> = state
         .db
-        .with({
+        .with_read({
             let usuario_id = usuario_id.clone();
             move |conn| {
                 let mut stmt = conn.prepare("SELECT e.id, e.nome, m.cargo, e.tipo, e.cor FROM equipe e JOIN membro_equipe m ON m.equipe_id = e.id WHERE m.usuario_id = ?1")?;
@@ -433,7 +433,7 @@ pub async fn perfil(State(state): State<AppState>, Extension(usuario): Extension
 
     let termos_aceitos: bool = state
         .db
-        .with({
+        .with_read({
             let usuario_id = usuario_id.clone();
             move |conn| conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM consentimento WHERE usuario_id = ?1 AND tipo = 'termos' AND versao = ?2)",

@@ -34,7 +34,7 @@ pub fn estado_do_transporte(modo: &str) -> serde_json::Value {
 pub async fn status(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
     let (modo, dispositivos): (String, Vec<serde_json::Value>) = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let modo: String = conn
                 .query_row("SELECT modo FROM config_sync WHERE usuario_id = ?1", [&usuario.0], |r| r.get(0))
                 .optional()?

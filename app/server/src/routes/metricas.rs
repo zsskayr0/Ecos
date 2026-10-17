@@ -42,7 +42,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     let com_equipes = escopo == "pessoal_e_equipes";
     let metricas = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let entrou_em: Option<String> = conn.query_row("SELECT criado_em FROM usuario WHERE id = ?1", [&uid], |r| r.get(0)).ok();
             let Some(entrou_em) = entrou_em else { return Ok(None) };
             let (nota_vis, tarefa_vis) = if com_equipes {

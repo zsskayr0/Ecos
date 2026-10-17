@@ -39,6 +39,10 @@ struct Registro {
     duracao: BTreeMap<String, Historico>,
     login_falhas: u64,
     erros: BTreeMap<String, u64>,
+    /// (origem arquivo:linha, via leitura|escrita) -> (espera pela trava, tempo segurando a conexão).
+    db: BTreeMap<(String, &'static str), (Historico, Historico)>,
+    /// Duração de cada `reindexar_tudo` (resultado: "completo" ou "pulado" por não ter mudado nada).
+    reindex: BTreeMap<&'static str, Historico>,
 }
 
 fn registro() -> &'static Mutex<Registro> {
@@ -68,6 +72,45 @@ pub fn registrar_requisicao(metodo: &str, rota: &str, status: u16, duracao: Dura
     if rota == ROTA_LOGIN && status == 401 {
         r.login_falhas += 1;
     }
+}
+
+fn somar(h: &mut Historico, d: Duration) {
+    let s = d.as_secs_f64();
+    for (i, limite) in BUCKETS.iter().enumerate() {
+        if s <= *limite {
+            h.buckets[i] += 1;
+        }
+    }
+    h.soma += s;
+    h.total += 1;
+}
+
+/// Espera pela trava do banco e tempo segurando-a, por origem (arquivo:linha de quem chamou `db.with`).
+pub fn registrar_db(origem: &str, via: &'static str, espera: Duration, segurou: Duration) {
+    let mut r = registro().lock().expect("registro de métricas");
+    // Teto de origens distintas: protege a memória (há ~100 chamadas no código).
+    if !r.db.contains_key(&(origem.to_string(), via)) && r.db.len() >= 400 {
+        return;
+    }
+    let (e, g) = r.db.entry((origem.to_string(), via)).or_default();
+    somar(e, espera);
+    somar(g, segurou);
+}
+
+pub fn registrar_reindex(resultado: &'static str, duracao: Duration) {
+    let mut r = registro().lock().expect("registro de métricas");
+    somar(r.reindex.entry(resultado).or_default(), duracao);
+}
+
+/// Quantas reindexações terminaram com o resultado ("completo" ou "pulado") neste processo.
+pub fn contagem_reindex(resultado: &str) -> u64 {
+    registro().lock().expect("registro de métricas").reindex.get(resultado).map(|h| h.total).unwrap_or(0)
+}
+
+/// Soma de segundos e contagem de esperas pela trava das origens que contêm o texto (usado nos testes).
+pub fn espera_db(origem_contem: &str) -> (f64, u64) {
+    let r = registro().lock().expect("registro de métricas");
+    r.db.iter().filter(|((o, _), _)| o.contains(origem_contem)).fold((0.0, 0), |(s, n), (_, (e, _))| (s + e.soma, n + e.total))
 }
 
 pub fn registrar_erro_de_log(alvo: &str) {
@@ -101,6 +144,28 @@ pub fn renderizar() -> String {
         let _ = writeln!(s, "ecos_http_request_duration_seconds_bucket{{rota=\"{rota}\",le=\"+Inf\"}} {}", h.total);
         let _ = writeln!(s, "ecos_http_request_duration_seconds_sum{{rota=\"{rota}\"}} {}", h.soma);
         let _ = writeln!(s, "ecos_http_request_duration_seconds_count{{rota=\"{rota}\"}} {}", h.total);
+    }
+    s.push_str("# HELP ecos_db_espera_seconds Espera pela trava do banco por origem (arquivo:linha) e via.\n# TYPE ecos_db_espera_seconds histogram\n");
+    s.push_str("# HELP ecos_db_segurou_seconds Tempo segurando a conexão do banco por origem e via.\n# TYPE ecos_db_segurou_seconds histogram\n");
+    for ((origem, via), (espera, segurou)) in &r.db {
+        let origem = escapar(origem);
+        for (nome, h) in [("ecos_db_espera_seconds", espera), ("ecos_db_segurou_seconds", segurou)] {
+            for (i, limite) in BUCKETS.iter().enumerate() {
+                let _ = writeln!(s, "{nome}_bucket{{origem=\"{origem}\",via=\"{via}\",le=\"{limite}\"}} {}", h.buckets[i]);
+            }
+            let _ = writeln!(s, "{nome}_bucket{{origem=\"{origem}\",via=\"{via}\",le=\"+Inf\"}} {}", h.total);
+            let _ = writeln!(s, "{nome}_sum{{origem=\"{origem}\",via=\"{via}\"}} {}", h.soma);
+            let _ = writeln!(s, "{nome}_count{{origem=\"{origem}\",via=\"{via}\"}} {}", h.total);
+        }
+    }
+    s.push_str("# HELP ecos_reindex_seconds Duração de cada reindexação da biblioteca (resultado completo ou pulado).\n# TYPE ecos_reindex_seconds histogram\n");
+    for (res, h) in &r.reindex {
+        for (i, limite) in BUCKETS.iter().enumerate() {
+            let _ = writeln!(s, "ecos_reindex_seconds_bucket{{resultado=\"{res}\",le=\"{limite}\"}} {}", h.buckets[i]);
+        }
+        let _ = writeln!(s, "ecos_reindex_seconds_bucket{{resultado=\"{res}\",le=\"+Inf\"}} {}", h.total);
+        let _ = writeln!(s, "ecos_reindex_seconds_sum{{resultado=\"{res}\"}} {}", h.soma);
+        let _ = writeln!(s, "ecos_reindex_seconds_count{{resultado=\"{res}\"}} {}", h.total);
     }
     let _ = write!(s, "# HELP ecos_login_falhas_total Tentativas de login recusadas (401).\n# TYPE ecos_login_falhas_total counter\necos_login_falhas_total {}\n", r.login_falhas);
     s.push_str("# HELP ecos_log_erros_total Eventos de log em nível error, por módulo (escrita de arquivo, reindex, backup...).\n# TYPE ecos_log_erros_total counter\n");

@@ -82,7 +82,7 @@ pub struct CriarTimeEntryPayload { pub tipo: String, pub inicio_em: chrono::Date
 
 pub async fn listar_time_entries(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<Vec<serde_json::Value>>> {
     caminho_por_id(&state, &usuario.0, &id).await?;
-    let itens = state.db.with(move |conn| {
+    let itens = state.db.with_read(move |conn| {
         let mut stmt = conn.prepare("SELECT id,tipo,inicio_em,fim_em,duracao_min,foco,criado_em FROM tarefa_time_entry WHERE tarefa_id=? ORDER BY inicio_em DESC")?;
         let rows = stmt.query_map([id], |r| Ok(serde_json::json!({
             "id": r.get::<_, String>(0)?, "tipo": r.get::<_, String>(1)?, "inicio_em": r.get::<_, String>(2)?,
@@ -189,7 +189,7 @@ pub async fn listar_blocos(State(state): State<AppState>, Extension(usuario): Ex
     let visivel = crate::espacos::visivel_sql("t", &usuario.0);
     let blocos = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let sql = format!(
                 "SELECT e.id, e.tarefa_id, e.tipo, e.inicio_em, e.duracao_min, e.foco, t.titulo, t.status, t.prioridade, t.duration_min \
                  FROM tarefa_time_entry e JOIN tarefa t ON t.id = e.tarefa_id \
@@ -221,7 +221,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
     let linhas: Vec<serde_json::Value> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut sql = String::from(
                 "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
                  t.criado_em, t.prioridade, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, \
@@ -414,7 +414,7 @@ pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str)
     let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
-        .with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM tarefa WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
+        .with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM tarefa WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
         .await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
@@ -794,7 +794,7 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
 
     let blocos: Vec<(String, String, String, String)> = state
         .db
-        .with({
+        .with_read({
             let usuario_id = usuario.0.clone();
             move |conn| {
             let mut stmt = conn.prepare("SELECT hora_inicio, hora_fim, dias_semana, classificacao FROM bloco_rotina WHERE usuario_id = ?1")?;
@@ -822,7 +822,7 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
 
     let consumido_eventos_externos_min: i64 = state
         .db
-        .with({
+        .with_read({
             let data_str = data_str.clone();
             let tz_mod = tz_mod.clone();
             // O cache externo não tem dono próprio: só conta o que está ligado a uma tarefa que esta pessoa enxerga.
@@ -842,7 +842,7 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
     let visivel = crate::espacos::visivel_sql("", &usuario.0);
     let consumido_tarefas_min: i64 = state
         .db
-        .with({
+        .with_read({
             let data_str = data_str.clone();
             let tz_mod = tz_mod.clone();
             move |conn| {

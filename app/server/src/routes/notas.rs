@@ -64,7 +64,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     #[allow(clippy::type_complexity)]
     let linhas: Vec<(String, String, String, Option<String>, String, String, String, Option<String>, Option<String>, Option<String>, String)> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut sql = String::from(
                 "SELECT n.id, n.titulo, n.modo, n.pasta_id, n.espaco, n.criado_em, n.atualizado_em, n.ultima_revisao_em, \
                  n.criado_por, u.nome_usuario, '' \
@@ -141,7 +141,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     } else {
         state
             .db
-            .with(move |conn| {
+            .with_read(move |conn| {
                 let marcadores = std::iter::repeat("?").take(ids.len()).collect::<Vec<_>>().join(", ");
                 let sql = format!("SELECT nota_id, tag FROM nota_tag WHERE nota_id IN ({marcadores}) ORDER BY tag");
                 let mut stmt = conn.prepare(&sql)?;
@@ -315,7 +315,7 @@ async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResu
     let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
-        .with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM nota WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
+        .with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM nota WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
         .await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
@@ -451,7 +451,7 @@ pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<
     let id_saida = id.clone();
     let entrada: Vec<(String, String)> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_origem WHERE l.nota_id_destino = ?1 AND {visivel}"),
             )?;
@@ -461,7 +461,7 @@ pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<
         .await?;
     let saida: Vec<(String, String)> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_destino WHERE l.nota_id_origem = ?1 AND {visivel_saida}"),
             )?;

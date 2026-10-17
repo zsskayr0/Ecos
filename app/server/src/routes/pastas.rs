@@ -59,7 +59,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
     let pastas: Vec<(String, String, i64)> = state
         .db
-        .with({
+        .with_read({
             let tipo = tipo.clone();
             let pasta_pai = pasta_pai.clone();
             let espaco = espaco.clone();
@@ -92,7 +92,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let itens: Vec<serde_json::Value> = if tipo == "tarefa" {
         state
             .db
-            .with(move |conn| {
+            .with_read(move |conn| {
                 let mut stmt = conn.prepare(&format!("SELECT id, titulo, status FROM tarefa WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2) AND {visivel_item}"))?;
                 let linhas = stmt
                     .query_map(rusqlite::params![&pasta_pai, &espaco_itens], |r| {
@@ -105,7 +105,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     } else {
         let mut itens = state
             .db
-            .with({
+            .with_read({
                 let pasta_pai = pasta_pai.clone();
                 let espaco_itens = espaco_itens.clone();
                 move |conn| {
@@ -121,7 +121,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             .await?;
         let documentos = state
             .db
-            .with(move |conn| {
+            .with_read(move |conn| {
                 let mut stmt = conn.prepare(&format!("SELECT caminho, nome, tamanho_bytes, hash_conteudo FROM documento_cache WHERE COALESCE(pasta, '') = ?1 AND {visivel_doc}"))?;
                 let linhas = stmt
                     .query_map([&pasta_pai], |r| {
@@ -230,7 +230,7 @@ pub async fn documento(
     let visivel = crate::espacos::visivel_chave_sql("", &usuario.0);
     let caminho: Option<String> = state
         .db
-        .with(move |conn| conn.query_row(&format!("SELECT caminho FROM documento_cache WHERE hash_conteudo = ?1 AND {visivel}"), [&hash], |r| r.get(0)).optional())
+        .with_read(move |conn| conn.query_row(&format!("SELECT caminho FROM documento_cache WHERE hash_conteudo = ?1 AND {visivel}"), [&hash], |r| r.get(0)).optional())
         .await?;
     let caminho = caminho.ok_or(AppError::new(ErrorCode::NotFound))?;
     let bytes = std::fs::read(state.config.notes_root.join(caminho))?;

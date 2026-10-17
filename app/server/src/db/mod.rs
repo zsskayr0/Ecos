@@ -8,7 +8,9 @@ pub mod reindex;
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
@@ -44,8 +46,29 @@ fn migrations() -> Migrations<'static> {
     ])
 }
 
+/// Acima disto (espera pela trava ou tempo segurando-a) a chamada vira um aviso no log com a origem.
+pub const LIMITE_LENTO: Duration = Duration::from_millis(150);
+/// Conexões somente-leitura (WAL permite leitores concorrentes com o escritor).
+const LEITORES: usize = 4;
+
+struct Interno {
+    /// Escrita, reindex e tudo que não é leitura pura.
+    escrita: Mutex<Connection>,
+    /// Pequeno pool de leitores; vazio quando não deu para abrir (aí a leitura usa a conexão de escrita).
+    leitores: Vec<Mutex<Connection>>,
+    proximo: AtomicUsize,
+    /// Resumo (SHA-256) do que a última reindexação completa gravou; `None` = desconhecido (boot ou em andamento).
+    digest_aplicado: Arc<Mutex<Option<[u8; 32]>>>,
+}
+
 #[derive(Clone)]
-pub struct IndexDb(Arc<Mutex<Connection>>);
+pub struct IndexDb(Arc<Interno>);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Via {
+    Escrita,
+    Leitura,
+}
 
 impl IndexDb {
     pub fn open(path: &Path) -> anyhow::Result<Self> {
@@ -66,23 +89,97 @@ impl IndexDb {
         }
 
         migrations().to_latest(&mut conn)?;
-        Ok(Self(Arc::new(Mutex::new(conn))))
+        // Leitores abertos depois das migrations: enxergam o schema final. Se falhar, tudo segue pela conexão única.
+        let mut leitores = Vec::new();
+        for _ in 0..LEITORES {
+            match Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX) {
+                Ok(c) => {
+                    let _ = c.pragma_update(None, "query_only", "ON");
+                    leitores.push(Mutex::new(c));
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "não foi possível abrir conexão de leitura; leituras usarão a conexão única");
+                    leitores.clear();
+                    break;
+                }
+            }
+        }
+        Ok(Self(Arc::new(Interno { escrita: Mutex::new(conn), leitores, proximo: AtomicUsize::new(0), digest_aplicado: Arc::new(Mutex::new(None)) })))
     }
 
-    /// Executa `f` numa thread bloqueante dedicada, com a conexão travada só
-    /// pela duração da chamada.
-    pub async fn with<F, T>(&self, f: F) -> Result<T, rusqlite::Error>
+    /// Resumo do que a última reindexação gravou (para pular reindexações sem mudança real).
+    pub(crate) fn digest_aplicado(&self) -> Option<[u8; 32]> {
+        *self.0.digest_aplicado.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn memo_digest(&self) -> Arc<Mutex<Option<[u8; 32]>>> {
+        self.0.digest_aplicado.clone()
+    }
+
+    pub(crate) fn digest_invalidar(&self) {
+        *self.0.digest_aplicado.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Executa `f` na conexão de ESCRITA (única), numa thread bloqueante. Use para escrita, reindex e qualquer
+    /// consulta que precise ler o que acabou de escrever dentro da mesma chamada. A origem (arquivo:linha de quem
+    /// chamou) entra nas métricas e no aviso de trava lenta.
+    #[track_caller]
+    pub fn with<F, T>(&self, f: F) -> impl std::future::Future<Output = Result<T, rusqlite::Error>> + Send + 'static
     where
         F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
         T: Send + 'static,
     {
-        let conn = self.0.clone();
-        tokio::task::spawn_blocking(move || {
-            let guard = conn.lock().expect("mutex do índice local nunca deve ser envenenado");
-            f(&guard)
-        })
-        .await
-        .expect("tarefa de banco de dados não deve entrar em pânico")
+        self.executar(Via::Escrita, std::panic::Location::caller(), f)
+    }
+
+    /// Executa `f` numa conexão SOMENTE-LEITURA do pool: não espera escrita nem reindex em andamento (WAL).
+    /// Leitura-após-escrita continua valendo, pois cada chamada abre um snapshot novo e a escrita anterior já foi
+    /// confirmada quando o handler chega aqui. `f` não pode escrever (a conexão é `query_only`).
+    #[track_caller]
+    pub fn with_read<F, T>(&self, f: F) -> impl std::future::Future<Output = Result<T, rusqlite::Error>> + Send + 'static
+    where
+        F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        self.executar(Via::Leitura, std::panic::Location::caller(), f)
+    }
+
+    fn executar<F, T>(&self, via: Via, origem: &'static std::panic::Location<'static>, f: F) -> impl std::future::Future<Output = Result<T, rusqlite::Error>> + Send + 'static
+    where
+        F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let interno = self.0.clone();
+        let pedido = Instant::now();
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let usar_leitor = via == Via::Leitura && !interno.leitores.is_empty();
+                let guard = if usar_leitor {
+                    let n = interno.leitores.len();
+                    let inicio = interno.proximo.fetch_add(1, Ordering::Relaxed);
+                    // Primeiro um leitor livre; se todos estiverem ocupados, espera o da vez.
+                    (0..n)
+                        .find_map(|i| interno.leitores[(inicio + i) % n].try_lock().ok())
+                        .unwrap_or_else(|| interno.leitores[inicio % n].lock().expect("mutex de leitura do índice"))
+                } else {
+                    interno.escrita.lock().expect("mutex do índice local nunca deve ser envenenado")
+                };
+                let espera = pedido.elapsed();
+                let inicio_uso = Instant::now();
+                let r = f(&guard);
+                let segurou = inicio_uso.elapsed();
+                drop(guard);
+                let rotulo = format!("{}:{}", origem.file().replace('\\', "/").trim_start_matches("src/"), origem.line());
+                let via_nome = if usar_leitor { "leitura" } else { "escrita" };
+                crate::observabilidade::registrar_db(&rotulo, via_nome, espera, segurou);
+                if espera > LIMITE_LENTO || segurou > LIMITE_LENTO {
+                    tracing::warn!(origem = %rotulo, via = via_nome, espera_ms = espera.as_millis() as u64, segurou_ms = segurou.as_millis() as u64, "banco: trava lenta");
+                }
+                r
+            })
+            .await
+            .expect("tarefa de banco de dados não deve entrar em pânico")
+        }
     }
 }
 

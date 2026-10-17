@@ -81,7 +81,7 @@ async fn validar_vinculos(state: &AppState, usuario_id: &str, tarefas: &[String]
     let (visivel_t, visivel_n) = (crate::espacos::visivel_sql("", usuario_id), crate::espacos::visivel_sql("", usuario_id));
     let (faltam_t, faltam_n) = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut ft = Vec::new();
             for id in &t {
                 if !conn.query_row(&format!("SELECT EXISTS(SELECT 1 FROM tarefa WHERE id = ?1 AND {visivel_t})"), [id], |r| r.get::<_, bool>(0))? {
@@ -118,7 +118,7 @@ fn garantir_categoria(dir_eventos: &std::path::Path, categoria_id: &str) -> AppR
 async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
     let visivel = crate::espacos::visivel_sql("", usuario_id);
-    let caminho: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
+    let caminho: Option<String> = state.db.with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
@@ -169,7 +169,7 @@ async fn detalhe(state: &AppState, usuario_id: &str, id: &str) -> AppResult<serd
     let id = id.to_string();
     let linha = state
         .db
-        .with(move |conn| conn.query_row(&format!("{SELECT_EVENTO} WHERE e.id = ?1"), [&id], linha_json).optional())
+        .with_read(move |conn| conn.query_row(&format!("{SELECT_EVENTO} WHERE e.id = ?1"), [&id], linha_json).optional())
         .await?
         .ok_or(AppError::new(ErrorCode::NotFound))?;
     let mut linha = linha;
@@ -200,7 +200,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let visivel = crate::espacos::visivel_sql("e", &usuario.0);
     let linhas = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut sql = String::from(SELECT_EVENTO);
             let mut condicoes: Vec<String> = vec![visivel];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -504,7 +504,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
 async fn espaco_do_evento(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
     let visivel = crate::espacos::visivel_sql("", usuario_id);
-    let espaco: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT espaco FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
+    let espaco: Option<String> = state.db.with_read(move |conn| conn.query_row(&format!("SELECT espaco FROM evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     espaco.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
@@ -559,7 +559,7 @@ async fn eventos_vinculados(state: &AppState, usuario_id: &str, tabela: &'static
     let visivel = crate::espacos::visivel_sql("e", usuario_id);
     let linhas = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let sql = format!("{SELECT_EVENTO} WHERE e.id IN (SELECT evento_id FROM {tabela} WHERE {coluna} = ?1) AND {visivel} ORDER BY e.inicio DESC");
             let mut stmt = conn.prepare(&sql)?;
             let linhas = stmt.query_map([&id], linha_json)?.collect::<Result<Vec<_>, _>>()?;
@@ -725,7 +725,7 @@ pub async fn tempo(State(state): State<AppState>, Extension(usuario): Extension<
     let visivel = crate::espacos::visivel_sql("e", &usuario.0);
     let resultado = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let (de, ate) = (q.de.to_rfc3339(), q.ate.to_rfc3339());
             let mut filtro = format!(" AND {visivel}");
             let mut extras: Vec<String> = Vec::new();
@@ -786,7 +786,7 @@ pub async fn listar_categorias(State(state): State<AppState>, Extension(usuario)
     let filtro = q.espaco.as_deref().filter(|e| !e.is_empty()).map(|e| crate::espacos::fisica(e, &usuario.0));
     let linhas = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(&format!(
                 "SELECT c.id, c.espaco, c.nome, c.cor, c.icone, (SELECT COUNT(*) FROM evento e WHERE e.categoria_id = c.id) \
                  FROM categoria_evento c WHERE (?1 IS NULL OR c.espaco = ?1) AND {visivel} ORDER BY c.nome COLLATE NOCASE",
@@ -846,7 +846,7 @@ pub async fn criar_categoria(State(state): State<AppState>, Extension(usuario): 
 async fn espaco_da_categoria(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id = id.to_string();
     let visivel = crate::espacos::visivel_chave_sql("", usuario_id);
-    let espaco: Option<String> = state.db.with(move |conn| conn.query_row(&format!("SELECT espaco FROM categoria_evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
+    let espaco: Option<String> = state.db.with_read(move |conn| conn.query_row(&format!("SELECT espaco FROM categoria_evento WHERE id = ?1 AND {visivel}"), [&id], |r| r.get(0)).optional()).await?;
     espaco.ok_or(AppError::new(ErrorCode::NotFound))
 }
 

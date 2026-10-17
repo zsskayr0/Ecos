@@ -37,7 +37,7 @@ async fn ler(state: &AppState, usuario_id: &str) -> AppResult<PreferenciasCalend
     let uid = usuario_id.to_string();
     let linha = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             conn.query_row(
                 "SELECT pais, fuso, inicio_dia, mostrar_prazos FROM preferencia_calendario WHERE usuario_id = ?1",
                 [&uid],

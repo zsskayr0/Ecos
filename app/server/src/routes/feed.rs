@@ -44,7 +44,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
 
     let linhas: Vec<LinhaFeed> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut sql = String::from("SELECT id, tipo, motivo, score_dominante, dado_bruto, espaco, atualizado_em FROM feed_item");
             let mut condicoes = vec![visivel];
             if q.transacoes != Some(true) {
@@ -93,7 +93,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
 
     // Título e corpo das notas da página numa única passada pelo FTS (juntar por `nota_fts.id` varre tudo por card).
     let ids_notas: Vec<String> = visiveis.iter().filter(|l| l.tipo == "nota").map(|l| l.id.clone()).collect();
-    let textos = state.db.with(move |conn| crate::routes::nota_corpos::ler_titulo_corpo(conn, ids_notas.iter().map(String::as_str))).await?;
+    let textos = state.db.with_read(move |conn| crate::routes::nota_corpos::ler_titulo_corpo(conn, ids_notas.iter().map(String::as_str))).await?;
 
     let mut items = Vec::with_capacity(visiveis.len());
     for linha in visiveis {
@@ -120,7 +120,7 @@ async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed, text
             // `criado_por`, so this joins back to `nota`/`usuario`.
             let dados: Option<(String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, String)> = state
                 .db
-                .with(move |conn| {
+                .with_read(move |conn| {
                     conn.query_row(
                         "SELECT '', '', n.criado_por, u.nome_usuario, n.pasta_id, n.criado_em, n.ultima_revisao_em, \
                          (SELECT json_group_array(tag) FROM nota_tag WHERE nota_id = n.id) \
@@ -147,7 +147,7 @@ async fn montar_card(state: &AppState, usuario_id: &str, linha: &LinhaFeed, text
             let id = linha.id.clone();
             let dados: Option<(String, Option<String>, String, i64, Option<String>, Option<String>, String, Option<String>, String, String)> = state
                 .db
-                .with(move |conn| {
+                .with_read(move |conn| {
                     conn.query_row(
                         "SELECT t.titulo, t.scheduled_at, t.prioridade, t.duration_min, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, t.criado_em, \
                          (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id) \

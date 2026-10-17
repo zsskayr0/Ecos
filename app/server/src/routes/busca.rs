@@ -29,7 +29,7 @@ pub async fn buscar(State(state): State<AppState>, Extension(usuario): Extension
         let espaco = q.espaco.clone();
         state
             .db
-            .with(move |conn| {
+            .with_read(move |conn| {
                 let mut stmt = conn.prepare(&format!(
                     "SELECT n.id, n.titulo, n.espaco, snippet(nota_fts, 2, '[', ']', '…', 12) \
                      FROM nota_fts JOIN nota n ON n.id = nota_fts.id \
@@ -56,7 +56,7 @@ pub async fn buscar(State(state): State<AppState>, Extension(usuario): Extension
         let espaco = q.espaco.clone();
         state
             .db
-            .with(move |conn| {
+            .with_read(move |conn| {
                 let mut stmt = conn.prepare(&format!(
                     "SELECT t.id, t.titulo, t.espaco, t.status FROM tarefa_fts \
                      JOIN tarefa t ON t.id = tarefa_fts.id \

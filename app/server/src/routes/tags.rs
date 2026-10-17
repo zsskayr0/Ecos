@@ -52,7 +52,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let espaco = q.espaco.clone();
     let linhas: Vec<(String, String, i64, i64)> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let sql = format!(
                 "SELECT espaco, tag, SUM(n), SUM(t) FROM ( \
                    SELECT n.espaco AS espaco, nt.tag AS tag, 1 AS n, 0 AS t FROM nota_tag nt JOIN nota n ON n.id = nt.nota_id \
@@ -128,7 +128,7 @@ async fn aplicar(state: &AppState, usuario_id: &str, espaco: &str, origens: Vec<
     let (espaco_q, origens_q) = (espaco.to_string(), origens.clone());
     let (caminhos_notas, caminhos_tarefas): (Vec<String>, Vec<String>) = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let marcadores = vec!["?"; origens_q.len()].join(", ");
             let consultar = |sql: String| -> rusqlite::Result<Vec<String>> {
                 let mut stmt = conn.prepare(&sql)?;

@@ -60,7 +60,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     let uid = usuario.0.clone();
     let grafico = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let vis_n = visivel_sql("n", &uid);
             let vis_t = visivel_sql("t", &uid);
             let vis_e = visivel_sql("e", &uid);

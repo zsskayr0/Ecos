@@ -102,7 +102,7 @@ fn dado_bruto(
 async fn recalcular_notas(db: &IndexDb) -> anyhow::Result<()> {
     let agora = Utc::now();
     let linhas: Vec<LinhaNota> = db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT n.id, n.atualizado_em, n.ultima_revisao_em, n.espaco, n.contagem_acessos_7d, \
                  (SELECT COUNT(*) FROM links_nota WHERE nota_id_destino = n.id) AS links_entrada, \
@@ -207,7 +207,7 @@ async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
 
     type Linha = (String, String, Option<String>, Option<String>, String, String);
     let linhas: Vec<Linha> = db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, espaco, scheduled_at, due_date, prioridade, COALESCE(scheduled_at, atualizado_em, criado_em)                  FROM tarefa WHERE status = 'pendente'",
             )?;
@@ -270,7 +270,7 @@ struct TransacaoResumo {
 async fn recalcular_transacoes(state: &AppState) -> anyhow::Result<()> {
     let usuarios: Vec<String> = state
         .db
-        .with(|conn| {
+        .with_read(|conn| {
             let mut stmt = conn.prepare("SELECT id FROM usuario")?;
             let ids = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             Ok(ids)

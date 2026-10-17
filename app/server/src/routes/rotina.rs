@@ -17,7 +17,7 @@ const CLASSIFICACOES_VALIDAS: &[&str] = &["indisponivel", "disponivel_producao",
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<serde_json::Value>> {
     let blocos: Vec<serde_json::Value> = state
         .db
-        .with(move |conn| {
+        .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, tipo, hora_inicio, hora_fim, dias_semana, classificacao FROM bloco_rotina WHERE usuario_id = ?1",
             )?;

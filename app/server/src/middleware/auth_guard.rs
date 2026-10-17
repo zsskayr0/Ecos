@@ -62,7 +62,7 @@ pub async fn exigir_sessao(
     // deslogar quem tem um token válido — isso derrubava a sessão sem motivo real.
     let linha: Option<bool> = match state
         .db
-        .with(move |conn| conn.query_row("SELECT deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&sub], |r| r.get(0)).optional())
+        .with_read(move |conn| conn.query_row("SELECT deve_trocar_senha != 0 FROM usuario WHERE id = ?1", [&sub], |r| r.get(0)).optional())
         .await
     {
         Ok(linha) => linha,
@@ -87,7 +87,7 @@ pub async fn exigir_sessao(
     if let Some(sid) = claims.sid.clone() {
         let ativa: Result<Option<bool>, _> = state
             .db
-            .with(move |conn| conn.query_row("SELECT revogado_em IS NULL FROM sessao WHERE id = ?1", [&sid], |r| r.get(0)).optional())
+            .with_read(move |conn| conn.query_row("SELECT revogado_em IS NULL FROM sessao WHERE id = ?1", [&sid], |r| r.get(0)).optional())
             .await;
         match ativa {
             Ok(Some(true)) => {}

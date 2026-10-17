@@ -97,6 +97,7 @@ pub struct ResultadoReindex {
     pub adiados: usize,
 }
 
+#[derive(Debug)]
 struct NotaColetada {
     front_matter: NotaFrontMatter,
     body: String,
@@ -105,6 +106,7 @@ struct NotaColetada {
     hash_conteudo: String,
 }
 
+#[derive(Debug)]
 struct TarefaColetada {
     front_matter: TarefaFrontMatter,
     caminho_relativo: String,
@@ -113,11 +115,13 @@ struct TarefaColetada {
     modificado_em: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug)]
 struct EventoColetado {
     front_matter: EventoFrontMatter,
     caminho_relativo: String,
 }
 
+#[derive(Debug)]
 struct DocumentoColetado {
     caminho_relativo: String,
     nome: String,
@@ -372,7 +376,24 @@ fn coletar_documentos(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<Strin
 
 /// Reindexa `Notas/` e `Tarefas/` do zero. Chamado no boot e sempre que o
 /// watcher de arquivos (`notify`) detecta escrita relevante.
-pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<ResultadoReindex> {
+///
+/// A leitura e o parse dos arquivos acontecem fora da trava do banco (numa thread bloqueante); a conexão de
+/// escrita só é segurada na transação curta de gravação — e nem isso quando nada mudou desde a última aplicação.
+struct Coleta {
+    erros: Vec<String>,
+    adiados: usize,
+    notas: Vec<NotaColetada>,
+    tarefas: Vec<TarefaColetada>,
+    eventos: Vec<EventoColetado>,
+    categorias: Vec<(String, CategoriaEvento)>,
+    documentos: Vec<(String, DocumentoColetado)>,
+    pastas_notas: Vec<(String, String)>,
+    pastas_tarefas: Vec<(String, String)>,
+    /// Resumo de tudo que a gravação usaria (conteúdo dos arquivos, pastas, espaços): igual = índice já está certo.
+    digest: Vec<u8>,
+}
+
+fn coletar_tudo(notes_root: &Path) -> Coleta {
     let notes_root = notes_root.to_path_buf();
 
     let mut erros = Vec::new();
@@ -418,18 +439,58 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         pastas_tarefas.extend(enumerar_pastas(&tarefas_dir).into_iter().map(|p| (espaco.clone(), p)));
     }
 
-    let titulo_para_id: HashMap<String, String> = notas
-        .iter()
-        .map(|n| (n.front_matter.titulo.clone(), n.front_matter.id.clone()))
-        .collect();
+    let digest = Sha256::digest(format!("{notas:?}|{tarefas:?}|{eventos:?}|{categorias:?}|{documentos:?}|{pastas_notas:?}|{pastas_tarefas:?}").as_bytes()).to_vec();
+    Coleta { erros, adiados, notas, tarefas, eventos, categorias, documentos, pastas_notas, pastas_tarefas, digest }
+}
+
+/// Reindexa `Notas/` e `Tarefas/`. Chamado no boot, após escritas das rotas e pelo watcher/ranking.
+pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<ResultadoReindex> {
+    let inicio = std::time::Instant::now();
+    let raiz = notes_root.to_path_buf();
+    let Coleta { erros, adiados, notas, tarefas, eventos, categorias, documentos, pastas_notas, pastas_tarefas, digest } =
+        tokio::task::spawn_blocking(move || coletar_tudo(&raiz)).await?;
 
     let total_notas = notas.len();
     let total_tarefas = tarefas.len();
     let total_eventos = eventos.len();
+    let total_documentos = documentos.len();
+    let resultado = |erros: Vec<String>| ResultadoReindex { notas: total_notas, tarefas: total_tarefas, eventos: total_eventos, documentos: total_documentos, erros, adiados };
+
+    // O dono (`criado_por`) é resolvido contra a tabela `usuario`: entra no resumo. Mais uma checagem barata das
+    // contagens, para o caso de alguém ter mexido nas tabelas por fora (testes, manutenção).
+    let usuarios: String = db.with_read(|c| c.query_row("SELECT COALESCE(group_concat(id), '') FROM (SELECT id FROM usuario ORDER BY id)", [], |r| r.get(0))).await?;
+    let mut h = Sha256::new();
+    h.update(&digest);
+    h.update(usuarios.as_bytes());
+    let digest: [u8; 32] = h.finalize().into();
+    if db.digest_aplicado() == Some(digest) {
+        let esperado = (total_notas as i64, total_tarefas as i64, total_eventos as i64, total_documentos as i64);
+        let atual: (i64, i64, i64, i64) = db
+            .with_read(|c| c.query_row("SELECT (SELECT COUNT(*) FROM nota), (SELECT COUNT(*) FROM tarefa), (SELECT COUNT(*) FROM evento), (SELECT COUNT(*) FROM documento_cache)", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))))
+            .await?;
+        if atual == esperado {
+            crate::observabilidade::registrar_reindex("pulado", inicio.elapsed());
+            return Ok(resultado(erros));
+        }
+    }
+
+    let titulo_para_id: HashMap<String, String> = notas.iter().map(|n| (n.front_matter.titulo.clone(), n.front_matter.id.clone())).collect();
+    // Links entre notas (por título), calculados fora da trava.
+    let mut links_pendentes: Vec<(String, String)> = Vec::new();
+    for item in &notas {
+        for titulo_destino in wikilink::extract_titles(&item.body) {
+            if let Some(id_destino) = titulo_para_id.get(&titulo_destino) {
+                if id_destino != &item.front_matter.id {
+                    links_pendentes.push((item.front_matter.id.clone(), id_destino.clone()));
+                }
+            }
+        }
+    }
     // Vínculos de evento para itens que não existem mais são descartados (sem erro).
     let ids_tarefas: std::collections::HashSet<String> = tarefas.iter().map(|t| t.front_matter.id.clone()).collect();
     let ids_notas: std::collections::HashSet<String> = notas.iter().map(|n| n.front_matter.id.clone()).collect();
-    let total_documentos = documentos.len();
+    let memo = db.memo_digest();
+    db.digest_invalidar();
 
     db.with(move |conn| {
         let tx = conn.unchecked_transaction()?;
@@ -455,8 +516,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             contagem_pastas.entry(("tarefa", espaco.clone(), pasta.clone())).or_insert(0);
         }
 
-        // Links só entram depois de todas as notas: o destino pode vir depois da origem na ordem de leitura.
-        let mut links_pendentes: Vec<(String, String)> = Vec::new();
+        // Links (calculados fora da trava) só entram depois de todas as notas: o destino pode vir depois da origem.
         for item in &notas {
             let fm = &item.front_matter;
             tx.execute(
@@ -481,14 +541,6 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             // O índice guarda o nome canônico; o arquivo mantém a grafia original até a pessoa renomear.
             for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
                 tx.execute("INSERT OR IGNORE INTO nota_tag (nota_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
-            }
-
-            for titulo_destino in wikilink::extract_titles(&item.body) {
-                if let Some(id_destino) = titulo_para_id.get(&titulo_destino) {
-                    if id_destino != &fm.id {
-                        links_pendentes.push((fm.id.clone(), id_destino.clone()));
-                    }
-                }
             }
 
             tx.execute(
@@ -630,18 +682,15 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
             )?;
         }
 
-        tx.commit()
+        tx.commit()?;
+        // Dentro da trava de escrita: duas reindexações concorrentes não deixam o resumo de uma sobre os dados da outra.
+        *memo.lock().unwrap_or_else(|e| e.into_inner()) = Some(digest);
+        Ok(())
     })
     .await?;
 
-    Ok(ResultadoReindex {
-        notas: total_notas,
-        tarefas: total_tarefas,
-        eventos: total_eventos,
-        documentos: total_documentos,
-        erros,
-        adiados,
-    })
+    crate::observabilidade::registrar_reindex("completo", inicio.elapsed());
+    Ok(resultado(erros))
 }
 
 #[cfg(test)]
