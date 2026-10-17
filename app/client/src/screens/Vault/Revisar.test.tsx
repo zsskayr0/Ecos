@@ -7,7 +7,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...o,
     vault: {
       ...o.vault,
-      categorias: { listar: vi.fn(), criar: vi.fn() },
+      categorias: { listar: vi.fn(), criar: vi.fn(), sugestao: vi.fn().mockResolvedValue({ categoria_id: null }) },
       contas: { listar: vi.fn() },
       beneficiarios: { listar: vi.fn(), criarOuEncontrar: vi.fn() },
       anexos: { conteudo: vi.fn() },
