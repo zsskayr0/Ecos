@@ -161,8 +161,17 @@ async fn resposta_ou_erro(resp: reqwest::Response) -> Result<reqwest::Response, 
     if status.as_u16() == 401 && codigo != "invalid_client" {
         return Err(GoogleErro::TokenRecusado);
     }
-    let mensagem: String = json["error_description"].as_str().or_else(|| json["error"]["message"].as_str()).unwrap_or(codigo).chars().take(200).collect();
+    let base = json["error_description"].as_str().or_else(|| json["error"]["message"].as_str()).unwrap_or(codigo);
     let razao = json["error"]["errors"][0]["reason"].as_str().or_else(|| json["error"]["status"].as_str()).unwrap_or(codigo).to_string();
+    // Só o que o Google diz sobre o erro: mensagem, motivo curto e o campo (`location`, ex. "end.dateTime"). Sem o
+    // corpo da requisição nem dados do evento.
+    let campo = json["error"]["errors"][0]["location"].as_str().filter(|l| !l.is_empty());
+    let detalhe = match campo {
+        Some(c) => format!("{base} [{razao} em {c}]"),
+        None if razao != base && !razao.is_empty() => format!("{base} [{razao}]"),
+        None => base.to_string(),
+    };
+    let mensagem: String = detalhe.chars().take(200).collect();
     Err(GoogleErro::Http { status: status.as_u16(), mensagem, razao })
 }
 

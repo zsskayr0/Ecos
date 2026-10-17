@@ -43,6 +43,7 @@ struct Mock {
     status_insert: VecDeque<u16>,
     /// Corpo de `events.get` por id do evento (ausente = 404).
     obter: HashMap<String, Value>,
+    patches_recusados: u32,
     contador: u32,
 }
 
@@ -80,7 +81,7 @@ async fn h_eventos(State(m): State<Compartilhado>, Path(_id): Path<String>, Quer
 }
 
 fn resposta_de_erro(status: u16) -> (StatusCode, Json<Value>) {
-    (StatusCode::from_u16(status).unwrap(), Json(json!({ "error": { "code": status, "message": "erro do mock" } })))
+    (StatusCode::from_u16(status).unwrap(), Json(json!({ "error": { "code": status, "message": "erro do mock", "errors": [{ "domain": "global", "reason": "invalid", "location": "end.dateTime", "locationType": "parameter" }] } })))
 }
 
 async fn h_inserir(State(m): State<Compartilhado>, Path(_id): Path<String>, Json(corpo): Json<Value>) -> (StatusCode, Json<Value>) {
@@ -94,7 +95,21 @@ async fn h_inserir(State(m): State<Compartilhado>, Path(_id): Path<String>, Json
     (StatusCode::OK, Json(json!({ "id": format!("g-novo-{n}"), "etag": format!("\"ins{n}\""), "updated": "2026-09-20T12:00:00.000Z" })))
 }
 
+/// O Google real responde 400 "Required" a nulo em `recurrence` e dentro de `extendedProperties.private`.
+fn recusa_nulos_como_o_google(corpo: &Value) -> Option<(StatusCode, Json<Value>)> {
+    let nulo_privado = corpo["extendedProperties"]["private"].as_object().is_some_and(|p| p.values().any(Value::is_null));
+    let nulo_recorrencia = corpo.get("recurrence").is_some_and(Value::is_null);
+    (nulo_privado || nulo_recorrencia).then(|| {
+        let campo = if nulo_recorrencia { "recurrence" } else { "extendedProperties.private" };
+        (StatusCode::BAD_REQUEST, Json(json!({ "error": { "code": 400, "message": "Required", "errors": [{ "domain": "global", "reason": "required", "message": "Required", "location": campo, "locationType": "other" }] } })))
+    })
+}
+
 async fn h_patch(State(m): State<Compartilhado>, Path((_id, eid)): Path<(String, String)>, headers: HeaderMap, Json(corpo): Json<Value>) -> (StatusCode, Json<Value>) {
+    if let Some(recusa) = recusa_nulos_como_o_google(&corpo) {
+        m.lock().unwrap().patches_recusados += 1;
+        return recusa;
+    }
     let mut g = m.lock().unwrap();
     g.patches.push((eid.clone(), headers.get("if-match").and_then(|h| h.to_str().ok()).map(str::to_string), corpo));
     if let Some(status) = g.status_patch.pop_front() {
@@ -767,8 +782,9 @@ fn corpo_google_dia_inteiro_com_fim_invalido_vira_um_dia_e_patch_mantem_nulos() 
     };
     let patch = super::sync::corpo_google(&fm, "", "UTC", false);
     assert_eq!((&patch["start"], &patch["end"]), (&json!({ "date": "2026-09-22" }), &json!({ "date": "2026-09-23" })), "fim <= início vira 1 dia");
-    assert!(patch["location"].is_null() && patch["recurrence"].is_null(), "no PATCH os nulos limpam o campo");
-    assert!(patch["extendedProperties"]["private"]["ecos_categoria"].is_null());
+    assert!(patch["location"].is_null(), "no PATCH, location nulo limpa o campo");
+    assert!(patch.get("recurrence").is_none(), "recurrence nulo é recusado pelo Google (400 Required): não vai");
+    assert_eq!(patch["extendedProperties"]["private"], json!({ "ecos_id": "e1" }), "sem nulos nas propriedades privadas");
     let criar = super::sync::corpo_google(&fm, "", "UTC", true);
     assert!(criar.get("location").is_none() && criar.get("recurrence").is_none());
     assert_eq!(criar["extendedProperties"]["private"], json!({ "ecos_id": "e1" }));
@@ -1216,5 +1232,36 @@ async fn manter_local_sobrescreve_sem_if_match_e_desvincular_solta_o_evento_sem_
     let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id2}"), None).await;
     assert_eq!((d["visibilidade"].as_str(), d["sync_pendente"].as_bool()), (Some("privado"), Some(false)));
     assert!(e.mock.lock().unwrap().delecoes.is_empty(), "nunca apaga no Google");
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn editar_evento_sem_categoria_nem_repeticao_nao_manda_nulo_e_o_400_mostra_o_campo() {
+    // Regressão do "400 Required" de todo ciclo: evento comum, sem categoria, já vinculado e editado no Ecos.
+    let e = montar(true).await;
+    conectar_direto(&e, em_uma_hora()).await;
+    let (_, ev) = api(&e, "POST", "/api/v1/eventos", Some(evento_json("Oficina", "2026-09-23T13:00:00Z", "2026-09-23T17:00:00Z", json!({ "descricao": "de 8h a 12h" })))).await;
+    let id = ev["id"].as_str().unwrap().to_string();
+    sincronizar_ok(&e).await;
+    api(&e, "PATCH", &format!("/api/v1/eventos/{id}"), Some(json!({ "titulo": "Oficina 2" }))).await;
+    let r = sincronizar_ok(&e).await;
+    assert_eq!((r["enviados_atualizados"].as_u64(), r["envios_com_erro"].as_u64()), (Some(1), Some(0)), "{r}");
+    {
+        let g = e.mock.lock().unwrap();
+        assert_eq!(g.patches_recusados, 0, "o corpo não leva nulo em recurrence nem em extendedProperties.private");
+        let corpo = &g.patches.last().unwrap().2;
+        assert!(corpo.get("recurrence").is_none() && corpo["extendedProperties"]["private"].get("ecos_categoria").is_none(), "{corpo}");
+    }
+
+    // Quando o Google ainda recusa (aqui, 400 com campo), o problema mostra a mensagem e o campo, sem dados do evento.
+    api(&e, "PATCH", &format!("/api/v1/eventos/{id}"), Some(json!({ "titulo": "Oficina 3" }))).await;
+    e.mock.lock().unwrap().status_patch.push_back(400);
+    e.mock.lock().unwrap().status_patch.push_back(400);
+    sincronizar_ok(&e).await;
+    let p = problemas(&e).await;
+    assert_eq!(p["items"][0]["codigo"], "evento_invalido", "{p}");
+    assert_eq!(p["items"][0]["http_status"], 400);
+    let motivo = p["items"][0]["motivo_google"].as_str().unwrap();
+    assert!(motivo.contains("erro do mock") && motivo.contains("invalid") && motivo.contains("end.dateTime"), "mensagem + motivo + campo do Google: {motivo}");
     let _ = std::fs::remove_dir_all(&e.raiz);
 }

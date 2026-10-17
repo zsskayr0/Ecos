@@ -696,6 +696,17 @@ pub fn corpo_google(fm: &EventoFrontMatter, descricao: &str, fuso_calendario: &s
         "recurrence": (fm.rrule.is_some() || !fm.recorrencia_extra.is_empty()).then(|| fm.rrule.iter().chain(fm.recorrencia_extra.iter()).cloned().collect::<Vec<String>>()),
         "extendedProperties": { "private": privadas },
     });
+    if !para_criar {
+        // No PATCH, `location`/`description` nulos limpam o campo, mas o Google recusa (400 "Required") nulo em
+        // `recurrence` e dentro de `extendedProperties.private`: esses campos ausentes simplesmente não vão.
+        let o = corpo.as_object_mut().expect("objeto");
+        if o.get("recurrence").is_some_and(serde_json::Value::is_null) {
+            o.remove("recurrence");
+        }
+        if let Some(p) = o.get_mut("extendedProperties").and_then(|e| e.get_mut("private")).and_then(|p| p.as_object_mut()) {
+            p.retain(|_, v| !v.is_null());
+        }
+    }
     if para_criar {
         let o = corpo.as_object_mut().expect("objeto");
         o.retain(|_, v| !v.is_null());
@@ -740,7 +751,20 @@ async fn enviar_um(state: &AppState, cfg: &GoogleConfig, access: &str, calendar_
         } else {
             corpo_google(fm, descricao, fuso, false)
         };
-        match google::atualizar_evento(&state.http, cfg, access, &cal, &id, fm.google.etag.as_deref(), &corpo).await {
+        let mut resposta = google::atualizar_evento(&state.http, cfg, access, &cal, &id, fm.google.etag.as_deref(), &corpo).await;
+        // 400 no PATCH: tenta de novo só com os campos do evento (sem `extendedProperties` nem `recurrence`), para uma
+        // metapropriedade recusada não impedir a edição de chegar ao Google. O vínculo com o Ecos não se perde.
+        if matches!(resposta, Err(GoogleErro::Http { status: 400, .. })) {
+            let mut simples = corpo.clone();
+            if let Some(o) = simples.as_object_mut() {
+                o.remove("extendedProperties");
+                o.remove("recurrence");
+            }
+            if simples != corpo && simples.as_object().is_some_and(|o| !o.is_empty()) {
+                resposta = google::atualizar_evento(&state.http, cfg, access, &cal, &id, fm.google.etag.as_deref(), &simples).await;
+            }
+        }
+        match resposta {
             Ok(ev) => {
                 guardar_ref(fm, &cal, &ev);
                 resumo.enviados_atualizados += 1;
