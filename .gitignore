@@ -12,3 +12,14 @@ Tarefas/
 Cargo.lock.bak
 
 .claude/
+
+# Fora do repo: documentação, APKs, releases e backups vivem em ../Ecos - Dev
+/docs/
+/*.apk
+/qa-artifacts/
+/STATUS.md
+/ecos-arquitetura-tecnica.md
+/.release-android/
+/target-agentB/
+node_modules/
+vite-*.log

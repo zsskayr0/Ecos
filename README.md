@@ -4,7 +4,7 @@
 `.md` files in a folder of your own; the Cofre (finance) is optional,
 isolated in an encrypted database; everything self-hosted via Docker +
 a private VPN such as Tailscale. See
-[`ecos-arquitetura-tecnica.md`](./ecos-arquitetura-tecnica.md) for the
+`ecos-arquitetura-tecnica.md` (in `../Ecos - Dev/docs/`) for the
 full architecture (data model, security, sync, API).
 
 ## Structure
@@ -17,10 +17,10 @@ ecos/
 │   ├── server/         # ecos-app (Axum) — public API, sync hub
 │   ├── vault/           # ecos-vault-db (Axum) — Cofre, internal network only
 │   └── client/          # Tauri + React client (complete front end, see app/client/README.md)
-├── (fora do repo) ../ecos-notes/  # ECOS_NOTES_PATH default — Notas/ e Tarefas/ dentro
+├── (fora do repo) ../Ecos - Notes/  # ECOS_NOTES_PATH default — Notas/ e Tarefas/ dentro
 ├── docker-compose.yml
 ├── docker-compose.staging.yml
-└── docs/README-cofre.md
+└── (docs vivem em ../Ecos - Dev/docs/)
 ```
 
 The client (`app/client`, Tauri/React) implements the front end's 12
@@ -58,7 +58,7 @@ docker compose up -d                              # Notas/Tarefas only
 docker compose --profile vault --profile default up -d   # + Cofre
 ```
 
-Cofre activation: [`docs/README-cofre.md`](./docs/README-cofre.md).
+Cofre activation: `README-cofre.md` (in `../Ecos - Dev/docs/`).
 
 ## Known limitations of this foundation
 
