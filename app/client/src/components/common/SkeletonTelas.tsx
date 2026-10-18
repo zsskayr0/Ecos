@@ -183,6 +183,13 @@ export function SkeletonTarefaDetalhe({ desktop, rotulo, atrasoMs, className }: 
         <div className={desktop ? "grid min-w-0 grid-cols-[minmax(0,1fr)_320px] gap-7" : "grid min-w-0 gap-7"}>
           <div className="flex min-w-0 flex-col gap-6">
             <div data-bloco="descricao"><Editor linhas={8} /></div>
+            {desktop && (
+                <section data-bloco="subtarefas" className="border-t border-border pt-6">
+                  <div className="mb-3 flex items-center justify-between gap-2"><Skeleton variante="linha" className="w-24" /><Skeleton variante="texto" className="w-16" /></div>
+                  <div className="mb-3 flex flex-col gap-1">{Array.from({ length: 2 }, (_, i) => <div key={i} className="flex min-h-11 items-center gap-3 border-b border-border"><Skeleton variante="texto" className="h-4 w-4" /><Skeleton variante="texto" className="w-2/3" /></div>)}</div>
+                  <div className="flex gap-2"><Skeleton variante="bloco" className="h-10 flex-1 rounded-lg" /><Skeleton variante="bloco" className="h-10 w-12 rounded-lg" /></div>
+                </section>
+            )}
             {!desktop && (
               <div data-bloco="mais-detalhes" className="flex min-h-12 flex-col gap-2 border-t border-border pt-5">
                 <Skeleton variante="linha" className="w-40" />
@@ -205,11 +212,6 @@ export function SkeletonTarefaDetalhe({ desktop, rotulo, atrasoMs, className }: 
                 <Campo altura="h-11" />
                 <div className="flex flex-col gap-2"><Skeleton variante="texto" className="w-10" /><div className="flex gap-2"><Skeleton variante="bloco" className="h-10 flex-1 rounded-lg" /><Skeleton variante="bloco" className="h-10 w-12 rounded-lg" /></div></div>
                 <div className="flex gap-2"><Skeleton variante="bloco" className="h-9 w-16 rounded-lg" /><Skeleton variante="bloco" className="h-9 w-20 rounded-lg" /></div>
-              </section>
-              <section data-bloco="subtarefas" className="mt-6 border-t border-border pt-6">
-                <div className="mb-3 flex items-center justify-between gap-2"><Skeleton variante="linha" className="w-24" /><Skeleton variante="texto" className="w-16" /></div>
-                <div className="mb-3 flex flex-col gap-1">{Array.from({ length: 2 }, (_, i) => <div key={i} className="flex min-h-11 items-center gap-3 border-b border-border"><Skeleton variante="texto" className="h-4 w-4" /><Skeleton variante="texto" className="w-2/3" /></div>)}</div>
-                <div className="flex gap-2"><Skeleton variante="bloco" className="h-10 flex-1 rounded-lg" /><Skeleton variante="bloco" className="h-10 w-12 rounded-lg" /></div>
               </section>
             </aside>
           )}

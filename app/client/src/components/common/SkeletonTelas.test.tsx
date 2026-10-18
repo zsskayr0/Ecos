@@ -35,14 +35,15 @@ const unicos = (lista: string[]) => lista.filter((n, i) => lista[i - 1] !== n);
 describe("forma: detalhe da tarefa", () => {
   it("desktop tem os mesmos blocos, na mesma ordem, do TaskComposer real", () => {
     const sk = blocos(<SkeletonTarefaDetalhe desktop atrasoMs={0} />);
-    expect(unicos(sk)).toEqual(["titulo", "prioridade", "anexos", "descricao", "editor", "planejamento", "tempo", "organizacao", "subtarefas", "rodape"]);
+    expect(unicos(sk)).toEqual(["titulo", "prioridade", "anexos", "descricao", "editor", "subtarefas", "planejamento", "tempo", "organizacao", "rodape"]);
 
     const { container } = render(<TaskComposer value={EMPTY_TASK} onChange={() => undefined} onSave={() => undefined} editing timePanel={<p>tempo</p>} showPriority={false} />);
-    // Real: 1 título, 1 anexos, 1 descrição, 4 seções no painel lateral (Planejamento, Tempo, Organização, Subtarefas), 1 rodapé.
+    // Real: 1 título, 1 anexos, 1 descrição, Subtarefas na coluna principal, 3 seções no painel lateral (Planejamento, Tempo, Organização), 1 rodapé.
     expect(container.querySelectorAll("[data-task-composer] input[aria-label='Título da tarefa'], [data-task-composer] textarea[aria-label='Título da tarefa']").length).toBe(contar(sk, "titulo"));
     expect(container.querySelectorAll("[data-testid='anexos']").length).toBe(contar(sk, "anexos"));
     expect(container.querySelectorAll("section[aria-label='Descrição']").length).toBe(contar(sk, "descricao"));
-    expect(container.querySelectorAll("aside section").length).toBe(["planejamento", "tempo", "organizacao", "subtarefas"].reduce((n, b) => n + contar(sk, b), 0));
+    expect(container.querySelectorAll("aside section").length).toBe(["planejamento", "tempo", "organizacao"].reduce((n, b) => n + contar(sk, b), 0));
+    expect(container.querySelectorAll("section[aria-label='Subtarefas']").length).toBe(contar(sk, "subtarefas"));
     expect(container.querySelectorAll("footer").length).toBe(contar(sk, "rodape"));
   });
 
