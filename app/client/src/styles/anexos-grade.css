@@ -1,0 +1,27 @@
+/* Container de anexos copiado do Cofre (comprovantes da transação) para usar fora dele, no modo Focus da tarefa.
+   Mesmas regras de `cofre.css`, escopadas em `.ecos-anexos-raiz`, que traz as variáveis que o Cofre define em `.cofre-app`. */
+.ecos-anexos-raiz { --panel: var(--ecos-surface-1); --panel-elevated: var(--ecos-surface-2); --border: var(--ecos-border); --border-strong: var(--ecos-steel-500); --text: var(--ecos-text-primary); --text-muted: var(--ecos-text-secondary); --text-faint: var(--ecos-text-muted); --danger: var(--ecos-error); }
+.ecos-anexos-raiz .cofre-comprovante-thumb { display:grid; place-items:center; aspect-ratio:4/3; background:var(--panel-elevated); color:var(--text-faint); }
+.ecos-anexos-raiz .cofre-comprovante-thumb img { width:100%; height:100%; object-fit:cover; }
+.ecos-anexos-raiz .cofre-anexos { display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:12px; border:1px solid var(--border); border-radius:12px; background:color-mix(in srgb,var(--panel-elevated) 55%,var(--panel)); color:var(--text); }
+.ecos-anexos-raiz .cofre-anexos-head h3 { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
+.ecos-anexos-raiz .cofre-anexos-head h3 span { padding:0 7px; border-radius:999px; background:var(--panel-elevated); color:var(--text-muted); font-size:11px; font-weight:600; }
+.ecos-anexos-raiz .cofre-anexos-vazio { margin:0; color:var(--text-faint); font-size:11px; }
+.ecos-anexos-raiz .cofre-anexos-grade { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px; margin:0; padding:0; list-style:none; }
+.ecos-anexos-raiz .cofre-anexo-item { position:relative; }
+.ecos-anexos-raiz .cofre-anexo-tile { display:flex; flex-direction:column; width:100%; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:var(--panel); color:var(--text); text-align:left; transition:transform .24s cubic-bezier(.34,1.56,.64,1), border-color .18s ease, box-shadow .24s ease; }
+.ecos-anexos-raiz a.cofre-anexo-tile:hover { transform:translateY(-3px) scale(1.03); border-color:var(--border-strong); box-shadow:0 8px 20px rgb(0 0 0 / .28); }
+.ecos-anexos-raiz a.cofre-anexo-tile:active { transform:translateY(-1px) scale(.98); }
+.ecos-anexos-raiz a.cofre-anexo-tile:focus-visible,.ecos-anexos-raiz .cofre-anexo-novo:focus-visible,.ecos-anexos-raiz .cofre-anexo-remover:focus-visible,.ecos-anexos-raiz .cofre-clipe:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+.ecos-anexos-raiz .cofre-anexo-tile .cofre-comprovante-thumb { aspect-ratio:1/1; }
+.ecos-anexos-raiz .cofre-anexo-nome { overflow:hidden; padding:5px 7px; color:var(--text-muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.ecos-anexos-raiz .cofre-anexo-remover { position:absolute; top:4px; right:4px; display:grid; width:24px; height:24px; place-items:center; border-radius:999px; background:rgb(0 0 0 / .62); color:#fff; opacity:0; transition:opacity .16s ease, background .16s ease; }
+.ecos-anexos-raiz .cofre-anexo-item:hover .cofre-anexo-remover,.ecos-anexos-raiz .cofre-anexo-remover:focus-visible { opacity:1; }
+.ecos-anexos-raiz .cofre-anexo-remover:hover { background:var(--danger); }
+@media (hover:none) { .ecos-anexos-raiz .cofre-anexo-remover { opacity:1; }  }
+.ecos-anexos-raiz .cofre-anexo-novo { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%; min-height:100%; aspect-ratio:1/1; border:1px dashed var(--border-strong); border-radius:10px; background:transparent; color:var(--text-muted); font-size:11px; transition:color .18s ease, border-color .18s ease, background .18s ease; }
+.ecos-anexos-raiz .cofre-anexo-novo:hover:not(:disabled) { color:var(--text); border-color:var(--text-muted); background:var(--panel-elevated); }
+.ecos-anexos-raiz .cofre-anexo-novo:disabled { opacity:.5; cursor:progress; }
+.ecos-anexos-raiz .cofre-anexo-novo svg { transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+.ecos-anexos-raiz .cofre-anexo-novo:hover:not(:disabled) svg { transform:rotate(-18deg) translateY(-2px); }
+@media (prefers-reduced-motion:reduce) { .ecos-anexos-raiz .cofre-anexo-tile, .ecos-anexos-raiz .cofre-anexo-novo svg { transition:none !important; } .ecos-anexos-raiz a.cofre-anexo-tile:hover, .ecos-anexos-raiz a.cofre-anexo-tile:hover { transform:none; } }

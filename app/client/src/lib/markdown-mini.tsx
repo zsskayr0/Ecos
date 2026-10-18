@@ -89,7 +89,7 @@ interface Props {
 /** Resolve `_anexos/<id>/<arquivo>` (referência relativa gravada pelo
  * upload, ver `notas.rs::enviar_anexo`/`tarefas.rs::enviar_anexo`) pra URL
  * real; deixa qualquer coisa que já pareça absoluta (http(s)://) em paz. */
-function resolverSrcImagem(src: string | undefined, itemId: string | undefined, tipo: "nota" | "tarefa"): string | undefined {
+export function resolverSrcImagem(src: string | undefined, itemId: string | undefined, tipo: "nota" | "tarefa"): string | undefined {
   if (!src || /^https?:\/\//i.test(src)) return src;
   const prefixo = `_anexos/${itemId}/`;
   if (itemId && src.startsWith(prefixo)) {

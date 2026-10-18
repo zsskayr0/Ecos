@@ -8,6 +8,14 @@ export const DocumentoPopupContext = createContext<((path: string, emAba: boolea
 export const TituloJanelaContext = createContext<((titulo: string) => void) | null>(null);
 /** Fecha o documento atual, seja uma aba do workspace ou uma janela flutuante. */
 export const FecharDocumentoContext = createContext<(() => void) | null>(null);
+/** Indica que uma janela de documento está ocupando a camada Focus. */
+export const ModoFocusDocumentoContext = createContext(false);
+/** Área independente, ao lado da tarefa Focus, onde o planejamento é montado. */
+export const PainelFocusTarefaContext = createContext<HTMLElement | null>(null);
+/** Espaço no cabeçalho da camada Focus (ao lado do X) onde a tarefa coloca suas ações: concluir, apagar, recolher painel. */
+export const AcoesFocusContext = createContext<HTMLElement | null>(null);
+/** Recolhe/expande o painel lateral do modo Focus (a tarefa ocupa a largura toda quando recolhido). */
+export const PainelFocusControleContext = createContext<{ aberto: boolean; alternar: () => void }>({ aberto: true, alternar: () => {} });
 
 interface ModificadoresDeClique {
   ctrlKey: boolean;

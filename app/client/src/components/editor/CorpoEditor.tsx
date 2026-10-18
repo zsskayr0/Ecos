@@ -1,7 +1,8 @@
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
-import { MarkdownPreview } from "@/lib/markdown-mini";
+import { EditorVivo, type AreaLike } from "./EditorVivo";
+import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
 
 interface Props {
@@ -16,6 +17,8 @@ interface Props {
   rows?: number;
   /** Tasks use one wide writing canvas, with preview available on demand. */
   layout?: "split" | "document";
+  /** Layout "document" sem moldura: o texto ocupa todo o espaço, como numa nota do Obsidian (modo foco). */
+  semBorda?: boolean;
   /** Tarefas existentes abrem a descrição em leitura, mantendo a edição a um clique. */
   initialPreview?: boolean;
 }
@@ -34,8 +37,11 @@ interface Props {
  * completa é a própria "aba de cima" pedida, sem seção separada ocupando
  * a tela pequena. Desktop mantém textarea + preview lado a lado.
  */
-export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false }: Props) {
+export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false }: Props) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  /** Layout "document": o editor vivo (CodeMirror) expõe a seleção como se fosse um textarea. */
+  const editorRef = useRef<AreaLike | null>(null);
+  const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
   const ehMobile = useIsMobile();
   const [preview, setPreview] = useState(initialPreview);
   const [cursor, setCursor] = useState(0);
@@ -65,7 +71,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   }, [preview, layout]);
 
   function envolverSelecao(prefixo: string, sufixo = prefixo) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const inicio = el.selectionStart;
     const fim = el.selectionEnd;
@@ -82,7 +88,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
    * simples e previsível que decidir "prefixar cada linha selecionada",
    * e cobre o caso real de uso (cursor numa linha, formata ela). */
   function prefixarLinhaAtual(prefixo: string) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const pos = el.selectionStart;
     const inicioLinha = corpo.lastIndexOf("\n", pos - 1) + 1;
@@ -95,7 +101,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   }
 
   function inserirNoCursor(texto: string) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const pos = el.selectionStart;
     onCorpoChange(corpo.slice(0, pos) + texto + corpo.slice(pos));
@@ -119,7 +125,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   const inicioDaLinha = (pos: number) => (pos === 0 ? 0 : corpo.lastIndexOf("\n", pos - 1) + 1);
 
   function substituir(inicio: number, fim: number, texto: string, selecao?: [number, number]) {
-    const el = areaRef.current;
+    const el = alvo();
     onCorpoChange(corpo.slice(0, inicio) + texto + corpo.slice(fim));
     requestAnimationFrame(() => {
       el?.focus();
@@ -130,7 +136,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
 
   /** Aplica `fn` a cada linha que a seleção toca (uma linha só, se for só o cursor). */
   function transformarLinhas(fn: (linha: string, indice: number) => string) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const inicio = inicioDaLinha(el.selectionStart);
     let fim = corpo.indexOf("\n", el.selectionEnd);
@@ -141,7 +147,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
 
   /** Lista/citação alternam: se todas as linhas já têm o prefixo, ele sai; senão entra (trocando o de outro tipo). */
   function alternarBloco(detecta: RegExp, prefixo: (n: number) => string) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const inicio = inicioDaLinha(el.selectionStart);
     let fim = corpo.indexOf("\n", el.selectionEnd);
@@ -162,7 +168,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
 
   /** Negrito/itálico/tachado alternam: já envolvido → desembrulha; senão envolve e mantém o texto selecionado. */
   function alternarInline(marca: string) {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const a = el.selectionStart;
     const b = el.selectionEnd;
@@ -172,7 +178,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   }
 
   function inserirLink() {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     const a = el.selectionStart;
     const b = el.selectionEnd;
@@ -182,7 +188,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
   }
 
   function limparFormatacao() {
-    const el = areaRef.current;
+    const el = alvo();
     if (!el) return;
     let a = el.selectionStart;
     let b = el.selectionEnd;
@@ -200,12 +206,6 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
     substituir(a, b, limpo, [a, a + limpo.length]);
   }
 
-  function aoTeclarNaDescricao(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-    const tecla = e.key.toLowerCase();
-    if (tecla === "b") { e.preventDefault(); alternarInline("**"); }
-    else if (tecla === "i") { e.preventDefault(); alternarInline("_"); }
-  }
 
   if (layout === "document") {
     const linhaFim = corpo.indexOf("\n", cursor);
@@ -214,9 +214,9 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
     const tam = ehMobile ? "h-11 w-11" : "h-8 w-8";
     const separador = <span aria-hidden className="mx-1 h-5 w-px bg-border" />;
 
-    return <div className="min-w-0 rounded-xl border border-border bg-surface-1 transition-colors focus-within:border-violet/70" data-corpo-editor>
-      <div className="ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b border-border bg-surface-1 px-2 py-1.5" data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
-        {!preview && <>
+    return <div className={semBorda ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"} data-corpo-editor>
+      <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
+        <div className={`flex min-w-0 flex-wrap items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
             opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
             classeGatilho={`${ehMobile ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
@@ -241,17 +241,21 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
             {emojiAberto && <SeletorEmoji aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />}
           </div>
           <ToolbarBtn Icon={RemoveFormatting} label="Limpar formatação" tamanho={tam} onClick={limparFormatacao} />
-        </>}
-        <button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)} title={preview ? "Editar descrição" : "Pré-visualizar descrição"} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
-          className={`ml-auto flex ${ehMobile ? "h-11" : "h-8"} items-center gap-2 rounded-lg px-2.5 text-sm text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
-          {preview ? <><Pencil size={15} strokeWidth={1.75} />Editar descrição</> : <Eye size={16} strokeWidth={1.75} />}
+        </div>
+        <button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+          className={`relative ml-auto flex ${ehMobile ? "h-11 w-11" : "h-8 w-8"} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
+          {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
+          <Eye size={16} strokeWidth={1.75} aria-hidden
+            className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:rotate(-45deg)_scaleY(0.06)_scaleX(0.9)] opacity-0 [transition-duration:300ms,120ms] [transition-delay:0ms,150ms]" : "[transform:none] opacity-100 [transition-duration:300ms,100ms] [transition-delay:70ms,0ms]"}`} />
+          <Pencil size={15} strokeWidth={1.75} aria-hidden
+            className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />
         </button>
       </div>
       {preview
-        ? <div className="min-h-40 min-w-0 break-words rounded-b-xl p-4 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
-        : <textarea ref={areaRef} aria-label={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} value={corpo} onChange={(e) => { onCorpoChange(e.target.value); setCursor(e.target.selectionStart); }}
-            onSelect={(e) => setCursor(e.currentTarget.selectionStart)} onKeyDown={aoTeclarNaDescricao} placeholder={placeholder} rows={rows}
-            className="ecos-autogrow block min-h-40 w-full min-w-0 rounded-b-xl bg-transparent p-4 font-body text-[15px] leading-relaxed text-text-primary placeholder:text-text-secondary focus:outline-none" />}
+        ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
+        : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
+            alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
+            className={semBorda ? "px-0.5 py-2" : "p-4"} />}
     </div>;
   }
 

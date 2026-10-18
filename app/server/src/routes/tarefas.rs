@@ -427,7 +427,14 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
     let fm = doc.front_matter;
-    let pasta = pasta_relativa_do_caminho(&caminho_relativo);
+    // A pasta vem do índice (a mesma que a listagem mostra), não do caminho do arquivo: com uma árvore por pessoa
+    // (`<pessoa>/Tarefas/<pasta>/x.md`) o caminho não começa em `Tarefas/` e a pasta saía sempre vazia.
+    let id_indice = id.clone();
+    let pasta: Option<String> = state
+        .db
+        .with_read(move |conn| conn.query_row("SELECT pasta_id FROM tarefa WHERE id = ?1", [&id_indice], |r| r.get::<_, Option<String>>(0)).optional())
+        .await?
+        .flatten();
     Ok(Json(serde_json::json!({
         "id": fm.id,
         "titulo": fm.titulo,
@@ -447,13 +454,6 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         "corpo": doc.body,
         "serie": crate::routes::tarefas_serie::resumo_da_tarefa(&state, &fm),
     })))
-}
-
-/// `Tarefas/<pasta.../>arquivo.md` -> `Some("pasta...")`; raiz -> `None`.
-fn pasta_relativa_do_caminho(caminho_relativo: &str) -> Option<String> {
-    let sem_raiz = caminho_relativo.strip_prefix("Tarefas/")?;
-    let pai = sem_raiz.rsplit_once('/')?.0;
-    Some(pai.to_string())
 }
 
 // Omitted property preserves the value; explicit null clears it.

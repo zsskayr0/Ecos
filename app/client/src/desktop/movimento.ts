@@ -4,5 +4,5 @@ export const DURACAO_SAIDA_JANELA_MS = 160;
 
 /** Quem pediu "reduzir movimento" no sistema fecha na hora, sem animação. */
 export function reduzMovimento(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

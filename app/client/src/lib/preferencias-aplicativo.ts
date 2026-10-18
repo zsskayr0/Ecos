@@ -40,6 +40,8 @@ export interface PreferenciasAplicativo {
   tarefaPrioridade: PrioridadePadrao;
   /** Duração estimada (minutos) que uma tarefa nova já traz. */
   tarefaDuracaoMin: number;
+  /** Tarefas abrem já no modo Focus (maximizadas), em vez da janela flutuante. */
+  tarefaMaximizada: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
   mostrarConcluidas: boolean;
   visualizacaoTarefasDesktop: VisualizacaoTarefasDesktop;
@@ -81,6 +83,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   formatoData: "dmy",
   tarefaPrioridade: "baixa",
   tarefaDuracaoMin: 5,
+  tarefaMaximizada: false,
   mostrarConcluidas: false,
   visualizacaoTarefasDesktop: "tabela",
   visualizacaoTarefasMobile: "cards",
