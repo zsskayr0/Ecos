@@ -1,5 +1,5 @@
 import { avisar } from "@/lib/toast";
-import { SkeletonDocumento } from "@/components/common/Skeleton";
+import { SkeletonTarefaDetalhe } from "@/components/common/SkeletonTelas";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
@@ -170,7 +170,7 @@ export function TaskDetailScreen() {
 
   const conteudo = <div className="ecos-detail-content">
     {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
-    {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? (erro ? <p className="py-10 text-sm text-text-secondary">Volte e tente abrir a tarefa novamente.</p> : <SkeletonDocumento rotulo="Carregando…" />) : <>
+    {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? (erro ? <p className="py-10 text-sm text-text-secondary">Volte e tente abrir a tarefa novamente.</p> : <SkeletonTarefaDetalhe desktop={desktop} rotulo="Carregando…" />) : <>
       <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta tarefa?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir}
         description={!tarefa.serie ? undefined : escopo === "esta" ? "Só esta ocorrência vai para a Lixeira; a série continua com a próxima. Para encerrar a série, mude \"Ao editar, aplicar a\" em Repetir." : escopo === "proximas" ? "Esta ocorrência vai para a Lixeira e a série é encerrada: nenhuma próxima será criada." : "Esta e as outras ocorrências pendentes vão para a Lixeira e a série é encerrada. As já concluídas ficam."} />
       {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}

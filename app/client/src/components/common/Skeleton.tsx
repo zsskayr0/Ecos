@@ -11,8 +11,8 @@ const BASE: Record<Variante, string> = {
 };
 
 /** Peça decorativa de skeleton. Sempre dentro de uma `SkeletonRegiao`; fica fora da árvore de acessibilidade. */
-export function Skeleton({ variante = "linha", className = "" }: { variante?: Variante; className?: string }) {
-  return <span aria-hidden="true" data-skeleton={variante} className={`ecos-skeleton block shrink-0 bg-surface-3 ${BASE[variante]} ${className}`} />;
+export function Skeleton({ variante = "linha", className = "", "data-bloco": bloco }: { variante?: Variante; className?: string; "data-bloco"?: string }) {
+  return <span aria-hidden="true" data-bloco={bloco} data-skeleton={variante} className={`ecos-skeleton block shrink-0 bg-surface-3 ${BASE[variante]} ${className}`} />;
 }
 
 /**
