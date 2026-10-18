@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -25,7 +26,7 @@ const onFechar = vi.fn();
 const onSalvo = vi.fn();
 function abrir(evento: Evento | null, ocorrencia?: string) {
   if (evento) vi.mocked(eventos.obter).mockResolvedValue(evento);
-  render(<RefreshProvider><AppUIProvider><EventoDialog aberto eventoId={evento?.id ?? null} ocorrencia={ocorrencia ?? null} categorias={CATEGORIAS} diaInicial={new Date(2026, 8, 23)} onFechar={onFechar} onSalvo={onSalvo} /></AppUIProvider></RefreshProvider>);
+  render(<MemoryRouter><RefreshProvider><AppUIProvider><EventoDialog aberto eventoId={evento?.id ?? null} ocorrencia={ocorrencia ?? null} categorias={CATEGORIAS} diaInicial={new Date(2026, 8, 23)} onFechar={onFechar} onSalvo={onSalvo} /></AppUIProvider></RefreshProvider></MemoryRouter>);
 }
 const titulo = () => screen.findByLabelText("Título") as Promise<HTMLInputElement>;
 const salvar = (nome: RegExp | string = /Salvar|Criar/) => fireEvent.click(screen.getByRole("button", { name: nome }));
