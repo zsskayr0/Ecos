@@ -28,7 +28,7 @@ export function Conexoes({ tipo, id, versao, compacto = false }: Props) {
   }, [tipo, id, versao]);
 
   if (!id || (indisponivel && !dados)) return null;
-  const total = (dados?.entrada.length ?? 0) + (dados?.saida.length ?? 0);
+  const total = (dados?.entrada?.length ?? 0) + (dados?.saida?.length ?? 0);
 
   const grupo = (lado: Lado, titulo: string, Icone: typeof ArrowUpRight) => {
     const itens = dados?.[lado] ?? [];
