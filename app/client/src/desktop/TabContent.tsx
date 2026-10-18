@@ -1,3 +1,4 @@
+import { AbaTarefa } from "./AbaTarefa";
 import { memo, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { LIMITE_HISTORICO, registrarNavegacao } from "./navegacao-abas";
@@ -76,7 +77,7 @@ export const TabContent = memo(function TabContent({ tabId, path, visible, fecha
           const pane = state.panes.find((item) => item.tabs.some((tab) => tab.id === tabId));
           if (pane) dispatch({ type: "close-tab", paneId: pane.id, tabId });
         }}>
-          <Routes>{screenRoutes}</Routes>
+          <AbaTarefa><Routes>{screenRoutes}</Routes></AbaTarefa>
         </FecharDocumentoContext.Provider>
         </TituloJanelaContext.Provider>
       </MemoryRouter>
