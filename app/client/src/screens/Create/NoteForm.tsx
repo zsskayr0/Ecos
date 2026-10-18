@@ -46,6 +46,7 @@ export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
         corpo={draft.corpo}
         onCorpoChange={(corpo) => setDraft((d) => ({ ...d, corpo }))}
         tipo="nota"
+        espaco={espacoAtivo}
         placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias."
         rows={10}
         layout="document"

@@ -4,6 +4,7 @@ import remarkBreaks from "remark-breaks";
 import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
 import { media, notas, tarefas } from "@/lib/api";
+import { Wikilink } from "@/components/common/Wikilink";
 
 /**
  * Real Markdown rendering (section 3.6 preview + Nota read mode) — used to
@@ -26,7 +27,7 @@ const WIKILINK_RE_GLOBAL = new RegExp(WIKILINK_RE.source, "g");
 
 interface WikilinkMdastNode {
   type: "wikilinkEcos";
-  data: { hName: "span"; hProperties: { className: string } };
+  data: { hName: "ecos-wikilink"; hProperties: { dataInterno: string; dataApelido?: string } };
   children: [{ type: "text"; value: string }];
 }
 
@@ -41,7 +42,7 @@ function dividirTextoComWikilinks(node: Text): (Text | WikilinkMdastNode)[] {
     const apelido = match[2]?.trim();
     partes.push({
       type: "wikilinkEcos",
-      data: { hName: "span", hProperties: { className: "font-medium text-steel-300" } },
+      data: { hName: "ecos-wikilink", hProperties: { dataInterno: titulo, ...(apelido ? { dataApelido: apelido } : {}) } },
       children: [{ type: "text", value: apelido || titulo }],
     });
     ultimo = match.index + match[0].length;
@@ -107,6 +108,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkWikilink]}
         components={{
+          ...({ "ecos-wikilink": (p: { "data-interno"?: string; "data-apelido"?: string }) => <Wikilink interno={p["data-interno"] ?? ""} apelido={p["data-apelido"]} origem={itemId ? { tipo, id: itemId } : undefined} /> } as object),
           img: ({ src, alt }) => (
             // eslint-disable-next-line jsx-a11y/alt-text -- alt vem do próprio Markdown (![alt](src))
             <img src={resolverSrcImagem(typeof src === "string" ? src : undefined, itemId, tipo)} alt={alt ?? ""} className="max-w-full rounded-xl" loading="lazy" />

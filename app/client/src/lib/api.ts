@@ -563,7 +563,7 @@ export const notas = {
   atualizar: (id: string, payload: { titulo?: string; pasta?: string; espaco?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean }) =>
     patch<{ id: string }>(`/notas/${id}`, payload),
   excluir: (id: string) => del<{ ok: true }>(`/notas/${id}`),
-  links: (id: string) => get<{ entrada: { id: string; titulo: string }[]; saida: { id: string; titulo: string }[] }>(`/notas/${id}/links`),
+  links: (id: string) => get<ConexoesItem>(`/notas/${id}/links`),
   /** Mirror de `tarefas.anexos` (mesmo padrão de backend, `notas.rs::enviar_anexo`)
    * — real multipart upload, então usa `fetch` direto em vez de `req()`
    * (que sempre manda `Content-Type: application/json`, incompatível com
@@ -813,6 +813,28 @@ export const feed = {
 };
 
 // --- Search (section 11.8) ------------------------------------------------
+
+/** Quem aponta para o item (entrada) e para quem ele aponta (saída). `tipo` ausente = nota (servidor antigo). */
+export interface ConexoesItem {
+  entrada: { id: string; titulo: string; tipo?: "nota" | "tarefa" }[];
+  saida: { id: string; titulo: string; tipo?: "nota" | "tarefa" }[];
+}
+
+export interface SugestaoLink {
+  id: string;
+  titulo: string;
+  tipo: "nota" | "tarefa";
+  atualizado_em: string;
+}
+
+/** Wikilinks entre Notas e Tarefas: o servidor só devolve o que a pessoa já enxerga, dentro do espaço da origem. */
+export const links = {
+  sugestoes: (params: { q?: string; limite?: number; excluir_id?: string }, sinal?: AbortSignal) =>
+    req<SugestaoLink[]>(`/links/sugestoes${qs(params)}`, sinal ? { signal: sinal } : undefined),
+  de: (tipo: "nota" | "tarefa", id: string) => get<ConexoesItem>(`/${tipo === "tarefa" ? "tarefas" : "notas"}/${id}/links`),
+  resolver: (titulos: string[], origem?: { tipo: "nota" | "tarefa"; id: string }) =>
+    post<{ resolvidos: Record<string, { tipo: "nota" | "tarefa"; id: string; titulo: string } | null> }>("/links/resolver", { titulos, origem }),
+};
 
 export const busca = {
   buscar: (q: string, params: { tipo?: "nota" | "tarefa"; espaco?: string } = {}) =>

@@ -5,6 +5,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { GFM } from "@lezer/markdown";
+import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
 
 /** O que a barra de formatação precisa de um campo de texto (a mesma interface de um `<textarea>`). */
 export interface AreaLike {
@@ -27,6 +28,10 @@ interface Props {
   /** Atalhos (ex.: "Mod-b") tratados pelo editor pai. */
   atalhos?: Record<string, () => void>;
   className?: string;
+  /** Liga o autocomplete de `[[wikilink]]` (só Notas). */
+  wikilinks?: OpcoesWikilink;
+  /** Ctrl/Cmd+clique num `[[...]]`: recebe o texto de dentro (sem apelido). */
+  aoAbrirWikilink?: (interno: string, clique: MouseEvent) => void;
 }
 
 const externa = Annotation.define<boolean>();
@@ -197,7 +202,7 @@ function montarDecoracoes(view: EditorView): DecorationSet {
       const ate = de + m[0].length;
       const rotuloIni = de + 2 + (m[2] !== undefined ? m[1].length + 1 : 0);
       const rotuloFim = ate - 2;
-      marcar(rotuloIni, rotuloFim, "cm-wikilink");
+      if (rotuloFim > rotuloIni) decos.push(Decoration.mark({ class: "cm-wikilink", attributes: { title: "Ctrl+clique para abrir" } }).range(rotuloIni, rotuloFim));
       if (!ativas.has(n)) { esconder(de, rotuloIni); esconder(rotuloFim, ate); }
     }
   }
@@ -241,13 +246,17 @@ const tema = EditorView.theme({
   ".cm-regua": { display: "block", height: "1px", margin: "0.7em 0", background: "rgb(var(--ecos-border-rgb))" },
 });
 
-export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className }: Props) {
+export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const aoMudar = useRef(onCorpoChange);
   aoMudar.current = onCorpoChange;
   const atalhosRef = useRef(atalhos);
   atalhosRef.current = atalhos;
+  const abrirWikilinkRef = useRef(aoAbrirWikilink);
+  abrirWikilinkRef.current = aoAbrirWikilink;
+  const wikilinksRef = useRef(wikilinks);
+  wikilinksRef.current = wikilinks;
   const resolverRef = useRef(resolverImagem);
   resolverRef.current = resolverImagem;
 
@@ -266,6 +275,25 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         placeholder ? placeholderExt(placeholder) : [],
         EditorView.theme({ ".cm-content": { minHeight: alturaMinima } }),
         plugin,
+        wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : [],
+        EditorView.domEventHandlers({
+          mousedown(e, v) {
+            if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || !abrirWikilinkRef.current) return false;
+            const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+            if (pos == null) return false;
+            const linha = v.state.doc.lineAt(pos);
+            const re = new RegExp(WIKILINK.source, "g");
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(linha.text))) {
+              if (pos >= linha.from + m.index && pos <= linha.from + m.index + m[0].length) {
+                e.preventDefault();
+                abrirWikilinkRef.current(m[1].trim(), e);
+                return true;
+              }
+            }
+            return false;
+          },
+        }),
         resolverFacet.of((src) => resolverRef.current?.(src)),
         EditorView.updateListener.of((u) => {
           if (u.docChanged && !u.transactions.some((t) => t.annotation(externa))) aoMudar.current(u.state.doc.toString());

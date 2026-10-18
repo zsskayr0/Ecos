@@ -4,6 +4,8 @@ import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, I
 import { EditorVivo, type AreaLike } from "./EditorVivo";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
+import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
+import { avisar } from "@/lib/toast";
 
 interface Props {
   corpo: string;
@@ -21,6 +23,10 @@ interface Props {
   semBorda?: boolean;
   /** Tarefas existentes abrem a descrição em leitura, mantendo a edição a um clique. */
   initialPreview?: boolean;
+  /** Nota em edição: some da lista do `[[` (não linka para si). */
+  notaId?: string;
+  /** Espaço em que "Criar nota" do `[[` cria a nova. */
+  espaco?: string;
 }
 
 /**
@@ -37,12 +43,20 @@ interface Props {
  * completa é a própria "aba de cima" pedida, sem seção separada ocupando
  * a tela pequena. Desktop mantém textarea + preview lado a lado.
  */
-export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false }: Props) {
+export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false, notaId, espaco }: Props) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   /** Layout "document": o editor vivo (CodeMirror) expõe a seleção como se fosse um textarea. */
   const editorRef = useRef<AreaLike | null>(null);
   const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
   const ehMobile = useIsMobile();
+  const abrirDestino = useAbrirDestino();
+  function abrirWikilink(interno: string, clique: MouseEvent) {
+    const { referencia } = analisarWikilink(interno);
+    void resolverWikilink(referencia, itemId ? { tipo, id: itemId } : undefined).then((d) => {
+      if (d) abrirDestino(d, clique);
+      else avisar("Nenhuma nota ou tarefa com este título.");
+    });
+  }
   const [preview, setPreview] = useState(initialPreview);
   const [cursor, setCursor] = useState(0);
   const [emojiAberto, setEmojiAberto] = useState(false);
@@ -255,7 +269,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
         ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
         : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
-            className={semBorda ? "px-0.5 py-2" : "p-4"} />}
+            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={tipo === "nota" ? { notaAtualId: notaId ?? itemId, espaco } : undefined} />}
     </div>;
   }
 

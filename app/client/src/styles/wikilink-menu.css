@@ -1,0 +1,93 @@
+/* Menu do `[[` no editor: sobe suave sobre o texto, sem roubar o foco; linha selecionada desliza entre itens. */
+@keyframes ecos-wl-subir {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ecos-wl-item {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  min-width: min(22rem, 90vw);
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--ecos-border-rgb));
+  border-radius: 14px;
+  background: color-mix(in srgb, rgb(var(--ecos-surface-2-rgb)) 94%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.38), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  transform-origin: left bottom;
+  animation: ecos-wl-subir 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  max-width: min(30rem, 92vw);
+  max-height: 17rem;
+  font-family: inherit;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  position: relative;
+  display: block;
+  padding: 0;
+  border-radius: 9px;
+  color: rgb(var(--ecos-text-primary-rgb));
+  line-height: 1.25;
+  cursor: pointer;
+  animation: ecos-wl-item 0.14s ease-out backwards;
+  transition: background-color 0.12s ease;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li:hover { background: rgb(var(--ecos-surface-3-rgb) / 0.55); }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: rgb(var(--ecos-surface-3-rgb));
+  color: rgb(var(--ecos-text-primary-rgb));
+  box-shadow: inset 2px 0 0 rgb(var(--ecos-steel-300-rgb));
+}
+/* A linha inteira é desenhada por `wikilink-autocompletar.ts`; os campos de série do CodeMirror saem de cena. */
+.cm-tooltip-autocomplete .cm-completionIcon,
+.cm-tooltip-autocomplete .cm-completionLabel,
+.cm-tooltip-autocomplete .cm-completionDetail { display: none; }
+
+.ecos-wl-linha { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; }
+.ecos-wl-icone {
+  display: flex; flex: none; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: rgb(var(--ecos-steel-300-rgb) / 0.14); color: rgb(var(--ecos-steel-300-rgb));
+  transition: transform 0.14s ease, background-color 0.14s ease;
+}
+li[aria-selected] .ecos-wl-icone { transform: scale(1.06); background: rgb(var(--ecos-steel-300-rgb) / 0.24); }
+.ecos-wl-icone svg { width: 15px; height: 15px; }
+.ecos-wl-tarefa .ecos-wl-icone { background: rgb(var(--ecos-success-rgb, 74 200 130) / 0.15); color: rgb(var(--ecos-success-rgb, 74 200 130)); }
+.ecos-wl-criar .ecos-wl-icone { background: transparent; border: 1px dashed rgb(var(--ecos-steel-300-rgb) / 0.6); }
+.ecos-wl-texto { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; gap: 2px; }
+.ecos-wl-titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95em; }
+.ecos-wl-titulo mark { background: none; color: rgb(var(--ecos-steel-300-rgb)); font-weight: 600; }
+.ecos-wl-contexto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78em; color: rgb(var(--ecos-text-muted-rgb)); }
+.ecos-wl-tipo {
+  flex: none; padding: 2px 7px; border-radius: 999px;
+  font-size: 0.66em; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  background: rgb(var(--ecos-steel-300-rgb) / 0.14); color: rgb(var(--ecos-steel-300-rgb));
+}
+.ecos-wl-tarefa .ecos-wl-tipo { background: rgb(var(--ecos-success-rgb, 74 200 130) / 0.15); color: rgb(var(--ecos-success-rgb, 74 200 130)); }
+.ecos-wl-criar .ecos-wl-tipo { background: transparent; border: 1px solid rgb(var(--ecos-border-rgb)); color: rgb(var(--ecos-text-secondary-rgb)); }
+
+/* Dica de teclado no rodapé (teclado físico apenas). */
+.cm-tooltip.cm-tooltip-autocomplete::after {
+  content: "↑↓ navegar  ·  Tab ou Enter inserir  ·  Esc fechar";
+  display: block; margin-top: 4px; padding: 6px 10px 2px;
+  border-top: 1px solid rgb(var(--ecos-border-rgb) / 0.7);
+  font-size: 0.7em; color: rgb(var(--ecos-text-muted-rgb));
+}
+@media (hover: none) { .cm-tooltip.cm-tooltip-autocomplete::after { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .cm-tooltip.cm-tooltip-autocomplete, .cm-tooltip.cm-tooltip-autocomplete > ul > li { animation: none; }
+  .cm-tooltip.cm-tooltip-autocomplete > ul { scroll-behavior: auto; }
+  .ecos-wl-icone, .cm-tooltip.cm-tooltip-autocomplete > ul > li { transition: none; }
+}
+
+/* Lista de Conexões: itens entram em cascata. */
+@keyframes ecos-conexao-entra { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.ecos-conexao-item { animation: ecos-conexao-entra 0.2s ease-out backwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-conexao-item { animation: none; } }

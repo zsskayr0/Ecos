@@ -13,6 +13,7 @@ import { useIsMobile } from "@/lib/use-viewport";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { AttachmentsField } from "./AttachmentsField";
 import { CorpoEditor } from "./CorpoEditor";
+import { Conexoes } from "@/components/common/Conexoes";
 import { TaskDateTimePicker } from "./TaskDateTimePicker";
 import { EquipeSelector } from "./EquipeSelector";
 import { TitleField } from "@/components/common/TitleField";
@@ -197,6 +198,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           <ul className="mb-3 space-y-1">{value.subtarefas.map((sub, index) => <li key={sub.id ?? index} className="flex min-w-0 items-center gap-2 border-b border-border py-1"><label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={sub.concluida} onChange={(e) => onChange({ subtarefas: value.subtarefas.map((s, i) => i === index ? { ...s, concluida: e.target.checked } : s) })} className="h-5 w-5 shrink-0 accent-steel-500" /><span className={`min-w-0 break-words ${sub.concluida ? "text-text-secondary line-through" : "text-text-primary"}`}>{sub.titulo}</span></label><button type="button" className={ACTION} onClick={() => onChange({ subtarefas: value.subtarefas.filter((_, i) => i !== index) })} aria-label={`Remover subtarefa ${sub.titulo}`}><Trash2 size={16} /></button></li>)}</ul>
           <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
         </section>
+        {editing && itemId && !focusMode && <Conexoes tipo="tarefa" id={itemId} versao={editedAt} />}
         <button type="button" aria-expanded={expanded} aria-controls={`${id}-planning`} onClick={() => setExpanded(!expanded)}
           className="flex min-h-12 w-full flex-col gap-2 border-t border-border pt-5 text-left md:hidden">
           <span className="flex w-full items-center gap-2 text-sm font-medium text-text-primary"><SlidersHorizontal size={17} />Mais detalhes<ChevronDown size={18} className={`ml-auto transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} /></span>
@@ -221,6 +223,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           </div>
         </section>
         {timePanel && <section className="border-t border-border pt-6" aria-label="Tempo dedicado">{timePanel}</section>}
+        {editing && itemId && <div className="border-t border-border pt-6"><Conexoes tipo="tarefa" id={itemId} versao={editedAt} compacto /></div>}
         <section className="space-y-4 border-t border-border pt-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
           <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} disabled={saving} />
