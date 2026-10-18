@@ -4,7 +4,7 @@ import { useAbrirDocumento } from "@/lib/documento-popup";
 import { ChevronLeft, Search as SearchIcon, Clock } from "lucide-react";
 import { busca, vault, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
-import { SkeletonCards } from "@/components/common/Skeleton";
+import { SkeletonBusca } from "@/components/common/SkeletonTelas";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { EmptyState } from "@/components/common/EmptyState";
 
@@ -140,7 +140,7 @@ export function SearchScreen() {
           <FiltroEscopo escopo={escopo} aoMudar={setEscopo} />
         </div>
       ) : erro ? null : !resultados ? (
-        <SkeletonCards itens={3} rotulo="Buscando…" />
+        <SkeletonBusca rotulo="Buscando…" />
       ) : totalResultados === 0 ? (
         <EmptyState icon={SearchIcon} title={`Nada encontrado pra "${debounced}".`} subtitle="Tente outra palavra ou um trecho menor." />
       ) : (

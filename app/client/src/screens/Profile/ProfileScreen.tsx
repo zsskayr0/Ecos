@@ -10,7 +10,7 @@ import type { Cargo } from "@/lib/types";
 import { auth, avatarPerfil, equipes as equipesApi } from "@/lib/api";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { SkeletonMetricas, SkeletonPerfil } from "@/components/common/Skeleton";
+import { SkeletonMetricasPerfil, SkeletonPerfilTela } from "@/components/common/SkeletonTelas";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { avisar } from "@/lib/toast";
 
@@ -58,7 +58,7 @@ export function ProfileScreen() {
     } finally { setSalvandoFoto(false); }
   }
   if (!perfil) return status === "carregando"
-    ? <SkeletonPerfil rotulo="Carregando perfil…" />
+    ? <SkeletonPerfilTela rotulo="Carregando perfil…" />
     : <div className="px-4 pt-1"><EstadoErro mensagem="Não foi possível carregar o perfil." onTentarDeNovo={() => void recarregarPerfil()} /></div>;
 
   return (
@@ -97,7 +97,7 @@ export function ProfileScreen() {
 
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Seu espaço</p>
       {erroMetricas && <EstadoErro mensagem={erroMetricas} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
-      {carregandoMetricas ? <SkeletonMetricas rotulo="Carregando seu espaço…" /> : !erroMetricas && <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas.toLocaleString("pt-BR")} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas.toLocaleString("pt-BR")} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras.toLocaleString("pt-BR")} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres.toLocaleString("pt-BR")} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">{metricas.entrouEm ? `No Ecos desde ${new Date(metricas.entrouEm).toLocaleDateString("pt-BR", { dateStyle: "long" })} · primeira nota` : "Primeira nota"}</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>}
+      {carregandoMetricas ? <SkeletonMetricasPerfil rotulo="Carregando seu espaço…" /> : !erroMetricas && <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas.toLocaleString("pt-BR")} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas.toLocaleString("pt-BR")} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras.toLocaleString("pt-BR")} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres.toLocaleString("pt-BR")} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">{metricas.entrouEm ? `No Ecos desde ${new Date(metricas.entrouEm).toLocaleDateString("pt-BR", { dateStyle: "long" })} · primeira nota` : "Primeira nota"}</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>}
 
     </div>
   );

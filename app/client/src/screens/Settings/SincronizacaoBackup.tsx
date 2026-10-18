@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CloudOff, Download, HardDrive, Loader2, Smartphone, Upload } from "lucide-react";
-import { SkeletonLista } from "@/components/common/Skeleton";
+import { SkeletonBackups, SkeletonSincronizacao } from "@/components/common/SkeletonTelas";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { conta, restauracao, sync, vault, type DispositivoSync, type ModoSync, type RelatorioRestauracao, type ResultadoRestauracao, type StatusSync } from "@/lib/api";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
@@ -125,7 +125,7 @@ export function SincronizacaoBackup() {
       <h2 className="mb-4 font-display text-lg text-text-primary">Sincronização e backup</h2>
 
       {/* Estado da sincronização: só o que o servidor informa. */}
-      {carregandoStatus ? <SkeletonLista itens={2} rotulo="Consultando a sincronização…" />
+      {carregandoStatus ? <SkeletonSincronizacao rotulo="Consultando a sincronização…" />
         : erroStatus ? <EstadoErro mensagem={erroStatus} onTentarDeNovo={() => void carregarStatus()} />
         : status && (
           <>
@@ -200,7 +200,7 @@ export function SincronizacaoBackup() {
       {/* Backup: as cópias do Cofre são reais; o de notas e tarefas ainda não existe. */}
       <div className="mb-5 rounded-2xl bg-surface-1 p-4">
         <p className="text-[15px] font-medium text-text-primary">Cópias de segurança do Cofre</p>
-        {carregandoBackups ? <SkeletonLista itens={2} rotulo="Consultando as cópias…" className="mt-3" />
+        {carregandoBackups ? <SkeletonBackups rotulo="Consultando as cópias…" />
           : backups ? (
             <>
               <p className="mt-1 text-xs text-text-muted">Frequência: {backups.config.frequencia} · retenção: {backups.config.retencao} · próxima automática: {formatarDataHora(backups.config.proxima_execucao_automatica)}</p>

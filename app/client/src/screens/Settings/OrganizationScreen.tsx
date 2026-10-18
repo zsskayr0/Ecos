@@ -1,5 +1,5 @@
 import { Dialog } from "@/components/common/Dialog";
-import { SkeletonLista } from "@/components/common/Skeleton";
+import { SkeletonOrganizacao } from "@/components/common/SkeletonTelas";
 import { useEffect, useState, type MouseEvent } from "react";
 import { ChevronDown, Folder, FolderPlus, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -99,7 +99,7 @@ export function OrganizationScreen() {
     </section>
 
     {erro && <p role="alert" className="mb-4 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error">{erro}</p>}
-    {lista === null ? <SkeletonLista itens={4} rotulo="Carregando pastas…" /> : <>
+    {lista === null ? <SkeletonOrganizacao itens={4} rotulo="Carregando pastas…" /> : <>
       <nav aria-label="Caminho da pasta" className="mb-3 flex min-h-9 items-center gap-1 overflow-x-auto rounded-xl bg-surface-1 px-2 text-sm"><button type="button" onClick={() => setPastaAtual("")} className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 ${pastaAtual ? "text-text-secondary hover:bg-surface-2" : "text-text-primary"}`}><Folder size={15} className="text-steel-300" />Raiz</button>{pastaAtual.split("/").filter(Boolean).map((parte, indice, partes) => { const caminho = partes.slice(0, indice + 1).join("/"); return <span key={caminho} className="flex shrink-0 items-center gap-1"><span className="text-text-muted">/</span><button type="button" onClick={() => setPastaAtual(caminho)} className="rounded-lg px-1.5 py-1.5 text-text-secondary hover:bg-surface-2">{parte}</button></span>; })}</nav>
       <div className={`relative transition-[opacity,filter,transform] duration-200 ease-out ${atualizando ? "pointer-events-none opacity-55 blur-[1px]" : ""}`} aria-busy={atualizando}>
         <div key={versaoLista} className="ecos-item-entra">

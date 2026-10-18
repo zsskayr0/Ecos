@@ -1,4 +1,4 @@
-import { SkeletonLista } from "@/components/common/Skeleton";
+import { SkeletonLinhasCartao } from "@/components/common/SkeletonTelas";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, CheckCircle2, ExternalLink, Link2, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -129,7 +129,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
         {conectado && !conectado.precisa_reconectar && <CheckCircle2 size={18} className="shrink-0 text-success" aria-label="Conectado" />}
       </div>
 
-      {config === null && !erro && <SkeletonLista itens={1} rotulo="Carregando…" />}
+      {config === null && !erro && <SkeletonLinhasCartao rotulo="Carregando…" />}
       {config && !config.configurado && !conectado && (
         <p className="mt-3 text-xs text-text-muted">Este servidor ainda não tem as credenciais do Google. Defina <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> no <code>.env</code> e reinicie.</p>
       )}
