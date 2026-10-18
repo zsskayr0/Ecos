@@ -1,4 +1,4 @@
-import { SkeletonCards } from "@/components/common/Skeleton";
+import { SkeletonHoje } from "@/components/common/SkeletonTelas";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { AlertTriangle, CalendarCheck2, CalendarClock, Check, CheckCircle2, Clock, Flag, TimerReset } from "lucide-react";
 import { agenda as agendaApi, rotina as rotinaApi, tarefas, type BlocoPlanejado, type TarefaResumo } from "@/lib/api";
@@ -158,7 +158,7 @@ export function TodayScreen() {
     </div>}
     {erro && <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="mt-0.5 shrink-0" />{erro}</div>}
     {aviso && <div role="alert" className="mb-4 rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning">{aviso}</div>}
-    {carregando ? <SkeletonCards itens={3} rotulo="Carregando…" /> : plano.total === 0 && concluidas.length === 0 ? (
+    {carregando ? <SkeletonHoje rotulo="Carregando…" /> : plano.total === 0 && concluidas.length === 0 ? (
       <EmptyState icon={CalendarCheck2} title="Seu dia está livre." subtitle={temRotina === false ? "Sem tarefas, prazos ou eventos hoje. Configure sua rotina para ver quanto tempo você tem disponível." : livre !== null ? `Sem tarefas, prazos ou eventos hoje — ${fmtDuracao(Math.max(0, livre))} livres na sua rotina para encaixar algo.` : "Sem tarefas, prazos ou eventos hoje."} />
     ) : <div className="space-y-5">
       {grupo("atrasadas", "Atrasadas", plano.atrasadas, true)}

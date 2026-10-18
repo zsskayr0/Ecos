@@ -1,4 +1,4 @@
-import { SkeletonCards } from "@/components/common/Skeleton";
+import { SkeletonItens } from "@/components/common/SkeletonTelas";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Folder, AlertTriangle } from "lucide-react";
@@ -87,7 +87,7 @@ export function FolderScreen() {
 
       <div>
         {notas === null ? (
-          <SkeletonCards itens={3} rotulo="Carregando…" />
+          <SkeletonItens modo={modo} tipo="nota" rotulo="Carregando…" />
         ) : notas.length === 0 ? (
           <EmptyState icon={Folder} title="Pasta vazia por enquanto." subtitle="Toque no + pra criar a primeira nota aqui." />
         ) : (

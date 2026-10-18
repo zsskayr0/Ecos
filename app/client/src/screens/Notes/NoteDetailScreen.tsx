@@ -1,6 +1,6 @@
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
-import { SkeletonDocumento } from "@/components/common/Skeleton";
+import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
@@ -178,7 +178,7 @@ function NoteDetailMobile() {
       <div className="ecos-detail-page">
         <DetailHeader onBack={() => navigate(-1)} />
         <div className="ecos-detail-content">
-        <SkeletonDocumento rotulo="Carregando…" />
+        <SkeletonNotaDetalhe rotulo="Carregando…" />
         </div>
       </div>
     );

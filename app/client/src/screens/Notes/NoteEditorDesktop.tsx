@@ -1,6 +1,6 @@
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
-import { SkeletonDocumento } from "@/components/common/Skeleton";
+import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
@@ -212,7 +212,7 @@ export function NoteEditorDesktop() {
       </div>
     );
   }
-  if (!nota || !valor) return <div className="ecos-detail-content"><SkeletonDocumento rotulo="Carregando…" /></div>;
+  if (!nota || !valor) return <div className="ecos-detail-content"><SkeletonNotaDetalhe rotulo="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";

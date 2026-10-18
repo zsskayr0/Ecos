@@ -1,4 +1,4 @@
-import { EstadoCarregando } from "@/components/common/EstadoCarregando";
+import { SkeletonEventoDialog } from "@/components/common/SkeletonTelas";
 ﻿import { useAppUI } from "@/lib/ui-context";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useEffect, useState } from "react";
@@ -113,7 +113,7 @@ function EventoDialogInterno({ aberto, eventoId, ocorrencia, categorias, diaInic
   if (erroCarga) {
     return <div className={sobre}><div className="rounded-2xl border border-border bg-surface-1 p-6"><p role="alert" className="mb-4 text-sm text-error">{erroCarga}</p><button type="button" onClick={onFechar} className="rounded-xl bg-surface-2 px-4 py-2 text-sm">Fechar</button></div></div>;
   }
-  if (eventoId && !detalhe) return <div className={sobre}><EstadoCarregando texto="Carregando evento…" /></div>;
+  if (eventoId && !detalhe) return <div className={sobre}><SkeletonEventoDialog rotulo="Carregando evento…" /></div>;
 
   const editavel = detalhe ? paraEditavel(detalhe, ocorrencia) : undefined;
 

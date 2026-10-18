@@ -1,4 +1,4 @@
-import { SkeletonCards } from "@/components/common/Skeleton";
+import { SkeletonItens } from "@/components/common/SkeletonTelas";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -73,7 +73,7 @@ export function NotesRootScreen() {
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-text-muted">Sem pasta</p>
       <div>
         {soltas === null ? (
-          erro ? null : <SkeletonCards itens={3} rotulo="Carregando…" />
+          erro ? null : <SkeletonItens modo={modo} tipo="nota" rotulo="Carregando…" />
         ) : soltas.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">
             Nenhuma nota solta — tudo o que você tem está catalogado numa pasta.

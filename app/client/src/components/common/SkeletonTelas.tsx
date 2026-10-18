@@ -113,23 +113,29 @@ export function SkeletonItens({ modo = "cards", tipo = "misto", semFeedNoDesktop
   Base & { modo?: ModoVisualizacao; tipo?: "nota" | "tarefa" | "misto"; semFeedNoDesktop?: boolean; filtros?: boolean; itens?: number }) {
   const desktop = useIsDesktop();
   const efetivo = modoEfetivo(modo, desktop, semFeedNoDesktop);
-  const cartao = (i: number) => (tipo === "nota" || (tipo === "misto" && i % 2 === 1) ? <CartaoNota key={i} /> : <CartaoTarefa key={i} />);
   return (
     <SkeletonRegiao rotulo={rotulo} atrasoMs={atrasoMs} className={className}>
       {filtros && <BarraFiltros />}
       {efetivo === "tabela" ? <Tabela larguras={tipo === "nota" ? COLUNAS_NOTAS : COLUNAS_TAREFAS} linhas={itens + 2} />
         : efetivo === "lista" ? <div className="flex flex-col gap-2">{Array.from({ length: itens + 2 }, (_, i) => <LinhaCompacta key={i} tipo={tipo === "nota" ? "nota" : "tarefa"} />)}</div>
-          : <div className="mx-auto flex w-full max-w-[780px] flex-col gap-3">
-            <Skeleton data-bloco="grupo-data" variante="texto" className="mt-3 w-20" />
-            {Array.from({ length: itens }, (_, i) => cartao(i))}
-          </div>}
+          : <Cartoes tipo={tipo} itens={itens} />}
     </SkeletonRegiao>
   );
 }
 
-/** Feed: cartões de nota e tarefa agrupados por dia, sem barra de filtros. */
+/** Coluna de cartões (max 780px) agrupada por dia, como a visão "cards" real. */
+function Cartoes({ tipo, itens }: { tipo: "nota" | "tarefa" | "misto"; itens: number }) {
+  return (
+    <div className="mx-auto flex w-full max-w-[780px] flex-col gap-3">
+      <Skeleton data-bloco="grupo-data" variante="texto" className="mt-3 w-20" />
+      {Array.from({ length: itens }, (_, i) => (tipo === "nota" || (tipo === "misto" && i % 2 === 1) ? <CartaoNota key={i} /> : <CartaoTarefa key={i} />))}
+    </div>
+  );
+}
+
+/** Feed: cartões de nota e tarefa agrupados por dia, sem barra de filtros (não depende do viewport). */
 export function SkeletonFeed({ itens = 4, rotulo, atrasoMs, className }: Base & { itens?: number }) {
-  return <SkeletonItens modo="cards" filtros={false} itens={itens} rotulo={rotulo} atrasoMs={atrasoMs} className={className} />;
+  return <SkeletonRegiao rotulo={rotulo} atrasoMs={atrasoMs} className={className}><Cartoes tipo="misto" itens={itens} /></SkeletonRegiao>;
 }
 
 /* ───────── Detalhes (tarefa, nota) ───────── */

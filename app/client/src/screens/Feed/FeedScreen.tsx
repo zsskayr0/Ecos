@@ -1,4 +1,4 @@
-import { SkeletonCards } from "@/components/common/Skeleton";
+import { SkeletonFeed } from "@/components/common/SkeletonTelas";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, AlertTriangle } from "lucide-react";
@@ -120,7 +120,7 @@ export function FeedScreen() {
         )}
 
         {itens === null ? (
-          <SkeletonCards itens={4} rotulo="Carregando Feed…" />
+          <SkeletonFeed itens={4} rotulo="Carregando Feed…" />
         ) : itens.length === 0 && !erro ? (
           <EmptyState
             icon={Rss}
