@@ -32,20 +32,90 @@ let estado: EstadoOffline = {
   erro: null,
 };
 
+/**
+ * O IndexedDB é só um acelerador: nenhuma operação pode segurar uma requisição. Abrir ou operar além do prazo vira
+ * "sem banco" (memória), e a abertura só é tentada de novo depois de um intervalo, para não pagar o prazo a cada chamada.
+ */
+export const PRAZO_IDB_MS = 2_500;
+const PRAZO_OPERACAO_MS = 5_000;
+const ESPERA_NOVA_TENTATIVA_MS = 30_000;
+/** Versão do formato do cache derivado (`respostas`). Mudou → o cache é descartado uma vez; a fila e os rascunhos nunca. */
+const ESQUEMA_CACHE = "2";
+const CHAVE_ESQUEMA = "ecos:offline-esquema";
+const PREFIXO_PREPARO_OFFLINE = "ecos:offline-preparado:";
+let proximaAberturaEm = 0;
+
+function guardaLocal<T>(acao: () => T): T | undefined { try { return acao(); } catch { return undefined; } }
+
+/** Descarta SÓ o cache derivado (e os carimbos da preparação, para ele ser refeito); a fila de escrita pendente fica intacta. */
+function migrarEsquema(db: IDBDatabase, concluir: () => void): void {
+  if (guardaLocal(() => localStorage.getItem(CHAVE_ESQUEMA)) === ESQUEMA_CACHE) { concluir(); return; }
+  const gravarMarca = () => guardaLocal(() => localStorage.setItem(CHAVE_ESQUEMA, ESQUEMA_CACHE));
+  try {
+    const tx = db.transaction(CACHE, "readwrite");
+    tx.objectStore(CACHE).clear();
+    tx.oncomplete = () => {
+      guardaLocal(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith(PREFIXO_PREPARO_OFFLINE)).forEach((k) => localStorage.removeItem(k));
+      });
+      gravarMarca();
+      concluir();
+    };
+    tx.onerror = tx.onabort = () => concluir();
+  } catch { concluir(); }
+}
+
 function abrirDb(): Promise<IDBDatabase | null> {
   if (dbPromessa) return dbPromessa;
-  dbPromessa = new Promise((resolve) => {
+  if (Date.now() < proximaAberturaEm) return Promise.resolve(null);
+  const promessa: Promise<IDBDatabase | null> = new Promise((resolve) => {
     if (typeof indexedDB === "undefined") { resolve(null); return; }
-    const pedido = indexedDB.open(NOME_DB, 1);
-    pedido.onupgradeneeded = () => {
-      const db = pedido.result;
-      if (!db.objectStoreNames.contains(CACHE)) db.createObjectStore(CACHE, { keyPath: "chave" });
-      if (!db.objectStoreNames.contains(FILA)) db.createObjectStore(FILA, { keyPath: "id" });
+    let resolvida = false;
+    const terminar = (db: IDBDatabase | null) => {
+      if (resolvida) { db?.close(); return; } // abriu depois do prazo: ninguém espera mais por esta conexão
+      resolvida = true;
+      clearTimeout(prazo);
+      if (!db) { proximaAberturaEm = Date.now() + ESPERA_NOVA_TENTATIVA_MS; if (dbPromessa === promessa) dbPromessa = null; }
+      resolve(db);
     };
-    pedido.onsuccess = () => resolve(pedido.result);
-    pedido.onerror = () => resolve(null);
+    const prazo = setTimeout(() => { if (!resolvida) { resolvida = true; proximaAberturaEm = Date.now() + ESPERA_NOVA_TENTATIVA_MS; if (dbPromessa === promessa) dbPromessa = null; resolve(null); } }, PRAZO_IDB_MS);
+    try {
+      const pedido = indexedDB.open(NOME_DB, 1);
+      pedido.onupgradeneeded = () => {
+        const db = pedido.result;
+        if (!db.objectStoreNames.contains(CACHE)) db.createObjectStore(CACHE, { keyPath: "chave" });
+        if (!db.objectStoreNames.contains(FILA)) db.createObjectStore(FILA, { keyPath: "id" });
+      };
+      // Conexão antiga de outra aba segurando o banco: o prazo cobre; aqui só não deixamos de ouvir.
+      pedido.onblocked = () => undefined;
+      pedido.onsuccess = () => {
+        const db = pedido.result;
+        // Outra aba/versão quer atualizar o banco: solta esta conexão para não bloqueá-la e reabre na próxima necessidade.
+        db.onversionchange = () => { db.close(); if (dbPromessa === promessa) dbPromessa = null; };
+        db.onclose = () => { if (dbPromessa === promessa) dbPromessa = null; };
+        if (resolvida) { db.close(); return; }
+        migrarEsquema(db, () => terminar(db));
+      };
+      pedido.onerror = () => terminar(null);
+    } catch { terminar(null); }
   });
-  return dbPromessa;
+  dbPromessa = promessa;
+  return promessa;
+}
+
+/** Roda uma operação do IndexedDB com prazo: sem resposta a tempo (ou exceção), devolve `falha` e a conexão é refeita depois. */
+function comPrazo<T>(db: IDBDatabase, falha: T, operacao: (fim: (valor: T) => void) => void): Promise<T> {
+  return new Promise((resolve) => {
+    const prazo = setTimeout(() => { desistirDaConexao(db); resolve(falha); }, PRAZO_OPERACAO_MS);
+    const fim = (valor: T) => { clearTimeout(prazo); resolve(valor); };
+    try { operacao(fim); } catch { fim(falha); desistirDaConexao(db); }
+  });
+}
+
+function desistirDaConexao(db: IDBDatabase): void {
+  proximaAberturaEm = Date.now() + ESPERA_NOVA_TENTATIVA_MS;
+  dbPromessa = null;
+  try { db.close(); } catch { /* já fechada */ }
 }
 
 /**
@@ -94,13 +164,15 @@ async function obter<T>(loja: string, chave: IDBValidKey): Promise<T | undefined
 }
 
 async function obterBruto<T>(loja: string, chave: IDBValidKey): Promise<T | undefined> {
+  const memoria = (loja === CACHE ? memoriaCache : memoriaFila).get(String(chave)) as T | undefined;
   const db = await abrirDb();
-  if (!db) return (loja === CACHE ? memoriaCache : memoriaFila).get(String(chave)) as T | undefined;
-  return new Promise((resolve) => {
+  if (!db) return memoria;
+  const lido = await comPrazo<T | undefined>(db, undefined, (fim) => {
     const pedido = db.transaction(loja, "readonly").objectStore(loja).get(chave);
-    pedido.onsuccess = () => resolve(pedido.result as T | undefined);
-    pedido.onerror = () => resolve(undefined);
+    pedido.onsuccess = () => fim(pedido.result as T | undefined);
+    pedido.onerror = () => fim(undefined);
   });
+  return lido ?? memoria;
 }
 
 async function todos<T>(loja: string): Promise<T[]> {
@@ -109,46 +181,54 @@ async function todos<T>(loja: string): Promise<T[]> {
 }
 
 async function todosBruto<T>(loja: string): Promise<T[]> {
+  const memoria = (loja === CACHE ? memoriaCache : memoriaFila) as Map<string, unknown>;
   const db = await abrirDb();
-  if (!db) return [...(loja === CACHE ? memoriaCache : memoriaFila).values()] as T[];
-  return new Promise((resolve) => {
+  if (!db) return [...memoria.values()] as T[];
+  const lidos = await comPrazo<T[]>(db, [], (fim) => {
     const pedido = db.transaction(loja, "readonly").objectStore(loja).getAll();
-    pedido.onsuccess = () => resolve((pedido.result ?? []) as T[]);
-    pedido.onerror = () => resolve([]);
+    pedido.onsuccess = () => fim((pedido.result ?? []) as T[]);
+    pedido.onerror = () => fim([]);
   });
+  // Itens que não couberam no banco (prazo estourado) continuam visíveis: a fila pendente nunca some da lista.
+  if (!memoria.size) return lidos;
+  const chaveDe = (item: unknown) => String((item as { chave?: string; id?: string }).chave ?? (item as { id?: string }).id);
+  const noBanco = new Set(lidos.map(chaveDe));
+  return [...lidos, ...([...memoria.values()] as T[]).filter((item) => !noBanco.has(chaveDe(item)))];
 }
 
 async function gravar<T extends { chave?: string; id?: string }>(loja: string, valor: T): Promise<void> {
+  const memoria = loja === CACHE ? memoriaCache : memoriaFila;
+  const chave = String(valor.chave ?? valor.id);
   const db = await abrirDb();
-  if (!db) {
-    const chave = String(valor.chave ?? valor.id);
-    (loja === CACHE ? memoriaCache : memoriaFila).set(chave, valor as never);
-    return;
-  }
-  await new Promise<void>((resolve) => {
+  const gravado = db ? await comPrazo(db, false, (fim) => {
     const pedido = db.transaction(loja, "readwrite").objectStore(loja).put(valor);
-    pedido.onsuccess = () => resolve();
-    pedido.onerror = () => resolve();
-  });
+    pedido.onsuccess = () => fim(true);
+    pedido.onerror = () => fim(false);
+  }) : false;
+  // Não coube no banco: a fila nunca perde o item (fica em memória, visível a `todos`); o cache derivado pode se perder.
+  if (gravado) memoria.delete(chave);
+  else memoria.set(chave, valor as never);
 }
 
 async function remover(loja: string, chave: IDBValidKey): Promise<void> {
+  (loja === CACHE ? memoriaCache : memoriaFila).delete(String(chave));
   const db = await abrirDb();
-  if (!db) { (loja === CACHE ? memoriaCache : memoriaFila).delete(String(chave)); return; }
-  await new Promise<void>((resolve) => {
+  if (!db) return;
+  await comPrazo<void>(db, undefined, (fim) => {
     const pedido = db.transaction(loja, "readwrite").objectStore(loja).delete(chave);
-    pedido.onsuccess = () => resolve();
-    pedido.onerror = () => resolve();
+    pedido.onsuccess = () => fim();
+    pedido.onerror = () => fim();
   });
 }
 
 async function limparLoja(loja: string): Promise<void> {
+  (loja === CACHE ? memoriaCache : memoriaFila).clear();
   const db = await abrirDb();
-  if (!db) { (loja === CACHE ? memoriaCache : memoriaFila).clear(); return; }
-  await new Promise<void>((resolve) => {
+  if (!db) return;
+  await comPrazo<void>(db, undefined, (fim) => {
     const pedido = db.transaction(loja, "readwrite").objectStore(loja).clear();
-    pedido.onsuccess = () => resolve();
-    pedido.onerror = () => resolve();
+    pedido.onsuccess = () => fim();
+    pedido.onerror = () => fim();
   });
 }
 

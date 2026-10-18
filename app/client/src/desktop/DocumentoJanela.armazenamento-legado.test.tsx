@@ -63,7 +63,7 @@ it("abre a primeira tarefa no boot a frio com IndexedDB e localStorage legados",
  * Abertura do IndexedDB que nunca responde (conexão antiga de outra aba bloqueando, perfil corrompido): com o
  * servidor falhando na primeira chamada, a leitura do cache offline pendurava a requisição para sempre.
  */
-it.fails("não fica em skeleton quando o IndexedDB nunca abre e a primeira chamada falha", async () => {
+it("não fica em skeleton quando o IndexedDB nunca abre e a primeira chamada falha", async () => {
   await semearIndexedDb();
   Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: { open: () => ({}) } });
   globalThis.fetch = vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))) as unknown as typeof fetch;

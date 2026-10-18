@@ -205,7 +205,8 @@ function podeEnfileirarOffline(path: string, init?: RequestInit): init is Reques
 async function respostaSemServidor<T>(path: string, init?: RequestInit): Promise<T> {
   const metodo = init?.method ?? "GET";
   if (metodo === "GET" && podeUsarCacheOffline(path)) {
-    const cache = await obterRespostaOffline<T>(path);
+    // O cache é só um fallback: sem resposta em 4 s segue como se não houvesse cópia (erro claro, nunca espera eterna).
+    const cache = await Promise.race([obterRespostaOffline<T>(path).catch(() => undefined), new Promise<undefined>((resolve) => setTimeout(resolve, 4_000))]);
     if (cache !== undefined) {
       marcarServidorDisponivel(false);
       return cache;
