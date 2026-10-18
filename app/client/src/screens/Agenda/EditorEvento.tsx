@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EquipeSelector } from "@/components/editor/EquipeSelector";
-import { AlertTriangle, CalendarPlus, Clock, Cloud, Link2, Lock, MapPin, Save, Sun, Tag, Trash2, X, AlignLeft, ChevronDown, Repeat } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Clock, Cloud, Link2, Lock, MapPin, Network, Save, Sun, Tag, Trash2, X, AlignLeft, ChevronDown, Repeat } from "lucide-react";
 import { DatePicker } from "@/components/common/DatePicker";
 import { TimePicker } from "@/components/common/TimePicker";
 import { PaletaCores } from "@/components/common/PaletaCores";
@@ -9,6 +9,7 @@ import { paraTriplete } from "@/lib/cor";
 import type { CategoriaEvento, EventoVinculo } from "@/lib/api";
 import type { EventoLocal, Repeticao } from "@/lib/eventos-locais";
 import { lerRrule } from "@/lib/recorrencia";
+import { MiniGrafo } from "../Grafico/MiniGrafo";
 import { SeletorVinculos } from "../Eventos/SeletorVinculos";
 
 /** Cor de quem não tem cor própria nem categoria (o ciano da marca). */
@@ -399,8 +400,14 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
             <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={travaTexto} rows={5} placeholder="Pauta, contexto, o que levar…" aria-label="Descrição" className="ecos-input w-full resize-none" />
           </Secao>
 
+          {edicao && evento?.id && (
+            <Secao i={8} icone={<Network size={13} />} rotulo="Conexões">
+              <MiniGrafo itemId={evento.id} semTitulo />
+            </Secao>
+          )}
+
           {!emOcorrencia && (
-            <Secao i={8} icone={<Link2 size={13} />} rotulo="Vínculos">
+            <Secao i={9} icone={<Link2 size={13} />} rotulo="Vínculos">
               <SeletorVinculos tarefas={vinculos.tarefas} notas={vinculos.notas} onChange={setVinculos} />
               <p className="mt-2 text-[11px] text-text-muted">Liga o evento a Tarefas e Notas. Ficam só no Ecos: nunca vão ao Google.</p>
             </Secao>

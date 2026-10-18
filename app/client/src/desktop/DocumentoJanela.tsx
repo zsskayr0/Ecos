@@ -155,6 +155,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
 
   const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao")));
   const tarefa = path.startsWith("/tarefa/");
+  const podeFocus = tarefa || path.startsWith("/notas/nota/");
   // Com a preferência ligada a tarefa já abre maximizada (modo Focus).
   const [emFocus, setEmFocus] = useState(() => tarefa && lerPreferenciasAplicativo().tarefaMaximizada);
   /** Animação de saída da camada Focus (a janela normal só volta a aparecer inteira depois dela). */
@@ -460,7 +461,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           >
             <Pin size={14} strokeWidth={1.75} />
           </button>}
-          {tarefa && <button
+          {podeFocus && <button
             type="button"
             title="Abrir em modo Focus"
             aria-label="Abrir em modo Focus"

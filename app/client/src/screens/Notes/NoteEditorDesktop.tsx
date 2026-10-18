@@ -1,9 +1,12 @@
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
 import { SkeletonDocumento } from "@/components/common/Skeleton";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Copy, FileX, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
+import { AcoesFocusContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
+import { MiniGrafo } from "@/screens/Grafico/MiniGrafo";
 import { ApiError, notas } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { formatDataHoraCompleta } from "@/lib/format";
@@ -12,6 +15,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
+import { Conexoes } from "@/components/common/Conexoes";
 import { EquipeSelector } from "@/components/editor/EquipeSelector";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -57,6 +61,7 @@ function lerRascunho(id: string): CamposNota | null {
 const guardarRascunho = (id: string, c: CamposNota) => { try { localStorage.setItem(chaveRascunho(id), JSON.stringify(c)); } catch { /* cache indisponível */ } };
 const removerRascunho = (id: string) => { try { localStorage.removeItem(chaveRascunho(id)); } catch { /* cache indisponível */ } };
 
+const CAMPO_TITULO_FOCUS = "ecos-input min-w-0 flex-1 !rounded-none !border-0 !bg-transparent !shadow-none !px-0 !py-0 font-display !text-[2rem] font-semibold leading-tight text-text-primary placeholder:text-text-muted focus-visible:!outline-none";
 const CAMPO_TITULO = "ecos-input min-w-0 flex-1 !rounded-lg border border-border !py-3 !text-xl text-text-primary focus-visible:!outline focus-visible:!outline-2 focus-visible:!outline-steel-400";
 
 /**
@@ -68,6 +73,10 @@ export function NoteEditorDesktop() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { notificar } = useRefreshBus();
+  const modoFocus = useContext(ModoFocusDocumentoContext);
+  const painelFocus = useContext(PainelFocusControleContext);
+  const montagemPainel = useContext(PainelFocusTarefaContext);
+  const acoesFocus = useContext(AcoesFocusContext);
   const [nota, setNota] = useState<NotaApi | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
@@ -78,6 +87,7 @@ export function NoteEditorDesktop() {
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [confirmandoDelete, setConfirmandoDelete] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const raizNota = useRef<HTMLDivElement>(null);
   const valorRef = useRef(valor);
   const salvoRef = useRef(salvo);
   const emCurso = useRef<Promise<void> | null>(null);
@@ -207,26 +217,59 @@ export function NoteEditorDesktop() {
   const noTexto = descriptionTags(valor.corpo);
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";
 
+  const noPainel = modoFocus && !!montagemPainel;
+  const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (
     <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>
+      {modoFocus && acoesFocus && createPortal(
+        <>
+          <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
+          <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
+          <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        </>,
+        acoesFocus,
+      )}
+      {noPainel && id && createPortal(
+        <aside aria-label="Opções da nota" className="flex min-w-0 flex-col gap-6">
+          <h2 className="font-display text-lg font-semibold text-text-primary">Opções</h2>
+          <MiniGrafo itemId={id} />
+          <section className="space-y-4 border-t border-border pt-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
+            <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
+            <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
+          </section>
+          <section className="border-t border-border pt-6" aria-label="Anexos">
+            <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} escopoRef={raizNota} estilo="grade" compact />
+          </section>
+          <section className="space-y-3 border-t border-border pt-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Ações</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" disabled={salvando} onClick={() => void duplicar()} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={16} />Duplicar nota</button>
+              {!nota.ultima_revisao_em && <button type="button" onClick={marcarRevisado} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-sm text-steel-300 transition-colors hover:bg-surface-2 hover:text-text-primary"><CheckCircle2 size={16} />Marcar revisada</button>}
+            </div>
+          </section>
+        </aside>,
+        montagemPainel!,
+      )}
       <div className="ecos-detail-content">
         {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
         <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta nota?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir} />
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={CAMPO_TITULO} />
-            <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>
-            <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota"
-              className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>
+        <div ref={raizNota} className="flex min-w-0 flex-col gap-4">
+          <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
+            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
+            {!modoFocus && <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
+            {!modoFocus && <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
           </div>
 
-          <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
-          <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
+          {!noPainel && <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />}
+          {!noPainel && <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />}
 
-          <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
+          {!noPainel && <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />}
 
-          <CorpoEditor tipo="nota" itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={14} layout="document" placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview />
+          <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview />
+
+          <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
 
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
             <span>Criada em {formatDataHoraCompleta(nota.criado_em)} · Editada <TempoEdicao iso={nota.atualizado_em} /></span>
