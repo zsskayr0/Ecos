@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Paperclip, X } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Paperclip, X } from "lucide-react";
 import { media, notas, tarefas } from "@/lib/api";
 
 import { mensagemDeErro } from "@/lib/erros";
@@ -59,6 +59,7 @@ export function AttachmentsField(props: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [arquivoFalhou, setArquivoFalhou] = useState<File | null>(null);
   const [arrastando, setArrastando] = useState(false);
+  const [todos, setTodos] = useState(false);
   const anexos = [...props.corpo.matchAll(/(!?)\[([^\]]*)\]\(((?:src\/Media\/|_anexos\/)[^)]+)\)/g)];
 
   async function enviar(arquivo: File, posicao?: number) {
@@ -175,7 +176,8 @@ export function AttachmentsField(props: Props) {
       <p className="flex items-center gap-2 text-sm font-medium text-text-secondary"><Paperclip size={17} />Anexos<span className="hidden text-xs font-normal text-text-muted md:inline">· cole com Ctrl+V ou arraste arquivos até aqui</span></p>
       <button type="button" disabled={enviando || props.disabled} onClick={() => input.current?.click()} className="flex min-h-11 items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm font-medium text-text-secondary disabled:opacity-40"><Paperclip size={16} />{enviando ? "Enviando arquivo..." : "Adicionar arquivo"}</button>
     </div>
-    {anexos.map((a, i) => <div key={`${a[3]}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
+    {anexos.length > 1 && <button type="button" aria-expanded={todos} onClick={() => setTodos((v) => !v)} className="flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-sm font-medium text-steel-300">{todos ? <ChevronUp size={16} /> : <ChevronDown size={16} />}{todos ? "Mostrar só o último" : `Mostrar todos (${anexos.length})`}</button>}
+    {anexos.map((a, i) => ({ a, i })).filter(({ i }) => todos || i === anexos.length - 1).map(({ a, i }) => <div key={`${a[3]}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
       <FileText size={16} className="shrink-0 text-text-muted" />
       <a href={url(a[3])} target="_blank" rel="noreferrer" className="flex-1 truncate text-sm text-steel-300">{a[2]}</a>
       <button type="button" disabled={props.disabled || enviando} className="flex min-h-11 min-w-11 items-center justify-center" aria-label={`Remover referência de ${a[2]}`} onClick={() => props.onCorpoChange(props.corpo.replace(a[0], "").replace(/\n{3,}/g, "\n\n").trim())}><X size={15} className="text-text-secondary" /></button>
