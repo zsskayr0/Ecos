@@ -1,4 +1,4 @@
-const CACHE_SHELL = "ecos-shell-v1";
+const CACHE_SHELL = "ecos-shell-v2";
 const ARQUIVOS_INICIAIS = ["/", "/index.html", "/favicon.svg"];
 
 self.addEventListener("install", (evento) => {
@@ -31,13 +31,25 @@ self.addEventListener("fetch", (evento) => {
     return;
   }
 
-  evento.respondWith(
-    caches.match(pedido).then((salva) => {
-      const rede = fetch(pedido).then((resposta) => {
+  // Arquivos com hash em /assets/ nunca mudam: cache primeiro. Todo o resto (módulos do vite em desenvolvimento,
+  // sw.js, manifest, tema-inicial.js…) vai à rede primeiro e só cai no cache quando a rede some. Antes tudo era
+  // "cache primeiro", e um cache de uma visita anterior servia módulos velhos misturados com os novos.
+  if (url.pathname.startsWith("/assets/")) {
+    evento.respondWith(
+      caches.match(pedido).then((salva) => salva || fetch(pedido).then((resposta) => {
         if (resposta.ok) void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, resposta.clone()));
         return resposta;
-      });
-      return salva || rede;
-    }),
+      })),
+    );
+    return;
+  }
+
+  evento.respondWith(
+    fetch(pedido)
+      .then((resposta) => {
+        if (resposta.ok) void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, resposta.clone()));
+        return resposta;
+      })
+      .catch(async () => (await caches.match(pedido)) || Response.error()),
   );
 });

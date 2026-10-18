@@ -6,6 +6,10 @@
 let feito = false;
 
 export function prefetchRotasProvaveis(): void {
+  // Em desenvolvimento o Vite serve cada módulo solto (HTTP/1.1, 6 conexões por origem): importar Agenda, Tarefas e Notas
+  // aqui arrasta centenas de arquivos e a primeira tela que a pessoa abrir espera na fila atrás deles. No build de
+  // produção são só três pedaços pequenos, então o prefetch fica lá.
+  if (import.meta.env.DEV) return;
   if (feito || typeof navigator === "undefined") return;
   const conexao = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
   if (navigator.onLine === false || conexao?.saveData || conexao?.effectiveType === "slow-2g" || conexao?.effectiveType === "2g") return;
