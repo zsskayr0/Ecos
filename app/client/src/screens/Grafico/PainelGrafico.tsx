@@ -18,7 +18,7 @@ import { Deslizante, SeletorCor } from "./controles";
 const CHAVE_PAINEL = "ecos:grafico:painel:v1";
 
 interface EstadoPainel { aberto: boolean; secoes: Record<SecaoGrafico, boolean> }
-const PADRAO_PAINEL: EstadoPainel = { aberto: true, secoes: { filtros: true, cores: false, exibicao: true, forcas: false, animacao: false } };
+const PADRAO_PAINEL: EstadoPainel = { aberto: true, secoes: { filtros: true, cores: false, exibicao: true, forcas: false, animacao: false, minigrafo: false } };
 
 function lerEstado(): EstadoPainel {
   try {

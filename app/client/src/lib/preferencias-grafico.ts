@@ -8,7 +8,7 @@ export const ROTULOS_TIPO: Record<TipoGrafico, string> = { nota: "Notas", tarefa
 export const ROTULO_TIPO_SINGULAR: Record<TipoGrafico, string> = { nota: "Nota", tarefa: "Tarefa", evento: "Evento", tag: "Tag" };
 
 /** Seções da tela de configurações do Gráfico: o painel flutuante aponta para elas pelo `#id`. */
-export type SecaoGrafico = "filtros" | "cores" | "exibicao" | "forcas" | "animacao";
+export type SecaoGrafico = "filtros" | "cores" | "exibicao" | "forcas" | "animacao" | "minigrafo";
 
 export interface PreferenciasGrafico {
   /* Cores por tipo */
@@ -35,6 +35,27 @@ export interface PreferenciasGrafico {
   movimentoOcioso: boolean;
   intensidadeMovimento: number;
   velocidadeAnimacao: number;
+  /* Mini gráfico do modo Focus (conexões do item aberto) */
+  miniGrafo: boolean;
+  miniGrafoProfundidade: number;
+  miniGrafoAltura: number;
+  miniGrafoTags: boolean;
+  /** Ajustes só do mini gráfico: o que não estiver aqui é herdado do Gráfico grande. */
+  miniSobrescritas: Partial<Pick<PreferenciasGrafico, ChaveMini>>;
+}
+
+/** Ajustes visuais que o mini gráfico pode ter só dele. */
+export const CHAVES_MINI = [
+  "corNota", "corTarefa", "corEvento", "corTag",
+  "tamanhoNos", "espessuraLinhas", "tamanhoTexto", "rotulos", "setas", "esmaecerConcluidas",
+  "repulsao", "distancia", "gravidade",
+  "movimentoOcioso", "intensidadeMovimento", "velocidadeAnimacao",
+] as const;
+export type ChaveMini = (typeof CHAVES_MINI)[number];
+
+/** Preferências que o mini gráfico realmente usa: as do grande, com as sobrescritas dele por cima. */
+export function prefsEfetivasMini(p: PreferenciasGrafico): PreferenciasGrafico {
+  return { ...p, ...p.miniSobrescritas };
 }
 
 export const PADRAO_PREFERENCIAS_GRAFICO: PreferenciasGrafico = {
@@ -57,6 +78,11 @@ export const PADRAO_PREFERENCIAS_GRAFICO: PreferenciasGrafico = {
   movimentoOcioso: true,
   intensidadeMovimento: 1,
   velocidadeAnimacao: 1,
+  miniGrafo: true,
+  miniGrafoProfundidade: 1,
+  miniGrafoAltura: 200,
+  miniGrafoTags: true,
+  miniSobrescritas: {},
 };
 
 export const LIMITES_GRAFICO = {
@@ -68,6 +94,8 @@ export const LIMITES_GRAFICO = {
   gravidade: { min: 0, max: 0.2, passo: 0.005 },
   intensidadeMovimento: { min: 0, max: 2.5, passo: 0.05 },
   velocidadeAnimacao: { min: 0.4, max: 2.5, passo: 0.05 },
+  miniGrafoProfundidade: { min: 1, max: 3, passo: 1 },
+  miniGrafoAltura: { min: 120, max: 360, passo: 10 },
 } as const;
 
 export const CORES_PREDEFINIDAS = ["#7a9cf0", "#5b8def", "#62c4a0", "#e9a45f", "#e8788a", "#a98bea", "#e2c15e", "#8d99ab", "#4fb8d6", "#d97fc4"];
@@ -80,12 +108,22 @@ const limitar = (v: unknown, min: number, max: number, padrao: number) => (typeo
 
 /** Lê do armazenamento sem confiar nele: valor ausente, de outro tipo ou fora do limite volta ao padrão. */
 export function lerPreferenciasGrafico(): PreferenciasGrafico {
-  const p = PADRAO_PREFERENCIAS_GRAFICO;
   let bruto: Record<string, unknown> = {};
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE_PREFERENCIAS_GRAFICO) ?? "null");
     if (salvo && typeof salvo === "object") bruto = salvo as Record<string, unknown>;
   } catch { /* sem armazenamento: usa o padrão */ }
+  const base = sanear(bruto);
+  const sobBruto = (bruto.miniSobrescritas && typeof bruto.miniSobrescritas === "object" ? bruto.miniSobrescritas : {}) as Record<string, unknown>;
+  // Cada sobrescrita passa pela mesma validação do valor normal; chave ausente ou inválida volta a herdar.
+  const validado = sanear(sobBruto);
+  const miniSobrescritas: Record<string, unknown> = {};
+  for (const k of CHAVES_MINI) if (k in sobBruto && sobBruto[k] === validado[k]) miniSobrescritas[k] = validado[k];
+  return { ...base, miniSobrescritas: miniSobrescritas as PreferenciasGrafico["miniSobrescritas"] };
+}
+
+function sanear(bruto: Record<string, unknown>): PreferenciasGrafico {
+  const p = PADRAO_PREFERENCIAS_GRAFICO;
   const cor = (v: unknown, padrao: string) => (typeof v === "string" && HEX.test(v) ? v : padrao);
   const bool = (v: unknown, padrao: boolean) => (typeof v === "boolean" ? v : padrao);
   const tiposBruto = (bruto.tipos && typeof bruto.tipos === "object" ? bruto.tipos : {}) as Record<string, unknown>;
@@ -115,6 +153,11 @@ export function lerPreferenciasGrafico(): PreferenciasGrafico {
     movimentoOcioso: bool(bruto.movimentoOcioso, p.movimentoOcioso),
     intensidadeMovimento: limitar(bruto.intensidadeMovimento, L.intensidadeMovimento.min, L.intensidadeMovimento.max, p.intensidadeMovimento),
     velocidadeAnimacao: limitar(bruto.velocidadeAnimacao, L.velocidadeAnimacao.min, L.velocidadeAnimacao.max, p.velocidadeAnimacao),
+    miniGrafo: bool(bruto.miniGrafo, p.miniGrafo),
+    miniGrafoProfundidade: Math.round(limitar(bruto.miniGrafoProfundidade, L.miniGrafoProfundidade.min, L.miniGrafoProfundidade.max, p.miniGrafoProfundidade)),
+    miniGrafoAltura: limitar(bruto.miniGrafoAltura, L.miniGrafoAltura.min, L.miniGrafoAltura.max, p.miniGrafoAltura),
+    miniGrafoTags: bool(bruto.miniGrafoTags, p.miniGrafoTags),
+    miniSobrescritas: {},
   };
 }
 

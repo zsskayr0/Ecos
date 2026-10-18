@@ -66,3 +66,29 @@ export function idsVisiveis(
   }
   return new Set(nos.filter((n) => tipos[n.tipo] && (mostrarSemConexao || (grauVisivel.get(n.id) ?? 0) > 0)).map((n) => n.id));
 }
+
+/** Subgrafo local: o item e quem está a até `profundidade` conexões dele (BFS); tags só entram se `incluirTags`. Item inexistente → vazio. */
+export function vizinhancaLocal(
+  nos: NoGrafico[],
+  arestas: ArestaGrafico[],
+  raizId: string,
+  profundidade: number,
+  incluirTags: boolean,
+): { nos: NoGrafico[]; arestas: ArestaGrafico[] } {
+  const g = montarGrafo(nos, arestas);
+  const tipoDe = new Map(g.nos.map((n) => [n.id, n.tipo]));
+  if (!tipoDe.has(raizId)) return { nos: [], arestas: [] };
+  const dist = new Map<string, number>([[raizId, 0]]);
+  const fila = [raizId];
+  for (let i = 0; i < fila.length; i++) {
+    const atual = fila[i];
+    const d = dist.get(atual)!;
+    if (d >= profundidade) continue;
+    for (const v of g.vizinhos.get(atual) ?? []) {
+      if (dist.has(v) || (!incluirTags && tipoDe.get(v) === "tag")) continue;
+      dist.set(v, d + 1);
+      fila.push(v);
+    }
+  }
+  return { nos: g.nos.filter((n) => dist.has(n.id)), arestas: g.arestas.filter((a) => dist.has(a.origem) && dist.has(a.destino)) };
+}
