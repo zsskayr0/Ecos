@@ -21,6 +21,8 @@ import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { useAtraso } from "@/lib/use-atraso";
+import { PRAZO_CARGA_MS } from "@/components/common/FalhaCarga";
 type NotaApi = Awaited<ReturnType<typeof notas.obter>>;
 
 interface CamposNota {
@@ -81,6 +83,7 @@ export function NoteEditorDesktop() {
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
+  const demorou = useAtraso(!nota && !naoEncontrada && !falhaCarga, PRAZO_CARGA_MS + tentativa);
   const [valor, setValor] = useState<CamposNota | null>(null);
   const [salvo, setSalvo] = useState<CamposNota | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -200,13 +203,13 @@ export function NoteEditorDesktop() {
   const mudar = (patch: Partial<CamposNota>) => setValor((v) => (v ? { ...v, ...patch } : v));
 
   if (naoEncontrada) return <div className="ecos-detail-content"><EmptyState icon={FileX} title="Essa nota sumiu." subtitle="Pode ter sido movida ou apagada." /></div>;
-  if (falhaCarga) {
+  if (falhaCarga || demorou) {
     return (
       <div className="ecos-detail-content">
         <EmptyState
           icon={AlertTriangle}
           title="Não consegui carregar."
-          subtitle={`${falhaCarga} A nota não foi apagada.`}
+          subtitle={`${falhaCarga ?? "Está demorando mais que o normal."} A nota não foi apagada.`}
           action={<button type="button" onClick={() => setTentativa((t) => t + 1)} className="rounded-2xl bg-surface-2 px-4 py-2 text-sm font-medium text-text-primary">Tentar de novo</button>}
         />
       </div>

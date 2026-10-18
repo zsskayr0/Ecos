@@ -12,6 +12,8 @@ import { EditorEvento, type DadosEvento, type EventoEditavel, type ModoEditor } 
 import { CategoriasDialog } from "./CategoriasDialog";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { useAtraso } from "@/lib/use-atraso";
+import { PRAZO_CARGA_MS } from "@/components/common/FalhaCarga";
 interface Props {
   /** Abre numa camada acima de tudo (ex.: a partir da tela maximizada do dia, que fica fora da área da Agenda). */
   sobreTudo?: boolean;
@@ -82,6 +84,8 @@ const mesmoConjunto = (a: { id: string }[], b: { id: string }[]) => a.length ===
 function EventoDialogInterno({ aberto, eventoId, ocorrencia, categorias, diaInicial, eventosNoPeriodo, passoMin, onFechar, onSalvo, onCategoriasAlteradas }: Props) {
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
+  const demorou = useAtraso(!!aberto && !!eventoId && !detalhe && !erroCarga, PRAZO_CARGA_MS + tentativa);
   const [cats, setCats] = useState(categorias);
   const { espacoAtivo } = useAppUI();
   const filtro = useEspacoFiltro();
@@ -106,12 +110,12 @@ function EventoDialogInterno({ aberto, eventoId, ocorrencia, categorias, diaInic
     let ativo = true;
     eventos.obter(eventoId).then((e) => { if (ativo) setDetalhe(e); }).catch((e) => { if (ativo) setErroCarga(mensagemDeErro(e, "Não foi possível carregar o evento.")); });
     return () => { ativo = false; };
-  }, [aberto, eventoId]);
+  }, [aberto, eventoId, tentativa]);
 
   if (!aberto) return null;
   const sobre = "fixed inset-0 z-50 flex items-center justify-center bg-black/40 lg:absolute lg:z-30";
-  if (erroCarga) {
-    return <div className={sobre}><div className="rounded-2xl border border-border bg-surface-1 p-6"><p role="alert" className="mb-4 text-sm text-error">{erroCarga}</p><button type="button" onClick={onFechar} className="rounded-xl bg-surface-2 px-4 py-2 text-sm">Fechar</button></div></div>;
+  if (erroCarga || (demorou && eventoId && !detalhe)) {
+    return <div className={sobre}><div className="rounded-2xl border border-border bg-surface-1 p-6"><p role="alert" className="mb-4 text-sm text-error">{erroCarga ?? "Está demorando mais que o normal para carregar o evento."}</p><div className="flex gap-2"><button type="button" onClick={() => setTentativa((n) => n + 1)} className="rounded-xl bg-surface-2 px-4 py-2 text-sm">Tentar de novo</button><button type="button" onClick={onFechar} className="rounded-xl bg-surface-2 px-4 py-2 text-sm">Fechar</button></div></div></div>;
   }
   if (eventoId && !detalhe) return <div className={sobre}><SkeletonEventoDialog rotulo="Carregando evento…" /></div>;
 

@@ -20,6 +20,8 @@ import { NoteEditorDesktop } from "./NoteEditorDesktop";
 import { TitleField } from "@/components/common/TitleField";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { useAtraso } from "@/lib/use-atraso";
+import { PRAZO_CARGA_MS } from "@/components/common/FalhaCarga";
 interface NotaCompleta {
   id: string;
   titulo: string;
@@ -47,6 +49,7 @@ function NoteDetailMobile() {
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
+  const demorou = useAtraso(!nota && !naoEncontrada && !falhaCarga, PRAZO_CARGA_MS + tentativa);
   const [editando, setEditando] = useState(false);
   const [tituloEdit, setTituloEdit] = useState("");
   const [corpoEdit, setCorpoEdit] = useState("");
@@ -157,7 +160,7 @@ function NoteDetailMobile() {
     );
   }
 
-  if (falhaCarga) {
+  if (falhaCarga || demorou) {
     return (
       <div className="ecos-detail-page">
         <DetailHeader onBack={() => navigate(-1)} />
@@ -165,7 +168,7 @@ function NoteDetailMobile() {
           <EmptyState
             icon={AlertTriangle}
             title="Não consegui carregar."
-            subtitle={`${falhaCarga} A nota não foi apagada.`}
+            subtitle={`${falhaCarga ?? "Está demorando mais que o normal."} A nota não foi apagada.`}
             action={<button type="button" onClick={() => setTentativa((t) => t + 1)} className="rounded-2xl bg-surface-2 px-4 py-2 text-sm font-medium text-text-primary">Tentar de novo</button>}
           />
         </div>
