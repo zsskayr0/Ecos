@@ -19,6 +19,11 @@ describe("AbaTarefa", () => {
     expect(screen.getByRole("button", { name: "focus:true painel:false" })).toBeTruthy();
   });
 
+  it("nota fixada como aba também", () => {
+    render(<MemoryRouter initialEntries={["/notas/nota/9"]}><AbaTarefa><Sonda /></AbaTarefa></MemoryRouter>);
+    expect(document.querySelector("[data-aba-tarefa]")).toBeTruthy();
+  });
+
   it("outras telas ficam como estavam", () => {
     render(<MemoryRouter initialEntries={["/notas"]}><AbaTarefa><Sonda /></AbaTarefa></MemoryRouter>);
     expect(document.querySelector("[data-aba-tarefa]")).toBeNull();

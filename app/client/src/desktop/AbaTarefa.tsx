@@ -14,13 +14,13 @@ function larguraSalva(): number {
 function guardarLargura(n: number) { try { localStorage.setItem(CHAVE_LARGURA, String(n)); } catch { /* só não persiste */ } }
 
 /**
- * Tarefa fixada como aba: o mesmo documento do modo Focus (título com divisória, editor sem moldura, painel "Opções"),
+ * Tarefa ou nota fixada como aba: o mesmo documento do modo Focus (título com divisória, editor sem moldura, painel "Opções"),
  * só que embutido na aba — sem camada flutuante nem blur. A tela da tarefa já sabe se montar assim quando o contexto
  * do Focus está ligado; aqui só entregamos o cabeçalho de ações e a coluna lateral onde ela se monta.
  */
 export function AbaTarefa({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  if (!pathname.startsWith("/tarefa/")) return <>{children}</>;
+  if (!pathname.startsWith("/tarefa/") && !pathname.startsWith("/notas/nota/")) return <>{children}</>;
   return <LayoutAbaTarefa>{children}</LayoutAbaTarefa>;
 }
 
