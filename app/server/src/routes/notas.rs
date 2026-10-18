@@ -445,35 +445,7 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
 
 pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     caminho_por_id(&state, &usuario.0, &id).await?;
-    let visivel = crate::espacos::visivel_sql("n", &usuario.0);
-    let visivel_saida = visivel.clone();
-    let id_entrada = id.clone();
-    let id_saida = id.clone();
-    let entrada: Vec<(String, String)> = state
-        .db
-        .with_read(move |conn| {
-            let mut stmt = conn.prepare(
-                &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_origem WHERE l.nota_id_destino = ?1 AND {visivel}"),
-            )?;
-            let linhas = stmt.query_map([&id_entrada], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
-            Ok(linhas)
-        })
-        .await?;
-    let saida: Vec<(String, String)> = state
-        .db
-        .with_read(move |conn| {
-            let mut stmt = conn.prepare(
-                &format!("SELECT n.id, n.titulo FROM links_nota l JOIN nota n ON n.id = l.nota_id_destino WHERE l.nota_id_origem = ?1 AND {visivel_saida}"),
-            )?;
-            let linhas = stmt.query_map([&id_saida], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
-            Ok(linhas)
-        })
-        .await?;
-
-    Ok(Json(serde_json::json!({
-        "entrada": entrada.into_iter().map(|(id, titulo)| serde_json::json!({"id": id, "titulo": titulo})).collect::<Vec<_>>(),
-        "saida": saida.into_iter().map(|(id, titulo)| serde_json::json!({"id": id, "titulo": titulo})).collect::<Vec<_>>(),
-    })))
+    Ok(Json(crate::routes::links::links_do_item(&state, &usuario.0, ecos_core::wikilink::TipoItem::Nota, &id).await?))
 }
 
 fn anexos_dir(state: &AppState, nota_id: &str, caminho_relativo: &str) -> PathBuf {

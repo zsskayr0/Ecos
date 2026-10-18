@@ -1074,3 +1074,9 @@ mod testes_agenda_mover_e_redimensionar {
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }
+
+/// Wikilinks de entrada e saída de uma tarefa (mesmo formato de `GET /notas/:id/links`).
+pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
+    caminho_por_id(&state, &usuario.0, &id).await?;
+    Ok(Json(crate::routes::links::links_do_item(&state, &usuario.0, ecos_core::wikilink::TipoItem::Tarefa, &id).await?))
+}

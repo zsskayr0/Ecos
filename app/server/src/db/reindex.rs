@@ -113,6 +113,7 @@ struct TarefaColetada {
     pasta_id: Option<String>,
     /// mtime do arquivo — reserva de `atualizado_em` para tarefas anteriores ao campo.
     modificado_em: Option<DateTime<Utc>>,
+    body: String,
 }
 
 #[derive(Debug)]
@@ -314,6 +315,7 @@ fn coletar_tarefas(vault_root: &Path, tarefas_dir: &Path, erros: &mut Vec<String
                 pasta_id: pasta_relativa(tarefas_dir, path),
                 caminho_relativo: caminho_relativo_str(vault_root, path),
                 modificado_em: entry.metadata().ok().and_then(|m| m.modified().ok()).map(DateTime::<Utc>::from),
+                body: doc.body,
                 front_matter: doc.front_matter,
             }),
             Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
@@ -474,18 +476,37 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         }
     }
 
-    let titulo_para_id: HashMap<String, String> = notas.iter().map(|n| (n.front_matter.titulo.clone(), n.front_matter.id.clone())).collect();
-    // Links entre notas (por título), calculados fora da trava.
-    let mut links_pendentes: Vec<(String, String)> = Vec::new();
-    for item in &notas {
-        for titulo_destino in wikilink::extract_titles(&item.body) {
-            if let Some(id_destino) = titulo_para_id.get(&titulo_destino) {
-                if id_destino != &item.front_matter.id {
-                    links_pendentes.push((item.front_matter.id.clone(), id_destino.clone()));
-                }
+    // Links entre notas e tarefas (nos quatro sentidos), calculados fora da trava. Cada origem só enxerga
+    // destinos do PRÓPRIO espaço (pessoal do criador ou a mesma equipe): nunca cruza espaço.
+    let chave_espaco = |espaco: &ecos_core::types::Espaco, criado_por: &Option<String>| crate::espacos::fisica(&espaco.to_string(), criado_por.as_deref().unwrap_or(""));
+    let mut candidatos: Vec<wikilink::Candidato> = Vec::with_capacity(notas.len() + tarefas.len());
+    for n in &notas {
+        let fm = &n.front_matter;
+        candidatos.push(wikilink::Candidato { tipo: wikilink::TipoItem::Nota, id: fm.id.clone(), titulo: fm.titulo.clone(), espaco: chave_espaco(&fm.espaco, &fm.criado_por), atualizado_em: fm.atualizado_em.to_rfc3339() });
+    }
+    for t in &tarefas {
+        let fm = &t.front_matter;
+        candidatos.push(wikilink::Candidato { tipo: wikilink::TipoItem::Tarefa, id: fm.id.clone(), titulo: fm.titulo.clone(), espaco: chave_espaco(&fm.espaco, &fm.criado_por), atualizado_em: fm.atualizado_em.or(t.modificado_em).unwrap_or(fm.criado_em).to_rfc3339() });
+    }
+    // Por espaço, para não varrer todos os candidatos a cada link.
+    let mut por_espaco: HashMap<&str, Vec<wikilink::Candidato>> = HashMap::new();
+    for c in &candidatos {
+        por_espaco.entry(c.espaco.as_str()).or_default().push(c.clone());
+    }
+    let mut links_item: Vec<(&'static str, String, &'static str, String)> = Vec::new();
+    let origens = notas
+        .iter()
+        .map(|n| (wikilink::TipoItem::Nota, &n.front_matter.id, chave_espaco(&n.front_matter.espaco, &n.front_matter.criado_por), &n.body))
+        .chain(tarefas.iter().map(|t| (wikilink::TipoItem::Tarefa, &t.front_matter.id, chave_espaco(&t.front_matter.espaco, &t.front_matter.criado_por), &t.body)));
+    for (tipo, id, espaco, corpo) in origens {
+        let Some(cands) = por_espaco.get(espaco.as_str()) else { continue };
+        for r in wikilink::extract_refs(corpo) {
+            if let Some(d) = wikilink::resolver(&r, Some(&espaco), None, Some((tipo, id.as_str())), cands) {
+                links_item.push((tipo.como_str(), id.clone(), d.tipo.como_str(), d.id.clone()));
             }
         }
     }
+    let links_pendentes: Vec<(String, String)> = links_item.iter().filter(|l| l.0 == "nota" && l.2 == "nota").map(|l| (l.1.clone(), l.3.clone())).collect();
     // Vínculos de evento para itens que não existem mais são descartados (sem erro).
     let ids_tarefas: std::collections::HashSet<String> = tarefas.iter().map(|t| t.front_matter.id.clone()).collect();
     let ids_notas: std::collections::HashSet<String> = notas.iter().map(|n| n.front_matter.id.clone()).collect();
@@ -495,6 +516,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     db.with(move |conn| {
         let tx = conn.unchecked_transaction()?;
         tx.execute("DELETE FROM links_nota", [])?;
+        tx.execute("DELETE FROM link_item", [])?;
         tx.execute("DELETE FROM nota_tag", [])?;
         tx.execute("DELETE FROM nota", [])?;
         tx.execute("DELETE FROM evento", [])?; // evento_tarefa/evento_nota caem em cascata
@@ -559,6 +581,10 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
                 "INSERT OR IGNORE INTO links_nota (nota_id_origem, nota_id_destino) VALUES (?1, ?2)",
                 params![origem, destino],
             )?;
+        }
+
+        for (ot, oi, dt, di) in &links_item {
+            tx.execute("INSERT OR IGNORE INTO link_item (origem_tipo, origem_id, destino_tipo, destino_id) VALUES (?1, ?2, ?3, ?4)", params![ot, oi, dt, di])?;
         }
 
         for (espaco, item) in &documentos {

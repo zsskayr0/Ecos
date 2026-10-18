@@ -9,7 +9,7 @@ use ecos_app::db::IndexDb;
 use serde_json::json;
 
 const TABELAS: &[&str] = &[
-    "nota", "nota_tag", "links_nota", "nota_fts", "tarefa", "tarefa_tag", "tarefa_fts", "tarefa_time_entry", "pasta_cache",
+    "nota", "nota_tag", "links_nota", "link_item", "nota_fts", "tarefa", "tarefa_tag", "tarefa_fts", "tarefa_time_entry", "pasta_cache",
     "documento_cache", "evento", "categoria_evento", "evento_tarefa", "evento_nota",
 ];
 
@@ -101,6 +101,15 @@ async fn indice_incremental_igual_ao_completo_em_toda_operacao() {
     let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{id_t}/status"), t, Some(json!({ "status": "concluida" }))).await;
     ok(st, &r);
     conferir(&e, "concluir tarefa").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{id_t}"), t, Some(json!({ "corpo": "ver [[Beta]] e [[nota:Alfa Renomeada]]" }))).await;
+    ok(st, &r);
+    conferir(&e, "corpo de tarefa com wikilinks (tarefa -> nota)").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{id_b}"), t, Some(json!({ "corpo": "agora [[Alfa Renomeada]] e [[tarefa:Pagar conta]]" }))).await;
+    ok(st, &r);
+    conferir(&e, "nota aponta para tarefa").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{id_t}"), t, Some(json!({ "titulo": "Pagar conta (renomeada)" }))).await;
+    ok(st, &r);
+    conferir(&e, "renomear tarefa (link da nota fica sem resolver)").await;
 
     let (st, eq) = e.chamar("POST", "/api/v1/equipes", t, Some(json!({ "nome": "Casa Comum" }))).await;
     ok(st, &eq);

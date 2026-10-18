@@ -116,7 +116,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
             }
 
             // Arestas só entre nós visíveis: o JOIN com os ids já filtrados acima é o que impede vazamento.
-            let mut stmt = conn.prepare("SELECT nota_id_origem, nota_id_destino FROM links_nota")?;
+            let mut stmt = conn.prepare("SELECT origem_id, destino_id FROM link_item")?;
             for linha in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
                 let (origem, destino) = linha?;
                 if origem != destino && ids.contains(&origem) && ids.contains(&destino) {

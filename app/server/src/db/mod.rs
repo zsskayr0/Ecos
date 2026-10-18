@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 24;
+const SCHEMA_VERSION_CONHECIDA: i64 = 25;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
@@ -43,6 +43,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0021_notificacao_chave_up.sql")).down(include_str!("../../migrations/0021_notificacao_chave_down.sql")),
         M::up(include_str!("../../migrations/0022_push_up.sql")).down(include_str!("../../migrations/0022_push_down.sql")),
         M::up(include_str!("../../migrations/0023_sync_problemas_up.sql")).down(include_str!("../../migrations/0023_sync_problemas_down.sql")),
+        M::up(include_str!("../../migrations/0024_link_item_up.sql")).down(include_str!("../../migrations/0024_link_item_down.sql")),
     ])
 }
 

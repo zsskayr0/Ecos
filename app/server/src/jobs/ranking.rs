@@ -105,8 +105,8 @@ async fn recalcular_notas(db: &IndexDb) -> anyhow::Result<()> {
         .with_read(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT n.id, n.atualizado_em, n.ultima_revisao_em, n.espaco, n.contagem_acessos_7d, \
-                 (SELECT COUNT(*) FROM links_nota WHERE nota_id_destino = n.id) AS links_entrada, \
-                 (SELECT COUNT(*) FROM links_nota WHERE nota_id_origem = n.id) AS links_saida \
+                 (SELECT COUNT(*) FROM link_item WHERE destino_tipo = 'nota' AND destino_id = n.id) AS links_entrada, \
+                 (SELECT COUNT(*) FROM link_item WHERE origem_tipo = 'nota' AND origem_id = n.id) AS links_saida \
                  FROM nota n",
             )?;
             let linhas = stmt
