@@ -61,4 +61,18 @@ describe("modo Focus da tarefa", () => {
     act(() => { vi.runAllTimers(); });
     expect(fechar).toHaveBeenCalledTimes(1);
   });
+
+  it("o painel lateral do Focus começa recolhido por padrão e aberto quando a preferência manda", () => {
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir em modo Focus" }));
+    // inertes: a janela normal (atrás) + o painel recolhido
+    expect(document.querySelectorAll("[inert]").length).toBe(2);
+  });
+
+  it("com a preferência desligada o painel já abre", () => {
+    localStorage.setItem("ecos:preferencias-aplicativo:v1", JSON.stringify({ focusPainelRecolhido: false }));
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir em modo Focus" }));
+    expect(document.querySelectorAll("[inert]").length).toBe(1);
+  });
 });

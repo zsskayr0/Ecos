@@ -42,6 +42,8 @@ export interface PreferenciasAplicativo {
   tarefaDuracaoMin: number;
   /** Tarefas abrem já no modo Focus (maximizadas), em vez da janela flutuante. */
   tarefaMaximizada: boolean;
+  /** No modo Focus o painel lateral "Opções" começa recolhido (padrão) ou aberto. */
+  focusPainelRecolhido: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
   mostrarConcluidas: boolean;
   visualizacaoTarefasDesktop: VisualizacaoTarefasDesktop;
@@ -84,6 +86,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   tarefaPrioridade: "baixa",
   tarefaDuracaoMin: 5,
   tarefaMaximizada: false,
+  focusPainelRecolhido: true,
   mostrarConcluidas: false,
   visualizacaoTarefasDesktop: "tabela",
   visualizacaoTarefasMobile: "cards",

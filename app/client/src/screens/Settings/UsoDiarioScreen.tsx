@@ -1,4 +1,4 @@
-import { Clock3, Maximize2, Columns3, Flag, Keyboard, LayoutList, ListChecks, Eye, StickyNote, Timer, Zap, CheckSquare, Ruler } from "lucide-react";
+import { Clock3, Maximize2, PanelRight, Columns3, Flag, Keyboard, LayoutList, ListChecks, Eye, StickyNote, Timer, Zap, CheckSquare, Ruler } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import { limparEscolhaDeVisualizacao } from "@/components/common/ViewModeToggle";
@@ -61,6 +61,9 @@ export function UsoDiarioScreen() {
         </Linha>
         <Linha Icone={Maximize2} titulo="Abrir tarefas maximizadas" descricao="A tarefa já abre no modo Focus, com o painel lateral. O botão de maximizar na janela continua alternando.">
           <Toggle checked={prefs.tarefaMaximizada} onChange={(tarefaMaximizada) => alterar({ tarefaMaximizada })} label="Abrir tarefas maximizadas" />
+        </Linha>
+        <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
+          <Toggle checked={prefs.focusPainelRecolhido} onChange={(focusPainelRecolhido) => alterar({ focusPainelRecolhido })} label="Painel lateral do Focus recolhido" />
         </Linha>
         <Linha Icone={CheckSquare} titulo="Mostrar concluídas ao abrir" descricao="As listas começam só com as pendentes. Ligue para ver também as concluídas.">
           <Toggle checked={prefs.mostrarConcluidas} onChange={(mostrarConcluidas) => alterar({ mostrarConcluidas })} label="Mostrar concluídas ao abrir" />

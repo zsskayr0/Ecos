@@ -163,8 +163,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [chaveJanela, setChaveJanela] = useState(0);
   const [, setVersaoLayout] = useState(0);
   const janelaFocusRef = useRef<HTMLDivElement>(null);
-  const [painelFocusAberto, setPainelFocusAberto] = useState(false);
-  const painelFocusAbertoRef = useRef(false);
+  const [painelFocusAberto, setPainelFocusAberto] = useState(() => !lerPreferenciasAplicativo().focusPainelRecolhido);
+  const painelFocusAbertoRef = useRef(painelFocusAberto);
   const saindoDoFocus = useRef(false);
   const [arrastando, setArrastando] = useState(false);
   const [ajustando, setAjustando] = useState(false);
@@ -207,9 +207,10 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const alternarFocus = useCallback(() => {
     if (emFocus) { sairDoFocus(); return; }
     saindoDoFocus.current = false;
-    // O painel lateral sempre começa recolhido: a tarefa abre limpa, com o texto em primeiro plano.
-    painelFocusAbertoRef.current = false;
-    setPainelFocusAberto(false);
+    // O painel lateral começa como a preferência pede (recolhido por padrão: o texto em primeiro plano).
+    const aberto = !lerPreferenciasAplicativo().focusPainelRecolhido;
+    painelFocusAbertoRef.current = aberto;
+    setPainelFocusAberto(aberto);
     setEmFocus(true);
   }, [emFocus, sairDoFocus]);
   // A camada Focus nasce com o foco do teclado dentro dela.
