@@ -1,4 +1,5 @@
-import { Component, Suspense, type ComponentType, type ReactNode } from "react";
+import { Component, Fragment, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import { SkeletonTela } from "@/components/common/Skeleton";
 import { registrarErro } from "@/lib/registro-erro";
@@ -33,11 +34,32 @@ class FalhaDeCarregamento extends Component<{ children: ReactNode }, { erro: Err
   }
 }
 
+const PRAZO_PRESO_MS = 1_200;
+const MAX_REINICIOS = 3;
+
+/**
+ * Mostra o esqueleto e, se ele continuar na tela depois de {@link PRAZO_PRESO_MS}, pede para remontar a tela. Em alguns
+ * navegadores o retry do Suspense nunca roda mesmo com o pedaço já baixado; remontar com outra `key` destrava.
+ */
+function EsqueletoComReinicio({ aoPreso }: { aoPreso: () => void }) {
+  useEffect(() => {
+    const id = setTimeout(aoPreso, PRAZO_PRESO_MS);
+    return () => clearTimeout(id);
+  }, [aoPreso]);
+  return <SkeletonTela atrasoMs={120} />;
+}
+
 /** Envolve uma tela preguiçosa com estado de carregamento e de erro. */
 export function TelaSobDemanda({ children }: { children: ReactNode }) {
+  const [tentativa, setTentativa] = useState(0);
+  const [aoPreso] = useState(() => () => {
+    flushSync(() => setTentativa((n) => (n < MAX_REINICIOS ? n + 1 : n)));
+  });
   return (
     <FalhaDeCarregamento>
-      <Suspense fallback={<SkeletonTela atrasoMs={120} />}>{children}</Suspense>
+      <Suspense fallback={<EsqueletoComReinicio key={tentativa} aoPreso={aoPreso} />}>
+        <Fragment key={tentativa}>{children}</Fragment>
+      </Suspense>
     </FalhaDeCarregamento>
   );
 }

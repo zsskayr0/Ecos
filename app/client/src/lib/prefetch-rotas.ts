@@ -18,6 +18,7 @@ export function prefetchRotasProvaveis(): void {
     void import("@/screens/Agenda/AgendaScreen").catch(() => undefined);
     void import("@/screens/Tasks/TaskFoldersRootScreen").catch(() => undefined);
     void import("@/screens/Notes/NotesRootScreen").catch(() => undefined);
+    void import("@/screens/Agenda/TaskDetailScreen").catch(() => undefined);
   };
   const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
   if (typeof ric === "function") ric(baixar, { timeout: 10_000 });
