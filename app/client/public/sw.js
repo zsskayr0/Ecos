@@ -1,4 +1,4 @@
-const CACHE_SHELL = "ecos-shell-v2";
+const CACHE_SHELL = "ecos-shell-v3";
 const ARQUIVOS_INICIAIS = ["/", "/index.html", "/favicon.svg"];
 
 self.addEventListener("install", (evento) => {
@@ -23,7 +23,7 @@ self.addEventListener("fetch", (evento) => {
       fetch(pedido)
         .then((resposta) => {
           const copia = resposta.clone();
-          void caches.open(CACHE_SHELL).then((cache) => cache.put("/index.html", copia));
+          void caches.open(CACHE_SHELL).then((cache) => cache.put("/index.html", copia)).catch(() => undefined);
           return resposta;
         })
         .catch(async () => (await caches.match("/index.html")) || Response.error()),
@@ -37,7 +37,7 @@ self.addEventListener("fetch", (evento) => {
   if (url.pathname.startsWith("/assets/")) {
     evento.respondWith(
       caches.match(pedido).then((salva) => salva || fetch(pedido).then((resposta) => {
-        if (resposta.ok) void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, resposta.clone()));
+        if (resposta.ok) { const copia = resposta.clone(); void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, copia)).catch(() => undefined); }
         return resposta;
       })),
     );
@@ -47,7 +47,7 @@ self.addEventListener("fetch", (evento) => {
   evento.respondWith(
     fetch(pedido)
       .then((resposta) => {
-        if (resposta.ok) void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, resposta.clone()));
+        if (resposta.ok) { const copia = resposta.clone(); void caches.open(CACHE_SHELL).then((cache) => cache.put(pedido, copia)).catch(() => undefined); }
         return resposta;
       })
       .catch(async () => (await caches.match(pedido)) || Response.error()),
