@@ -34,8 +34,8 @@ class FalhaDeCarregamento extends Component<{ children: ReactNode }, { erro: Err
   }
 }
 
-const PRAZO_PRESO_MS = 1_200;
-const MAX_REINICIOS = 3;
+const PRAZO_PRESO_MS = 300;
+const MAX_REINICIOS = 8;
 
 /**
  * Mostra o esqueleto e, se ele continuar na tela depois de {@link PRAZO_PRESO_MS}, pede para remontar a tela. Em alguns

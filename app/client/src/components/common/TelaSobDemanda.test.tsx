@@ -19,7 +19,7 @@ describe("TelaSobDemanda", () => {
     const Tela = lazy(() => new Promise<{ default: () => JSX.Element }>(() => undefined));
     const { container } = render(<TelaSobDemanda><Tela /></TelaSobDemanda>);
     montagens += 1;
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_300); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
     expect(montagens).toBe(1);
     expect(container.querySelector("[aria-busy]")).toBeTruthy();
   });
