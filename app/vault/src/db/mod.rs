@@ -259,6 +259,34 @@ mod testes_cifra {
 mod testes_de_migracao {
     use super::*;
 
+    /// Cofre real na versão 10 (a da imagem de 09/10) sobe para 13: as três migrations são só aditivas, nada se
+    /// perde, as categorias antigas viram principais e não arquivadas, e repetir a subida não muda nada.
+    #[test]
+    fn subcategorias_arquivadas_e_rastro_de_migracao_sao_aditivos() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        Migrations::new(lista_de_migracoes()[..10].to_vec()).to_latest(&mut conn).unwrap();
+        conn.execute("INSERT INTO categoria (id, nome, tipo, cor, espaco) VALUES ('c1','Mercado','saida','#fff','pessoal')", []).unwrap();
+        conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, categoria_id, espaco, criado_por) VALUES ('t1','saida',1000,'2026-10-01','Feira','c1','pessoal','ana')", []).unwrap();
+        let antes: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(antes, 10);
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        let (pai, arquivada, lancamentos): (Option<String>, i64, i64) = conn
+            .query_row("SELECT pai_id, arquivada, (SELECT COUNT(*) FROM transacao WHERE categoria_id = 'c1') FROM categoria WHERE id = 'c1'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap();
+        assert_eq!((pai, arquivada, lancamentos), (None, 0, 1));
+        conn.execute("INSERT INTO categoria (id, nome, tipo, cor, espaco, pai_id) VALUES ('c2','Feira','saida','#fff','pessoal','c1')", []).unwrap();
+        conn.execute("INSERT INTO migracao_origem (origem, tabela, origem_id, destino_id) VALUES ('nexus','categorias','x','c1')", []).unwrap();
+        let total_categorias: i64 = conn.query_row("SELECT COUNT(*) FROM categoria", [], |r| r.get(0)).unwrap();
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM categoria", [], |r| r.get::<_, i64>(0)).unwrap(), total_categorias);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
     /// Banco já na versão 9 (com dados e um anexo) sobe para a última: nada se perde e a lista fixa de formas some.
     #[test]
     fn formas_de_pagamento_livres_sem_perder_dados() {
