@@ -41,32 +41,32 @@ const MAX_REINICIOS = 8;
  * Mostra o esqueleto e, se ele continuar na tela depois de {@link PRAZO_PRESO_MS}, pede para remontar a tela. Em alguns
  * navegadores o retry do Suspense nunca roda mesmo com o pedaço já baixado; remontar com outra `key` destrava.
  */
-function EsqueletoComReinicio({ aoPreso }: { aoPreso: () => void }) {
+function EsqueletoComReinicio({ aoPreso, esqueleto }: { aoPreso: () => void; esqueleto?: ReactNode }) {
   useEffect(() => {
     const id = setTimeout(aoPreso, PRAZO_PRESO_MS);
     return () => clearTimeout(id);
   }, [aoPreso]);
-  return <SkeletonTela atrasoMs={120} />;
+  return <>{esqueleto ?? <SkeletonTela atrasoMs={120} />}</>;
 }
 
 /** Envolve uma tela preguiçosa com estado de carregamento e de erro. */
-export function TelaSobDemanda({ children }: { children: ReactNode }) {
+export function TelaSobDemanda({ children, esqueleto }: { children: ReactNode; esqueleto?: ReactNode }) {
   const [tentativa, setTentativa] = useState(0);
   const [aoPreso] = useState(() => () => {
     flushSync(() => setTentativa((n) => (n < MAX_REINICIOS ? n + 1 : n)));
   });
   return (
     <FalhaDeCarregamento>
-      <Suspense fallback={<EsqueletoComReinicio key={tentativa} aoPreso={aoPreso} />}>
+      <Suspense fallback={<EsqueletoComReinicio key={tentativa} aoPreso={aoPreso} esqueleto={esqueleto} />}>
         <Fragment key={tentativa}>{children}</Fragment>
       </Suspense>
     </FalhaDeCarregamento>
   );
 }
 
-export function telaSobDemanda(Tela: ComponentType): ReactNode {
+export function telaSobDemanda(Tela: ComponentType, esqueleto?: ReactNode): ReactNode {
   return (
-    <TelaSobDemanda>
+    <TelaSobDemanda esqueleto={esqueleto}>
       <Tela />
     </TelaSobDemanda>
   );

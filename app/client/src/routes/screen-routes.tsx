@@ -1,7 +1,13 @@
-import { lazy, type ComponentType, type ReactElement } from "react";
+import { lazy, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route } from "react-router-dom";
 
 import { TelaSobDemanda } from "@/components/common/TelaSobDemanda";
+import {
+  SkeletonAgendaLista, SkeletonBusca, SkeletonEditarPerfil, SkeletonEquipePerfil, SkeletonEquipes, SkeletonEventos,
+  SkeletonHoje, SkeletonItens, SkeletonLicencas, SkeletonLixeira, SkeletonMidia, SkeletonNotaDetalhe,
+  SkeletonNotificacoes, SkeletonOrganizacao, SkeletonPerfilTela, SkeletonRotina, SkeletonTarefaDetalhe,
+} from "@/components/common/SkeletonTelas";
+import { useIsDesktop } from "@/lib/use-viewport";
 import { ABAS_COFRE } from "@/screens/Settings/abas-cofre";
 import { FeedScreen } from "@/screens/Feed/FeedScreen";
 
@@ -15,8 +21,12 @@ function carregar<M, K extends keyof M>(importar: () => Promise<M>, nome: K) {
   return lazy(() => importar().then((m) => ({ default: m[nome] as unknown as ComponentType<PropsDe<M[K]>> })));
 }
 
-const tela = (Tela: ComponentType): ReactElement => (
-  <TelaSobDemanda>
+function EsqueletoTarefa() {
+  return <SkeletonTarefaDetalhe desktop={useIsDesktop()} />;
+}
+
+const tela = (Tela: ComponentType, esqueleto?: ReactNode): ReactElement => (
+  <TelaSobDemanda esqueleto={esqueleto}>
     <Tela />
   </TelaSobDemanda>
 );
@@ -78,34 +88,34 @@ export const screenRoutes = (
     <Route path="/" element={<Navigate to="/feed" replace />} />
 
     <Route path="/feed" element={<FeedScreen />} />
-    <Route path="/inicio" element={tela(HomeScreen)} />
-    <Route path="/hoje" element={tela(TodayScreen)} />
+    <Route path="/inicio" element={tela(HomeScreen, <SkeletonHoje />)} />
+    <Route path="/hoje" element={tela(TodayScreen, <SkeletonHoje />)} />
     {/* Link legado: a administração agora pertence a Configurações. */}
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
 
-    <Route path="/notas" element={tela(NotesRootScreen)} />
+    <Route path="/notas" element={tela(NotesRootScreen, <SkeletonItens tipo="nota" />)} />
     <Route path="/notas/pasta/nova" element={tela(FolderCreateScreen)} />
     <Route path="/notas/pasta/*" element={tela(FolderScreen)} />
-    <Route path="/notas/nota/:id" element={tela(NoteDetailScreen)} />
+    <Route path="/notas/nota/:id" element={tela(NoteDetailScreen, <SkeletonNotaDetalhe />)} />
 
     <Route path="/grafico" element={tela(GraficoScreen)} />
 
-    <Route path="/busca" element={tela(SearchScreen)} />
+    <Route path="/busca" element={tela(SearchScreen, <SkeletonBusca />)} />
 
-    <Route path="/agenda" element={tela(AgendaScreen)} />
-    <Route path="/eventos" element={tela(EventosScreen)} />
-    <Route path="/tarefa/:id" element={tela(TaskDetailScreen)} />
+    <Route path="/agenda" element={tela(AgendaScreen, <SkeletonAgendaLista />)} />
+    <Route path="/eventos" element={tela(EventosScreen, <SkeletonEventos />)} />
+    <Route path="/tarefa/:id" element={tela(TaskDetailScreen, <EsqueletoTarefa />)} />
 
     {/* Folder-browsing mode for Tarefas, reachable from the Drawer
         (section 3.9) — Agenda stays the calendar/time-blocking view; this
         is the by-folder view, same relationship Notas has to its own
         folder screens. */}
-    <Route path="/tarefas" element={tela(TaskFoldersRootScreen)} />
+    <Route path="/tarefas" element={tela(TaskFoldersRootScreen, <SkeletonItens tipo="tarefa" />)} />
     <Route path="/tarefas/pasta/nova" element={tela(TaskFolderCreateScreen)} />
     <Route path="/tarefas/pasta/*" element={tela(TaskFolderScreen)} />
-    <Route path="/media" element={tela(MediaScreen)} />
+    <Route path="/media" element={tela(MediaScreen, <SkeletonMidia />)} />
     <Route path="/media/ver" element={tela(FileViewerScreen)} />
-    <Route path="/lixeira" element={tela(TrashScreen)} />
+    <Route path="/lixeira" element={tela(TrashScreen, <SkeletonLixeira />)} />
 
     <Route path="/cofre" element={tela(VaultEntry)} />
     <Route path="/cofre/transacao/:id" element={tela(VaultTransacaoEntry)} />
@@ -113,14 +123,14 @@ export const screenRoutes = (
 
     <Route path="/equipe/nova" element={tela(TeamCreateJoinScreen)} />
     <Route path="/equipe/escanear" element={tela(EscanearQrScreen)} />
-    <Route path="/equipes" element={tela(TeamsScreen)} />
-    <Route path="/equipe/:equipeId" element={tela(TeamProfileScreen)} />
+    <Route path="/equipes" element={tela(TeamsScreen, <SkeletonEquipes />)} />
+    <Route path="/equipe/:equipeId" element={tela(TeamProfileScreen, <SkeletonEquipePerfil />)} />
 
-    <Route path="/perfil" element={tela(ProfileScreen)} />
+    <Route path="/perfil" element={tela(ProfileScreen, <SkeletonPerfilTela />)} />
     <Route path="/perfil/editar" element={<Navigate to="/perfil" replace />} />
-    <Route path="/perfil/rotina" element={tela(RotinaScreen)} />
+    <Route path="/perfil/rotina" element={tela(RotinaScreen, <SkeletonRotina />)} />
 
-    <Route path="/notificacoes" element={tela(NotificationsScreen)} />
+    <Route path="/notificacoes" element={tela(NotificationsScreen, <SkeletonNotificacoes />)} />
 
     <Route path="/configuracoes" element={tela(ConfiguracoesLayout)}>
       <Route index element={tela(SettingsScreen)} />
@@ -141,16 +151,16 @@ export const screenRoutes = (
       <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
       <Route path="calendario/problemas" element={tela(ProblemasSincronizacaoScreen)} />
       <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
-      <Route path="organizacao" element={tela(OrganizationScreen)} />
+      <Route path="organizacao" element={tela(OrganizationScreen, <SkeletonOrganizacao />)} />
       <Route path="sobre" element={tela(AboutScreen)} />
-      <Route path="sobre/licencas" element={tela(LicensesScreen)} />
-      <Route path="perfil" element={tela(ProfileScreen)} />
-      <Route path="editar-perfil" element={tela(EditarPerfilScreen)} />
-      <Route path="rotina" element={tela(RotinaScreen)} />
-      <Route path="equipes" element={tela(TeamsScreen)} />
+      <Route path="sobre/licencas" element={tela(LicensesScreen, <SkeletonLicencas />)} />
+      <Route path="perfil" element={tela(ProfileScreen, <SkeletonPerfilTela />)} />
+      <Route path="editar-perfil" element={tela(EditarPerfilScreen, <SkeletonEditarPerfil />)} />
+      <Route path="rotina" element={tela(RotinaScreen, <SkeletonRotina />)} />
+      <Route path="equipes" element={tela(TeamsScreen, <SkeletonEquipes />)} />
       <Route path="equipes/nova" element={tela(TeamCreateJoinScreen)} />
       <Route path="equipes/escanear" element={tela(EscanearQrScreen)} />
-      <Route path="equipes/:equipeId" element={tela(TeamProfileScreen)} />
+      <Route path="equipes/:equipeId" element={tela(TeamProfileScreen, <SkeletonEquipePerfil />)} />
       <Route path="notificacoes" element={tela(NotificacoesPreferenciasScreen)} />
       <Route path="administracao" element={tela(AdministracaoScreen)} />
     </Route>
