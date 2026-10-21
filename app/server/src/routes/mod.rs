@@ -9,6 +9,7 @@ pub mod calendario;
 pub mod captura;
 pub mod equipes;
 pub mod eventos;
+pub mod icones;
 #[cfg(test)]
 mod eventos_testes;
 #[cfg(test)]
@@ -94,6 +95,8 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/me/importacao/:token", delete(crate::importacao::cancelar))
         .route("/me/avatar", get(avatar::obter_meu).put(avatar::enviar).delete(avatar::remover).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
         .route("/usuarios/:id/avatar", get(avatar::obter_de_usuario))
+        .route("/me/icones", get(icones::listar).post(icones::enviar).layer(DefaultBodyLimit::max(avatar::TAMANHO_MAXIMO_MULTIPART_AVATAR_BYTES)))
+        .route("/me/icones/:id", get(icones::obter).delete(icones::remover))
         .route("/captura", post(captura::capturar))
         .route("/captura/campos-compativeis", get(captura::campos_compativeis))
         .route("/notas", get(notas::listar).post(notas::criar))

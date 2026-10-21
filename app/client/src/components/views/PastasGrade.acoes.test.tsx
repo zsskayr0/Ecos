@@ -20,7 +20,7 @@ describe("ações e árvore de destino das pastas", () => {
     const abrir = vi.fn();
     render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-steel-300" pastas={[pasta]} aoAbrir={abrir} /></RefreshProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Ações para Arquivo" }));
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Editar", "Renomear", "Mover", "Excluir"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Editar", "Personalizar", "Mover", "Excluir"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Editar" }));
     expect(abrir).toHaveBeenCalledWith(pasta);
   });

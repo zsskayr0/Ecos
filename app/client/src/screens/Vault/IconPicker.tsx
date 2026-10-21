@@ -2,6 +2,8 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as Icons from "lucide-react/dist/cjs/lucide-react.js";
 import { Search, X } from "lucide-react";
 import { CATEGORIAS_LUCIDE, ICONES_LUCIDE } from "./nexus/lucide-catalogo";
+import type { IconePersonalizado } from "@/lib/api";
+import { IconeImagem, PREFIXO_ICONE_IMAGEM, useIconesPersonalizados } from "@/lib/icones-personalizados";
 
 const ROTULOS: Record<string, string> = {
   text: "Texto", design: "Design", accessibility: "Acessibilidade", medical: "Saúde", account: "Conta", social: "Social", science: "Ciência", multimedia: "Multimídia", home: "Casa", connectivity: "Conectividade", devices: "Dispositivos", brands: "Marcas", notifications: "Notificações", time: "Tempo", travel: "Viagem", photography: "Fotografia", layout: "Layout", transportation: "Transporte", development: "Desenvolvimento", "food-beverage": "Comida e bebida", gaming: "Jogos", maps: "Mapas", emoji: "Emoji", communication: "Comunicação", buildings: "Construções", tools: "Ferramentas", files: "Arquivos", mail: "E-mail", furniture: "Móveis", arrows: "Setas", navigation: "Navegação", maths: "Matemática", sports: "Esportes", people: "Pessoas", shapes: "Formas", shopping: "Compras", money: "Dinheiro", currency: "Moedas", nature: "Natureza", animals: "Animais", security: "Segurança", charts: "Gráficos", cursors: "Cursores", weather: "Clima", sustainability: "Sustentabilidade", seasons: "Estações",
@@ -40,9 +42,27 @@ const ORDEM = CATEGORIAS_LUCIDE.map((id, i) => ({ id, i })).sort((a, b) => {
 });
 const LOTE = 144;
 
-export default function IconPicker({ value, onChange, cor }: { value: string; onChange: (nome: string) => void; cor: string }) {
+/** Aba final com as imagens que a pessoa subiu (Configurações → Ícones personalizados). Só aparece onde `personalizados` está ligado e há imagens. */
+function GradePersonalizados({ itens, busca, value, onChange }: { itens: IconePersonalizado[]; busca: string; value: string; onChange: (nome: string) => void }) {
+  const q = norm(busca);
+  const lista = itens.filter((i) => !q || norm(i.nome).includes(q));
+  return (
+    <div className="cofre-iconpicker-grid">
+      {lista.map((i) => {
+        const ref = `${PREFIXO_ICONE_IMAGEM}${i.id}`;
+        return <button key={i.id} type="button" title={i.nome} aria-label={i.nome} aria-pressed={value === ref} style={value === ref ? { outline: "2px solid var(--text)", outlineOffset: -2 } : undefined} onClick={() => onChange(ref)}><IconeImagem id={i.id} size={22} /></button>;
+      })}
+      {lista.length === 0 && <p className="cofre-cats-none">Nenhum ícone personalizado encontrado.</p>}
+    </div>
+  );
+}
+
+export default function IconPicker({ value, onChange, cor, personalizados = false }: { value: string; onChange: (nome: string) => void; cor: string; personalizados?: boolean }) {
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState<number | null>(null);
+  const [verPersonalizados, setVerPersonalizados] = useState(false);
+  const meus = useIconesPersonalizados(personalizados);
+  const temPersonalizados = personalizados && !!meus?.length;
   const [limite, setLimite] = useState(LOTE);
   const grade = useRef<HTMLDivElement>(null);
   const termo = useDeferredValue(busca);
@@ -68,11 +88,13 @@ export default function IconPicker({ value, onChange, cor }: { value: string; on
         {busca && <button type="button" aria-label="Limpar busca" onClick={() => setBusca("")}><X size={12} /></button>}
       </label>
       <div className="cofre-iconpicker-cats" role="tablist" aria-label="Categorias de ícones">
-        <button type="button" role="tab" aria-selected={categoria === null} onClick={() => setCategoria(null)}>Todos<small>{CATALOGO.length}</small></button>
+        <button type="button" role="tab" aria-selected={!verPersonalizados && categoria === null} onClick={() => { setVerPersonalizados(false); setCategoria(null); }}>Todos<small>{CATALOGO.length}</small></button>
         {ORDEM.map(({ id, i }) => (
-          <button key={id} type="button" role="tab" aria-selected={categoria === i} onClick={() => setCategoria(i)}>{rotuloDe(id)}<small>{POR_CATEGORIA[i]}</small></button>
+          <button key={id} type="button" role="tab" aria-selected={!verPersonalizados && categoria === i} onClick={() => { setVerPersonalizados(false); setCategoria(i); }}>{rotuloDe(id)}<small>{POR_CATEGORIA[i]}</small></button>
         ))}
+        {temPersonalizados && <button type="button" role="tab" aria-selected={verPersonalizados} onClick={() => setVerPersonalizados(true)}>Personalizados<small>{meus!.length}</small></button>}
       </div>
+      {temPersonalizados && verPersonalizados ? <GradePersonalizados itens={meus!} busca={busca} value={value} onChange={onChange} /> : <>
       <div ref={grade} className="cofre-iconpicker-grid" onScroll={(e) => { const el = e.currentTarget; if (limite < lista.length && el.scrollTop + el.clientHeight > el.scrollHeight - 160) setLimite((l) => l + LOTE); }}>
         {visiveis.map((ic) => {
           const I = mapa[ic.nome];
@@ -83,6 +105,7 @@ export default function IconPicker({ value, onChange, cor }: { value: string; on
         {lista.length === 0 && <p className="cofre-cats-none">Nenhum ícone encontrado para “{busca}”.</p>}
       </div>
       <small className="cofre-iconpicker-count">{lista.length} ícone{lista.length === 1 ? "" : "s"}{categoria !== null ? ` em ${rotuloDe(CATEGORIAS_LUCIDE[categoria]!)}` : ""}</small>
+      </>}
     </div>
   );
 }

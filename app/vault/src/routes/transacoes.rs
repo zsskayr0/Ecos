@@ -455,6 +455,12 @@ pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>,
                     "INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     rusqlite::params![anexo_id, id, arquivo.nome, arquivo.tipo.mime, tamanho, arquivo.checksum, arquivo.bytes, tipo_anexo],
                 )?;
+                if tipo_anexo == "comprovante" {
+                    tx.execute(
+                        "UPDATE transacao SET status = 'efetivada', atualizado_em = datetime('now') WHERE id = ?1 AND data <= date('now', '+1 day')",
+                        [&id],
+                    )?;
+                }
                 tx.commit()?;
                 Ok((anexo_id, outra))
             }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { pastas } from "@/lib/api";
@@ -6,6 +6,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
 
+const AparenciaPasta = lazy(() => import("@/components/common/AparenciaPasta"));
 import { mensagemDeErro } from "@/lib/erros";
 /** `POST /api/v1/pastas` — a Pasta is just a new directory under `Notas/` (section 1.3/1.5). */
 export function FolderCreateScreen() {
@@ -15,6 +16,8 @@ export function FolderCreateScreen() {
   const { notificar } = useRefreshBus();
   const espaco = useEspacoFiltro();
   const [nome, setNome] = useState("");
+  const [cor, setCor] = useState("");
+  const [icone, setIcone] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -23,7 +26,7 @@ export function FolderCreateScreen() {
     setSalvando(true);
     setErro(null);
     try {
-      await pastas.criar({ nome: nome.trim(), espaco, pasta_pai: pai || undefined });
+      await pastas.criar({ nome: nome.trim(), espaco, pasta_pai: pai || undefined, ...(cor ? { cor } : {}), ...(icone ? { icone } : {}) });
       notificar();
       navigate(pai ? `/notas/pasta/${caminhoPastaNaRota(pai)}` : "/notas");
     } catch (e) {
@@ -48,6 +51,10 @@ export function FolderCreateScreen() {
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Nome</span>
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Projetos" className="ecos-input" autoFocus />
       </label>
+
+      <div className="mt-5">
+        <Suspense fallback={null}><AparenciaPasta cor={cor || "#7dd3fc"} icone={icone || "Folder"} onCor={setCor} onIcone={setIcone} /></Suspense>
+      </div>
 
       {erro && (
         <div className="mt-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">

@@ -243,6 +243,8 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
         setDraft={setDraft}
         onSalvar={() => { void salvar(); }}
         onFechar={aoFechar}
+        transacaoId={tx.id}
+        aoAnexarColado={notificar}
         modoSlide={aninhado ? undefined : { ativo: slide, alternar: alternarSlide }}
         slideChave={slide ? tx.id : undefined}
         slideDir={direcao}

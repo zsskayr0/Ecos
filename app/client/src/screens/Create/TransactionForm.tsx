@@ -13,9 +13,44 @@ import { CampoValor } from "./CampoValor";
 import { CampoCategoria } from "@/screens/Vault/CampoCategoria";
 import { SugestaoCategoria } from "@/screens/Vault/SugestaoCategoria";
 
-interface Props { slideChave?:string; slideDir?:"next"|"prev"; /** Liga/desliga o Modo Slide (andar pelos lançamentos da lista); só no editor de um lançamento. */ modoSlide?:{ativo:boolean;alternar:()=>void}; /** Faixa de navegação do Modo Slide, logo abaixo do cabeçalho. */ barraSlide?:ReactNode; draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; /** Cria uma cópia (só na edição). */ onDuplicar?:()=>void; /** Abre o envio para o Cofre de outra equipe (só na edição). */ onEnviar?:()=>void; /** Nome de quem lançou (só em Cofre de equipe com mais de uma pessoa). Somente leitura. */ criadoPor?:string; /** Container de anexos, logo abaixo de Observações (o editor passa os anexos do lançamento; a criação, os pendentes). */ anexos?:React.ReactNode; }
+interface Props { slideChave?:string; slideDir?:"next"|"prev"; /** Liga/desliga o Modo Slide (andar pelos lançamentos da lista); só no editor de um lançamento. */ modoSlide?:{ativo:boolean;alternar:()=>void}; /** Faixa de navegação do Modo Slide, logo abaixo do cabeçalho. */ barraSlide?:ReactNode; draft:CapturaDraft; setDraft:SetDraft; onSalvar:()=>void; onFechar:()=>void; salvando?:boolean; eyebrow?:string; titulo?:string; rotuloSalvar?:string; erro?:string|null; onExcluir?:()=>void; /** Cria uma cópia (só na edição). */ onDuplicar?:()=>void; /** Abre o envio para o Cofre de outra equipe (só na edição). */ onEnviar?:()=>void; /** Nome de quem lançou (só em Cofre de equipe com mais de uma pessoa). Somente leitura. */ criadoPor?:string; /** Container de anexos, logo abaixo de Observações (o editor passa os anexos do lançamento; a criação, os pendentes). */ anexos?:React.ReactNode; transacaoId?:string; aoAnexarColado?:()=>void; }
 
-export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir,onDuplicar,onEnviar,criadoPor,anexos,modoSlide,barraSlide,slideChave,slideDir}:Props) {
+export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebrow="NOVO REGISTRO",titulo="Novo lançamento",rotuloSalvar="Salvar lançamento",erro,onExcluir,onDuplicar,onEnviar,criadoPor,anexos,modoSlide,barraSlide,slideChave,slideDir,transacaoId,aoAnexarColado}:Props) {
+  const [barraSlideRenderizada, setBarraSlideRenderizada] = useState(barraSlide);
+  const [barraSlideSaindo, setBarraSlideSaindo] = useState(false);
+  useEffect(() => {
+    if (barraSlide) {
+      setBarraSlideRenderizada(barraSlide);
+      setBarraSlideSaindo(false);
+      return;
+    }
+    if (!barraSlideRenderizada) return;
+    setBarraSlideSaindo(true);
+    const t = window.setTimeout(() => {
+      setBarraSlideRenderizada(undefined);
+      setBarraSlideSaindo(false);
+    }, 460);
+    return () => window.clearTimeout(t);
+  }, [barraSlide, barraSlideRenderizada]);
+  const [arquivoColado,setArquivoColado]=useState<File|null>(null),[tipoArquivoColado,setTipoArquivoColado]=useState<"comprovante"|"nota_fiscal">("comprovante"),[colando,setColando]=useState(false),[erroColar,setErroColar]=useState<string|null>(null),[fechandoColar,setFechandoColar]=useState(false);
+  function fecharColar(){if(colando)return;setFechandoColar(true);window.setTimeout(()=>{setArquivoColado(null);setFechandoColar(false);},220);}
+  useEffect(()=>{
+    if(!transacaoId)return;
+    const colar=(e: ClipboardEvent)=>{
+      if(e.defaultPrevented)return;
+      const arquivo=Array.from(e.clipboardData?.files??[])[0]??Array.from(e.clipboardData?.items??[]).map(i=>i.kind==="file"?i.getAsFile():null).find((f):f is File=>!!f);
+      if(!arquivo)return;
+      e.preventDefault();setFechandoColar(false);setErroColar(null);setTipoArquivoColado("comprovante");setArquivoColado(arquivo);
+    };
+    window.addEventListener("paste",colar);return()=>window.removeEventListener("paste",colar);
+  },[transacaoId]);
+  async function anexarColado(){
+    if(!arquivoColado||!transacaoId||colando)return;
+    setColando(true);setErroColar(null);
+    try{await vault.anexos.enviar(transacaoId,arquivoColado,tipoArquivoColado);aoAnexarColado?.();fecharColar();}
+    catch(e){setErroColar(e instanceof Error?e.message:"Não foi possível anexar o arquivo.");}
+    finally{setColando(false);}
+  }
   const [confirmandoExcluir,setConfirmandoExcluir]=useState(false);
   const formas=useFormasPagamento();
   const opcoesForma=opcoesDoSeletor(formas.lista,draft.formaPagamento);
@@ -34,8 +69,8 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
   async function adicionarCategoria(nome:string){const criada=await vault.categorias.criar({nome,tipo:draft.tipoTransacao,cor:draft.tipoTransacao==="entrada"?"#86d7ad":"#f29a9f",icone:draft.tipoTransacao==="entrada"?"TrendingUp":"ShoppingBag"});const lista=await vault.categorias.listar();setCategorias(lista);setDraft(d=>({...d,categoriaId:criada.id}));}
   return <form className="cofre-launch-form" onSubmit={e=>{e.preventDefault();lancar();}}>
     <header className="cofre-launch-header" data-window-drag-handle><div><p>{eyebrow}</p><h2>{titulo}</h2></div><div className="cofre-launch-header-actions">{modoSlide&&<button type="button" className="cofre-slide-toggle" data-ativo={modoSlide.ativo||undefined} aria-label="Modo Slide" aria-pressed={modoSlide.ativo} title={modoSlide.ativo?"Sair do Modo Slide":"Modo Slide: passar pelos lançamentos com as setas"} onClick={modoSlide.alternar}><GalleryHorizontal size={15}/></button>}{onEnviar&&<button type="button" aria-label="Enviar para outra equipe" title="Enviar para outra equipe" disabled={salvando} onClick={onEnviar}><Send size={15}/></button>}{onDuplicar&&<button type="button" aria-label="Duplicar" title="Duplicar" disabled={salvando} onClick={onDuplicar}><Copy size={15}/></button>}{onExcluir&&<button type="button" aria-label="Apagar" title="Apagar" onClick={()=>setConfirmandoExcluir(true)}><Trash2 size={15}/></button>}<button type="button" aria-label="Fechar" title="Fechar" onClick={onFechar}><X size={16}/></button></div></header>
-    {barraSlide}
-    <div className="cofre-launch-body" key={slideChave} data-slide-dir={slideChave?slideDir:undefined}>
+    {barraSlideRenderizada && <div className={`cofre-slide-bar-shell${barraSlideSaindo ? " cofre-slide-bar-shell-saindo" : ""}`}>{barraSlideRenderizada}</div>}
+    <div className="cofre-launch-body">
       {criadoPor&&<p className="cofre-launch-author" aria-label="Criado por">Criado por <b>{criadoPor}</b></p>}
       {erro&&<p className="cofre-launch-alert" role="alert">{erro}</p>}
       {confirmandoExcluir&&onExcluir&&<div className="cofre-launch-alert" role="alert"><p>Apagar este lançamento? Essa ação não pode ser desfeita.</p><div><button type="button" onClick={()=>setConfirmandoExcluir(false)}>Cancelar</button><button type="button" disabled={salvando} onClick={onExcluir}>{salvando?"Apagando…":"Apagar"}</button></div></div>}
@@ -54,6 +89,19 @@ export function TransactionForm({draft,setDraft,onSalvar,onFechar,salvando,eyebr
       </div>
     </div>
     <footer className="cofre-launch-footer"><button data-tipo={draft.tipoTransacao} data-lancando={lancando} disabled={salvando||!pode||lancando}><span className="cofre-launch-label">{salvando?"Salvando…":rotuloSalvar}</span>{lancando&&<i className="cofre-launch-coin" aria-hidden="true"><b><Coins size={18} strokeWidth={2.2}/></b></i>}</button></footer>
+    {arquivoColado&&<div className={`cofre-colar-backdrop${fechandoColar?" cofre-colar-fechando":""}`} role="dialog" aria-modal="true" aria-label="Escolher tipo do arquivo colado">
+      <div className="cofre-colar-card">
+        <h2>Adicionar arquivo ao lançamento</h2>
+        <p>{arquivoColado.name}</p>
+        <span>Como deseja guardar este arquivo?</span>
+        <div className="cofre-colar-opcoes">
+          <button type="button" className={tipoArquivoColado==="comprovante"?"ativo":""} onClick={()=>setTipoArquivoColado("comprovante")}>Comprovante</button>
+          <button type="button" className={tipoArquivoColado==="nota_fiscal"?"ativo":""} onClick={()=>setTipoArquivoColado("nota_fiscal")}>Nota fiscal</button>
+        </div>
+        {erroColar&&<p className="cofre-colar-erro" role="alert">{erroColar}</p>}
+        <div className="cofre-colar-acoes"><button type="button" onClick={fecharColar} disabled={colando}>Cancelar</button><button type="button" className="primario" onClick={()=>void anexarColado()} disabled={colando}>{colando?"Anexando…":"Adicionar"}</button></div>
+      </div>
+    </div>}
   </form>;
 }
 function Campo({label,children,className}:{label:string;children:ReactNode;className?:string}){return <div className={`cofre-launch-field ${className??""}`}><span>{label}</span>{children}</div>;}

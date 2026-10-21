@@ -62,6 +62,7 @@ const ServerConfigScreen = carregar(() => import("@/screens/Settings/ServerConfi
 const PrivacyVaultScreen = carregar(() => import("@/screens/Settings/PrivacyVaultScreen"), "PrivacyVaultScreen");
 const ContaDadosScreen = carregar(() => import("@/screens/Settings/ContaDadosScreen"), "ContaDadosScreen");
 const AparenciaScreen = carregar(() => import("@/screens/Settings/AparenciaScreen"), "AparenciaScreen");
+const IconesPersonalizadosScreen = carregar(() => import("@/screens/Settings/IconesPersonalizadosScreen"), "IconesPersonalizadosScreen");
 const AboutScreen = carregar(() => import("@/screens/Settings/AboutScreen"), "AboutScreen");
 const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"), "LicensesScreen");
 const ProblemasSincronizacaoScreen = carregar(() => import("@/screens/Settings/ProblemasSincronizacaoScreen"), "ProblemasSincronizacaoScreen");
@@ -152,6 +153,7 @@ export const screenRoutes = (
       <Route path="calendario/problemas" element={tela(ProblemasSincronizacaoScreen)} />
       <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
       <Route path="organizacao" element={tela(OrganizationScreen, <SkeletonOrganizacao />)} />
+      <Route path="icones" element={tela(IconesPersonalizadosScreen)} />
       <Route path="sobre" element={tela(AboutScreen)} />
       <Route path="sobre/licencas" element={tela(LicensesScreen, <SkeletonLicencas />)} />
       <Route path="perfil" element={tela(ProfileScreen, <SkeletonPerfilTela />)} />

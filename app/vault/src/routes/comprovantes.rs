@@ -81,9 +81,26 @@ pub(crate) fn ler_anexo_em_segundo_plano(state: AppState, id: String, bytes: Vec
             ocr::Leitura::Texto(t) => Some(t),
             _ => None,
         };
+        let sugestao = texto.as_deref().map(ocr::parser::analisar);
         let miniatura = p.miniatura;
         let r = USUARIO
-            .scope(usuario, async { state.db.with(move |conn| conn.execute("UPDATE anexo SET miniatura = ?1, ocr_texto = ?2 WHERE id = ?3", rusqlite::params![miniatura, texto, id])).await })
+            .scope(usuario, async {
+                state.db.with(move |conn| {
+                    conn.execute("UPDATE anexo SET miniatura = ?1, ocr_texto = ?2 WHERE id = ?3", rusqlite::params![miniatura, texto, id])?;
+                    if let Some(data) = sugestao.as_ref().and_then(|s| s.data) {
+                        conn.execute(
+                            "UPDATE transacao SET data = ?1, status = CASE WHEN ?1 <= date('now', '+1 day') THEN 'efetivada' ELSE 'pendente' END, atualizado_em = datetime('now') WHERE id = (SELECT transacao_id FROM anexo WHERE id = ?2) AND (SELECT tipo FROM anexo WHERE id = ?2) = 'comprovante'",
+                            rusqlite::params![data.to_string(), id],
+                        )?;
+                    } else {
+                        conn.execute(
+                            "UPDATE transacao SET status = 'efetivada', atualizado_em = datetime('now') WHERE id = (SELECT transacao_id FROM anexo WHERE id = ?1) AND (SELECT tipo FROM anexo WHERE id = ?1) = 'comprovante' AND data <= date('now', '+1 day')",
+                            [&id],
+                        )?;
+                    }
+                    Ok(())
+                }).await
+            })
             .await;
         if let Err(e) = r {
             tracing::warn!(error = %e, "não foi possível gravar a leitura do anexo (Cofre trancado?)");

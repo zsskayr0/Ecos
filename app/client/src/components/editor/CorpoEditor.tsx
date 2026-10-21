@@ -269,7 +269,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
         ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
         : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
-            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={tipo === "nota" ? { notaAtualId: notaId ?? itemId, espaco } : undefined} />}
+            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />}
     </div>;
   }
 

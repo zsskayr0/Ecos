@@ -513,6 +513,20 @@ export const avatarPerfil = {
   remover: () => del<{ ok: true }>("/me/avatar"),
 };
 
+/** Imagem que a pessoa subiu para usar como ícone de pasta; a pasta guarda `img:<id>`. */
+export interface IconePersonalizado { id: string; nome: string; versao: number }
+
+export const iconesPersonalizados = {
+  listar: () => get<IconePersonalizado[]>("/me/icones"),
+  enviar: (arquivo: File, nome: string) => {
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    return req<IconePersonalizado>(`/me/icones${qs({ nome })}`, { method: "POST", body: dados });
+  },
+  obter: (id: string) => reqBlob(`/me/icones/${encodeURIComponent(id)}`),
+  remover: (id: string) => del<{ ok: true }>(`/me/icones/${encodeURIComponent(id)}`),
+};
+
 // --- Universal capture (section 11.3) -------------------------------------
 
 export const captura = {
@@ -586,9 +600,9 @@ export const notas = {
 
 export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
-    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
-  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
-  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string }) => patch<{ ok: true }>("/pastas", payload),
+    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; cor?: string | null; icone?: string | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
+  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string; cor?: string; icone?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
+  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string; cor?: string; icone?: string }) => patch<{ ok: true }>("/pastas", payload),
   excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string; espaco?: string }) => del<{ ok: true }>("/pastas", payload),
 };
 

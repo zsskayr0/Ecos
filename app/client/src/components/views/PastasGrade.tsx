@@ -1,5 +1,5 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -7,12 +7,20 @@ import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { TOM, misturar } from "@/components/common/MenuSuspenso";
+import { IconePorNome } from "@/components/common/IconePorNome";
+import { IconeImagem, idDoIconeImagem } from "@/lib/icones-personalizados";
+
+const AparenciaPasta = lazy(() => import("@/components/common/AparenciaPasta"));
+const COR_INICIAL = "#7dd3fc";
 
 import { mensagemDeErro } from "@/lib/erros";
 export interface PastaResumo {
   caminho: string;
   nome: string;
   contagem_itens: number;
+  /** Cor (#rrggbb) e ícone (nome do Lucide) escolhidos para a pasta; sem eles vale o ícone de pasta padrão. */
+  cor?: string | null;
+  icone?: string | null;
 }
 
 export interface ItemExplorador {
@@ -59,6 +67,8 @@ function lerOcultas(chave: string, padraoOculto: boolean): boolean {
 }
 
 const DURACAO_MS = 250;
+/** Quantas pastas a vista compacta mostra antes de agrupar o resto em "+N". */
+const LIMITE_COMPACTA = 8;
 
 /**
  * Olho que abre e fecha: a pálpebra (amêndoa) se achata e a pupila encolhe; ao abrir, volta com uma piscada
@@ -74,6 +84,19 @@ function Olho({ aberto }: { aberto: boolean }) {
       <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" style={{ transformBox: "fill-box", transformOrigin: "center", transform: `scale(${aberto ? 1 : 0})`, opacity: aberto ? 1 : 0, transition: `transform 320ms ${aberto ? mola : "ease-in"}, opacity 200ms ease` }} />
       <path d="M4 4l16 16" pathLength={1} strokeDasharray={1} strokeDashoffset={aberto ? 1 : 0} style={{ transition: `stroke-dashoffset ${aberto ? 200 : 320}ms ease-out ${aberto ? 0 : 120}ms` }} />
     </svg>
+  );
+}
+
+/** Ícone da pasta: o escolhido sobre a cor escolhida (como nas categorias do Cofre) ou, sem personalização, a pasta padrão. */
+function IconePasta({ pasta, tamanho, corIcone }: { pasta: PastaResumo; tamanho: number; corIcone: string }) {
+  if (!pasta.cor && !pasta.icone) return <Folder size={tamanho} strokeWidth={1.5} className={`shrink-0 ${corIcone}`} />;
+  const cor = pasta.cor || null;
+  const imagem = idDoIconeImagem(pasta.icone);
+  if (imagem) return <span aria-hidden className="flex shrink-0 items-center justify-center text-text-muted" style={{ width: tamanho, height: tamanho }}><IconeImagem id={imagem} size={tamanho} /></span>;
+  return (
+    <span aria-hidden className={`flex shrink-0 items-center justify-center ${cor ? "" : corIcone}`} style={{ width: tamanho, height: tamanho, ...(cor ? { color: cor } : {}) }}>
+      {pasta.icone ? <IconePorNome nome={pasta.icone} padrao="Folder" size={tamanho} style={{ strokeWidth: 1.5 }} /> : <Folder size={tamanho} strokeWidth={1.5} />}
+    </span>
   );
 }
 
@@ -106,10 +129,16 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
   const [acao, setAcao] = useState<"renomear" | "mover" | "excluir" | null>(null);
   const [pastaAtiva, setPastaAtiva] = useState<PastaResumo | null>(null);
   const [novoNome, setNovoNome] = useState("");
+  const [novaCor, setNovaCor] = useState("");
+  const [novoIcone, setNovoIcone] = useState("");
   const [destinos, setDestinos] = useState<PastaResumo[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const { notificar } = useRefreshBus();
+  const [expandidas, setExpandidas] = useState(false);
+  // Na vista compacta, muitas subpastas viram "+N": o restante aparece ao clicar, sem empurrar o conteúdo para baixo.
+  const pastasVisiveis = estilo === "compacta" && !expandidas && visualizacao === "grade" ? pastas.slice(0, LIMITE_COMPACTA) : pastas;
+  const pastasEscondidas = pastas.length - pastasVisiveis.length;
   const tipo = chave === "tarefas" ? "tarefa" : "nota";
   const tom = chave === "tarefas" ? TOM.ciano : TOM.aco;
 
@@ -142,15 +171,15 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
     }
   }
   function abrirAcao(pasta: PastaResumo, proxima: "renomear" | "mover" | "excluir") {
-    setMenu(null); setPastaAtiva(pasta); setAcao(proxima); setNovoNome(pasta.nome); setErro(null);
+    setMenu(null); setPastaAtiva(pasta); setAcao(proxima); setNovoNome(pasta.nome); setNovaCor(pasta.cor ?? ""); setNovoIcone(pasta.icone ?? ""); setErro(null);
   }
   function fecharAcao() { setAcao(null); setPastaAtiva(null); setErro(null); }
   async function renomear() {
     if (!pastaAtiva || !novoNome.trim() || ocupado) return;
     const pai = pastaAtiva.caminho.split("/").slice(0, -1).join("/");
     setOcupado(true); setErro(null);
-    try { await pastasApi.renomear({ tipo, espaco, caminho_atual: pastaAtiva.caminho, novo_caminho: pai ? `${pai}/${novoNome.trim()}` : novoNome.trim() }); notificar(); fecharAcao(); avisar("Pasta renomeada com sucesso.", "sucesso"); }
-    catch (e) { setErro(mensagemDeErro(e, "Não foi possível renomear a pasta.")); }
+    try { await pastasApi.renomear({ tipo, espaco, caminho_atual: pastaAtiva.caminho, novo_caminho: pai ? `${pai}/${novoNome.trim()}` : novoNome.trim(), cor: novaCor, icone: novoIcone }); notificar(); fecharAcao(); avisar("Pasta atualizada com sucesso.", "sucesso"); }
+    catch (e) { setErro(mensagemDeErro(e, "Não foi possível salvar a pasta.")); }
     finally { setOcupado(false); }
   }
   async function mover(destino: string) {
@@ -194,13 +223,13 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
 
       {visualizacao === "grade" && (
         <Recolhivel oculto={ocultas} cortar={animando}>
-        <div className="grid gap-3 pb-1" style={{ gridTemplateColumns: estilo === "compacta" ? "repeat(auto-fill, minmax(190px, 1fr))" : "repeat(auto-fill, minmax(140px, 1fr))" }}>
-          {pastas.map((p, i) => (
-            <div key={p.caminho} style={entrada(i, ocultas)} className={`relative flex min-w-0 rounded-card bg-surface-1 transition-[opacity,transform,background-color] duration-[230ms] hover:bg-surface-2 ${estilo === "compacta" ? "h-12 !rounded-xl" : "aspect-square"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
+        <div className={`gap-3 pb-1 ${estilo === "compacta" ? "flex flex-wrap" : "grid"}`} style={estilo === "compacta" ? undefined : { gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
+          {pastasVisiveis.map((p, i) => (
+            <div key={p.caminho} style={entrada(i, ocultas)} className={`relative flex min-w-0 ${menu === p.caminho ? "z-30" : ""} rounded-card bg-surface-1 transition-[opacity,transform,background-color] duration-[230ms] hover:bg-surface-2 ${estilo === "compacta" ? "h-12 max-w-full !rounded-xl" : "aspect-square"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
             <button type="button" onClick={() => aoAbrir(p)} className={`flex min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "items-center gap-2.5 pl-3 pr-10" : "flex-col justify-between p-4 pr-11"}`}>
-              <Folder size={estilo === "compacta" ? 18 : 28} strokeWidth={1.5} className={`shrink-0 ${corIcone}`} />
+              <IconePasta pasta={p} tamanho={estilo === "compacta" ? 18 : 28} corIcone={corIcone} />
               {estilo === "compacta" ? (
-                <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="truncate text-sm font-semibold text-text-primary">{p.nome}</span><span className="shrink-0 text-xs text-text-muted">{p.contagem_itens}</span></span>
+                <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="min-w-0 truncate text-sm font-semibold text-text-primary" title={p.nome}>{p.nome}</span><span className="shrink-0 text-xs text-text-muted">{p.contagem_itens}</span></span>
               ) : (
                 <span className="min-w-0">
                   <span className="line-clamp-2 block break-words font-body text-[15px] font-semibold leading-snug text-text-primary">{p.nome}</span>
@@ -209,15 +238,36 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
               )}
             </button>
             <button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>
-            {menu === p.caminho && <div role="menu" className="absolute right-2 top-11 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Renomear</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}
+            {menu === p.caminho && <div role="menu" className="absolute right-2 top-11 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Personalizar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}
             </div>
           ))}
+          {pastasEscondidas > 0 && (
+            <button
+              type="button"
+              aria-expanded={false}
+              onClick={() => setExpandidas(true)}
+              style={entrada(pastasVisiveis.length, ocultas)}
+              className={`flex h-12 items-center justify-center rounded-xl bg-surface-1 px-4 text-sm font-medium text-text-secondary transition-[opacity,transform,background-color,color] duration-[230ms] hover:bg-surface-2 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
+            >
+              +{pastasEscondidas} {pastasEscondidas === 1 ? "pasta" : "pastas"}
+            </button>
+          )}
+          {estilo === "compacta" && expandidas && pastas.length > LIMITE_COMPACTA && (
+            <button
+              type="button"
+              aria-expanded
+              onClick={() => setExpandidas(false)}
+              className="flex h-12 items-center justify-center rounded-xl px-4 text-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
+            >
+              Mostrar menos
+            </button>
+          )}
           {aoCriar && (
             <button
               type="button"
               onClick={aoCriar}
-              style={entrada(pastas.length, ocultas)}
-              className={`flex items-center justify-center gap-2 border border-dashed border-border text-text-muted transition-[opacity,transform,border-color,color] duration-[230ms] hover:border-steel-500/60 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "h-12 rounded-xl" : "aspect-square flex-col rounded-card"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
+              style={entrada(pastasVisiveis.length, ocultas)}
+              className={`flex items-center justify-center gap-2 border border-dashed border-border text-text-muted transition-[opacity,transform,border-color,color] duration-[230ms] hover:border-steel-500/60 hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "h-12 rounded-xl px-4" : "aspect-square flex-col rounded-card"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
             >
               <FolderPlus size={estilo === "compacta" ? 18 : 22} strokeWidth={1.5} />
               <span className="text-xs font-medium">{rotuloCriar}</span>
@@ -229,7 +279,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
       {visualizacao === "explorador" && !ocultas && (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface-1">
           <div className="flex min-h-11 items-center border-b border-border bg-surface-2/60 px-3 text-xs font-medium text-text-muted"><span className="flex-1">Nome</span><span className="hidden sm:block sm:w-24">Tipo</span><span className="w-8" /></div>
-          {pastas.map((p) => <div key={p.caminho} className="group relative flex min-h-12 items-center border-b border-border px-3 last:border-b-0 hover:bg-surface-2"><button type="button" onClick={() => aoAbrir(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><Folder size={18} strokeWidth={1.65} className={corIcone} /><span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{p.nome}</span><span className="hidden text-xs text-text-muted sm:block sm:w-24">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span><ChevronRight size={16} className="text-text-muted" /></button><button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>{menu === p.caminho && <div role="menu" className="absolute right-3 top-10 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Renomear</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}</div>)}
+          {pastas.map((p) => <div key={p.caminho} className="group relative flex min-h-12 items-center border-b border-border px-3 last:border-b-0 hover:bg-surface-2"><button type="button" onClick={() => aoAbrir(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><IconePasta pasta={p} tamanho={18} corIcone={corIcone} /><span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{p.nome}</span><span className="hidden text-xs text-text-muted sm:block sm:w-24">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span><ChevronRight size={16} className="text-text-muted" /></button><button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>{menu === p.caminho && <div role="menu" className="absolute right-3 top-10 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Personalizar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}</div>)}
           {itens.map((item, indice) => { const Icone = item.tipo === "nota" ? StickyNote : item.tipo === "tarefa" ? ListChecks : FileText; const nome = item.titulo ?? item.nome ?? "Sem nome"; return <button key={`${item.tipo}:${item.id ?? item.caminho ?? indice}`} type="button" onClick={(evento) => aoAbrirItem?.(item, evento)} className="flex min-h-12 w-full items-center gap-3 border-b border-border px-3 text-left last:border-b-0 hover:bg-surface-2"><Icone size={18} strokeWidth={1.65} className="text-text-secondary" /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{nome}</span><span className="hidden text-xs capitalize text-text-muted sm:block sm:w-24">{item.tipo === "documento" ? "arquivo" : item.tipo}</span><ChevronRight size={16} className="text-text-muted" /></button>; })}
           {!pastas.length && !itens.length && <p className="px-4 py-8 text-center text-sm text-text-muted">Esta pasta está vazia.</p>}
           {aoCriar && <button type="button" onClick={aoCriar} className="flex min-h-12 w-full items-center gap-3 px-3 text-left text-sm font-medium text-steel-300 hover:bg-surface-2"><FolderPlus size={18} />{rotuloCriar}</button>}
@@ -237,12 +287,12 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
       )}
       {acao && pastaAtiva && (
         <Dialog rotuloId="pasta-acao-titulo" onFechar={fecharAcao}>
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav">
+          <div className={`w-full rounded-2xl border border-border bg-surface-1 p-5 shadow-nav ${acao === "renomear" ? "max-h-[90dvh] max-w-lg overflow-y-auto" : "max-w-sm"}`}>
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 id="pasta-acao-titulo" className="font-semibold text-text-primary">{acao === "renomear" ? "Renomear pasta" : acao === "mover" ? "Mover pasta" : "Excluir pasta"}</h2>
+              <h2 id="pasta-acao-titulo" className="font-semibold text-text-primary">{acao === "renomear" ? "Editar pasta" : acao === "mover" ? "Mover pasta" : "Excluir pasta"}</h2>
               <button type="button" onClick={fecharAcao} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Fechar"><X size={17} /></button>
             </div>
-            {acao === "renomear" && <><label className="mb-2 block text-sm text-text-secondary" htmlFor="novo-nome-pasta">Nome</label><input id="novo-nome-pasta" autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input w-full !rounded-lg" /><button type="button" disabled={ocupado || !novoNome.trim()} onClick={() => void renomear()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40"><Check size={16} />Renomear</button></>}
+            {acao === "renomear" && <><label className="mb-2 block text-sm text-text-secondary" htmlFor="novo-nome-pasta">Nome</label><input id="novo-nome-pasta" autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input mb-4 w-full !rounded-lg" /><Suspense fallback={<p className="text-sm text-text-muted">Carregando…</p>}><AparenciaPasta cor={novaCor || COR_INICIAL} icone={novoIcone || "Folder"} onCor={setNovaCor} onIcone={setNovoIcone} /></Suspense><div className="mt-4 flex items-center gap-3"><button type="button" disabled={ocupado || !novoNome.trim()} onClick={() => void renomear()} className="flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40"><Check size={16} />Salvar</button>{(novaCor || novoIcone) && <button type="button" onClick={() => { setNovaCor(""); setNovoIcone(""); }} className="min-h-10 rounded-lg px-3 text-sm text-text-secondary hover:bg-surface-2">Voltar ao padrão</button>}</div></>}
             {acao === "mover" && <><p className="mb-3 text-sm text-text-secondary">Escolha qualquer pasta na árvore como destino para <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>.</p><div className="max-h-[min(60dvh,28rem)] space-y-1 overflow-y-auto"><button type="button" disabled={ocupado} onClick={() => void mover("")} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Raiz</button><ArvorePastas opcoes={destinos.filter((d) => d.caminho !== pastaAtiva.caminho && !d.caminho.startsWith(`${pastaAtiva.caminho}/`)).map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[]} onSelect={(p) => { if (!ocupado) void mover(p); }} /></div></>}
             {acao === "excluir" && <><p className="text-sm text-text-secondary">Excluir <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>? A pasta precisa estar vazia.</p><button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-white disabled:opacity-40"><Trash2 size={16} />Excluir pasta</button></>}
             {erro && <p role="alert" className="mt-3 text-sm text-error">{erro}</p>}
