@@ -8,7 +8,7 @@ import type { FeedItem, Nota, Tarefa } from "@/lib/types";
 import { CLASSE_PRIORIDADE, ROTULO_PRIORIDADE, caminhoDoItem, nomeDaPasta, pastaDoItem, tagsDoItem } from "./util";
 
 const BLOCO =
-  "group flex h-56 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-border bg-surface-1 p-4 text-left transition-colors hover:border-steel-500/60 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
+  "group flex h-56 w-full min-w-0 max-w-full flex-col break-words gap-2 overflow-hidden rounded-xl border border-border bg-surface-1 p-4 text-left transition-colors hover:border-steel-500/60 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
 
 function Tags({ item }: { item: FeedItem }) {
   const tags = tagsDoItem(item);
@@ -84,7 +84,7 @@ function BlocoTarefa({ tarefa }: { tarefa: Tarefa }) {
 export function GradeItens({ itens, selecionados = new Set(), onSelecionar, saindo = new Set(), entrando = new Set() }: { itens: FeedItem[]; selecionados?: Set<string>; onSelecionar?: (event: MouseEvent, item: FeedItem, ordem: FeedItem[]) => boolean; saindo?: Set<string>; entrando?: Set<string> }) {
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-      {itens.map((item) => <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { onSelecionar?.(e, item, itens); }} className={`${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "rounded-xl ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>{item.tipo === "nota" ? <BlocoNota nota={item} /> : <BlocoTarefa tarefa={item} />}</div>)}
+      {itens.map((item) => <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { onSelecionar?.(e, item, itens); }} className={`min-w-0 ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "rounded-xl ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>{item.tipo === "nota" ? <BlocoNota nota={item} /> : <BlocoTarefa tarefa={item} />}</div>)}
     </div>
   );
 }
