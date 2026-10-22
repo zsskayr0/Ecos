@@ -14,6 +14,8 @@ export const ModoFocusDocumentoContext = createContext(false);
 export const PainelFocusTarefaContext = createContext<HTMLElement | null>(null);
 /** Espaço no cabeçalho da camada Focus (ao lado do X) onde a tarefa coloca suas ações: concluir, apagar, recolher painel. */
 export const AcoesFocusContext = createContext<HTMLElement | null>(null);
+/** Espaço no cabeçalho da janela flutuante (ao lado de "Fixar como aba") onde a tela coloca ações próprias. */
+export const AcoesJanelaContext = createContext<HTMLElement | null>(null);
 /** Recolhe/expande o painel lateral do modo Focus (a tarefa ocupa a largura toda quando recolhido). */
 export const PainelFocusControleContext = createContext<{ aberto: boolean; alternar: () => void }>({ aberto: true, alternar: () => {} });
 

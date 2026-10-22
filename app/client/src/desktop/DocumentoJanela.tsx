@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Point
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Maximize2, Minimize2, Pin, X } from "lucide-react";
 import { screenRoutes } from "@/routes/screen-routes";
-import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
+import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
 import { moduloDaRota, tituloDaRota } from "./modules";
 import { DURACAO_SAIDA_JANELA_MS, reduzMovimento } from "./movimento";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
@@ -178,6 +178,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [montagem, setMontagem] = useState<HTMLElement | null>(null);
   const [montagemFocus, setMontagemFocus] = useState<HTMLElement | null>(null);
   const [acoesFocus, setAcoesFocus] = useState<HTMLElement | null>(null);
+  const [acoesJanela, setAcoesJanela] = useState<HTMLElement | null>(null);
   const [animandoPainel, setAnimandoPainel] = useState(false);
   const jaAjustou = useRef(false);
   const usuarioMexeu = useRef(false);
@@ -452,6 +453,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-secondary">
             {tituloDinamico || titulo || tituloDaRota(path)}
           </span>
+          {!emFocus && <span ref={setAcoesJanela} className="flex items-center gap-0.5 empty:hidden" />}
           {aoFixar && !emFocus && <button
             type="button"
             title="Fixar como aba — ou arraste até uma barra de abas"
@@ -487,12 +489,14 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <FecharDocumentoContext.Provider value={aoFechar}>
           <ModoFocusDocumentoContext.Provider value={false}>
           <PainelJanelaContext.Provider value={painelJanela}>
+          <AcoesJanelaContext.Provider value={acoesJanela}>
             {cabecalhoNoConteudo ? (
               <>
                 <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}><Fragment key={chaveJanela}>{corpo}</Fragment></div>
                 <div ref={setMontagem} aria-hidden={!painelPx} className="h-full min-w-0 overflow-hidden border-border bg-surface-1" style={{ flex: painelPx ? "1 1 0" : "0 0 0", borderLeftWidth: painelPx ? 1 : 0 }} />
               </>
             ) : <Fragment key={chaveJanela}>{corpo}</Fragment>}
+          </AcoesJanelaContext.Provider>
           </PainelJanelaContext.Provider>
           </ModoFocusDocumentoContext.Provider>
           </FecharDocumentoContext.Provider>

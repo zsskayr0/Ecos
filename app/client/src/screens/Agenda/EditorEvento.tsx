@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
 import { EquipeSelector } from "@/components/editor/EquipeSelector";
 import { AlertTriangle, CalendarPlus, Clock, Cloud, Link2, Lock, MapPin, Network, Save, Sun, Tag, Trash2, X, AlignLeft, ChevronDown, Repeat } from "lucide-react";
 import { DatePicker } from "@/components/common/DatePicker";
@@ -424,6 +425,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
               ? <span className="ecos-pop flex items-center gap-2"><button type="button" disabled={ocupado} onClick={() => void executar(onExcluir!)} className="flex items-center gap-1.5 rounded-lg bg-error px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"><Trash2 size={15} />{emOcorrencia ? "Cancelar só esta ocorrência" : "Confirmar exclusão"}</button><button type="button" onClick={() => setConfirmaExcluir(false)} className="rounded-lg px-2 py-2 text-sm text-text-secondary hover:bg-surface-2">Não</button></span>
               : <button type="button" onClick={() => setConfirmaExcluir(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-error transition-colors hover:bg-error/10"><Trash2 size={15} />{emOcorrencia ? "Cancelar ocorrência" : "Excluir"}</button>
           )}
+          {edicao && <BotaoCopiarCaminho variante="rotulo" tipo="evento" espaco={espaco} titulo={titulo} className="!min-h-0 !min-w-0 !rounded-lg !px-3 !py-2 hover:bg-surface-2" />}
           <span className="ml-auto hidden text-[11px] text-text-muted sm:inline">Ctrl+Enter salva · Esc fecha</span>
           <button type="button" onClick={fechar} className="rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-2">Cancelar</button>
           <button type="submit" disabled={ocupado} className="group flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95 disabled:opacity-60">{edicao ? <Save size={16} className="transition-transform duration-500 group-hover:rotate-12 group-active:rotate-[360deg]" /> : <CalendarPlus size={16} className="transition-transform duration-500 ease-out group-hover:rotate-12 group-active:rotate-[360deg] group-active:duration-700" />}{ocupado ? "Salvando..." : emOcorrencia ? "Salvar ocorrência" : edicao ? "Salvar evento" : "Criar evento"}</button>

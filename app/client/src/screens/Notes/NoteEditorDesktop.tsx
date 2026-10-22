@@ -4,8 +4,9 @@ import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
+import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
 import { AlertTriangle, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
-import { AcoesFocusContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
+import { AcoesFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
 import { MiniGrafo } from "@/screens/Grafico/MiniGrafo";
 import { ApiError, notas } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
@@ -79,6 +80,7 @@ export function NoteEditorDesktop() {
   const painelFocus = useContext(PainelFocusControleContext);
   const montagemPainel = useContext(PainelFocusTarefaContext);
   const acoesFocus = useContext(AcoesFocusContext);
+  const acoesJanela = useContext(AcoesJanelaContext);
   const [nota, setNota] = useState<NotaApi | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
@@ -224,8 +226,10 @@ export function NoteEditorDesktop() {
   const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (
     <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>
+      {!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />, acoesJanela)}
       {modoFocus && acoesFocus && createPortal(
         <>
+          <BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
           <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
           <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
           <span aria-hidden className="mx-1 h-4 w-px bg-border" />
@@ -261,6 +265,7 @@ export function NoteEditorDesktop() {
         <div ref={raizNota} className="flex min-w-0 flex-col gap-4">
           <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
             <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
+            {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />}
             {!modoFocus && <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
             {!modoFocus && <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
           </div>

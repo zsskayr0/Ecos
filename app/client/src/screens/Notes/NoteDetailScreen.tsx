@@ -17,6 +17,8 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { NoteEditorDesktop } from "./NoteEditorDesktop";
+import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
+import { pastaDoArquivoDeNota } from "@/lib/caminho-item";
 import { TitleField } from "@/components/common/TitleField";
 
 import { mensagemDeErro } from "@/lib/erros";
@@ -25,6 +27,8 @@ import { PRAZO_CARGA_MS } from "@/components/common/FalhaCarga";
 interface NotaCompleta {
   id: string;
   titulo: string;
+  espaco?: string;
+  caminho_arquivo?: string;
   tags: string[];
   criado_em: string;
   atualizado_em: string;
@@ -190,6 +194,7 @@ function NoteDetailMobile() {
   return (
     <div className="ecos-detail-page min-w-0">
       <DetailHeader onBack={() => navigate(-1)} actions={<>
+        <BotaoCopiarCaminho variante="rotulo" tipo="nota" espaco={nota.espaco} pasta={nota.caminho_arquivo ? pastaDoArquivoDeNota(nota.caminho_arquivo) : null} titulo={editando ? tituloEdit : nota.titulo} />
         {!editando && <button type="button" onClick={entrarEdicao} className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} />Editar</button>}
         {editando && <button type="button" disabled={salvando || enviandoAnexo} onClick={salvar} className={`${DETAIL_ACTION} text-steel-300`}>Concluir</button>}
         <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
