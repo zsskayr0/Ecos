@@ -62,7 +62,6 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   // Abre completo ao editar ou quando o rascunho já traz algo do bloco avançado.
   const [maisOpcoes, setMaisOpcoes] = useState(() => editing || Boolean(value.corpo.trim() || value.subtarefas.length || value.pasta || value.tags.length));
   const simples = !maisOpcoes;
-  const [descriptionOpened, setDescriptionOpened] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [folders, setFolders] = useState<{ caminho: string; nome: string }[]>([]);
   const [newTag, setNewTag] = useState("");
@@ -190,7 +189,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
     {!simples && <div ref={grade} className="grid min-w-0 gap-7 md:gap-0" style={largo ? { gridTemplateColumns: focusMode ? "minmax(0,1fr)" : `minmax(0,1fr) ${LARGURA_DIVISORIA}px ${larguraSidebar}px` } : undefined}>
       <div className="min-w-0 space-y-6 md:pr-3">
         <section aria-label="Descrição" className="block">
-          <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => { setDescriptionOpened(true); onChange({ corpo }); }} initialPreview
+          <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })}
             rows={focusMode ? 18 : 10} layout="document" semBorda={focusMode} placeholder="Contexto, decisões, links ou um projeto inteiro… Use #tags para organizar." />
         </section>
         <section id={`${id}-subtasks`} aria-label="Subtarefas" className="border-t border-border pt-6">
