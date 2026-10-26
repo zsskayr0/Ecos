@@ -29,7 +29,7 @@ export function deveEnviarResumo(agora: Date, p: PreferenciasAplicativo, ultimoE
   return agora.getHours() * 60 + agora.getMinutes() >= hora && ultimoEnvio !== dataLocalISO(agora);
 }
 
-interface TarefaParaResumo { status: "pendente" | "concluida"; scheduled_at: string | null; due_date: string | null }
+interface TarefaParaResumo { status: "pendente" | "concluida" | "arquivada"; scheduled_at: string | null; due_date: string | null }
 
 /** Texto do resumo: o que vence hoje e o que já está atrasado. */
 export function textoDoResumo(tarefas: TarefaParaResumo[], agora: Date): string {

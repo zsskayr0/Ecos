@@ -26,3 +26,8 @@ export function useRefreshBus() {
   if (!ctx) throw new Error("useRefreshBus must be used inside <RefreshProvider>");
   return ctx;
 }
+
+/** Versão do bus, ou `null` fora de um `<RefreshProvider>` (componentes de exibição que também rodam isolados). */
+export function useVersaoOpcional(): number | null {
+  return useContext(RefreshContext)?.versao ?? null;
+}

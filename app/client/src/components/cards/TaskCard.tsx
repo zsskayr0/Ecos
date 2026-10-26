@@ -133,7 +133,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
         </span>
         {prazo && <span className={`flex items-center gap-1 text-[11px] ${vencida ? "font-semibold text-error" : "text-text-muted"}`}><CalendarDays size={12} />{formatarPrazo(prazo)}</span>}
         {subtarefas.length > 0 && <span className="flex items-center gap-1 text-[11px] text-text-muted"><ListChecks size={12} />{feitas}/{subtarefas.length}</span>}
-        <TagsChips tags={tags} />
+        <TagsChips tags={tags} espaco={tarefa.espaco} />
       </div>
     </article>
   );

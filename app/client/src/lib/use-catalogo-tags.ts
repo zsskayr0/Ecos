@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { tagsApi, type TagCatalogo } from "./api";
 import { useRefreshBus } from "./refresh-bus";
+import { registrarCoresDasTags } from "./tag-cor";
 
 import { mensagemDeErro } from "@/lib/erros";
 /**
@@ -18,7 +19,7 @@ export function useCatalogoTags(espaco?: string) {
     let vivo = true;
     setCarregando(true);
     tagsApi.listar(espaco)
-      .then((r) => { if (vivo) { setTags(r); setErro(null); } })
+      .then((r) => { if (vivo) { setTags(r); setErro(null); registrarCoresDasTags(r, espaco); } })
       .catch((e: unknown) => { if (vivo) setErro(mensagemDeErro(e, "Não foi possível carregar as tags.")); })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };

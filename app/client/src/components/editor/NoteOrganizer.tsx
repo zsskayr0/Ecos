@@ -1,3 +1,4 @@
+import { ChipTag } from "@/components/common/ChipTag";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Folder, Plus, X } from "lucide-react";
@@ -138,14 +139,14 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
       {todas.map((tag) => {
         const noTexto = tagsNoTexto.includes(tag) && !tags.includes(tag);
         return (
-          <span key={tag} className="flex h-8 items-center gap-1 rounded-lg bg-surface-2 pl-2.5 pr-1 text-sm text-text-secondary" title={noTexto ? "Vem do texto da nota" : undefined}>
+          <ChipTag key={tag} tag={tag} espaco={espaco ?? "pessoal"} className="flex h-8 items-center gap-1 rounded-lg pl-2.5 pr-1 text-sm" titulo={noTexto ? "Vem do texto da nota" : undefined}>
             <span className="max-w-[10rem] truncate">#{tag}</span>
             {noTexto ? <span className="w-1.5" /> : (
               <button type="button" disabled={disabled} onClick={() => onTags(tags.filter((t) => t !== tag))} aria-label={`Remover tag ${tag}`} className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary">
                 <X size={13} />
               </button>
             )}
-          </span>
+          </ChipTag>
         );
       })}
 

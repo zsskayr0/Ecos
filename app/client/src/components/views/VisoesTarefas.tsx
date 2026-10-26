@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode, type DragEvent, type
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, RotateCcw, StickyNote } from "lucide-react";
 import { tarefas as tarefasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { definirStatusOtimista, type StatusTarefa } from "@/lib/status-otimista";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { movimentoReduzido } from "@/lib/movimento";
 import type { FeedItem, PrioridadeTarefa, Tarefa } from "@/lib/types";
@@ -71,6 +72,7 @@ const TOM_NEUTRO = tom("120 120 120");
 const TOM_COLUNA: Record<string, TomColuna> = {
   pendente: tom("217 115 13"),
   concluida: tom("68 131 97"),
+  arquivada: tom("145 145 145"),
   alta: tom("212 76 71"),
   media: tom("217 115 13"),
   baixa: tom("51 126 169"),
@@ -97,7 +99,7 @@ function Contagem({ n }: { n: number }) {
 
 type ColunasPor = "status" | "prioridade";
 
-interface Coluna { id: string; rotulo: string; itens: Tarefa[]; aplicar: (id: string) => Promise<unknown> }
+interface Coluna { id: string; rotulo: string; itens: Tarefa[]; aplicar: (id: string) => Promise<unknown>; /** Colunas de status: a tarefa já aparece na nova coluna enquanto o servidor responde. */ status?: StatusTarefa }
 
 function lerColunasPor(): ColunasPor {
   try { return localStorage.getItem("ecos:kanban:colunas") === "prioridade" ? "prioridade" : "status"; } catch { return "status"; }
@@ -207,8 +209,9 @@ export function KanbanItens(comum: Comum) {
 
   const colunas: Coluna[] = por === "status"
     ? [
-        { id: "pendente", rotulo: "Pendentes", itens: tarefas.filter((t) => t.status === "pendente"), aplicar: (id) => tarefasApi.atualizarStatus(id, "pendente") },
-        { id: "concluida", rotulo: "Concluídas", itens: tarefas.filter((t) => t.status === "concluida"), aplicar: (id) => tarefasApi.atualizarStatus(id, "concluida") },
+        { id: "pendente", rotulo: "Pendentes", itens: tarefas.filter((t) => t.status === "pendente"), aplicar: (id) => tarefasApi.atualizarStatus(id, "pendente"), status: "pendente" },
+        { id: "concluida", rotulo: "Concluídas", itens: tarefas.filter((t) => t.status === "concluida"), aplicar: (id) => tarefasApi.atualizarStatus(id, "concluida"), status: "concluida" },
+        { id: "arquivada", rotulo: "Arquivadas", itens: tarefas.filter((t) => t.status === "arquivada"), aplicar: (id) => tarefasApi.atualizarStatus(id, "arquivada"), status: "arquivada" },
       ]
     : (["alta", "media", "baixa"] as PrioridadeTarefa[]).map((p) => ({
         id: p,
@@ -224,8 +227,9 @@ export function KanbanItens(comum: Comum) {
     const tarefa = tarefas.find((t) => t.id === id);
     if (!tarefa || coluna.itens.some((t) => t.id === id)) return;
     setErro(null);
+    const reverter = coluna.status ? definirStatusOtimista([id], coluna.status) : null;
     try { await coluna.aplicar(id); notificar(); }
-    catch (err) { setErro(mensagemDeErro(err, "Não foi possível mover a tarefa.")); }
+    catch (err) { reverter?.(); setErro(mensagemDeErro(err, "Não foi possível mover a tarefa.")); }
   }
 
   return (
@@ -286,6 +290,7 @@ function lerAgruparPor(): AgruparPor {
 
 function grupoDePrazo(t: Tarefa, hoje: number): string {
   if (t.status === "concluida") return "Concluídas";
+  if (t.status === "arquivada") return "Arquivadas";
   const prazo = prazoDaTarefa(t);
   if (!prazo) return "Sem prazo";
   const dias = Math.floor((inicioDoDia(new Date(prazo.ms)) - hoje) / DIA);
@@ -296,7 +301,7 @@ function grupoDePrazo(t: Tarefa, hoje: number): string {
   return "Depois";
 }
 
-const ORDEM_PRAZO = ["Atrasadas", "Hoje", "Amanhã", "Esta semana", "Depois", "Sem prazo", "Concluídas"];
+const ORDEM_PRAZO = ["Atrasadas", "Hoje", "Amanhã", "Esta semana", "Depois", "Sem prazo", "Concluídas", "Arquivadas"];
 
 /** Seções recolhíveis por prazo, prioridade ou pasta. */
 export function AgrupadaItens(comum: Comum) {

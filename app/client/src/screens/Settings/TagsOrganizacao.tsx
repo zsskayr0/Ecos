@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { GitMerge, Pencil, Tag, Trash2, X } from "lucide-react";
+import { GitMerge, Pencil, Trash2, X } from "lucide-react";
 import { tagsApi, type TagCatalogo } from "@/lib/api";
 import { canonicaTag } from "@/lib/tags";
+import { corFoiEscolhida, useCoresDasTags } from "@/lib/tag-cor";
+import { PaletaCores } from "@/components/common/PaletaCores";
 import { useCatalogoTags } from "@/lib/use-catalogo-tags";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
@@ -29,6 +31,9 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
   const [removendo, setRemovendo] = useState<TagCatalogo | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [falha, setFalha] = useState<string | null>(null);
+  const corDe = useCoresDasTags();
+  const [corAberta, setCorAberta] = useState<string | null>(null);
+  const [corTemp, setCorTemp] = useState("#3E6FA8");
 
   const visiveis = useMemo(() => {
     const termo = canonicaTag(filtro) ?? filtro.trim().toLowerCase();
@@ -45,6 +50,17 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
       recarregar(); notificar();
     } catch (e) {
       setFalha(mensagemDeErro(e, "Não foi possível concluir. Nada foi alterado."));
+    } finally { setOcupado(false); }
+  }
+
+  async function salvarCor(tag: string, cor: string | null) {
+    setOcupado(true); setFalha(null);
+    try {
+      await tagsApi.definirCor({ espaco, tag, cor });
+      setCorAberta(null);
+      recarregar(); notificar();
+    } catch (e) {
+      setFalha(mensagemDeErro(e, "Não foi possível salvar a cor."));
     } finally { setOcupado(false); }
   }
 
@@ -66,7 +82,7 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
 
   return <section className="mt-8" aria-label="Tags">
     <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Tags</p>
-    <p className="mb-3 text-xs leading-relaxed text-text-muted">Um catálogo só para notas e tarefas deste espaço. Maiúsculas, espaços e # são ignorados ao comparar; os arquivos só mudam quando você renomeia, mescla ou remove.</p>
+    <p className="mb-3 text-xs leading-relaxed text-text-muted">Um catálogo só para notas e tarefas deste espaço. A cor de cada tag vale para todos os membros. Maiúsculas, espaços e # são ignorados ao comparar; os arquivos só mudam quando você renomeia, mescla ou remove.</p>
 
     <div className="rounded-2xl border border-border bg-surface-1 p-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -89,12 +105,19 @@ export function TagsOrganizacao({ espaco }: { espaco: string }) {
       {carregando && tags.length === 0 ? <p className="py-6 text-center text-sm text-text-muted">Carregando tags…</p>
         : visiveis.length === 0 ? <p className="py-6 text-center text-sm text-text-muted">{tags.length === 0 ? "Nenhuma tag neste espaço ainda. Elas nascem ao marcar uma nota ou tarefa." : "Nenhuma tag encontrada."}</p>
         : <ul className="divide-y divide-border/60">
-          {visiveis.map((t) => <li key={t.tag} className="flex items-center gap-2 py-1.5">
+          {visiveis.map((t) => <li key={t.tag} className="flex flex-wrap items-center gap-2 py-1.5">
             <input type="checkbox" checked={marcadas.includes(t.tag)} onChange={(e) => setMarcadas((atual) => e.target.checked ? [...atual, t.tag] : atual.filter((x) => x !== t.tag))} aria-label={`Selecionar #${t.tag} para mesclar`} className="h-5 w-5 shrink-0 accent-[var(--color-cyan,#22d3ee)]" />
-            <Tag size={15} className="shrink-0 text-violet" aria-hidden />
+            <button type="button" disabled={ocupado} onClick={() => { const cor = corDe(t.tag, espaco); setCorTemp(cor); setFalha(null); setCorAberta(corAberta === t.tag ? null : t.tag); }} aria-label={`Cor de #${t.tag}`} aria-expanded={corAberta === t.tag} className="flex h-10 w-7 shrink-0 items-center justify-center"><span className="h-5 w-5 rounded-full border-2 border-black/10 shadow-sm" style={{ backgroundColor: corDe(t.tag, espaco) }} /></button>
             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-text-primary">#{t.tag}</span><span className="block text-xs text-text-muted">{resumoUso(t)}</span></span>
             <button type="button" disabled={ocupado} onClick={() => { setNome(t.tag); setFalha(null); setAcao({ tipo: "renomear", tag: t.tag }); }} aria-label={`Renomear #${t.tag}`} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-primary"><Pencil size={16} /></button>
             <button type="button" disabled={ocupado} onClick={() => setRemovendo(t)} aria-label={`Remover #${t.tag}`} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-error"><Trash2 size={16} /></button>
+            {corAberta === t.tag && <div role="group" aria-label={`Cor de #${t.tag}`} className="basis-full rounded-xl border border-border bg-surface-2 p-3">
+              <PaletaCores valor={corTemp} onChange={setCorTemp} />
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" disabled={ocupado || (corFoiEscolhida(t.tag, espaco) && corTemp.toLowerCase() === corDe(t.tag, espaco).toLowerCase())} onClick={() => void salvarCor(t.tag, corTemp)} className="min-h-10 flex-1 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40">Salvar cor</button>
+                {corFoiEscolhida(t.tag, espaco) && <button type="button" disabled={ocupado} onClick={() => void salvarCor(t.tag, null)} className="min-h-10 rounded-lg border border-border px-3 text-sm text-text-secondary hover:bg-surface-3">Voltar ao automático</button>}
+              </div>
+            </div>}
           </li>)}
         </ul>}
     </div>

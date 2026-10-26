@@ -37,11 +37,11 @@ fn cor_derivada(equipe_id: &str) -> &'static str {
 }
 
 /// `#RRGGBB` (maiúsculas ou minúsculas). Nada de nomes, `rgb()` ou `url()` — o valor vai direto para estilos no cliente.
-fn cor_valida(cor: &str) -> bool {
+pub(crate) fn cor_valida(cor: &str) -> bool {
     cor.len() == 7 && cor.starts_with('#') && cor[1..].bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn validar_cor(cor: &str) -> AppResult<String> {
+pub(crate) fn validar_cor(cor: &str) -> AppResult<String> {
     if cor_valida(cor) { Ok(cor.to_uppercase()) } else {
         Err(AppError::validation(vec![CampoInvalido { campo: "cor".into(), motivo: "use o formato #RRGGBB".into() }]))
     }

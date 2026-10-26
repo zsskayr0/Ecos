@@ -130,6 +130,8 @@ pub struct NotaIndexada {
 pub enum TarefaStatus {
     Pendente,
     Concluida,
+    /// "Não farei" / guardada: sai das listas operacionais mas continua existindo (diferente de apagar).
+    Arquivada,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -259,7 +261,7 @@ impl TarefaFrontMatter {
                     self.concluida_em = Some(agora);
                 }
             }
-            TarefaStatus::Pendente => self.concluida_em = None,
+            TarefaStatus::Pendente | TarefaStatus::Arquivada => self.concluida_em = None,
         }
         self.status = novo;
         self.atualizado_em = Some(agora);
@@ -995,6 +997,18 @@ mod tests {
         assert!(fm.concluida_em.is_none());
         fm.definir_status(TarefaStatus::Concluida, t2);
         assert_eq!(fm.concluida_em, Some(t2));
+    }
+
+    #[test]
+    fn arquivar_limpa_a_conclusao_e_vai_e_volta_pelo_front_matter() {
+        let mut fm = tarefa_pendente();
+        let t: DateTime<Utc> = "2026-10-25T10:00:00Z".parse().unwrap();
+        fm.definir_status(TarefaStatus::Concluida, t);
+        fm.definir_status(TarefaStatus::Arquivada, t);
+        assert!(fm.concluida_em.is_none());
+        let texto = crate::frontmatter::serialize(&fm, "").unwrap();
+        assert!(texto.contains("arquivada"));
+        assert_eq!(crate::frontmatter::parse::<TarefaFrontMatter>(&texto).unwrap().front_matter.status, TarefaStatus::Arquivada);
     }
 
     #[test]

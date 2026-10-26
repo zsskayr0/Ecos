@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlarmClock, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, ListChecks, ListFilter, PencilLine, Sparkles, Tag, Tags, User, Users, X } from "lucide-react";
+import { AlarmClock, Archive, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, ListChecks, ListFilter, PencilLine, Sparkles, Tag, Tags, User, Users, X } from "lucide-react";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { MenuMultiplo, type OpcaoMultipla } from "@/components/common/MenuMultiplo";
 import { corDaEquipe } from "@/lib/team-color";
@@ -8,6 +8,7 @@ import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type Fi
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
   { valor: "todos", rotulo: "Todos os status", icone: ListChecks }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck },
+  { valor: "arquivada", rotulo: "Arquivadas", cor: TOM.aco, icone: Archive },
   { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock }, { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle },
 ];
 const PRIORIDADES: OpcaoMenu<FiltroPrioridade>[] = [

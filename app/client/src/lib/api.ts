@@ -668,7 +668,7 @@ export interface TarefaResumo {
   id: string;
   caminho_arquivo: string;
   titulo: string;
-  status: "pendente" | "concluida";
+  status: "pendente" | "concluida" | "arquivada";
   scheduled_at: string | null;
   duration_min: number | null;
   due_date: string | null;
@@ -720,7 +720,7 @@ export interface SerieResumo {
 export interface TarefaDetalhe {
   id: string;
   titulo: string;
-  status: "pendente" | "concluida";
+  status: "pendente" | "concluida" | "arquivada";
   scheduled_at: string | null;
   duration_min: number | null;
   due_date: string | null;
@@ -785,7 +785,7 @@ export const tarefas = {
   obter: (id: string) => get<TarefaDetalhe>(`/tarefas/${id}`),
   criar: (payload: CriarTarefaPayload) => post<{ id: string }>("/tarefas", payload),
   atualizar: (id: string, payload: AtualizarTarefaPayload) => patch<{ id: string }>(`/tarefas/${id}`, payload),
-  atualizarStatus: (id: string, status: "pendente" | "concluida") => patch<{ id: string; status: string }>(`/tarefas/${id}/status`, { status }),
+  atualizarStatus: (id: string, status: "pendente" | "concluida" | "arquivada") => patch<{ id: string; status: string }>(`/tarefas/${id}/status`, { status }),
   timeEntries: {
     listar: (id: string) => get<{ id: string; tipo: "planejado" | "real"; inicio_em: string; fim_em: string | null; duracao_min: number; foco: string; criado_em: string }[]>(`/tarefas/${id}/time-entries`),
     criar: (id: string, payload: { tipo: "planejado" | "real"; inicio_em: string; duracao_min: number; foco?: string }) => post<{ id: string }>(`/tarefas/${id}/time-entries`, payload),
@@ -860,7 +860,7 @@ export const busca = {
 
 // --- Tags (catálogo único de notas e tarefas) -----------------------------------
 
-export interface TagCatalogo { tag: string; notas: number; tarefas: number; total: number; espacos: { espaco: string; notas: number; tarefas: number }[] }
+export interface TagCatalogo { tag: string; notas: number; tarefas: number; total: number; espacos: { espaco: string; notas: number; tarefas: number; cor?: string | null }[] }
 export interface AfetadosTag { notas: number; tarefas: number }
 
 export type TipoNoGrafico = "nota" | "tarefa" | "evento" | "tag";
@@ -877,6 +877,8 @@ export const tagsApi = {
   renomear: (payload: { espaco: string; de: string; para: string }) => patch<{ tag: string; afetados: AfetadosTag }>("/tags", payload),
   mesclar: (payload: { espaco: string; origens: string[]; destino: string }) => post<{ tag: string; afetados: AfetadosTag }>("/tags/mesclar", payload),
   remover: (payload: { espaco: string; tag: string }) => del<{ afetados: AfetadosTag }>(`/tags${qs(payload)}`),
+  /** `cor: null` volta para a automática. Vale para todos os membros do espaço. */
+  definirCor: (payload: { espaco: string; tag: string; cor: string | null }) => put<{ tag: string; cor: string | null }>("/tags/cor", payload),
 };
 
 // --- Teams (section 11.10) ----------------------------------------------
@@ -895,7 +897,7 @@ export interface BlocoPlanejado {
   duracao_min: number;
   foco: string;
   titulo: string;
-  status: "pendente" | "concluida";
+  status: "pendente" | "concluida" | "arquivada";
   prioridade: PrioridadeTarefa;
   tarefa_duration_min: number | null;
 }

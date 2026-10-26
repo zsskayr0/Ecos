@@ -164,7 +164,7 @@ export function tarefaResumoParaView(
     tipo: "tarefa",
     id: t.id,
     titulo: t.titulo,
-    status: t.status === "concluida" ? "concluida" : "pendente",
+    status: t.status === "concluida" || t.status === "arquivada" ? t.status : "pendente",
     scheduledAt: t.scheduled_at,
     durationMin: t.duration_min ?? 30,
     dueDate: t.due_date,

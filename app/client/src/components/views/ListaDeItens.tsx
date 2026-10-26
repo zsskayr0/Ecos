@@ -7,7 +7,7 @@ import { TaskCard } from "@/components/cards/TaskCard";
 import { TaskListRow } from "@/components/cards/TaskListRow";
 import { modoEfetivo, type ModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { useIsDesktop } from "@/lib/use-viewport";
-import type { FeedItem } from "@/lib/types";
+import type { FeedItem, Tarefa } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Check, ChevronDown, Flag, FolderInput, Loader2, Users, X } from "lucide-react";
 import { equipes, pastas, tarefas, notas } from "@/lib/api";
@@ -18,6 +18,8 @@ import { canonicaTag } from "@/lib/tags";
 import { chaveDoDono, ESTADO_VAZIO, estadoInicial, filtrar, ordenarComDirecao, pastaDoItem, type EstadoFiltros, type Ordem } from "./filtros/modelo";
 import { TabelaItens } from "./TabelaItens";
 import { AgrupadaItens, KanbanItens, MatrizItens } from "./VisoesTarefas";
+import { publicarTarefasDoSlide } from "@/lib/lista-tarefas-slide";
+import { comStatusOtimista, definirStatusOtimista, reconciliarStatusOtimista, useStatusOtimista } from "@/lib/status-otimista";
 
 import { mensagemDeErro } from "@/lib/erros";
 interface Props {
@@ -55,7 +57,10 @@ function lerFiltros(chave: string): EstadoFiltros | null {
 }
 
 /** Uma lista de notas e/ou tarefas em qualquer das visualizações: feed (cards), lista compacta, tabela ou grade. */
-export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true, pesquisavel = false, placeholderBusca, acaoDireita, semFeedNoDesktop = false }: Props) {
+export function ListaDeItens({ itens: itensDoServidor, modo, chave, mostrarCriada, mostrarMotivo, exibirFiltros = true, chaveFiltros, tipoPastas = "ambos", selecionavel = true, pesquisavel = false, placeholderBusca, acaoDireita, semFeedNoDesktop = false }: Props) {
+  const sobrepostos = useStatusOtimista();
+  const itens = useMemo(() => comStatusOtimista(itensDoServidor, sobrepostos) as FeedItem[], [itensDoServidor, sobrepostos]);
+  useEffect(() => { reconciliarStatusOtimista(itensDoServidor); }, [itensDoServidor]);
   const chaveDosFiltros = chaveFiltros ?? chave;
   const desktop = useIsDesktop();
   const efetivo = modoEfetivo(modo, desktop, semFeedNoDesktop);
@@ -160,20 +165,25 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível alterar a equipe.")); }
     finally { setProcessando(false); setMenuEquipeAberto(false); }
   }
-  async function concluirSelecionadas() {
-    if (!tarefasSelecionadas.length || processando) return;
-    setProcessando(true); setErroAcao(null);
-    try {
-      const concluidas = [...tarefasSelecionadas];
-      for (const item of concluidas) await tarefas.atualizarStatus(item.id, "concluida");
-      setSelecionados(new Set()); ancora.current = null; notificar();
-      avisarComDesfazer(
-        concluidas.length === 1 ? "Tarefa concluída." : `${concluidas.length} tarefas concluídas.`,
-        async () => { for (const item of concluidas) await tarefas.atualizarStatus(item.id, "pendente"); },
-        { aoDesfazer: notificar, sucesso: concluidas.length === 1 ? "Tarefa reaberta." : "Tarefas reabertas." },
-      );
-    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível concluir as tarefas.")); }
-    finally { setProcessando(false); }
+  /** Otimista: as tarefas já aparecem concluídas e a seleção some; o servidor é avisado em segundo plano e, se falhar, tudo volta. */
+  function concluirSelecionadas() {
+    if (!tarefasSelecionadas.length) return;
+    const concluidas = [...tarefasSelecionadas];
+    const ids = concluidas.map((item) => item.id);
+    setErroAcao(null);
+    const reverter = definirStatusOtimista(ids, "concluida");
+    setSelecionados(new Set()); ancora.current = null;
+    void (async () => {
+      try {
+        for (const item of concluidas) await tarefas.atualizarStatus(item.id, "concluida");
+        notificar();
+        avisarComDesfazer(
+          concluidas.length === 1 ? "Tarefa concluída." : `${concluidas.length} tarefas concluídas.`,
+          async () => { for (const item of concluidas) await tarefas.atualizarStatus(item.id, "pendente"); },
+          { aoDesfazer: () => { definirStatusOtimista(ids, "pendente"); notificar(); }, sucesso: concluidas.length === 1 ? "Tarefa reaberta." : "Tarefas reabertas." },
+        );
+      } catch (e) { reverter(); setErroAcao(mensagemDeErro(e, "Não foi possível concluir as tarefas.")); notificar(); }
+    })();
   }
 
   function selecionar(e: MouseEvent, item: FeedItem, ordem = itensVisiveis) {
@@ -202,7 +212,7 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     <span className="px-2 text-sm font-medium text-text-primary">{itensSelecionados.length} selecionado{itensSelecionados.length === 1 ? "" : "s"}</span>
     <div className="relative"><button type="button" onClick={() => { setMenuMoverAberto((aberto) => !aberto); setMenuPrioridadeAberto(false); setMenuEquipeAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><FolderInput size={16} className="text-steel-300" />Mover<ChevronDown size={15} /></button>{menuMoverAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => void moverSelecionados(null)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Sem pasta</button><ArvorePastas opcoes={pastasDisponiveis.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[]} onSelect={(p) => void moverSelecionados(p)} /></div>}</div>
     <div className="relative"><button type="button" onClick={() => { setMenuEquipeAberto((aberto) => !aberto); setMenuMoverAberto(false); setMenuPrioridadeAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><Users size={16} className="text-violet" />Equipe<ChevronDown size={15} /></button>{menuEquipeAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => void mudarEquipe("pessoal")} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Pessoal</button>{equipesDisponiveis.map((equipe) => <button key={equipe.id} type="button" role="menuitem" onClick={() => void mudarEquipe(`equipe:${equipe.id}`)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">{equipe.nome}</button>)}</div>}</div>
-    {tarefasSelecionadas.length > 0 && <><div className="relative"><button type="button" onClick={() => { setMenuPrioridadeAberto((aberto) => !aberto); setMenuMoverAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><Flag size={16} className="text-warning" />Prioridade<ChevronDown size={15} /></button>{menuPrioridadeAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav">{(["baixa", "media", "alta"] as const).map((prioridade) => <button key={prioridade} type="button" role="menuitem" onClick={() => void alterarPrioridade(prioridade)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">{prioridade[0].toUpperCase() + prioridade.slice(1)}</button>)}</div>}</div><button type="button" onClick={() => void concluirSelecionadas()} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg border border-success px-3 text-sm text-success hover:bg-success hover:text-white disabled:opacity-40"><Check size={16} />Concluir{tarefasSelecionadas.length > 1 ? ` (${tarefasSelecionadas.length})` : ""}</button></>}
+    {tarefasSelecionadas.length > 0 && <><div className="relative"><button type="button" onClick={() => { setMenuPrioridadeAberto((aberto) => !aberto); setMenuMoverAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><Flag size={16} className="text-warning" />Prioridade<ChevronDown size={15} /></button>{menuPrioridadeAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav">{(["baixa", "media", "alta"] as const).map((prioridade) => <button key={prioridade} type="button" role="menuitem" onClick={() => void alterarPrioridade(prioridade)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">{prioridade[0].toUpperCase() + prioridade.slice(1)}</button>)}</div>}</div><button type="button" onClick={concluirSelecionadas} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg border border-success px-3 text-sm text-success hover:bg-success hover:text-white disabled:opacity-40"><Check size={16} />Concluir{tarefasSelecionadas.length > 1 ? ` (${tarefasSelecionadas.length})` : ""}</button></>}
     <button type="button" onClick={() => { setSelecionados(new Set()); ancora.current = null; }} disabled={processando} className="ml-auto flex min-h-10 min-w-10 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Limpar seleção"><>{processando ? <Loader2 size={17} className="animate-spin" /> : <X size={17} />}</></button>
     {erroAcao && <p role="alert" className="basis-full px-2 pb-1 text-sm text-error">{erroAcao}</p>}
   </div>;
@@ -233,6 +243,8 @@ export function ListaDeItens({ itens, modo, chave, mostrarCriada, mostrarMotivo,
     }
     return [...porChave.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }));
   }, [itens]);
+  // Modo Slide (aberto pela janela da tarefa): anda pelas tarefas que esta lista mostra agora, na ordem e com os filtros escolhidos.
+  useEffect(() => { if (desktop) publicarTarefasDoSlide(itensVisiveis.filter((item): item is Tarefa => item.tipo === "tarefa")); }, [desktop, assinaturaVisivel]);
   const cabecalhoFiltros = <>
     <BarraFiltros estado={estadoFiltros} onChange={setEstadoFiltros} contexto={{ equipes: equipesDisponiveis, pastas: pastasDoFiltro, tags: tagsDoFiltro, donos: donosDoFiltro }} visiveis={itensVisiveis.length} total={itens.length} temTarefas={temTarefas} pesquisavel={pesquisavel} placeholderBusca={placeholderBusca} acaoDireita={acaoDireita} />
     {itens.length > 0 && itensVisiveis.length === 0 && <p className="py-8 text-center text-sm text-text-muted">{estadoFiltros.busca.trim() ? `Nada encontrado para “${estadoFiltros.busca.trim()}”.` : "Nenhum item corresponde aos filtros."}</p>}

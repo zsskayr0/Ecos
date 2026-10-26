@@ -68,6 +68,7 @@ fn tarefa_status_str(status: TarefaStatus) -> &'static str {
     match status {
         TarefaStatus::Pendente => "pendente",
         TarefaStatus::Concluida => "concluida",
+        TarefaStatus::Arquivada => "arquivada",
     }
 }
 
@@ -642,9 +643,13 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
             tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
 
-            if let Some(pasta) = &item.pasta_id {
-                let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
-                *contagem_pastas.entry(("tarefa", chave, pasta.clone())).or_insert(0) += 1;
+            // A contagem exibida na árvore de tarefas representa somente o trabalho
+            // ainda ativo; concluídas continuam disponíveis na busca/listagem geral.
+            if fm.status == TarefaStatus::Pendente {
+                if let Some(pasta) = &item.pasta_id {
+                    let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
+                    *contagem_pastas.entry(("tarefa", chave, pasta.clone())).or_insert(0) += 1;
+                }
             }
         }
 

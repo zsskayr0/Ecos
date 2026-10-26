@@ -3,6 +3,7 @@ import { avisarExcluido } from "@/lib/desfazer";
 import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
 import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ChipTag } from "@/components/common/ChipTag";
 import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
@@ -27,9 +28,9 @@ import { PRAZO_CARGA_MS } from "@/components/common/FalhaCarga";
 interface NotaCompleta {
   id: string;
   titulo: string;
+  tags: string[];
   espaco?: string;
   caminho_arquivo?: string;
-  tags: string[];
   criado_em: string;
   atualizado_em: string;
   ultima_revisao_em: string | null;
@@ -236,10 +237,10 @@ function NoteDetailMobile() {
           {nota.tags.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {nota.tags.map((t) => (
-                <span key={t} className="flex items-center gap-1 rounded-pill bg-surface-2 px-2.5 py-1 text-xs text-text-secondary">
+                <ChipTag key={t} tag={t} espaco={nota.espaco} className="flex items-center gap-1 rounded-pill px-2.5 py-1 text-xs">
                   <Hash size={11} />
                   {t}
-                </span>
+                </ChipTag>
               ))}
             </div>
           )}

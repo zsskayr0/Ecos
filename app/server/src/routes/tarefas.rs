@@ -651,10 +651,11 @@ pub async fn atualizar_status(State(state): State<AppState>, Extension(usuario):
     let novo_status = match payload.status.as_str() {
         "pendente" => TarefaStatus::Pendente,
         "concluida" => TarefaStatus::Concluida,
+        "arquivada" => TarefaStatus::Arquivada,
         _ => {
             return Err(AppError::validation(vec![CampoInvalido {
                 campo: "status".into(),
-                motivo: "deve ser 'pendente' ou 'concluida'".into(),
+                motivo: "deve ser 'pendente', 'concluida' ou 'arquivada'".into(),
             }]))
         }
     };

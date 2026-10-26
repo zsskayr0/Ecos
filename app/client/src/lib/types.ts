@@ -75,7 +75,7 @@ export interface Tarefa {
   tipo: "tarefa";
   id: string;
   titulo: string;
-  status: "pendente" | "concluida";
+  status: "pendente" | "concluida" | "arquivada";
   scheduledAt: string | null;
   durationMin: number;
   dueDate: string | null;

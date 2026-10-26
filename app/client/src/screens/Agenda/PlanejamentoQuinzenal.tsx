@@ -1,3 +1,4 @@
+import { ChipTag } from "@/components/common/ChipTag";
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronsUp, Clock, Equal, Flag, PanelRightClose, PanelRightOpen } from "lucide-react";
@@ -77,7 +78,7 @@ function CartaoDetalhes({ entrada, posicao, acoes }: { entrada: EntradaPlano; po
         {t.scheduled_at && entrada.inicioMin !== null && <div className="flex items-center gap-1.5"><Clock size={13} aria-hidden /><dt className="sr-only">Horário</dt><dd>Bloco às {rotuloHorario(entrada.inicioMin)}</dd></div>}
         {t.due_date && <div className="flex items-center gap-1.5"><Flag size={13} aria-hidden className="text-warning" /><dt className="sr-only">Prazo</dt><dd>Prazo {rotuloLongoDoDia(t.due_date)}</dd></div>}
       </dl>
-      {(t.tags?.length ?? 0) > 0 && <ul aria-label="Tags" className="mt-2 flex flex-wrap gap-1">{t.tags!.map((tag) => <li key={tag} className="rounded-pill bg-surface-2 px-2 py-0.5 text-xs text-text-secondary">#{tag}</li>)}</ul>}
+      {(t.tags?.length ?? 0) > 0 && <ul aria-label="Tags" className="mt-2 flex flex-wrap gap-1">{t.tags!.map((tag) => <ChipTag as="li" key={tag} tag={tag} espaco={t.espaco} className="rounded-pill px-2 py-0.5 text-xs" />)}</ul>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={(e) => acoes.onAbrir(t, e)} className="rounded-lg bg-steel-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-steel-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan">Abrir</button>
         {entrada.tipo === "prazo" ? <MoverPara dias={acoes.dias} titulo={t.titulo} aoEscolher={(d) => acoes.onMover(t, d)} /> : <span className="text-xs text-text-muted">Tem hora marcada: mova na visão Dia ou Semana.</span>}

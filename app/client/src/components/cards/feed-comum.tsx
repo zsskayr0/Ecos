@@ -1,3 +1,4 @@
+import { ChipTag } from "@/components/common/ChipTag";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CloudUpload, ExternalLink, Folder, Globe, Tag } from "lucide-react";
 import { tarefas, type TarefaDetalhe } from "@/lib/api";
@@ -40,12 +41,12 @@ export function PastaChip({ caminho }: { caminho?: string | null }) {
     : <span className="text-xs text-text-muted">Sem pasta</span>;
 }
 
-export function TagsChips({ tags, max = 3 }: { tags: string[]; max?: number }) {
+export function TagsChips({ tags, espaco, max = 3 }: { tags: string[]; espaco?: string; max?: number }) {
   if (!tags.length) return null;
   return (
     <span className="flex min-w-0 items-center gap-1 overflow-hidden">
       <Tag size={12} strokeWidth={1.75} className="shrink-0 text-text-muted" />
-      {tags.slice(0, max).map((tag) => <span key={tag} className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-secondary">#{tag}</span>)}
+      {tags.slice(0, max).map((tag) => <ChipTag key={tag} tag={tag} espaco={espaco} className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px]" />)}
       {tags.length > max && <span className="shrink-0 text-[11px] text-text-muted">+{tags.length - max}</span>}
     </span>
   );

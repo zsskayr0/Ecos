@@ -103,7 +103,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
             {nota.atualizadoEm && <> · <TempoEdicao iso={nota.atualizadoEm} /></>}
           </span>
         </span>
-        <TagsChips tags={nota.tags} />
+        <TagsChips tags={nota.tags} espaco={nota.espaco} />
       </div>
     </article>
   );

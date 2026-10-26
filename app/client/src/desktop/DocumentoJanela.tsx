@@ -1,11 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { Maximize2, Minimize2, Pin, X } from "lucide-react";
+import { List, Maximize2, Minimize2, Pin, Presentation, X } from "lucide-react";
 import { screenRoutes } from "@/routes/screen-routes";
 import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
 import { moduloDaRota, tituloDaRota } from "./modules";
 import { DURACAO_SAIDA_JANELA_MS, reduzMovimento } from "./movimento";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { useTarefasDoSlide } from "@/lib/lista-tarefas-slide";
+import { ModoSlideTarefas } from "@/components/views/ModoSlideTarefas";
 
 const ROTA_FECHAR = "/__fechar__";
 const MARGEM = 16;
@@ -156,6 +158,11 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao")));
   const tarefa = path.startsWith("/tarefa/");
   const podeFocus = tarefa || path.startsWith("/notas/nota/");
+  // Modo Slide: só para a tarefa que está na lista que a tela mostra; ao sair, a janela recarrega o que foi editado lá.
+  const tarefasDaLista = useTarefasDoSlide();
+  const idDaTarefa = tarefa ? path.split("/")[2] : undefined;
+  const podeSlide = !!idDaTarefa && tarefasDaLista.some((t) => t.id === idDaTarefa);
+  const [emSlide, setEmSlide] = useState(false);
   // Com a preferência ligada a tarefa já abre maximizada (modo Focus).
   const [emFocus, setEmFocus] = useState(() => tarefa && lerPreferenciasAplicativo().tarefaMaximizada);
   /** Animação de saída da camada Focus (a janela normal só volta a aparecer inteira depois dela). */
@@ -179,6 +186,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [montagemFocus, setMontagemFocus] = useState<HTMLElement | null>(null);
   const [acoesFocus, setAcoesFocus] = useState<HTMLElement | null>(null);
   const [acoesJanela, setAcoesJanela] = useState<HTMLElement | null>(null);
+  const [acoesAbertas, setAcoesAbertas] = useState(false);
   const [animandoPainel, setAnimandoPainel] = useState(false);
   const jaAjustou = useRef(false);
   const usuarioMexeu = useRef(false);
@@ -401,7 +409,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
         ref={janelaRef}
         role="dialog"
         aria-hidden={emFocus || undefined}
-        {...(emFocus ? ({ inert: "" } as object) : {})}
+        {...(emFocus || emSlide ? ({ inert: "" } as object) : {})}
         aria-label={tituloDinamico || titulo || tituloDaRota(path)}
         tabIndex={-1}
         onPointerDownCapture={aoFocar}
@@ -453,24 +461,51 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-secondary">
             {tituloDinamico || titulo || tituloDaRota(path)}
           </span>
-          {!emFocus && <span ref={setAcoesJanela} className="flex items-center gap-0.5 empty:hidden" />}
-          {aoFixar && !emFocus && <button
-            type="button"
-            title="Fixar como aba — ou arraste até uma barra de abas"
-            aria-label="Fixar como aba"
-            onClick={() => aoFixar()}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
+          {!emFocus && <div
+            className={`flex min-w-0 items-center overflow-hidden transition-[max-width,opacity,transform] duration-300 ease-out motion-reduce:transition-none ${acoesAbertas ? "max-w-56 translate-x-0 opacity-100" : "max-w-0 translate-x-3 opacity-0"}`}
+            aria-hidden={!acoesAbertas}
           >
-            <Pin size={14} strokeWidth={1.75} />
-          </button>}
-          {podeFocus && <button
+            <span ref={setAcoesJanela} className="flex shrink-0 items-center gap-0.5 empty:hidden" />
+            {aoFixar && <button
+              type="button"
+              title="Fixar como aba — ou arraste até uma barra de abas"
+              aria-label="Fixar como aba"
+              tabIndex={acoesAbertas ? 0 : -1}
+              onClick={() => aoFixar()}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
+            >
+              <Pin size={14} strokeWidth={1.75} />
+            </button>}
+            {podeSlide && <button
+              type="button"
+              title="Abrir em Modo Slide"
+              aria-label="Abrir em Modo Slide"
+              tabIndex={acoesAbertas ? 0 : -1}
+              onClick={() => setEmSlide(true)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
+            >
+              <Presentation size={14} strokeWidth={1.75} />
+            </button>}
+            {podeFocus && <button
+              type="button"
+              title="Abrir em modo Focus"
+              aria-label="Abrir em modo Focus"
+              tabIndex={acoesAbertas ? 0 : -1}
+              onClick={alternarFocus}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
+            >
+              <Maximize2 size={14} strokeWidth={1.75} />
+            </button>}
+          </div>}
+          {!emFocus && <button
             type="button"
-            title="Abrir em modo Focus"
-            aria-label="Abrir em modo Focus"
-            onClick={alternarFocus}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
+            title={acoesAbertas ? "Ocultar ações" : "Mostrar ações"}
+            aria-label={acoesAbertas ? "Ocultar ações" : "Mostrar ações"}
+            aria-expanded={acoesAbertas}
+            onClick={() => setAcoesAbertas((abertas) => !abertas)}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary ${acoesAbertas ? "bg-surface-3 text-text-primary" : ""}`}
           >
-            <Maximize2 size={14} strokeWidth={1.75} />
+            <List size={15} strokeWidth={1.75} />
           </button>}
           <button
             type="button"
@@ -516,6 +551,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           />
         ))}
       </div>
+
+      {emSlide && <ModoSlideTarefas tarefas={tarefasDaLista} inicial={idDaTarefa} aoFechar={() => { setEmSlide(false); setChaveJanela((k) => k + 1); }} />}
 
       {emFocus && (() => {
         const camadaSaindo = saindoFocus || saindo;

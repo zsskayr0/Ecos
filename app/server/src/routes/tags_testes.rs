@@ -100,6 +100,26 @@ async fn catalogo_unico_renomear_mesclar_remover() {
     let (_, lista) = chamar(&app, "GET", "/api/v1/tarefas?tag=%23CASA", &diogo, None).await;
     assert_eq!(lista["items"].as_array().unwrap().len(), 1, "{lista}");
 
+    // Cor: global por espaço. Quem é da equipe escolhe e todos os membros veem; a visita não escolhe; formato inválido é recusado.
+    let (st, r) = chamar(&app, "PUT", "/api/v1/tags/cor", &diogo, Some(serde_json::json!({ "espaco": "equipe:EQ", "tag": "Casa", "cor": "#e11d48" }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["cor"], "#E11D48", "normaliza para maiúsculas");
+    let (_, cat) = chamar(&app, "GET", "/api/v1/tags?espaco=equipe:EQ", &thaty, None).await;
+    assert_eq!(busca(&cat, "casa")["espacos"][0]["cor"], "#E11D48", "a Thaty vê a cor que o Diogo escolheu");
+    let (_, cat) = chamar(&app, "GET", "/api/v1/tags?espaco=pessoal", &diogo, None).await;
+    assert!(busca(&cat, "casa")["espacos"][0]["cor"].is_null(), "a tag pessoal de mesmo nome tem catálogo (e cor) separado");
+    let (st, _) = chamar(&app, "PUT", "/api/v1/tags/cor", &visita, Some(serde_json::json!({ "espaco": "equipe:EQ", "tag": "casa", "cor": "#000000" }))).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    for ruim in ["vermelho", "rgb(1,2,3)", "#12345", "url(x)"] {
+        let (st, _) = chamar(&app, "PUT", "/api/v1/tags/cor", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "tag": "casa", "cor": ruim }))).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{ruim}");
+    }
+    chamar(&app, "PUT", "/api/v1/tags/cor", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "tag": "casa", "cor": "#16A34A" }))).await;
+    chamar(&app, "PUT", "/api/v1/tags/cor", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "tag": "obra-nova", "cor": "#0891B2" }))).await;
+    crate::db::reindex::reindexar_tudo(&state.db, &temp).await.unwrap();
+    let (_, cat) = chamar(&app, "GET", "/api/v1/tags?espaco=pessoal", &diogo, None).await;
+    assert_eq!(busca(&cat, "casa")["espacos"][0]["cor"], "#16A34A", "o reindex não apaga a cor");
+
     // Renomear no espaço pessoal atualiza notas e tarefas; a equipe não é tocada.
     let (st, r) = chamar(&app, "PATCH", "/api/v1/tags", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "de": "Casa", "para": "Lar" }))).await;
     assert_eq!(st, StatusCode::OK, "{r}");
@@ -109,6 +129,9 @@ async fn catalogo_unico_renomear_mesclar_remover() {
     let (_, cat) = chamar(&app, "GET", "/api/v1/tags", &diogo, None).await;
     assert_eq!(busca(&cat, "lar")["total"], 2);
     assert_eq!(busca(&cat, "casa")["total"], 1, "a da equipe continua casa");
+    let cor_de = |cat: &serde_json::Value, tag: &str, espaco: &str| busca(cat, tag)["espacos"].as_array().unwrap().iter().find(|e| e["espaco"] == espaco).unwrap()["cor"].clone();
+    assert_eq!(cor_de(&cat, "lar", "pessoal"), "#16A34A", "a cor acompanha o nome ao renomear");
+    assert_eq!(cor_de(&cat, "casa", "equipe:EQ"), "#E11D48", "a cor da equipe não é tocada");
 
     // Mesclar: obra-nova + reforma -> reforma; item que tinha as duas fica com uma só.
     let (st, r) = chamar(&app, "POST", "/api/v1/tags/mesclar", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "origens": ["obra-nova", "reforma"], "destino": "reforma" }))).await;
@@ -117,6 +140,7 @@ async fn catalogo_unico_renomear_mesclar_remover() {
     assert_eq!(nomes(&cat), vec!["lar", "reforma"], "{cat}");
     let reforma = busca(&cat, "reforma");
     assert_eq!((reforma["notas"].as_i64(), reforma["tarefas"].as_i64()), (Some(1), Some(2)));
+    assert_eq!(reforma["espacos"][0]["cor"], "#0891B2", "o destino sem cor herda a da origem colorida");
 
     // Remover tira só a tag; os itens continuam.
     let (st, r) = chamar(&app, "DELETE", "/api/v1/tags?espaco=pessoal&tag=lar", &diogo, None).await;
@@ -126,6 +150,8 @@ async fn catalogo_unico_renomear_mesclar_remover() {
     let (st, _) = chamar(&app, "GET", &format!("/api/v1/notas/{id_nota}"), &diogo, None).await;
     assert_eq!(st, StatusCode::OK);
     assert!(!ler_todos(&temp.join("diogo")).contains("lar"), "arquivos reescritos");
+    let restantes: Vec<String> = state.db.with(|c| c.prepare("SELECT espaco || ':' || tag FROM tag_cor ORDER BY 1")?.query_map([], |r| r.get(0))?.collect()).await.unwrap();
+    assert_eq!(restantes, vec!["equipe:EQ:casa", "pessoal:reforma"], "remover/mesclar não deixam cor órfã das tags que sumiram");
 
     // Nome inválido é recusado.
     let (st, _) = chamar(&app, "PATCH", "/api/v1/tags", &diogo, Some(serde_json::json!({ "espaco": "pessoal", "de": "reforma", "para": "  # " }))).await;

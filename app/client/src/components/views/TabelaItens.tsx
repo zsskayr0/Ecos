@@ -88,7 +88,7 @@ function montarColunas({ temNota, temTarefa, itens, mostrarCriada, mostrarMotivo
         ordenar: (a, b) => cmpTexto(ehTarefa(a) ? a.status : "", ehTarefa(b) ? b.status : ""),
         celula: (item) =>
           ehTarefa(item) ? (
-            <span className={`${PILULA} ${item.status === "concluida" ? "bg-success/15 text-success" : "bg-surface-3 text-text-secondary"}`}>{item.status === "concluida" ? "Concluída" : "Pendente"}</span>
+            <span className={`${PILULA} ${item.status === "concluida" ? "bg-success/15 text-success" : "bg-surface-3 text-text-secondary"}`}>{item.status === "concluida" ? "Concluída" : item.status === "arquivada" ? "Arquivada" : "Pendente"}</span>
           ) : (
             VAZIO
           ),

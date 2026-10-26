@@ -34,6 +34,8 @@ pub struct UsoPorEspaco {
     pub espaco: String,
     pub notas: i64,
     pub tarefas: i64,
+    /// `#RRGGBB` escolhida para a tag neste espaço; `None` = automática (o cliente deriva do nome).
+    pub cor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,7 +52,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let visivel_nota = crate::espacos::visivel_sql("n", &usuario.0);
     let visivel_tarefa = crate::espacos::visivel_sql("t", &usuario.0);
     let espaco = q.espaco.clone();
-    let linhas: Vec<(String, String, i64, i64)> = state
+    let (linhas, cores): (Vec<(String, String, i64, i64)>, BTreeMap<(String, String), String>) = state
         .db
         .with_read(move |conn| {
             let sql = format!(
@@ -64,7 +66,9 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             );
             let mut stmt = conn.prepare(&sql)?;
             let linhas = stmt.query_map([&espaco], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
-            Ok(linhas)
+            let mut stmt = conn.prepare("SELECT espaco, tag, cor FROM tag_cor WHERE (?1 IS NULL OR espaco = ?1)")?;
+            let cores = stmt.query_map([&espaco], |r| Ok(((r.get(0)?, r.get(1)?), r.get(2)?)))?.collect::<Result<BTreeMap<_, _>, _>>()?;
+            Ok((linhas, cores))
         })
         .await?;
 
@@ -74,7 +78,8 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         item.notas += notas;
         item.tarefas += tarefas;
         item.total += notas + tarefas;
-        item.espacos.push(UsoPorEspaco { espaco, notas, tarefas });
+        let cor = cores.get(&(espaco.clone(), item.tag.clone())).cloned();
+        item.espacos.push(UsoPorEspaco { espaco, notas, tarefas, cor });
     }
     let mut saida: Vec<TagCatalogo> = por_tag.into_values().collect();
     saida.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.tag.cmp(&b.tag)));
@@ -183,7 +188,62 @@ async fn aplicar(state: &AppState, usuario_id: &str, espaco: &str, origens: Vec<
         let _ = reindexar_tudo(&state.db, &state.config.notes_root).await;
         return Err(err.into());
     }
+    migrar_cores(state, espaco, origens, destino).await?;
     Ok(Afetados { notas: n_notas, tarefas: n_tarefas })
+}
+
+/// A cor acompanha o nome: ao renomear/mesclar, o destino fica com a própria cor (se já tinha) ou com a da
+/// primeira origem colorida; as origens perdem a linha. Remover (`destino = None`) apaga a cor também.
+async fn migrar_cores(state: &AppState, espaco: &str, origens: Vec<String>, destino: Option<String>) -> AppResult<()> {
+    let espaco = espaco.to_string();
+    state
+        .db
+        .with(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            if let Some(destino) = &destino {
+                let ja_tem: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM tag_cor WHERE espaco = ?1 AND tag = ?2)", [&espaco, destino], |r| r.get(0))?;
+                if !ja_tem {
+                    for origem in origens.iter().filter(|o| *o != destino) {
+                        let cor: Option<String> = tx.query_row("SELECT cor FROM tag_cor WHERE espaco = ?1 AND tag = ?2", [&espaco, origem], |r| r.get(0)).ok();
+                        if let Some(cor) = cor {
+                            tx.execute("INSERT INTO tag_cor (espaco, tag, cor) VALUES (?1, ?2, ?3)", [&espaco, destino, &cor])?;
+                            break;
+                        }
+                    }
+                }
+            }
+            for origem in origens.iter().filter(|o| Some(*o) != destino.as_ref()) {
+                tx.execute("DELETE FROM tag_cor WHERE espaco = ?1 AND tag = ?2", [&espaco, origem])?;
+            }
+            tx.commit()
+        })
+        .await?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CorPayload {
+    pub espaco: String,
+    pub tag: String,
+    /// `#RRGGBB`; `null` volta para a cor automática.
+    pub cor: Option<String>,
+}
+
+/// `PUT /tags/cor` — define (ou limpa) a cor da tag no catálogo do espaço. Vale para todos os membros.
+pub async fn definir_cor(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(p): Json<CorPayload>) -> AppResult<Json<serde_json::Value>> {
+    p.espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| invalido("espaco", &motivo))?;
+    crate::espacos::exigir_acesso(&state, &usuario.0, &p.espaco).await?;
+    let tag = canonica_obrigatoria("tag", &p.tag)?;
+    let cor = p.cor.as_deref().map(crate::routes::equipes::validar_cor).transpose()?;
+    let (espaco, tag_q, cor_q) = (p.espaco.clone(), tag.clone(), cor.clone());
+    state
+        .db
+        .with(move |conn| match &cor_q {
+            Some(cor) => conn.execute("INSERT INTO tag_cor (espaco, tag, cor) VALUES (?1, ?2, ?3) ON CONFLICT (espaco, tag) DO UPDATE SET cor = excluded.cor", [&espaco, &tag_q, cor]),
+            None => conn.execute("DELETE FROM tag_cor WHERE espaco = ?1 AND tag = ?2", [&espaco, &tag_q]),
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "tag": tag, "cor": cor })))
 }
 
 fn canonica_obrigatoria(campo: &str, valor: &str) -> AppResult<String> {

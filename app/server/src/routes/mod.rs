@@ -43,7 +43,7 @@ use crate::middleware::auth_guard::exigir_sessao;
 use crate::middleware::rate_limit::RateLimitLayer;
 use crate::state::AppState;
 use axum::middleware::from_fn_with_state;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{extract::DefaultBodyLimit, Router};
 use std::time::Duration;
 
@@ -142,6 +142,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/busca", get(busca::buscar))
         .route("/tags", get(tags::listar).patch(tags::renomear).delete(tags::remover))
         .route("/tags/mesclar", post(tags::mesclar))
+        .route("/tags/cor", put(tags::definir_cor))
         .route("/grafico", get(grafico::obter))
         .route("/rotina/blocos", get(rotina::listar).post(rotina::criar))
         .route("/rotina/blocos/:id", patch(rotina::atualizar).delete(rotina::excluir))

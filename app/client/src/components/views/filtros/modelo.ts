@@ -4,7 +4,7 @@ import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 /** Filtros simples da lista, mais a ordem. Prioridade, "Atrasadas" e "Concluídas" só existem em tarefas. */
 
-export type FiltroStatus = "pendente" | "atrasada" | "concluida" | "todos";
+export type FiltroStatus = "pendente" | "atrasada" | "concluida" | "arquivada" | "todos";
 export type FiltroPrioridade = "todas" | "alta" | "media" | "baixa";
 export type Ordem = "relevancia" | "edicao" | "criacao" | "titulo" | "prioridade" | "agenda" | "status" | "duracao" | "pasta" | "equipe" | "tags" | "dono";
 
@@ -71,6 +71,7 @@ export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;
     if (e.status === "atrasada" && !tarefaAtrasada(item, agora)) return false;
     if (e.status === "concluida" && !(item.tipo === "tarefa" && item.status === "concluida")) return false;
+    if (e.status === "arquivada" && !(item.tipo === "tarefa" && item.status === "arquivada")) return false;
     if (e.status === "pendente" && item.tipo === "tarefa" && item.status !== "pendente") return false;
     return true;
   });
