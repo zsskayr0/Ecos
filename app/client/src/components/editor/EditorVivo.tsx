@@ -85,10 +85,6 @@ class Caixa extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-class Regua extends WidgetType {
-  toDOM() { const h = document.createElement("span"); h.className = "cm-regua"; return h; }
-}
-
 const ocultar = Decoration.replace({});
 const ESTILO_TITULO = ["", "cm-h1", "cm-h2", "cm-h3", "cm-h4", "cm-h5", "cm-h6"];
 const WIKILINK = /\[\[([^\]|\n]+)(?:\|([^\]\n]*))?\]\]/g;
@@ -164,7 +160,11 @@ function montarDecoracoes(view: EditorView): DecorationSet {
           return;
         }
         case "HorizontalRule":
-          if (!linhaAtiva(no.from)) decos.push(Decoration.replace({ widget: new Regua() }).range(no.from, no.to));
+          if (!linhaAtiva(no.from)) {
+            // A própria linha vira a régua (1px, com fundo): um widget dentro de uma linha de 1px era cortado e sumia.
+            linha(no.from, "cm-linha-regua");
+            decos.push(ocultar.range(no.from, no.to));
+          }
           return;
         case "Image": {
           if (linhaAtiva(no.from)) return false;
@@ -192,9 +192,21 @@ function montarDecoracoes(view: EditorView): DecorationSet {
     },
   });
 
+  // Linhas em branco entre blocos ocupam o mesmo respiro do preview (8px), não uma linha inteira.
+  // A linha com o cursor (editor focado) mantém a altura normal para o cursor não encolher; dentro de código nada muda.
+  const emCodigo = new Set<number>();
+  syntaxTree(state).iterate({
+    enter: (no) => {
+      if (no.name !== "FencedCode") return;
+      for (let n = state.doc.lineAt(no.from).number; n <= state.doc.lineAt(no.to).number; n++) emCodigo.add(n);
+      return false;
+    },
+  });
+
   // Wikilinks `[[Nota]]` / `[[Nota|apelido]]`: sintaxe própria do Ecos, fora do Markdown padrão.
   for (let n = 1; n <= state.doc.lines; n++) {
     const l = state.doc.line(n);
+    if (!l.length && !ativas.has(n) && !emCodigo.has(n) && n < state.doc.lines) decos.push(Decoration.line({ class: "cm-vazia" }).range(l.from));
     if (!l.text.includes("[[")) continue;
     WIKILINK.lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -219,22 +231,26 @@ const plugin = ViewPlugin.fromClass(class {
 }, { decorations: (p) => p.decorations });
 
 const tema = EditorView.theme({
-  "&": { backgroundColor: "transparent", color: "rgb(var(--ecos-text-primary-rgb))", fontSize: "15px" },
+  "&": { backgroundColor: "transparent", color: "rgb(var(--ecos-text-primary-rgb))", fontSize: "14px" },
   "&, &.cm-focused, .cm-content, .cm-content:focus-visible, .cm-scroller": { outline: "none !important" },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.7", overflow: "visible" },
+  ".cm-scroller": { fontFamily: "inherit", lineHeight: "20px", overflow: "visible" },
   ".cm-content": { padding: "0", caretColor: "rgb(var(--ecos-cyan-rgb))" },
-  ".cm-line": { padding: "0 2px" },
+  ".cm-line": { padding: "0" },
+  ".cm-vazia": { height: "8px", lineHeight: "8px", overflow: "hidden" },
   ".cm-cursor": { borderLeftColor: "rgb(var(--ecos-cyan-rgb))" },
   ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { background: "rgb(var(--ecos-steel-500-rgb) / 0.4)" },
   ".cm-placeholder": { color: "rgb(var(--ecos-text-secondary-rgb))" },
-  ".cm-h1": { fontSize: "1.75em", fontWeight: "700", lineHeight: "1.35", paddingTop: "0.3em" },
-  ".cm-h2": { fontSize: "1.45em", fontWeight: "700", lineHeight: "1.4", paddingTop: "0.25em" },
-  ".cm-h3": { fontSize: "1.2em", fontWeight: "600", lineHeight: "1.45", paddingTop: "0.2em" },
+  // Mesmos tamanhos e fonte dos títulos do preview (`h1`/`h2`/`h3` em markdown-mini.tsx: 20/18/16px sobre 14px).
+  // Alturas de linha iguais às do Tailwind no preview (text-xl/text-lg: 28px; text-base: 24px; texto: 20px).
+  ".cm-h1, .cm-h2, .cm-h3": { fontFamily: "\"Space Grotesk\", sans-serif" },
+  ".cm-h1": { fontSize: "1.4286em", lineHeight: "28px" },
+  ".cm-h2": { fontSize: "1.2857em", lineHeight: "28px" },
+  ".cm-h3": { fontSize: "1.1429em", fontWeight: "600", lineHeight: "24px" },
   ".cm-h4, .cm-h5, .cm-h6": { fontWeight: "600" },
   ".cm-neg": { fontWeight: "700" },
   ".cm-ita": { fontStyle: "italic" },
   ".cm-tach": { textDecoration: "line-through", opacity: "0.7" },
-  ".cm-cod": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "0.9em", background: "rgb(var(--ecos-surface-3-rgb))", borderRadius: "4px", padding: "1px 4px" },
+  ".cm-cod": { fontFamily: "\"IBM Plex Mono\", monospace", fontSize: "13.5px", background: "rgb(var(--ecos-surface-3-rgb))", borderRadius: "4px", padding: "1px 4px" },
   ".cm-bloco-cod": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "0.9em", background: "rgb(var(--ecos-surface-2-rgb))" },
   ".cm-citacao": { borderLeft: "3px solid rgb(var(--ecos-steel-500-rgb))", paddingLeft: "12px", color: "rgb(var(--ecos-text-secondary-rgb))" },
   ".cm-link, .cm-wikilink": { color: "rgb(var(--ecos-steel-300-rgb))", textDecoration: "underline", textUnderlineOffset: "3px" },
@@ -244,13 +260,13 @@ const tema = EditorView.theme({
   ".cm-feita": { color: "rgb(var(--ecos-text-secondary-rgb))", textDecoration: "line-through" },
   ".cm-imagem": { display: "block", maxWidth: "100%", maxHeight: "70vh", borderRadius: "12px", margin: "6px 0", cursor: "text" },
   ".cm-imagem-falha": { color: "rgb(var(--ecos-text-secondary-rgb))", fontStyle: "italic" },
-  ".cm-tabela-rolagem": { overflowX: "auto", margin: "8px 0", cursor: "text" },
+  ".cm-tabela-rolagem": { overflowX: "auto", margin: "0", cursor: "text" },
   ".cm-tabela": { width: "100%", borderCollapse: "collapse", fontSize: "0.93em", lineHeight: "1.5" },
   ".cm-tabela th, .cm-tabela td": { padding: "10px 14px", textAlign: "left", verticalAlign: "top", borderBottom: "1px solid rgb(var(--ecos-border-rgb))" },
   ".cm-tabela th": { fontWeight: "700", color: "rgb(var(--ecos-text-primary-rgb))", borderBottomColor: "rgb(var(--ecos-steel-500-rgb) / 0.6)", whiteSpace: "nowrap" },
   ".cm-tabela td": { color: "rgb(var(--ecos-text-secondary-rgb))" },
   ".cm-tabela tbody tr:last-child td": { borderBottom: "0" },
-  ".cm-regua": { display: "block", height: "1px", margin: "0.7em 0", background: "rgb(var(--ecos-border-rgb))" },
+  ".cm-linha-regua": { height: "1px", lineHeight: "1px", overflow: "hidden", background: "rgb(var(--ecos-border-rgb))" },
 });
 
 export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink }: Props) {

@@ -1,6 +1,6 @@
 import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 
 type Alinhamento = "left" | "center" | "right" | null;
 
@@ -108,7 +108,9 @@ const focoEfeito = StateEffect.define<boolean>();
 
 function montar(state: EditorState, focado: boolean): DecorationSet {
   const decos: Range<Decoration>[] = [];
-  syntaxTree(state).iterate({
+  // O Lezer analisa o documento aos poucos (começando pelo trecho visível); sem completar a árvore,
+  // tabelas mais abaixo ficavam como texto cru, pois este campo só recalcula ao editar ou mudar a seleção.
+  (ensureSyntaxTree(state, state.doc.length, 250) ?? syntaxTree(state)).iterate({
     enter: (no) => {
       if (no.name !== "Table") return;
       const editando = focado && state.selection.ranges.some((r) => r.from <= no.to && r.to >= no.from);
