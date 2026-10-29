@@ -163,8 +163,11 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const idDaTarefa = tarefa ? path.split("/")[2] : undefined;
   const podeSlide = !!idDaTarefa && tarefasDaLista.some((t) => t.id === idDaTarefa);
   const [emSlide, setEmSlide] = useState(false);
-  // Com a preferência ligada a tarefa já abre maximizada (modo Focus).
-  const [emFocus, setEmFocus] = useState(() => tarefa && lerPreferenciasAplicativo().tarefaMaximizada);
+  // Com a preferência ligada a tarefa (ou a nota) já abre maximizada (modo Focus).
+  const [emFocus, setEmFocus] = useState(() => {
+    const prefs = lerPreferenciasAplicativo();
+    return tarefa ? prefs.tarefaMaximizada : path.startsWith("/notas/nota/") && prefs.notaMaximizada;
+  });
   /** Animação de saída da camada Focus (a janela normal só volta a aparecer inteira depois dela). */
   const [saindoFocus, setSaindoFocus] = useState(false);
   /** Muda ao sair do Focus: a janela normal recarrega o documento já com o que foi editado na camada Focus. */

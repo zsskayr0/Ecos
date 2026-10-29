@@ -62,7 +62,10 @@ export function UsoDiarioScreen() {
         <Linha Icone={Maximize2} titulo="Abrir tarefas maximizadas" descricao="A tarefa já abre no modo Focus, com o painel lateral. O botão de maximizar na janela continua alternando.">
           <Toggle checked={prefs.tarefaMaximizada} onChange={(tarefaMaximizada) => alterar({ tarefaMaximizada })} label="Abrir tarefas maximizadas" />
         </Linha>
-        <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
+        <Linha Icone={Maximize2} titulo="Abrir notas maximizadas" descricao="A nota já abre no modo Focus. O botão de maximizar na janela continua alternando.">
+          <Toggle checked={prefs.notaMaximizada} onChange={(notaMaximizada) => alterar({ notaMaximizada })} label="Abrir notas maximizadas" />
+        </Linha>
+        <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus (tarefas e notas) o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
           <Toggle checked={prefs.focusPainelRecolhido} onChange={(focusPainelRecolhido) => alterar({ focusPainelRecolhido })} label="Painel lateral do Focus recolhido" />
         </Linha>
         <Linha Icone={CheckSquare} titulo="Mostrar concluídas ao abrir" descricao="As listas começam só com as pendentes. Ligue para ver também as concluídas.">
