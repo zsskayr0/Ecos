@@ -6,6 +6,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { GFM } from "@lezer/markdown";
 import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
+import { tabelas } from "./tabela-widget";
 
 /** O que a barra de formatação precisa de um campo de texto (a mesma interface de um `<textarea>`). */
 export interface AreaLike {
@@ -243,6 +244,12 @@ const tema = EditorView.theme({
   ".cm-feita": { color: "rgb(var(--ecos-text-secondary-rgb))", textDecoration: "line-through" },
   ".cm-imagem": { display: "block", maxWidth: "100%", maxHeight: "70vh", borderRadius: "12px", margin: "6px 0", cursor: "text" },
   ".cm-imagem-falha": { color: "rgb(var(--ecos-text-secondary-rgb))", fontStyle: "italic" },
+  ".cm-tabela-rolagem": { overflowX: "auto", margin: "8px 0", cursor: "text" },
+  ".cm-tabela": { width: "100%", borderCollapse: "collapse", fontSize: "0.93em", lineHeight: "1.5" },
+  ".cm-tabela th, .cm-tabela td": { padding: "10px 14px", textAlign: "left", verticalAlign: "top", borderBottom: "1px solid rgb(var(--ecos-border-rgb))" },
+  ".cm-tabela th": { fontWeight: "700", color: "rgb(var(--ecos-text-primary-rgb))", borderBottomColor: "rgb(var(--ecos-steel-500-rgb) / 0.6)", whiteSpace: "nowrap" },
+  ".cm-tabela td": { color: "rgb(var(--ecos-text-secondary-rgb))" },
+  ".cm-tabela tbody tr:last-child td": { borderBottom: "0" },
   ".cm-regua": { display: "block", height: "1px", margin: "0.7em 0", background: "rgb(var(--ecos-border-rgb))" },
 });
 
@@ -275,6 +282,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         placeholder ? placeholderExt(placeholder) : [],
         EditorView.theme({ ".cm-content": { minHeight: alturaMinima } }),
         plugin,
+        tabelas,
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : [],
         EditorView.domEventHandlers({
           mousedown(e, v) {

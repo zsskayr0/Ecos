@@ -42,6 +42,9 @@ export function DocumentoLegalDialog({ documento, onClose }: { documento: Docume
                   h1: (p) => <h3 className="font-display text-xl text-text-primary">{p.children}</h3>,
                   h2: (p) => <h4 className="mt-2 font-semibold text-text-primary">{p.children}</h4>,
                   strong: (p) => <strong className="font-semibold text-text-primary">{p.children}</strong>,
+                  table: (p) => <div className="overflow-x-auto"><table className="w-full border-collapse text-left">{p.children}</table></div>,
+                  th: (p) => <th className="border-b border-steel-500/60 px-3.5 py-2.5 text-left font-semibold text-text-primary" style={p.style}>{p.children}</th>,
+                  td: (p) => <td className="border-b border-border px-3.5 py-2.5 align-top" style={p.style}>{p.children}</td>,
                   blockquote: (p) => <blockquote className="rounded-lg border-l-2 border-steel-400 bg-surface-2 px-3 py-2 text-text-muted">{p.children}</blockquote>,
                 }}
               >

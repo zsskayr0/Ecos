@@ -71,6 +71,19 @@ const remarkWikilink: Plugin<[], Root> = () => (tree) => {
   percorrerENormalizarWikilinks(tree as unknown as { children?: unknown[] });
 };
 
+interface NoHast { type: string; position?: { start: { line: number } }; properties?: Record<string, unknown>; children?: NoHast[] }
+
+/** Marca cada elemento com a linha do Markdown de onde veio (`data-linha`), para manter o ponto de leitura ao trocar entre ler e editar. */
+const rehypeLinhas = () => (tree: NoHast) => {
+  const percorrer = (no: NoHast) => {
+    if (no.type === "element" && no.position) no.properties = { ...no.properties, dataLinha: no.position.start.line };
+    no.children?.forEach(percorrer);
+  };
+  percorrer(tree);
+};
+
+type LinhaProp = { "data-linha"?: number };
+
 interface Props {
   corpo: string;
   /** Nota/Tarefa já existente — necessário pra resolver `_anexos/<id>/<arquivo>`
@@ -107,6 +120,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkWikilink]}
+        rehypePlugins={[rehypeLinhas]}
         components={{
           ...({ "ecos-wikilink": (p: { "data-interno"?: string; "data-apelido"?: string }) => <Wikilink interno={p["data-interno"] ?? ""} apelido={p["data-apelido"]} origem={itemId ? { tipo, id: itemId } : undefined} /> } as object),
           img: ({ src, alt }) => (
@@ -124,13 +138,20 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
             return <input type="checkbox" checked={!!checked} disabled={!aoAlternarChecklist} onChange={() => aoAlternarChecklist?.(indice)} onClick={(e) => e.stopPropagation()} className={aoAlternarChecklist ? "cursor-pointer" : ""} />;
           },
           code: ({ children }) => <code className="whitespace-pre-wrap rounded bg-surface-3 px-1 py-0.5 font-mono-value text-[13px] [overflow-wrap:anywhere]">{children}</code>,
-          h1: ({ children }) => <h1 className="font-display text-xl text-text-primary">{children}</h1>,
-          h2: ({ children }) => <h2 className="font-display text-lg text-text-primary">{children}</h2>,
-          h3: ({ children }) => <h3 className="font-display text-base font-semibold text-text-primary">{children}</h3>,
-          blockquote: ({ children }) => <blockquote className="border-l-2 border-border pl-3 text-text-secondary">{children}</blockquote>,
-          li: ({ children, className }) => (
+          h1: ({ children, ...p }) => <h1 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-xl text-text-primary">{children}</h1>,
+          h2: ({ children, ...p }) => <h2 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-lg text-text-primary">{children}</h2>,
+          h3: ({ children, ...p }) => <h3 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-base font-semibold text-text-primary">{children}</h3>,
+          blockquote: ({ children, ...p }) => <blockquote data-linha={(p as LinhaProp)["data-linha"]} className="border-l-2 border-border pl-3 text-text-secondary">{children}</blockquote>,
+          table: ({ children, ...p }) => (
+            <div data-linha={(p as LinhaProp)["data-linha"]} className="max-w-full overflow-x-auto">
+              <table className="w-full border-collapse text-left text-[0.93em] leading-normal">{children}</table>
+            </div>
+          ),
+          th: ({ children, style }) => <th style={style} className="whitespace-nowrap border-b border-steel-500/60 px-3.5 py-2.5 text-left font-bold text-text-primary">{children}</th>,
+          td: ({ children, style }) => <td style={style} className="border-b border-border px-3.5 py-2.5 align-top text-text-secondary [tr:last-child>&]:border-b-0 [overflow-wrap:normal]">{children}</td>,
+          li: ({ children, className, ...p }) => (
             // remark-gfm marca item de task-list com essa classe; o checkbox real já vem no `input` filho.
-            <li className={className?.includes("task-list-item") ? "flex items-start gap-2 [&>input]:mt-1" : "ml-4 list-disc"}>{children}</li>
+            <li data-linha={(p as LinhaProp)["data-linha"]} className={className?.includes("task-list-item") ? "flex items-start gap-2 [&>input]:mt-1" : "ml-4 list-disc"}>{children}</li>
           ),
         }}
       >
