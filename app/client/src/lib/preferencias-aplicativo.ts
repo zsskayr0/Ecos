@@ -44,6 +44,10 @@ export interface PreferenciasAplicativo {
   tarefaMaximizada: boolean;
   /** Notas abrem já no modo Focus (maximizadas), em vez da janela flutuante. */
   notaMaximizada: boolean;
+  /** Notas existentes abrem já em edição (desligado: em visualização). */
+  notaAbreEditando: boolean;
+  /** Tarefas existentes abrem a descrição já em edição (desligado: em visualização). */
+  tarefaAbreEditando: boolean;
   /** No modo Focus o painel lateral "Opções" começa recolhido (padrão) ou aberto. */
   focusPainelRecolhido: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
@@ -89,6 +93,8 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   tarefaDuracaoMin: 5,
   tarefaMaximizada: false,
   notaMaximizada: false,
+  notaAbreEditando: false,
+  tarefaAbreEditando: true,
   focusPainelRecolhido: true,
   mostrarConcluidas: false,
   visualizacaoTarefasDesktop: "tabela",

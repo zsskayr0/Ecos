@@ -6,6 +6,7 @@ import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
+import { preservandoScroll } from "@/lib/preservar-scroll";
 
 interface Props {
   corpo: string;
@@ -256,7 +257,7 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
           </div>
           <ToolbarBtn Icon={RemoveFormatting} label="Limpar formatação" tamanho={tam} onClick={limparFormatacao} />
         </div>
-        <button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+        <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
           className={`relative ml-auto flex ${ehMobile ? "h-11 w-11" : "h-8 w-8"} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
           {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
           <Eye size={16} strokeWidth={1.75} aria-hidden

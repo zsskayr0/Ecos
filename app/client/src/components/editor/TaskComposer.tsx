@@ -14,6 +14,7 @@ import { useIsMobile } from "@/lib/use-viewport";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { AttachmentsField } from "./AttachmentsField";
 import { CorpoEditor } from "./CorpoEditor";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { Conexoes } from "@/components/common/Conexoes";
 import { TaskDateTimePicker } from "./TaskDateTimePicker";
 import { EquipeSelector } from "./EquipeSelector";
@@ -191,7 +192,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
       <div className="min-w-0 space-y-6 md:pr-3">
         <section aria-label="Descrição" className="block">
           <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })}
-            rows={focusMode ? 18 : 10} layout="document" semBorda={focusMode} placeholder="Contexto, decisões, links ou um projeto inteiro… Use #tags para organizar." />
+            rows={focusMode ? 18 : 10} layout="document" semBorda={focusMode} initialPreview={!!itemId && !lerPreferenciasAplicativo().tarefaAbreEditando} placeholder="Contexto, decisões, links ou um projeto inteiro… Use #tags para organizar." />
         </section>
         <section id={`${id}-subtasks`} aria-label="Subtarefas" className="border-t border-border pt-6">
           <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={`${id}-subtask`} className="text-sm font-semibold text-text-primary">Subtarefas</label><span className="text-sm text-text-secondary" aria-live="polite">{value.subtarefas.length ? `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length} concluídas` : "Opcional"}</span></div>

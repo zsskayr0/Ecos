@@ -15,6 +15,7 @@ import { descriptionTags } from "@/lib/task-fields";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
 import { Conexoes } from "@/components/common/Conexoes";
 import { EquipeSelector } from "@/components/editor/EquipeSelector";
@@ -275,7 +276,7 @@ export function NoteEditorDesktop() {
 
           {!noPainel && <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />}
 
-          <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview />
+          <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview={!lerPreferenciasAplicativo().notaAbreEditando} />
 
           <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
 

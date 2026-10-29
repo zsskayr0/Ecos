@@ -137,7 +137,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
             const indice = proximoCheckbox++;
             return <input type="checkbox" checked={!!checked} disabled={!aoAlternarChecklist} onChange={() => aoAlternarChecklist?.(indice)} onClick={(e) => e.stopPropagation()} className={aoAlternarChecklist ? "cursor-pointer" : ""} />;
           },
-          code: ({ children }) => <code className="whitespace-pre-wrap rounded bg-surface-3 px-1 py-0.5 font-mono-value text-[13px] [overflow-wrap:anywhere]">{children}</code>,
+          code: ({ children }) => <code className="whitespace-pre-wrap rounded bg-surface-3 px-1 py-0.5 font-['IBM_Plex_Mono',monospace] text-[13.5px] [overflow-wrap:anywhere]">{children}</code>,
           h1: ({ children, ...p }) => <h1 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-xl text-text-primary">{children}</h1>,
           h2: ({ children, ...p }) => <h2 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-lg text-text-primary">{children}</h2>,
           h3: ({ children, ...p }) => <h3 data-linha={(p as LinhaProp)["data-linha"]} className="font-display text-base font-semibold text-text-primary">{children}</h3>,

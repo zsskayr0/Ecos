@@ -1,7 +1,8 @@
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
 import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChipTag } from "@/components/common/ChipTag";
 import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
@@ -13,6 +14,7 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
+import { preservandoScroll } from "@/lib/preservar-scroll";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
@@ -107,8 +109,16 @@ function NoteDetailMobile() {
       setTituloEdit(typeof rascunho?.titulo === "string" ? rascunho.titulo : nota.titulo);
       setCorpoEdit(typeof rascunho?.corpo === "string" ? rascunho.corpo : nota.corpo);
     } catch { setTituloEdit(nota.titulo); setCorpoEdit(nota.corpo); }
-    setEditando(true);
+    preservandoScroll(document.querySelector(".ecos-detail-content"), () => setEditando(true));
   }
+
+  const jaAbriu = useRef<string | null>(null);
+  useEffect(() => {
+    if (!nota || jaAbriu.current === nota.id) return;
+    jaAbriu.current = nota.id;
+    if (lerPreferenciasAplicativo().notaAbreEditando) entrarEdicao();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nota]);
 
   async function salvar() {
     if (!id) return;
@@ -118,7 +128,7 @@ function NoteDetailMobile() {
       await notas.atualizar(id, { titulo: tituloEdit, corpo: corpoEdit });
       const atualizada = await notas.obter(id);
       setNota(atualizada);
-      setEditando(false);
+      preservandoScroll(document.querySelector(".ecos-detail-content"), () => setEditando(false));
       notificar();
     } catch (e) {
       setErro(mensagemDeErro(e, "Não consegui salvar a nota. Confira sua conexão e tente de novo."));

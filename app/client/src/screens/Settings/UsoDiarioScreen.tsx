@@ -65,6 +65,12 @@ export function UsoDiarioScreen() {
         <Linha Icone={Maximize2} titulo="Abrir notas maximizadas" descricao="A nota já abre no modo Focus. O botão de maximizar na janela continua alternando.">
           <Toggle checked={prefs.notaMaximizada} onChange={(notaMaximizada) => alterar({ notaMaximizada })} label="Abrir notas maximizadas" />
         </Linha>
+        <Linha Icone={Eye} titulo="Abrir notas em edição" descricao="Ao abrir uma nota existente, o texto já fica editável. Desligado, ela abre em visualização e você alterna quando quiser.">
+          <Toggle checked={prefs.notaAbreEditando} onChange={(notaAbreEditando) => alterar({ notaAbreEditando })} label="Abrir notas em edição" />
+        </Linha>
+        <Linha Icone={Eye} titulo="Abrir tarefas em edição" descricao="Ao abrir uma tarefa existente, a descrição já fica editável. Desligado, ela abre em visualização e você alterna quando quiser.">
+          <Toggle checked={prefs.tarefaAbreEditando} onChange={(tarefaAbreEditando) => alterar({ tarefaAbreEditando })} label="Abrir tarefas em edição" />
+        </Linha>
         <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus (tarefas e notas) o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
           <Toggle checked={prefs.focusPainelRecolhido} onChange={(focusPainelRecolhido) => alterar({ focusPainelRecolhido })} label="Painel lateral do Focus recolhido" />
         </Linha>
