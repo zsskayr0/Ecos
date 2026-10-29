@@ -86,7 +86,7 @@ function mensagemHttp(status: number): string {
   }
 }
 
-export interface MetricasPerfil { escopo: "pessoal" | "pessoal_e_equipes"; entrou_em: string; primeira_nota_em: string | null; notas: number; tarefas: number; palavras: number; caracteres: number }
+export interface MetricasPerfil { escopo: "geral" | "pessoal" | `equipe:${string}`; entrou_em: string; primeira_nota_em: string | null; notas: number; tarefas: number; palavras: number; caracteres: number }
 
 export class ApiError extends Error {
   constructor(
@@ -430,11 +430,21 @@ export const auth = {
   aceitarTermos: (versao: string) => post<{ ok: true; versao: string }>("/me/aceites/termos", { versao }),
   atualizarPerfil: (dados: { nome_usuario?: string; nome?: string }) => patch<{ ok: true }>("/me", dados),
   /** Resumo agregado no servidor (não depende de paginação). `escopo` diz o que as contagens cobrem. */
-  metricas: (escopo: "pessoal" | "pessoal_e_equipes" = "pessoal") =>
-    get<MetricasPerfil>(`/me/metricas?escopo=${escopo}`),
+  metricas: (escopo: "geral" | "pessoal" | `equipe:${string}` = "pessoal") =>
+    get<MetricasPerfil>(`/me/metricas${qs({ escopo })}`),
+  atividade: (dias: 30 | 90 | 365, escopo: "geral" | "pessoal" | `equipe:${string}`) =>
+    get<AtividadeResumo>(`/me/atividade${qs({ dias, escopo, fuso_min: -new Date().getTimezoneOffset() })}`),
   /** Troca a própria senha. Com senha temporária (conta criada pela administração) devolve uma recovery key nova, que só aparece uma vez. */
   trocarSenha: (senha_atual: string, nova_senha: string) => post<{ ok: true; recovery_key: string | null }>("/me/senha", { senha_atual, nova_senha }),
 };
+
+export interface AtividadeResumo {
+  escopo: "geral" | "pessoal" | `equipe:${string}`;
+  dias: { data: string; notas: number; tarefas: number; concluidas: number }[];
+  tags: { nome: string; quantidade: number }[];
+  pendentes: number;
+  concluidas: number;
+}
 
 /** Administração da instância (só quem administra; para as demais pessoas as rotas respondem 404). */
 export interface UsuarioAdmin { id: string; nome_usuario: string; nome: string | null; papel: "admin" | "usuario"; criado_em: string; deve_trocar_senha: boolean }

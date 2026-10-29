@@ -1,11 +1,11 @@
-//! `GET /me/metricas`: resumo agregado do espaço da pessoa, calculado no servidor (as contagens não dependem
-//! da paginação do cliente). O escopo é sempre devolvido: por padrão só o conteúdo pessoal; com
-//! `?escopo=pessoal_e_equipes` entram também notas e tarefas das equipes de que a pessoa é membro.
+//! Métricas agregadas no servidor, sem depender da paginação do cliente. O perfil pode consultar
+//! o espaço pessoal, o conjunto geral ou uma equipe de que a pessoa é membro.
 
 use axum::extract::{Query, State};
 use axum::{Extension, Json};
 use ecos_core::ErrorCode;
 use serde::{Deserialize, Serialize};
+use chrono::{Duration, FixedOffset, Utc};
 
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
@@ -16,9 +16,98 @@ pub struct MetricasQuery {
     pub escopo: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AtividadeQuery {
+    pub dias: Option<i64>,
+    /// `geral`, `pessoal` ou `equipe:<id>`.
+    pub escopo: Option<String>,
+    /// Minutos a leste de UTC, como `Date#getTimezoneOffset` invertido.
+    pub fuso_min: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiaAtividade {
+    pub data: String,
+    pub notas: i64,
+    pub tarefas: i64,
+    pub concluidas: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagAtividade {
+    pub nome: String,
+    pub quantidade: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Atividade {
+    pub escopo: String,
+    pub dias: Vec<DiaAtividade>,
+    pub tags: Vec<TagAtividade>,
+    pub pendentes: i64,
+    pub concluidas: i64,
+}
+
+/// Agregação no índice, sem ler os arquivos Markdown nem paginar itens para o navegador.
+pub async fn atividade(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<AtividadeQuery>) -> AppResult<Json<Atividade>> {
+    let dias = match q.dias.unwrap_or(30) {
+        30 | 90 | 365 => q.dias.unwrap_or(30),
+        _ => return Err(AppError::validation(vec![CampoInvalido { campo: "dias".into(), motivo: "use 30, 90 ou 365".into() }])),
+    };
+    let escopo = match q.escopo.as_deref() {
+        None | Some("geral") | Some("pessoal_e_equipes") => "geral".to_string(),
+        Some("pessoal") => "pessoal".to_string(),
+        Some(e) if e.starts_with("equipe:") && e.len() > "equipe:".len() => e.to_string(),
+        _ => return Err(AppError::validation(vec![CampoInvalido { campo: "escopo".into(), motivo: "use geral, pessoal ou equipe:<id>".into() }])),
+    };
+    let fuso_min = q.fuso_min.unwrap_or(0);
+    if !(-840..=840).contains(&fuso_min) {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "fuso_min".into(), motivo: "fuso inválido".into() }]));
+    }
+    let fuso = FixedOffset::east_opt(fuso_min * 60).ok_or_else(|| AppError::validation(vec![CampoInvalido { campo: "fuso_min".into(), motivo: "fuso inválido".into() }]))?;
+    let hoje = Utc::now().with_timezone(&fuso).date_naive();
+    let inicio = hoje - Duration::days(dias - 1);
+    let modificador = format!("{}{:02}:{:02}", if fuso_min < 0 { "-" } else { "+" }, fuso_min.abs() / 60, fuso_min.abs() % 60);
+    let uid = usuario.0;
+    let escopo_consulta = escopo.clone();
+    let (linhas, tags, pendentes, concluidas) = state.db.with_read(move |conn| {
+        let vis_n = crate::espacos::visivel_sql("n", &uid);
+        let vis_t = crate::espacos::visivel_sql("t", &uid);
+        let filtro = match escopo_consulta.as_str() {
+            "geral" => String::new(),
+            "pessoal" => " AND {alias}.espaco = 'pessoal'".to_string(),
+            equipe => format!(" AND {{alias}}.espaco = '{}'", equipe.replace('\'', "''")),
+        };
+        let vis_n = format!("({vis_n}){}", filtro.replace("{alias}", "n"));
+        let vis_t = format!("({vis_t}){}", filtro.replace("{alias}", "t"));
+        let consulta = format!("SELECT dia, SUM(notas), SUM(tarefas), SUM(concluidas) FROM (\
+            SELECT date(datetime(n.criado_em, ?1)) dia, 1 notas, 0 tarefas, 0 concluidas FROM nota n WHERE {vis_n} \
+            UNION ALL SELECT date(datetime(t.criado_em, ?1)), 0, 1, 0 FROM tarefa t WHERE {vis_t} \
+            UNION ALL SELECT date(datetime(t.concluida_em, ?1)), 0, 0, 1 FROM tarefa t WHERE {vis_t} AND t.concluida_em IS NOT NULL\
+            ) WHERE dia BETWEEN ?2 AND ?3 GROUP BY dia ORDER BY dia");
+        let mut stmt = conn.prepare(&consulta)?;
+        let linhas = stmt.query_map(rusqlite::params![modificador, inicio.to_string(), hoje.to_string()], |r| Ok(DiaAtividade { data: r.get(0)?, notas: r.get(1)?, tarefas: r.get(2)?, concluidas: r.get(3)? }))?.collect::<Result<Vec<_>, _>>()?;
+        let consulta_tags = format!("SELECT tag, COUNT(*) quantidade FROM (\
+            SELECT nt.tag FROM nota_tag nt JOIN nota n ON n.id = nt.nota_id WHERE {vis_n} \
+            UNION ALL SELECT tt.tag FROM tarefa_tag tt JOIN tarefa t ON t.id = tt.tarefa_id WHERE {vis_t}\
+            ) GROUP BY tag ORDER BY quantidade DESC, tag COLLATE NOCASE LIMIT 6");
+        let mut stmt = conn.prepare(&consulta_tags)?;
+        let tags = stmt.query_map([], |r| Ok(TagAtividade { nome: r.get(0)?, quantidade: r.get(1)? }))?.collect::<Result<Vec<_>, _>>()?;
+        let pendentes = conn.query_row(&format!("SELECT COUNT(*) FROM tarefa t WHERE {vis_t} AND t.status = 'pendente'"), [], |r| r.get(0))?;
+        let concluidas = conn.query_row(&format!("SELECT COUNT(*) FROM tarefa t WHERE {vis_t} AND t.status = 'concluida'"), [], |r| r.get(0))?;
+        Ok((linhas, tags, pendentes, concluidas))
+    }).await?;
+    let mut por_dia = linhas.into_iter().map(|d| (d.data.clone(), d)).collect::<std::collections::HashMap<_, _>>();
+    let dias = (0..dias).map(|i| {
+        let data = (inicio + Duration::days(i)).to_string();
+        por_dia.remove(&data).unwrap_or(DiaAtividade { data, notas: 0, tarefas: 0, concluidas: 0 })
+    }).collect();
+    Ok(Json(Atividade { escopo, dias, tags, pendentes, concluidas }))
+}
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Metricas {
-    /// `pessoal` ou `pessoal_e_equipes`: o que as contagens abaixo cobrem.
+    /// `pessoal`, `geral` ou `equipe:<id>`: o que as contagens abaixo cobrem.
     pub escopo: String,
     /// `usuario.criado_em`.
     pub entrou_em: String,
@@ -34,23 +123,26 @@ pub struct Metricas {
 
 pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<MetricasQuery>) -> AppResult<Json<Metricas>> {
     let escopo = match q.escopo.as_deref() {
-        None | Some("pessoal") => "pessoal",
-        Some("pessoal_e_equipes") => "pessoal_e_equipes",
-        Some(_) => return Err(AppError::validation(vec![CampoInvalido { campo: "escopo".into(), motivo: "use pessoal ou pessoal_e_equipes".into() }])),
+        None | Some("pessoal") => "pessoal".to_string(),
+        Some("geral") | Some("pessoal_e_equipes") => "geral".to_string(),
+        Some(e) if e.starts_with("equipe:") && e.len() > "equipe:".len() => e.to_string(),
+        Some(_) => return Err(AppError::validation(vec![CampoInvalido { campo: "escopo".into(), motivo: "use geral, pessoal ou equipe:<id>".into() }])),
     };
     let uid = usuario.0.clone();
-    let com_equipes = escopo == "pessoal_e_equipes";
+    let escopo_consulta = escopo.clone();
     let metricas = state
         .db
         .with_read(move |conn| {
             let entrou_em: Option<String> = conn.query_row("SELECT criado_em FROM usuario WHERE id = ?1", [&uid], |r| r.get(0)).ok();
             let Some(entrou_em) = entrou_em else { return Ok(None) };
-            let (nota_vis, tarefa_vis) = if com_equipes {
-                (crate::espacos::visivel_sql("n", &uid), crate::espacos::visivel_sql("t", &uid))
-            } else {
+            let (nota_vis, tarefa_vis) = if escopo_consulta == "pessoal" {
                 ("(n.espaco = 'pessoal' AND n.criado_por = ?1)".to_string(), "(t.espaco = 'pessoal' AND t.criado_por = ?1)".to_string())
+            } else {
+                let filtro = if escopo_consulta == "geral" { String::new() } else { format!(" AND {{alias}}.espaco = '{}'", escopo_consulta.replace('\'', "''")) };
+                (format!("({}){}", crate::espacos::visivel_sql("n", &uid), filtro.replace("{alias}", "n")),
+                 format!("({}){}", crate::espacos::visivel_sql("t", &uid), filtro.replace("{alias}", "t")))
             };
-            let param: Vec<&dyn rusqlite::ToSql> = if com_equipes { vec![] } else { vec![&uid] };
+            let param: Vec<&dyn rusqlite::ToSql> = if escopo_consulta == "pessoal" { vec![&uid] } else { vec![] };
             let tarefas: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM tarefa t WHERE {tarefa_vis}"), param.as_slice(), |r| r.get(0))?;
             let (notas, primeira): (i64, Option<String>) =
                 conn.query_row(&format!("SELECT COUNT(*), MIN(n.criado_em) FROM nota n WHERE {nota_vis}"), param.as_slice(), |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -83,7 +175,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         })
         .await?;
     let (entrou_em, primeira_nota_em, notas, tarefas, palavras, caracteres) = metricas.ok_or(AppError::new(ErrorCode::NotFound))?;
-    Ok(Json(Metricas { escopo: escopo.to_string(), entrou_em, primeira_nota_em, notas, tarefas, palavras, caracteres }))
+    Ok(Json(Metricas { escopo, entrou_em, primeira_nota_em, notas, tarefas, palavras, caracteres }))
 }
 
 #[cfg(test)]
@@ -148,7 +240,11 @@ mod testes {
 
         // Com equipes entram os itens da equipe de que ela é membro.
         let (_, m) = get(&app, "/api/v1/me/metricas?escopo=pessoal_e_equipes", &tk("U1")).await;
-        assert_eq!((m["escopo"].as_str(), m["notas"].as_i64(), m["tarefas"].as_i64()), (Some("pessoal_e_equipes"), Some(3), Some(3)));
+        assert_eq!((m["escopo"].as_str(), m["notas"].as_i64(), m["tarefas"].as_i64()), (Some("geral"), Some(3), Some(3)));
+        let (_, m) = get(&app, "/api/v1/me/metricas?escopo=equipe:EQ", &tk("U1")).await;
+        assert_eq!((m["notas"].as_i64(), m["tarefas"].as_i64()), (Some(1), Some(1)));
+        let (_, m) = get(&app, "/api/v1/me/metricas?escopo=equipe:EQ", &tk("VAZIO")).await;
+        assert_eq!((m["notas"].as_i64(), m["tarefas"].as_i64()), (Some(0), Some(0)));
 
         // Quem não tem conteúdo recebe zeros e nenhuma "primeira nota".
         let (st, m) = get(&app, "/api/v1/me/metricas?escopo=pessoal_e_equipes", &tk("VAZIO")).await;
@@ -158,6 +254,32 @@ mod testes {
         assert_eq!(m["entrou_em"], "2026-03-04T10:00:00+00:00");
 
         assert_eq!(get(&app, "/api/v1/me/metricas?escopo=tudo", &tk("U1")).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        // A série é agregada sem paginação e mantém o isolamento entre espaços.
+        let agora = chrono::Utc::now().to_rfc3339();
+        state.db.with(move |c| {
+            for (id, espaco, dono) in [("NHOJE1", "pessoal", "U1"), ("NHOJE2", "pessoal", "U2"), ("NHOJE3", "equipe:EQ", "U2")] {
+                c.execute("INSERT INTO nota (id, caminho_arquivo, titulo, espaco, criado_em, atualizado_em, hash_conteudo, criado_por) VALUES (?1, ?2, 'hoje', ?3, ?4, ?4, 'h', ?5)", rusqlite::params![id, format!("{id}.md"), espaco, agora, dono])?;
+                c.execute("INSERT INTO nota_tag (nota_id, tag) VALUES (?1, 'projeto')", [id])?;
+            }
+            c.execute("INSERT INTO tarefa (id, caminho_arquivo, titulo, status, espaco, criado_em, criado_por, concluida_em) VALUES ('THOJE', 'THOJE.md', 'feito', 'concluida', 'pessoal', ?1, 'U1', ?1)", [&agora])?;
+            Ok(())
+        }).await.unwrap();
+        let (st, a) = get(&app, "/api/v1/me/atividade?dias=30&escopo=pessoal&fuso_min=0", &tk("U1")).await;
+        assert_eq!(st, StatusCode::OK, "{a}");
+        assert_eq!(a["dias"].as_array().unwrap().len(), 30);
+        let ultimo = &a["dias"][29];
+        assert_eq!((ultimo["notas"].as_i64(), ultimo["tarefas"].as_i64(), ultimo["concluidas"].as_i64()), (Some(1), Some(1), Some(1)));
+        assert_eq!(a["tags"][0]["quantidade"], 1);
+        let (_, a) = get(&app, "/api/v1/me/atividade?dias=30&escopo=geral", &tk("U1")).await;
+        assert_eq!(a["dias"][29]["notas"], 2);
+        assert_eq!(a["tags"][0]["quantidade"], 2);
+        let (_, a) = get(&app, "/api/v1/me/atividade?dias=30&escopo=equipe:EQ", &tk("U1")).await;
+        assert_eq!(a["dias"][29]["notas"], 1);
+        assert_eq!(a["tags"][0]["quantidade"], 1);
+        let (_, a) = get(&app, "/api/v1/me/atividade?dias=30&escopo=equipe:EQ", &tk("VAZIO")).await;
+        assert_eq!(a["dias"][29]["notas"], 0);
+        assert!(a["tags"].as_array().unwrap().is_empty());
+        assert_eq!(get(&app, "/api/v1/me/atividade?dias=31", &tk("U1")).await.0, StatusCode::UNPROCESSABLE_ENTITY);
         let _ = std::fs::remove_dir_all(&temp);
     }
 }
