@@ -10,8 +10,8 @@ interface AppUIState {
   fecharDrawer: () => void;
 
   /** null = no create popup/form open; string = the type being edited. */
-  capturaAberta: TipoCaptura | "escolha" | null;
-  abrirCaptura: (inicial: TipoCaptura | "escolha", data?: string | null, rascunho?: Partial<CapturaDraft> | null) => void;
+  capturaAberta: TipoCaptura | "evento" | "escolha" | null;
+  abrirCaptura: (inicial: TipoCaptura | "evento" | "escolha", data?: string | null, rascunho?: Partial<CapturaDraft> | null) => void;
   /** Campos já preenchidos do próximo lançamento (ex.: a cópia de outro). */
   rascunhoCaptura: Partial<CapturaDraft> | null;
   /** Data (AAAA-MM-DD) com que a próxima Transação nasce — ex.: o dia aberto no calendário do Cofre. */
@@ -41,7 +41,7 @@ const AppUIContext = createContext<AppUIState | null>(null);
 
 export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
-  const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "escolha" | null>(null);
+  const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "evento" | "escolha" | null>(null);
   const [idCaptura, setIdCaptura] = useState(0);
   const [dataCaptura, setDataCaptura] = useState<string | null>(null);
   const [rascunhoCaptura, setRascunhoCaptura] = useState<Partial<CapturaDraft> | null>(null);
@@ -51,7 +51,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
   const [espacoAtivo, setEspacoAtivoState] = useState(() => { let e = "pessoal"; try { e = localStorage.getItem("ecos:espaco-ativo") ?? "pessoal"; } catch { /* cache indisponível */ } definirEspacoDoCofre(e); return e; });
   const [intercalarEquipes, setIntercalarEquipesState] = useState(() => { try { return localStorage.getItem("ecos:intercalar-equipes") === "true"; } catch { return false; } });
   const setEspacoAtivo = (espaco: string) => { definirEspacoDoCofre(espaco); setEspacoAtivoState(espaco); try { localStorage.setItem("ecos:espaco-ativo", espaco); } catch {} };
-  const setIntercalarEquipes = (ativo: boolean) => { setIntercalarEquipesState(ativo); try { localStorage.setItem("ecos:intercalar-equipes", String(ativo)); } catch {} };
+  const setIntercalarEquipes = (ativo: boolean) => { setIntercalarEquipesState(ativo); if (ativo) setFiltroEquipeId(null); try { localStorage.setItem("ecos:intercalar-equipes", String(ativo)); } catch {} };
 
   const value = useMemo<AppUIState>(
     () => ({

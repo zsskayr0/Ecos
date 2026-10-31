@@ -1,22 +1,25 @@
-import { FileText, ListChecks, Wallet } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, Wallet } from "lucide-react";
 import type { TipoCaptura } from "@/lib/ui-context";
 import { Dialog } from "@/components/common/Dialog";
 
-const OPCOES: { tipo: TipoCaptura; label: string; Icon: typeof FileText }[] = [
+type OpcaoCriacao = TipoCaptura | "evento";
+
+const OPCOES: { tipo: OpcaoCriacao; label: string; Icon: typeof FileText }[] = [
   { tipo: "nota", label: "Nota", Icon: FileText },
   { tipo: "tarefa", label: "Tarefa", Icon: ListChecks },
+  { tipo: "evento", label: "Evento", Icon: CalendarDays },
   { tipo: "transacao", label: "Transação", Icon: Wallet },
 ];
 
 /**
- * Feed's choice popup (section 2.4/3.6) — 3 cards of equal visual weight,
+ * Feed's choice popup (section 2.4/3.6) — cards of equal visual weight,
  * no bias between them by order/size/color.
  */
 export function ChoicePopup({
   onEscolher,
   onFechar,
 }: {
-  onEscolher: (tipo: TipoCaptura) => void;
+  onEscolher: (tipo: OpcaoCriacao) => void;
   onFechar: () => void;
 }) {
   return (
@@ -24,7 +27,7 @@ export function ChoicePopup({
       <div className="relative z-10 w-full max-w-md rounded-t-[28px] bg-surface-1 p-6 pb-10 ecos-fade-in sm:rounded-[28px]">
         <div className="mx-auto mb-5 h-1 w-10 rounded-pill bg-border sm:hidden" />
         <p id="choice-popup-titulo" className="mb-5 text-center font-body text-[15px] font-semibold text-text-primary">O que vamos capturar?</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {OPCOES.map(({ tipo, label, Icon }) => (
             <button
               key={tipo}

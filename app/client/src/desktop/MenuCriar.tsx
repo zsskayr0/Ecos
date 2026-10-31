@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronDown, ListChecks, Plus, StickyNote, Wallet } from "lucide-react";
+import { CalendarDays, ChevronDown, ListChecks, Plus, StickyNote, Wallet } from "lucide-react";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 
-const ITENS: { tipo: TipoCaptura; rotulo: string; Icone: typeof StickyNote }[] = [
+const ITENS: { tipo: TipoCaptura | "evento"; rotulo: string; Icone: typeof StickyNote }[] = [
   { tipo: "nota", rotulo: "Nota", Icone: StickyNote },
   { tipo: "tarefa", rotulo: "Tarefa", Icone: ListChecks },
+  { tipo: "evento", rotulo: "Evento", Icone: CalendarDays },
   { tipo: "transacao", rotulo: "Transação", Icone: Wallet },
 ];
 

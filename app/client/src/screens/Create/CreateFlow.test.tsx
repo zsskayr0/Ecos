@@ -7,7 +7,9 @@ const criar = vi.hoisted(() => vi.fn(async () => ({ id: "n1" })));
 const atualizar = vi.hoisted(() => vi.fn(async () => ({})));
 const avisar = vi.hoisted(() => vi.fn());
 const fecharCaptura = vi.hoisted(() => vi.fn());
-const ui = vi.hoisted(() => ({ idCaptura: 1 }));
+const abrirCaptura = vi.hoisted(() => vi.fn());
+const notificar = vi.hoisted(() => vi.fn());
+const ui = vi.hoisted(() => ({ idCaptura: 1, tipo: "nota" }));
 
 vi.mock("@/lib/api", () => ({
   notas: { criar, atualizar }, tarefas: { criar, atualizar }, vault: {},
@@ -17,9 +19,12 @@ vi.mock("@/lib/formas-pagamento-store", () => ({
   useFormasPagamento: () => ({ lista: [], ativas: [], porCodigo: new Map(), carregando: false, indisponivel: false, erro: null, rotulo: (c?: string | null) => c ?? "", recarregar: vi.fn() }),
 }));
 vi.mock("@/lib/toast", () => ({ avisar }));
-vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ notificar: vi.fn() }) }));
+vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ notificar }) }));
 vi.mock("@/lib/ui-context", () => ({
-  useAppUI: () => ({ capturaAberta: "nota", idCaptura: ui.idCaptura, fecharCaptura, trocarTipoCaptura: vi.fn(), espacoAtivo: "pessoal", anexosDeCaptura: [], limparAnexosDeCaptura: vi.fn() }),
+  useAppUI: () => ({ capturaAberta: ui.tipo, idCaptura: ui.idCaptura, abrirCaptura, fecharCaptura, trocarTipoCaptura: vi.fn(), espacoAtivo: "pessoal", anexosDeCaptura: [], limparAnexosDeCaptura: vi.fn() }),
+}));
+vi.mock("@/screens/Eventos/EventoDialog", () => ({
+  EventoDialog: ({ onSalvo }: { onSalvo: () => void }) => <button onClick={onSalvo}>Salvar evento de teste</button>,
 }));
 vi.mock("./NoteForm", () => ({
   NoteForm: ({ draft, setDraft }: { draft: CapturaDraft; setDraft: SetDraft }) => (
@@ -35,7 +40,8 @@ describe("autosave da captura", () => {
     vi.useFakeTimers();
     localStorage.clear();
     ui.idCaptura = 1;
-    criar.mockClear(); atualizar.mockClear(); avisar.mockClear(); fecharCaptura.mockClear();
+    ui.tipo = "nota";
+    criar.mockClear(); atualizar.mockClear(); avisar.mockClear(); abrirCaptura.mockClear(); fecharCaptura.mockClear(); notificar.mockClear();
     render(<MemoryRouter><CreateFlow /></MemoryRouter>);
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -44,6 +50,19 @@ describe("autosave da captura", () => {
     expect(temConteudoMinimo("R")).toBe(false);
     expect(temConteudoMinimo("  ab  ")).toBe(false);
     expect(temConteudoMinimo("a".repeat(MIN_CARACTERES_CRIACAO))).toBe(true);
+  });
+
+  it("oferece Evento no botão Criar e abre o editor existente", () => {
+    cleanup();
+    ui.tipo = "escolha";
+    const vista = render(<MemoryRouter><CreateFlow /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Evento" }));
+    expect(abrirCaptura).toHaveBeenCalledWith("evento");
+    ui.tipo = "evento";
+    vista.rerender(<MemoryRouter><CreateFlow /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar evento de teste" }));
+    expect(notificar).toHaveBeenCalledTimes(1);
+    expect(fecharCaptura).toHaveBeenCalledTimes(1);
   });
 
   it("um caractere não cria item, nem depois de fechar", async () => {

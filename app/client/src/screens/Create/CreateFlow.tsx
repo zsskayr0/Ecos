@@ -14,6 +14,7 @@ import { FormShell } from "./FormShell";
 import { NoteForm } from "./NoteForm";
 import { TaskForm } from "./TaskForm";
 import { TransactionForm } from "./TransactionForm";
+import { EventoDialog } from "@/screens/Eventos/EventoDialog";
 import { AnexosPendentes, enviarAnexosPendentes } from "@/screens/Vault/comprovantes/AnexosPendentes";
 
 import { mensagemDeErro } from "@/lib/erros";
@@ -148,7 +149,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   pastaContexto?: PastaContexto | null;
   contextoDesktop?: "ecos" | "cofre";
 }) {
-  const { capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
+  const { capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, abrirCaptura, fecharCaptura, trocarTipoCaptura, espacoAtivo, anexosDeCaptura, limparAnexosDeCaptura } = useAppUI();
   const { notificar } = useRefreshBus();
   const navigate = useNavigate();
   const location = useLocation();
@@ -378,8 +379,12 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
 
   if (!capturaAberta) return null;
 
+  if (capturaAberta === "evento") {
+    return <EventoDialog sobreTudo aberto eventoId={null} categorias={[]} onFechar={fecharTudo} onSalvo={() => { notificar(); fecharTudo(); }} />;
+  }
+
   if (capturaAberta === "escolha") {
-    return <ChoicePopup onEscolher={(tipo: TipoCaptura) => trocarTipoCaptura(tipo)} onFechar={fecharTudo} />;
+    return <ChoicePopup onEscolher={(tipo) => { if (tipo === "evento") abrirCaptura("evento"); else trocarTipoCaptura(tipo); }} onFechar={fecharTudo} />;
   }
 
   return (
