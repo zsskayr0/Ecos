@@ -257,7 +257,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
         onSubmit={(e) => { e.preventDefault(); salvar(); }}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); salvar(); } }}
         style={{ ["--ecos-cyan-rgb" as string]: acento.rgb, ["--ev-contraste" as string]: acento.contraste }}
-        className={`${saindo ? "ecos-modal-out" : "ecos-modal-in"} ecos-acento-evento flex h-full w-full flex-col bg-base lg:my-auto lg:h-auto lg:max-w-5xl lg:rounded-2xl lg:border lg:border-border lg:shadow-nav`}
+        className={`${saindo ? "ecos-modal-out" : "ecos-modal-in"} ecos-acento-evento flex h-full w-full flex-col bg-base lg:my-auto lg:h-[calc(100dvh-5rem)] lg:max-h-[60rem] lg:max-w-7xl lg:rounded-2xl lg:border lg:border-border lg:shadow-nav`}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-surface-1 px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))] lg:rounded-t-2xl lg:pt-4">
           <div className="min-w-0">
@@ -273,7 +273,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
           <button type="button" onClick={fechar} aria-label="Fechar" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary"><X size={17} /></button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:overflow-visible">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-6">
           {emOcorrencia && <p className="ecos-cascata mb-4 flex items-center gap-2 rounded-lg border border-border bg-surface-1 p-3 text-xs text-text-muted" style={{ ["--i" as string]: 0 }}><Repeat size={13} className="shrink-0 text-cyan" />Só esta ocorrência muda. As outras da série continuam como estão.</p>}
           {serieDoGoogle && <p className="ecos-cascata mb-4 flex items-start gap-2 rounded-lg border border-border bg-surface-1 p-3 text-xs text-text-muted" style={{ ["--i" as string]: 0 }}><Repeat size={13} className="mt-0.5 shrink-0 text-cyan" />Esta série é gerenciada no Google Calendar. Aqui você muda a cor, a categoria e os vínculos; para mudar uma ocorrência, clique nela na Agenda.</p>}
           {multiDia && !serieDoGoogle && !emOcorrencia && <p className="ecos-cascata mb-4 flex items-start gap-2 rounded-lg border border-border bg-surface-1 p-3 text-xs text-text-muted" style={{ ["--i" as string]: 0 }}><Clock size={13} className="mt-0.5 shrink-0 text-cyan" />Evento de vários dias: as datas e o horário só se mudam no Google Calendar.</p>}
@@ -293,7 +293,7 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
             />
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2 lg:gap-x-10">
+          <div className="grid items-start gap-5 lg:grid-cols-2 lg:gap-x-8">
           <div className="space-y-5">
           <Secao i={1} icone={<Clock size={13} />} rotulo="Quando">
             <fieldset disabled={travaQuando} className="m-0 min-w-0 border-0 p-0">
@@ -396,25 +396,27 @@ export function EditorEvento({ dia, evento, categorias, eventos = [], passoMin =
           <Secao i={6} icone={<MapPin size={13} />} rotulo="Local">
             <input value={local} onChange={(e) => setLocal(e.target.value)} disabled={travaTexto} placeholder="Sala, endereço ou link" aria-label="Local" maxLength={300} className="ecos-input w-full" />
           </Secao>
+          </div>
 
-          <Secao i={7} icone={<AlignLeft size={13} />} rotulo="Descrição">
-            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={travaTexto} rows={5} placeholder="Pauta, contexto, o que levar…" aria-label="Descrição" className="ecos-input w-full resize-none" />
-          </Secao>
+          <div className="lg:col-span-2">
+            <Secao i={7} icone={<AlignLeft size={13} />} rotulo="Descrição">
+              <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={travaTexto} rows={4} placeholder="Pauta, contexto, o que levar…" aria-label="Descrição" className="ecos-input min-h-28 w-full resize-y lg:min-h-64" />
+            </Secao>
+          </div>
 
           {edicao && evento?.id && (
-            <Secao i={8} icone={<Network size={13} />} rotulo="Conexões">
-              <MiniGrafo itemId={evento.id} semTitulo />
-            </Secao>
+            <div className="lg:col-span-2"><Secao i={8} icone={<Network size={13} />} rotulo="Conexões">
+                <MiniGrafo itemId={evento.id} semTitulo />
+              </Secao></div>
           )}
 
           {!emOcorrencia && (
-            <Secao i={9} icone={<Link2 size={13} />} rotulo="Vínculos">
-              <SeletorVinculos tarefas={vinculos.tarefas} notas={vinculos.notas} onChange={setVinculos} />
-              <p className="mt-2 text-[11px] text-text-muted">Liga o evento a Tarefas e Notas. Ficam só no Ecos: nunca vão ao Google.</p>
-            </Secao>
+            <div className="lg:col-span-2"><Secao i={9} icone={<Link2 size={13} />} rotulo="Vínculos">
+                <SeletorVinculos tarefas={vinculos.tarefas} notas={vinculos.notas} onChange={setVinculos} />
+                <p className="mt-2 text-[11px] text-text-muted">Liga o evento a Tarefas e Notas. Ficam só no Ecos: nunca vão ao Google.</p>
+              </Secao></div>
           )}
 
-          </div>
           </div>
         </div>
 

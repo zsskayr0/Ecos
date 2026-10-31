@@ -93,18 +93,21 @@ let descartarCliqueFantasma: (() => void) | null = null;
 const posDoItem = (i: Posicao): Posicao => ({ dia: i.dia, inicioMin: i.inicioMin, duracaoMin: i.duracaoMin });
 
 /** "8 prazos · 10,5 h": o que o dia guarda na faixa. As horas somam só o que tem estimativa. */
-export function resumoDoDia(itens: ItemAgenda[]): { rotulo: string } {
-  const prazos = itens.filter((i) => i.tipo === "prazo");
-  const transacoes = itens.filter((i) => i.transacao);
-  const outros = itens.length - prazos.length - transacoes.length;
+export function resumoDoDia(itens: ItemAgenda[]): { rotulo: string; soConcluidos: boolean } {
+  const pendentes = itens.filter((i) => !i.concluida);
+  const concluidos = itens.length - pendentes.length;
+  const prazos = pendentes.filter((i) => i.tipo === "prazo");
+  const transacoes = pendentes.filter((i) => i.transacao);
+  const outros = pendentes.length - prazos.length - transacoes.length;
   const minutos = prazos.reduce((soma, i) => soma + (i.semEstimativa ? 0 : i.duracaoMin), 0);
   const partes = [
     prazos.length > 0 ? `${prazos.length} ${prazos.length === 1 ? "prazo" : "prazos"}` : null,
     outros > 0 ? `${outros} ${outros === 1 ? "evento" : "eventos"}` : null,
     transacoes.length > 0 ? `${transacoes.length} ${transacoes.length === 1 ? "transação" : "transações"}` : null,
     minutos > 0 ? formatarHoras(minutos) : null,
+    concluidos > 0 ? `${concluidos} ${concluidos === 1 ? "concluído" : "concluídos"}` : null,
   ].filter(Boolean);
-  return { rotulo: partes.join(" · ") };
+  return { rotulo: partes.join(" · "), soConcluidos: concluidos > 0 && pendentes.length === 0 };
 }
 
 /** Cor livre do evento: fundo translúcido e texto/borda numa mistura da cor com o texto do tema (legível em claro e escuro). */
@@ -655,8 +658,8 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
               return (
                 <div key={dia} data-faixa-dia={dia} className={`flex min-h-0 flex-col gap-1 border-b border-r border-border/35 p-1.5 transition-colors ${modoFaixa === "todos" ? "overflow-y-auto" : "overflow-hidden"} ${alvoDaPrevia ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : "bg-base"}`}>
                   {modoFaixa === "todos" ? daqui.map(itemDiaTodo) : daqui.length > 0 && (
-                    <button type="button" data-abre-lista data-resumo-dia={dia} aria-expanded={lista?.dia === dia} onClick={(e) => abrirLista(dia, e.currentTarget)} title={resumo.rotulo} className="flex w-full items-center gap-1 rounded bg-warning/15 px-1.5 py-1 text-left text-xs font-medium text-warning outline-none ring-cyan hover:brightness-125 focus-visible:ring-2">
-                      <Flag size={11} aria-hidden className="shrink-0" /><span className="truncate">{resumo.rotulo}</span>
+                    <button type="button" data-abre-lista data-resumo-dia={dia} aria-expanded={lista?.dia === dia} onClick={(e) => abrirLista(dia, e.currentTarget)} title={resumo.rotulo} className={`flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-xs font-medium outline-none ring-cyan hover:brightness-125 focus-visible:ring-2 ${resumo.soConcluidos ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                      {resumo.soConcluidos ? <CheckCircle2 size={11} aria-hidden className="shrink-0" /> : <Flag size={11} aria-hidden className="shrink-0" />}<span className="truncate">{resumo.rotulo}</span>
                     </button>
                   )}
                   {gesto?.tipo === "mover" && alvoDaPrevia && !daqui.some((i) => i.chave === gesto.chave) && <div aria-hidden className="pointer-events-none rounded border border-dashed border-cyan/70 px-2 py-1 text-xs text-cyan">Dia inteiro</div>}

@@ -882,6 +882,18 @@ describe('faixa "O dia todo": Ocultar, Resumo e Todos', () => {
     expect(document.querySelector(`[data-resumo-dia='${D2}']`)!.textContent).toBe("1 prazo · 1 evento · 2 h");
   });
 
+  it("separa prazos concluídos dos pendentes no resumo e não soma seu tempo à carga", () => {
+    montar([prazo("P", D2, 60), prazo("C", D2, 120, { concluida: true })]);
+    expect(document.querySelector(`[data-resumo-dia='${D2}']`)!.textContent).toBe("1 prazo · 1 h · 1 concluído");
+  });
+
+  it("usa a cor de conclusão quando o dia só tem itens concluídos", () => {
+    montar([prazo("C", D2, 120, { concluida: true })]);
+    const chip = document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!;
+    expect(chip.textContent).toBe("1 concluído");
+    expect(chip.className).toContain("text-success");
+  });
+
   it("clicar no chip abre a lista do dia; Escape ou clicar fora fecham", () => {
     montar(oitoPrazos());
     const chip = document.querySelector<HTMLElement>(`[data-resumo-dia='${D2}']`)!;

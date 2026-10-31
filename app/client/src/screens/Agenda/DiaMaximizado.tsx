@@ -90,6 +90,13 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   const eventos = useMemo(() => eventosDoDia.filter((e) => !e.transacaoId).sort(porHorario), [eventosDoDia]);
   const lancamentos = useMemo(() => eventosDoDia.filter((e) => !!e.transacaoId).sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR")), [eventosDoDia]);
   const tarefas = useMemo(() => [...(tarefasDoDia ?? [])].sort((a, b) => (a.scheduled_at ?? "9").localeCompare(b.scheduled_at ?? "9")), [tarefasDoDia]);
+  const pendentes = useMemo(() => tarefas.filter((t) => t.status === "pendente"), [tarefas]);
+  const concluidas = useMemo(() => {
+    const porId = new Map<string, TarefaResumo>();
+    for (const t of tarefas) if (t.status === "concluida") porId.set(t.id, t);
+    for (const t of concluidasDoDia) if (t.status === "concluida") porId.set(t.id, t);
+    return [...porId.values()].sort((a, b) => (a.concluida_em ?? "").localeCompare(b.concluida_em ?? ""));
+  }, [tarefas, concluidasDoDia]);
   const saldo = lancamentos.reduce((s, l) => s + (l.valorCentavos ?? 0), 0);
   const entradas = lancamentos.reduce((s, l) => s + Math.max(0, l.valorCentavos ?? 0), 0);
   const saidas = lancamentos.reduce((s, l) => s + Math.min(0, l.valorCentavos ?? 0), 0);
@@ -100,7 +107,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   const abas: { id: Aba; rotulo: string; icone: ReactNode; n?: number }[] = [
     { id: "resumo", rotulo: "Resumo", icone: <LayoutDashboard size={15} /> },
     { id: "eventos", rotulo: "Eventos", icone: <CalendarDays size={15} />, n: eventos.length },
-    { id: "tarefas", rotulo: "Tarefas", icone: <ListChecks size={15} />, n: tarefas.length },
+    { id: "tarefas", rotulo: "Tarefas", icone: <ListChecks size={15} />, n: pendentes.length + concluidas.length },
     { id: "lancamentos", rotulo: "Lançamentos", icone: <Wallet size={15} />, n: lancamentos.length },
     { id: "tempo", rotulo: "Tempo", icone: <Hourglass size={15} /> },
   ];
@@ -111,7 +118,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   useLayoutEffect(() => {
     const el = abasRef.current?.querySelector<HTMLElement>(`[data-aba="${aba}"]`);
     if (el) setIndicador({ left: el.offsetLeft, width: el.offsetWidth });
-  }, [aba, eventos.length, tarefas.length, lancamentos.length]);
+  }, [aba, eventos.length, pendentes.length, concluidas.length, lancamentos.length]);
 
   const fechar = () => {
     if (reduzido()) return onFechar();
@@ -179,18 +186,18 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
     ) : <Vazio icone={<Wallet size={32} />} texto="Nenhum lançamento neste dia." />;
     if (aba === "tarefas") return (
       <div className="flex flex-col gap-5">
-        {tarefas.length ? <ul className="flex flex-col gap-2.5">{tarefas.map(linhaTarefa)}</ul> : <Vazio icone={<ListChecks size={32} />} texto="Nenhuma tarefa pendente neste dia." />}
-        {concluidasDoDia.length > 0 && (
-          <section aria-label="Concluídas neste dia" className="ecos-cascata" style={{ ["--i" as string]: tarefas.length + 1 }}>
+        {pendentes.length ? <section aria-label="Tarefas pendentes"><h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Pendentes · {pendentes.length}</h3><ul className="flex flex-col gap-2.5">{pendentes.map(linhaTarefa)}</ul></section> : concluidas.length ? <p className="text-sm text-text-muted">Nenhuma tarefa pendente neste dia.</p> : <Vazio icone={<ListChecks size={32} />} texto="Nenhuma tarefa neste dia." />}
+        {concluidas.length > 0 && (
+          <section aria-label="Concluídas neste dia" className="ecos-cascata" style={{ ["--i" as string]: pendentes.length + 1 }}>
             <button type="button" onClick={() => setConcluidasAbertas((v) => !v)} aria-expanded={concluidasAbertas} aria-controls="dia-concluidas" className="group flex w-full items-center gap-2 rounded-xl border border-success/25 bg-success/10 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-success transition-all duration-200 hover:bg-success/15 active:scale-[0.99]">
               <CheckCircle2 size={14} aria-hidden className={`transition-transform duration-300 ${concluidasAbertas ? "scale-110 rotate-[360deg]" : "group-hover:scale-110"}`} />
-              Concluídos · {concluidasDoDia.length}
+              Concluídas · {concluidas.length}
               <ChevronDown size={14} aria-hidden className={`ml-auto transition-transform duration-300 ease-out ${concluidasAbertas ? "rotate-180" : ""}`} />
             </button>
             <div id="dia-concluidas" className="ecos-colapsa" data-aberto={concluidasAbertas} aria-hidden={!concluidasAbertas}>
               <div>
                 <ul className="flex flex-col gap-1.5 pt-2">
-                  {[...concluidasDoDia].sort((a, b) => (a.concluida_em ?? "").localeCompare(b.concluida_em ?? "")).map((t, i) => (
+                  {concluidas.map((t, i) => (
                     <li key={t.id} style={{ transitionDelay: concluidasAbertas ? `${i * 50 + 80}ms` : "0ms" }} className={`transition-all duration-300 ease-out ${concluidasAbertas ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"}`}>
                       <button type="button" tabIndex={concluidasAbertas ? 0 : -1} onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} className="group flex w-full items-center gap-3 rounded-xl border-l-4 border-success/60 bg-surface-1 px-3.5 py-2.5 text-left transition-all duration-200 hover:translate-x-0.5 hover:bg-surface-2 active:scale-[0.99]">
                         <CheckCircle2 size={17} strokeWidth={2} className="shrink-0 text-success transition-transform duration-300 group-hover:scale-125" />
@@ -243,7 +250,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
       <div className="flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Cartao i={0} icone={<CalendarDays size={14} />} rotulo="Eventos" detalhe={proximos[0] ? `Próximo às ${hhmm(proximos[0].minutos as number)}` : "Sem horário marcado"}>{eventos.length}</Cartao>
-          <Cartao i={1} icone={<ListChecks size={14} />} rotulo="Tarefas" detalhe={concluidasDoDia.length ? `${concluidasDoDia.length} concluída${concluidasDoDia.length === 1 ? "" : "s"} · ver` : "Nenhuma concluída"} aoClicar={concluidasDoDia.length ? () => { setConcluidasAbertas(true); setAba("tarefas"); } : undefined}>{tarefas.length}</Cartao>
+          <Cartao i={1} icone={<ListChecks size={14} />} rotulo="Tarefas pendentes" detalhe={concluidas.length ? `${concluidas.length} concluída${concluidas.length === 1 ? "" : "s"} · ver` : "Nenhuma concluída"} aoClicar={concluidas.length ? () => { setConcluidasAbertas(true); setAba("tarefas"); } : undefined}>{pendentes.length}</Cartao>
           <Cartao i={2} icone={<Wallet size={14} />} rotulo="Lançamentos" detalhe={`${lancamentos.length} no dia`} tom={saldo < 0 ? "text-error" : saldo > 0 ? "text-success" : "text-text-primary"}><span className="fonte-cofre">{moeda(saldoAnimado)}</span></Cartao>
           <Cartao i={3} icone={<Clock size={14} />} rotulo="Tempo livre" detalhe={livre !== null ? "para produzir" : "sem rotina"}>{capacidade ? formatDuracao(Math.max(0, capacidade.tempo_livre_min ?? capacidade.disponivel_producao_min)) : "—"}</Cartao>
         </div>
@@ -255,8 +262,9 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
         )}
         <div className="grid gap-5 lg:grid-cols-2">
           <section aria-label="Eventos do dia"><h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Eventos</h3>{eventos.length ? <ul className="flex flex-col gap-2.5">{eventos.slice(0, 4).map((e, i) => linhaEvento(e, i + 5))}</ul> : <p className="text-sm text-text-muted">Nada marcado.</p>}</section>
-          <section aria-label="Tarefas do dia"><h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Tarefas</h3>{tarefas.length ? <ul className="flex flex-col gap-2.5">{tarefas.slice(0, 4).map((t, i) => linhaTarefa(t, i + 5))}</ul> : <p className="text-sm text-text-muted">Nada pendente.</p>}</section>
+          <section aria-label="Tarefas pendentes do dia"><h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">Pendentes · {pendentes.length}</h3>{pendentes.length ? <ul className="flex flex-col gap-2.5">{pendentes.slice(0, 4).map((t, i) => linhaTarefa(t, i + 5))}</ul> : <p className="text-sm text-text-muted">Nada pendente.</p>}</section>
         </div>
+        {concluidas.length > 0 && <section aria-label="Tarefas concluídas do dia"><h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-success"><CheckCircle2 size={14} aria-hidden />Concluídas · {concluidas.length}</h3><ul className="grid gap-2 lg:grid-cols-2">{concluidas.slice(0, 4).map((t) => <li key={t.id}><button type="button" onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} className="flex w-full items-center gap-2 rounded-xl bg-surface-1 px-3 py-2 text-left text-sm text-text-muted hover:bg-surface-2"><CheckCircle2 size={15} aria-hidden className="shrink-0 text-success" /><span className="min-w-0 flex-1 truncate line-through">{t.titulo}</span></button></li>)}</ul>{concluidas.length > 4 && <button type="button" onClick={() => { setConcluidasAbertas(true); setAba("tarefas"); }} className="mt-2 text-xs text-success hover:underline">Ver todas ({concluidas.length})</button>}</section>}
       </div>
     );
   })();
