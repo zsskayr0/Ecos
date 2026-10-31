@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, FileText, Rotat
 import { useMemo, useRef, useState } from "react";
 import { financeiro } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { sequenciaExportacao } from "@/lib/sequencia-exportacao";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { VaultCsvRecorrencias } from "./VaultCsvRecorrencias";
 import { MigracaoNexus } from "./MigracaoNexus";
@@ -77,7 +78,7 @@ export function VaultCsv({ periodo, atualizar }: {
     }
     async function exportar() { setOcupado(true); setErro(""); try {
         const r = await financeiro.exportar(periodo);
-        baixarCsv(r.csv, `cofre_${periodo.data_de}_${periodo.data_ate}.csv`);
+        baixarCsv(r.csv, `cofre_${periodo.data_de}_${periodo.data_ate}_${sequenciaExportacao()}.csv`);
     }
     catch (e) {
         setErro((e as Error).message);

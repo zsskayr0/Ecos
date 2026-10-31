@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { ArrowDown, ArrowUp, Check, ChevronDown, Columns3, Grid2X2, List, Plus, RefreshCw, Repeat, Search, Table2, Tag, Trash2, X } from "lucide-react";
 import { financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
+import { sequenciaExportacao } from "@/lib/sequencia-exportacao";
 import { publicarListaDeLancamentos } from "@/lib/lista-lancamentos";
 import { casaBusca } from "@/lib/texto-busca";
 import { useAppUI } from "@/lib/ui-context";
@@ -299,7 +300,8 @@ table{width:100%;border-collapse:collapse}th{padding:7px 8px;border-bottom:1px s
 td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-left:4px;padding:1px 5px;border:1px solid #93c5fd;border-radius:99px;color:#1d4ed8;font-size:8px;font-style:normal;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .n,.v{white-space:nowrap;font-variant-numeric:tabular-nums}th.v,td.v{text-align:right}.v{font-weight:700}.v.entrada{color:#15803d}.v.saida{color:#b91c1c}
 .st{display:inline-block;padding:1px 7px;border:1px solid;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}footer{margin-top:12px;color:#94a3b8;font-size:9px;text-align:right}`;
-    const html = `<!doctype html><meta charset="utf-8"><title>Ecos · Transações</title><style>${css}</style>
+    const nomePdf = `Ecos-${sequenciaExportacao()}`;
+    const html = `<!doctype html><meta charset="utf-8"><title>${nomePdf}</title><style>${css}</style>
 <header><div><p>Ecos · Cofre</p><h1>Transações</h1></div><span>${de ? `${dataBr(de)} a ${dataBr(ate)}<br>` : ""}Gerado em ${new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span></header>
 <section class="resumo"><div><small>Lançamentos</small><b>${alvos.length}</b></div><div><small>Movimentação</small><b>${esc(formatMoeda(entradas + saidas))}</b></div><div><small>Entradas</small><b style="color:#15803d">+${esc(formatMoeda(entradas))}</b></div><div><small>Saídas</small><b style="color:#b91c1c">−${esc(formatMoeda(saidas))}</b></div></section>
 <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Pagamento</th><th>Status</th><th class="v">Valor</th></tr></thead><tbody>${linhas}</tbody></table><footer>Ecos · ${alvos.length} lançamento${alvos.length === 1 ? "" : "s"}</footer>`;
@@ -309,7 +311,9 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
     const doc = quadro.contentWindow?.document;
     if (!doc || !quadro.contentWindow) { quadro.remove(); setErro("Não foi possível preparar o PDF."); return; }
     doc.open(); doc.write(html); doc.close();
-    quadro.contentWindow.onafterprint = () => quadro.remove();
+    const tituloOriginal = document.title;
+    quadro.contentWindow.onafterprint = () => { document.title = tituloOriginal; quadro.remove(); };
+    document.title = nomePdf;
     window.setTimeout(() => { quadro.contentWindow?.focus(); quadro.contentWindow?.print(); }, 100);
   }
 
