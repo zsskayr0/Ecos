@@ -139,8 +139,17 @@ export function GraficoConfigScreen() {
           <Linha Icone={Ruler} titulo="Espessura das linhas" descricao="Espessura das ligações entre os itens.">
             <Deslizante rotulo="Espessura das linhas" valor={prefs.espessuraLinhas} {...L.espessuraLinhas} onChange={(espessuraLinhas) => alterar({ espessuraLinhas })} formatar={(v) => `${v.toFixed(1)}×`} />
           </Linha>
-          <Linha Icone={ArrowUpRight} titulo="Setas nos links" descricao="Mostra a direção dos [[links]]: de quem aponta para quem é apontado.">
+          <Linha Icone={ArrowUpRight} titulo="Setas nos links" descricao="Mostra a direção das ligações, inclusive entre constelações e das notas para suas tags.">
             <Toggle checked={prefs.setas} onChange={(setas) => alterar({ setas })} label="Setas nos links" />
+          </Linha>
+          <Linha Icone={Spline} titulo="Órbitas" descricao="Mostra os anéis em torno das constelações. Notas recentes, maiores e mais ligadas tendem a ficar mais perto do centro.">
+            <Toggle checked={prefs.orbitas} onChange={(orbitas) => alterar({ orbitas })} label="Mostrar órbitas" />
+          </Linha>
+          <Linha Icone={Spline} titulo="Nebulosas" descricao="Mostra manchas de luz nas regiões com concentração de itens.">
+            <Toggle checked={prefs.nebulosas} onChange={(nebulosas) => alterar({ nebulosas })} label="Mostrar nebulosas" />
+          </Linha>
+          <Linha Icone={MessageSquareText} titulo="Legenda" descricao="Mostra os tipos de astros no canto do gráfico.">
+            <Toggle checked={prefs.legenda} onChange={(legenda) => alterar({ legenda })} label="Mostrar legenda" />
           </Linha>
           <Linha Icone={CheckCheck} titulo="Esmaecer tarefas concluídas" descricao="Tarefas concluídas viram círculos vazados e mais claros.">
             <Toggle checked={prefs.esmaecerConcluidas} onChange={(esmaecerConcluidas) => alterar({ esmaecerConcluidas })} label="Esmaecer tarefas concluídas" />

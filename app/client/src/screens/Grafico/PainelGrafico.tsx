@@ -36,6 +36,7 @@ interface Props {
   busca: string;
   onBusca: (texto: string) => void;
   onAjustar: () => void;
+  onReorganizar: () => void;
   onAbrirConfig: (secao: SecaoGrafico) => void;
 }
 
@@ -47,7 +48,7 @@ const ROTULOS: { id: RotulosGrafico; rotulo: string }[] = [
 ];
 
 /** Painel flutuante ao lado do gráfico (Obsidian/Linear): busca, filtros, cores e ajustes rápidos; cada bloco leva à tela de Configurações. */
-export function PainelGrafico({ prefs, alterar, redefinir, contagens, busca, onBusca, onAjustar, onAbrirConfig }: Props) {
+export function PainelGrafico({ prefs, alterar, redefinir, contagens, busca, onBusca, onAjustar, onReorganizar, onAbrirConfig }: Props) {
   const [estado, setEstado] = useState(lerEstado);
   const gravar = (proximo: EstadoPainel) => {
     setEstado(proximo);
@@ -121,6 +122,10 @@ export function PainelGrafico({ prefs, alterar, redefinir, contagens, busca, onB
             <Linha rotulo="Tamanho dos nós"><Deslizante rotulo="Tamanho dos nós" largura="w-24" valor={prefs.tamanhoNos} {...L.tamanhoNos} onChange={(tamanhoNos) => alterar({ tamanhoNos })} formatar={(v) => `${v.toFixed(1)}×`} /></Linha>
             <Linha rotulo="Espessura das linhas"><Deslizante rotulo="Espessura das linhas" largura="w-24" valor={prefs.espessuraLinhas} {...L.espessuraLinhas} onChange={(espessuraLinhas) => alterar({ espessuraLinhas })} formatar={(v) => `${v.toFixed(1)}×`} /></Linha>
             <Linha rotulo="Setas nos links"><span className="text-[10px]"><Toggle checked={prefs.setas} onChange={(setas) => alterar({ setas })} label="Setas nos links" /></span></Linha>
+            <Linha rotulo="Órbitas"><span className="text-[10px]"><Toggle checked={prefs.orbitas} onChange={(orbitas) => alterar({ orbitas })} label="Mostrar órbitas" /></span></Linha>
+            <Linha rotulo="Nebulosas"><span className="text-[10px]"><Toggle checked={prefs.nebulosas} onChange={(nebulosas) => alterar({ nebulosas })} label="Mostrar nebulosas" /></span></Linha>
+            <Linha rotulo="Legenda"><span className="text-[10px]"><Toggle checked={prefs.legenda} onChange={(legenda) => alterar({ legenda })} label="Mostrar legenda" /></span></Linha>
+            <button type="button" onClick={onReorganizar} className="mt-1 rounded-lg px-1 py-1 text-left text-[11px] text-text-secondary hover:bg-surface-2 hover:text-text-primary">Reorganizar posições manuais</button>
           </Bloco>
 
           <Bloco id="forcas" titulo="Forças" aberto={estado.secoes.forcas} onAlternar={alternar} onAbrirConfig={onAbrirConfig}>

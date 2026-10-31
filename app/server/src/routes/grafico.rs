@@ -22,6 +22,11 @@ pub struct NoGrafico {
     pub espaco: Option<String>,
     /// Só tarefas: `pendente` | `concluida`.
     pub status: Option<String>,
+    /// Caminho relativo do item, usado para agrupar constelações e sistemas.
+    pub caminho: Option<String>,
+    pub atualizado_em: Option<String>,
+    /// Tamanho do arquivo em bytes; determina o tamanho visual do planeta.
+    pub tamanho: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +63,7 @@ fn id_tag(tag: &str) -> String {
 
 pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(par): Query<Parametros>) -> AppResult<Json<Grafico>> {
     let uid = usuario.0.clone();
+    let raiz_notas = state.config.notes_root.clone();
     let grafico = state
         .db
         .with_read(move |conn| {
@@ -76,43 +82,44 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
             let args = || -> Vec<String> { espaco.iter().cloned().collect() };
             let teto = |restante: usize| if restante == usize::MAX { -1i64 } else { restante.saturating_add(1).min(i64::MAX as usize) as i64 };
 
-            let mut stmt = conn.prepare(&format!("SELECT n.id, n.titulo, n.espaco FROM nota n WHERE {vis_n}{} ORDER BY n.atualizado_em DESC LIMIT {}", filtro_espaco("n"), teto(restante)))?;
-            for (i, linha) in stmt.query_map(rusqlite::params_from_iter(args()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.enumerate() {
-                let (id, titulo, espaco) = linha?;
+            let tamanho_arquivo = |caminho: &str| std::fs::metadata(raiz_notas.join(caminho)).ok().map(|m| m.len());
+            let mut stmt = conn.prepare(&format!("SELECT n.id, n.titulo, n.espaco, n.caminho_arquivo, n.atualizado_em FROM nota n WHERE {vis_n}{} ORDER BY n.atualizado_em DESC LIMIT {}", filtro_espaco("n"), teto(restante)))?;
+            for (i, linha) in stmt.query_map(rusqlite::params_from_iter(args()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)))?.enumerate() {
+                let (id, titulo, espaco, caminho, atualizado_em) = linha?;
                 if i >= restante {
                     truncado = true;
                     break;
                 }
                 ids.insert(id.clone());
-                nos.push(NoGrafico { id, tipo: "nota", titulo, espaco: Some(espaco), status: None });
+                nos.push(NoGrafico { id, tipo: "nota", titulo, espaco: Some(espaco), status: None, tamanho: tamanho_arquivo(&caminho), caminho: Some(caminho), atualizado_em: Some(atualizado_em) });
             }
 
             restante = restante.saturating_sub(nos.len());
             let extra_t = if sem_concluidas { " AND t.status <> 'concluida'" } else { "" };
-            let mut stmt = conn.prepare(&format!("SELECT t.id, t.titulo, t.espaco, t.status FROM tarefa t WHERE {vis_t}{extra_t}{} ORDER BY t.atualizado_em DESC LIMIT {}", filtro_espaco("t"), teto(restante)))?;
+            let mut stmt = conn.prepare(&format!("SELECT t.id, t.titulo, t.espaco, t.status, t.caminho_arquivo, t.atualizado_em FROM tarefa t WHERE {vis_t}{extra_t}{} ORDER BY t.atualizado_em DESC LIMIT {}", filtro_espaco("t"), teto(restante)))?;
             let antes = nos.len();
             for (i, linha) in stmt.query_map(rusqlite::params_from_iter(args()), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?))
             })?.enumerate() {
-                let (id, titulo, espaco, status) = linha?;
+                let (id, titulo, espaco, status, caminho, atualizado_em) = linha?;
                 if i >= restante {
                     truncado = true;
                     break;
                 }
                 ids.insert(id.clone());
-                nos.push(NoGrafico { id, tipo: "tarefa", titulo, espaco: Some(espaco), status: Some(status) });
+                nos.push(NoGrafico { id, tipo: "tarefa", titulo, espaco: Some(espaco), status: Some(status), tamanho: tamanho_arquivo(&caminho), caminho: Some(caminho), atualizado_em });
             }
 
             restante = restante.saturating_sub(nos.len() - antes);
-            let mut stmt = conn.prepare(&format!("SELECT e.id, e.titulo, e.espaco FROM evento e WHERE {vis_e}{} ORDER BY e.atualizado_em DESC LIMIT {}", filtro_espaco("e"), teto(restante)))?;
-            for (i, linha) in stmt.query_map(rusqlite::params_from_iter(args()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.enumerate() {
-                let (id, titulo, espaco) = linha?;
+            let mut stmt = conn.prepare(&format!("SELECT e.id, e.titulo, e.espaco, e.caminho_arquivo, e.atualizado_em FROM evento e WHERE {vis_e}{} ORDER BY e.atualizado_em DESC LIMIT {}", filtro_espaco("e"), teto(restante)))?;
+            for (i, linha) in stmt.query_map(rusqlite::params_from_iter(args()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)))?.enumerate() {
+                let (id, titulo, espaco, caminho, atualizado_em) = linha?;
                 if i >= restante {
                     truncado = true;
                     break;
                 }
                 ids.insert(id.clone());
-                nos.push(NoGrafico { id, tipo: "evento", titulo, espaco: Some(espaco), status: None });
+                nos.push(NoGrafico { id, tipo: "evento", titulo, espaco: Some(espaco), status: None, tamanho: tamanho_arquivo(&caminho), caminho: Some(caminho), atualizado_em: Some(atualizado_em) });
             }
 
             // Arestas só entre nós visíveis: o JOIN com os ids já filtrados acima é o que impede vazamento.
@@ -154,7 +161,7 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
             let mut tags: Vec<String> = tags.into_iter().collect();
             tags.sort();
             for tag in tags {
-                nos.push(NoGrafico { id: id_tag(&tag), tipo: "tag", titulo: format!("#{tag}"), espaco: None, status: None });
+                nos.push(NoGrafico { id: id_tag(&tag), tipo: "tag", titulo: format!("#{tag}"), espaco: None, status: None, caminho: None, atualizado_em: None, tamanho: None });
             }
 
             Ok(Grafico { nos, arestas, truncado })

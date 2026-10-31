@@ -25,6 +25,9 @@ export interface PreferenciasGrafico {
   tamanhoTexto: number;
   rotulos: RotulosGrafico;
   setas: boolean;
+  orbitas: boolean;
+  nebulosas: boolean;
+  legenda: boolean;
   esmaecerConcluidas: boolean;
   dicaSegueMouse: boolean;
   /* Forças */
@@ -70,6 +73,9 @@ export const PADRAO_PREFERENCIAS_GRAFICO: PreferenciasGrafico = {
   tamanhoTexto: 11,
   rotulos: "auto",
   setas: false,
+  orbitas: true,
+  nebulosas: true,
+  legenda: true,
   esmaecerConcluidas: true,
   dicaSegueMouse: true,
   repulsao: 70,
@@ -145,6 +151,9 @@ function sanear(bruto: Record<string, unknown>): PreferenciasGrafico {
     tamanhoTexto: limitar(bruto.tamanhoTexto, L.tamanhoTexto.min, L.tamanhoTexto.max, p.tamanhoTexto),
     rotulos: (["auto", "sempre", "hover", "nunca"] as const).includes(bruto.rotulos as RotulosGrafico) ? (bruto.rotulos as RotulosGrafico) : p.rotulos,
     setas: bool(bruto.setas, p.setas),
+    orbitas: bool(bruto.orbitas, p.orbitas),
+    nebulosas: bool(bruto.nebulosas, p.nebulosas),
+    legenda: bool(bruto.legenda, p.legenda),
     esmaecerConcluidas: bool(bruto.esmaecerConcluidas, p.esmaecerConcluidas),
     dicaSegueMouse: bool(bruto.dicaSegueMouse, p.dicaSegueMouse),
     repulsao: limitar(bruto.repulsao, L.repulsao.min, L.repulsao.max, p.repulsao),

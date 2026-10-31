@@ -874,12 +874,12 @@ export interface TagCatalogo { tag: string; notas: number; tarefas: number; tota
 export interface AfetadosTag { notas: number; tarefas: number }
 
 export type TipoNoGrafico = "nota" | "tarefa" | "evento" | "tag";
-export interface NoGrafico { id: string; tipo: TipoNoGrafico; titulo: string; espaco: string | null; status: string | null }
+export interface NoGrafico { id: string; tipo: TipoNoGrafico; titulo: string; espaco: string | null; status: string | null; caminho?: string | null; pasta?: string | null; atualizado_em?: string | null; tamanho?: number | null; nomeEspaco?: string }
 export interface ArestaGrafico { origem: string; destino: string; tipo: "wikilink" | "evento_nota" | "evento_tarefa" | "tag" }
 export interface GraficoDados { nos: NoGrafico[]; arestas: ArestaGrafico[] }
 
 export const graficoApi = {
-  obter: () => get<GraficoDados>("/grafico"),
+  obter: (espaco?: string) => get<GraficoDados>(`/grafico${qs({ espaco })}`),
 };
 
 export const tagsApi = {
