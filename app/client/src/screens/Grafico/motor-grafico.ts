@@ -133,6 +133,11 @@ export class MotorGrafico {
   private arrastandoPasta: CentroOrbital | null = null;
   private panning = false;
   private moveu = false;
+  /** Ponteiros ativos (toque): dois dedos viram pinça de zoom. */
+  private toques = new Map<number, { x: number; y: number }>();
+  private distanciaPinca = 0;
+  private pressaoLonga: number | null = null;
+  private focouNaPressao = false;
   private inicioPonteiro = { x: 0, y: 0 };
   private velPan = { x: 0, y: 0 };
   private cursor = "";
@@ -410,8 +415,23 @@ export class MotorGrafico {
 
     const aoPressionar = (e: PointerEvent) => {
       const p = pos(e);
+      if (e.pointerType === "touch") {
+        this.toques.set(e.pointerId, p);
+        if (this.toques.size === 2) {
+          // Segundo dedo: cancela o que o primeiro iniciava e passa a pinçar.
+          this.cancelarPressaoLonga();
+          if (this.arrastando) { this.arrastando.fx = null; this.arrastando.fy = null; this.arrastando = null; }
+          this.arrastandoPasta = null;
+          this.panning = false;
+          this.distanciaPinca = this.distanciaToques();
+          this.usuarioMexeu = true;
+          cv.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
       this.mx = p.x; this.my = p.y; this.dentro = true;
       this.inicioPonteiro = p;
+      this.focouNaPressao = false;
       this.moveu = false;
       this.usuarioMexeu = true;
       cv.setPointerCapture(e.pointerId);
@@ -432,9 +452,34 @@ export class MotorGrafico {
         this.velPan = { x: 0, y: 0 };
       }
       this.definirCursor("grabbing");
+      // Toque longo num astro faz o papel do Shift + clique (ver planeta).
+      if (e.pointerType === "touch" && alvo && alvo.dado.tipo !== "tag" && this.cb.onFocar) {
+        this.pressaoLonga = window.setTimeout(() => {
+          this.pressaoLonga = null;
+          if (this.moveu || this.arrastando !== alvo) return;
+          this.focouNaPressao = true;
+          this.cb.onFocar?.(alvo.dado);
+        }, 550);
+      }
     };
     const aoMover = (e: PointerEvent) => {
       const p = pos(e);
+      if (e.pointerType === "touch" && this.toques.has(e.pointerId)) {
+        this.toques.set(e.pointerId, p);
+        if (this.toques.size >= 2) {
+          const d = this.distanciaToques();
+          if (this.distanciaPinca > 0 && d > 0) {
+            const c = this.centroToques();
+            const wx = (c.x - this.largura / 2 - this.alvo.x) / this.alvo.k;
+            const wy = (c.y - this.altura / 2 - this.alvo.y) / this.alvo.k;
+            const k = clamp(this.alvo.k * (d / this.distanciaPinca), 0.12, 5);
+            this.alvo = { k, x: c.x - this.largura / 2 - wx * k, y: c.y - this.altura / 2 - wy * k };
+            this.cam = { ...this.alvo };
+          }
+          this.distanciaPinca = d;
+          return;
+        }
+      }
       const antes = { x: this.mx, y: this.my };
       this.mx = p.x; this.my = p.y; this.dentro = true;
       if (Math.hypot(p.x - this.inicioPonteiro.x, p.y - this.inicioPonteiro.y) > 4) this.moveu = this.moveu || !!(this.arrastando || this.arrastandoPasta || this.panning);
@@ -457,6 +502,17 @@ export class MotorGrafico {
     };
     const aoSoltar = (e: PointerEvent) => {
       try { cv.releasePointerCapture(e.pointerId); } catch { /* captura já liberada */ }
+      this.cancelarPressaoLonga();
+      if (e.pointerType === "touch") {
+        const eraPinca = this.toques.size >= 2;
+        this.toques.delete(e.pointerId);
+        if (eraPinca) {
+          // Ao levantar um dos dedos o outro não deve virar arrasto/clique.
+          this.distanciaPinca = 0;
+          this.moveu = true;
+          return;
+        }
+      }
       if (this.arrastandoPasta) {
         const pasta = this.arrastandoPasta;
         if (this.moveu) {
@@ -482,7 +538,7 @@ export class MotorGrafico {
         }
         no.fx = null; no.fy = null;
         this.arrastando = null;
-        if (!this.moveu) {
+        if (!this.moveu && !this.focouNaPressao) {
           if (e.shiftKey && no.dado.tipo !== "tag" && this.cb.onFocar) this.cb.onFocar(no.dado);
           else this.cb.onAbrir(no.dado);
         }
@@ -569,6 +625,20 @@ export class MotorGrafico {
       if (sobra <= 0 && sobra < folga) { melhor = n; folga = sobra; }
     }
     return melhor;
+  }
+
+  private distanciaToques() {
+    const [a, b] = [...this.toques.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  }
+
+  private centroToques() {
+    const [a, b] = [...this.toques.values()];
+    return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : { x: this.largura / 2, y: this.altura / 2 };
+  }
+
+  private cancelarPressaoLonga() {
+    if (this.pressaoLonga !== null) { window.clearTimeout(this.pressaoLonga); this.pressaoLonga = null; }
   }
 
   private trocarHover(no: NoMotor | null, agora = performance.now()) {

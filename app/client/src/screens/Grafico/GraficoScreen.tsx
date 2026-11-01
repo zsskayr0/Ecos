@@ -149,7 +149,7 @@ export function GraficoScreen() {
             {foco.constelacao && <><span aria-hidden className="text-slate-500">/</span><SeletorGalaxia ariaLabel="Sistema solar" icone={Orbit} valor={foco.sistema ?? ""} onChange={(valor) => setFoco(valor ? { nivel: "sistema", espaco: foco.espaco, constelacao: foco.constelacao, sistema: valor } : { nivel: "constelacao", espaco: foco.espaco, constelacao: foco.constelacao })} opcoes={[{ valor: "", rotulo: "Sistemas" }, ...sistemas.map((s) => ({ valor: s, rotulo: s }))]} /></>}
             {foco.sistema && <><span aria-hidden className="text-slate-500">/</span><SeletorGalaxia ariaLabel="Planeta" icone={Orbit} valor={foco.id ?? ""} buscar onChange={(valor) => setFoco(valor ? { nivel: "planeta", espaco: foco.espaco, constelacao: foco.constelacao, sistema: foco.sistema, id: valor } : { nivel: "sistema", espaco: foco.espaco, constelacao: foco.constelacao, sistema: foco.sistema })} opcoes={[{ valor: "", rotulo: "Planetas" }, ...planetas.map((n) => ({ valor: n.id, rotulo: n.titulo }))]} /></>}
           </nav>
-          {prefs.legenda && <div aria-label="Legenda do gráfico" className="absolute bottom-3 left-3 z-10 flex flex-wrap gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-[#0c1222]/85 px-3 py-2 text-[11px] text-slate-300 backdrop-blur-md">{(["nota", "tarefa", "evento", "tag"] as const).map((tipo) => <span key={tipo} className="flex items-center gap-1.5"><MarcaTipo tipo={tipo} cor={corDoTipo(prefs, tipo)} tamanho={8} />{ROTULO_TIPO_SINGULAR[tipo]}{tipo === "tag" ? " · lua" : ""}</span>)}</div>}
+          {prefs.legenda && <div aria-label="Legenda do gráfico" className="absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-11rem)] flex-wrap gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-[#0c1222]/85 px-3 py-2 text-[11px] text-slate-300 backdrop-blur-md">{(["nota", "tarefa", "evento", "tag"] as const).map((tipo) => <span key={tipo} className="flex items-center gap-1.5"><MarcaTipo tipo={tipo} cor={corDoTipo(prefs, tipo)} tamanho={8} />{ROTULO_TIPO_SINGULAR[tipo]}{tipo === "tag" ? " · lua" : ""}</span>)}</div>}
           <div
             ref={dica}
             aria-hidden
@@ -167,7 +167,7 @@ export function GraficoScreen() {
                   {dicaInfo!.grau === 0 ? "Sem conexões" : dicaInfo!.grau === 1 ? "1 conexão" : `${dicaInfo!.grau} conexões`}
                   {espaco ? ` · ${espaco}` : ""}
                 </p>
-                {no.tipo !== "tag" && <p className="mt-1 text-[10px] text-text-muted">Shift + clique: ver planeta</p>}
+                {no.tipo !== "tag" && <p className="mt-1 text-[10px] text-text-muted">{desktop ? "Shift + clique: ver planeta" : "Toque longo: ver planeta"}</p>}
               </>
             )}
           </div>

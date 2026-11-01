@@ -21,11 +21,12 @@ interface EstadoPainel { aberto: boolean; secoes: Record<SecaoGrafico, boolean> 
 const PADRAO_PAINEL: EstadoPainel = { aberto: true, secoes: { filtros: true, cores: false, exibicao: true, forcas: false, animacao: false, minigrafo: false } };
 
 function lerEstado(): EstadoPainel {
+  const celular = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
   try {
     const bruto = JSON.parse(localStorage.getItem(CHAVE_PAINEL) ?? "null");
-    if (bruto && typeof bruto === "object") return { aberto: bruto.aberto !== false, secoes: { ...PADRAO_PAINEL.secoes, ...(bruto.secoes ?? {}) } };
+    if (bruto && typeof bruto === "object") return { aberto: !celular && bruto.aberto !== false, secoes: { ...PADRAO_PAINEL.secoes, ...(bruto.secoes ?? {}) } };
   } catch { /* sem armazenamento: usa o padrão */ }
-  return PADRAO_PAINEL;
+  return celular ? { ...PADRAO_PAINEL, aberto: false } : PADRAO_PAINEL;
 }
 
 interface Props {
@@ -70,7 +71,7 @@ export function PainelGrafico({ prefs, alterar, redefinir, contagens, busca, onB
       <aside
         aria-label="Painel do gráfico"
         aria-hidden={!estado.aberto}
-        className={`absolute right-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] w-72 origin-top-right flex-col overflow-hidden rounded-2xl border border-border bg-surface-1/85 shadow-xl backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out ${estado.aberto ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"}`}
+        className={`absolute right-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] w-72 max-w-[calc(100%-1.5rem)] origin-top-right flex-col overflow-hidden rounded-2xl border border-border bg-surface-1/85 shadow-xl backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out ${estado.aberto ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"}`}
       >
         <header className="flex items-center gap-1 border-b border-border/60 px-3 py-2">
           <span className="flex-1 text-sm font-medium text-text-primary">Gráfico</span>
