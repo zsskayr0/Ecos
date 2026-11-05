@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, Clock3, Globe2, Link2 } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, Clock3, Globe2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
@@ -104,4 +104,5 @@ export function CalendarPreferencesScreen() {
 function CampoMenu({ rotulo, margem = false, children }: { rotulo: string; margem?: boolean; children: React.ReactNode }) { return <div className={margem ? "mt-3" : ""}><p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">{rotulo}</p>{children}</div>; }
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) { return <section className="mb-6"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{titulo}</p><div className="rounded-2xl border border-border bg-surface-1 p-4">{children}</div></section>; }
 /** Só o nome em texto (referência nominativa): sem logos de terceiros, que são marcas registradas. */
-function Integracao({ nome, descricao }: { nome: string; descricao: string }) { const [aviso, setAviso] = useState(false); return <button type="button" onClick={() => setAviso(true)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-base p-3 text-left transition-all hover:border-steel-400 hover:bg-surface-2 active:scale-[0.99]"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-steel-300"><CalendarDays size={18} aria-hidden="true" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-text-primary">{nome}</span><span className="block truncate text-xs text-text-muted">{aviso ? "Integração será liberada com o backend" : descricao}</span></span><Link2 size={17} className="text-steel-300" /></button>; }
+/** Integração ainda inexistente: cartão informativo "Em breve", sem ação e sem chamada ao servidor. */
+function Integracao({ nome, descricao }: { nome: string; descricao: string }) { return <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-base p-3 opacity-80"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-steel-300"><CalendarDays size={18} aria-hidden="true" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-text-primary">{nome}</span><span className="block truncate text-xs text-text-muted">{descricao}</span></span><span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-text-muted">Em breve</span></div>; }

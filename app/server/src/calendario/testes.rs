@@ -45,6 +45,8 @@ struct Mock {
     obter: HashMap<String, Value>,
     patches_recusados: u32,
     contador: u32,
+    /// Google "fora do ar": toda chamada, de qualquer rota, responde 503.
+    fora: bool,
 }
 
 type Compartilhado = Arc<Mutex<Mock>>;
@@ -139,6 +141,13 @@ async fn h_apagar(State(m): State<Compartilhado>, Path((_id, eid)): Path<(String
     StatusCode::from_u16(g.status_delete.pop_front().unwrap_or(204)).unwrap()
 }
 
+async fn fora_do_ar(State(m): State<Compartilhado>, req: Request<Body>, next: axum::middleware::Next) -> axum::response::Response {
+    if m.lock().unwrap().fora {
+        return axum::response::IntoResponse::into_response((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": { "code": 503, "message": "indisponível" } }))));
+    }
+    next.run(req).await
+}
+
 async fn iniciar_mock() -> (String, Compartilhado) {
     let m = Compartilhado::default();
     let app = Router::new()
@@ -148,6 +157,7 @@ async fn iniciar_mock() -> (String, Compartilhado) {
         .route("/calendars/:id/events", get(h_eventos).post(h_inserir))
         .route("/calendars/:id/events/:eid", get(h_obter).patch(h_patch).delete(h_apagar))
         .route("/calendars/:id/events/:eid/instances", get(h_instancias))
+        .layer(axum::middleware::from_fn_with_state(m.clone(), fora_do_ar))
         .with_state(m.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -1263,5 +1273,49 @@ async fn editar_evento_sem_categoria_nem_repeticao_nao_manda_nulo_e_o_400_mostra
     assert_eq!(p["items"][0]["http_status"], 400);
     let motivo = p["items"][0]["motivo_google"].as_str().unwrap();
     assert!(motivo.contains("erro do mock") && motivo.contains("invalid") && motivo.contains("end.dateTime"), "mensagem + motivo + campo do Google: {motivo}");
+    let _ = std::fs::remove_dir_all(&e.raiz);
+}
+
+/// Critério de aceite do item 4: com o Google fora do ar o app segue 100% utilizável (criar, editar e concluir),
+/// a falha aparece em `/calendario/config`, nada se perde e tudo vai quando o Google volta.
+#[tokio::test(flavor = "multi_thread")]
+async fn google_fora_do_ar_nao_bloqueia_o_uso_local_mostra_a_falha_e_recupera_ao_voltar() {
+    let e = montar_com(true, true).await; // envio imediato ligado: o pior caso para o caminho local
+    conectar_direto(&e, em_uma_hora()).await;
+    e.mock.lock().unwrap().fora = true;
+
+    // Criar e editar evento compartilhado com o Google.
+    let (status, criado) = api(&e, "POST", "/api/v1/eventos", Some(evento_json("Offline", "2026-09-21T16:00:00Z", "2026-09-21T17:00:00Z", json!({})))).await;
+    assert_eq!(status, StatusCode::OK, "{criado}");
+    let id = criado["id"].as_str().unwrap().to_string();
+    let (status, _) = api(&e, "PATCH", &format!("/api/v1/eventos/{id}"), Some(json!({ "titulo": "Offline editado" }))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Criar e concluir tarefa.
+    let (status, tarefa) = api(&e, "POST", "/api/v1/tarefas", Some(json!({ "titulo": "Fazer mesmo assim" }))).await;
+    assert_eq!(status, StatusCode::OK, "{tarefa}");
+    let tid = tarefa["id"].as_str().unwrap().to_string();
+    let (status, feita) = api(&e, "PATCH", &format!("/api/v1/tarefas/{tid}/status"), Some(json!({ "status": "concluida" }))).await;
+    assert_eq!(status, StatusCode::OK, "{feita}");
+
+    // O envio imediato tenta e falha em segundo plano; o sync manual diz que falhou, mas o local está intacto.
+    let (status, _) = api(&e, "POST", "/api/v1/calendario/sincronizar", None).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id}"), None).await;
+    assert_eq!((d["titulo"].as_str(), d["sync_pendente"].as_bool()), (Some("Offline editado"), Some(true)));
+
+    // A falha fica visível para a tela: tipo temporário, horário da tentativa, contagem e mensagem.
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    let c = &cfg["conectados"][0];
+    assert_eq!(c["erro_tipo"], "temporario", "{cfg}");
+    assert!(c["ultima_tentativa_em"].is_string() && c["ultimo_erro"].is_string() && c["erros_seguidos"].as_i64().unwrap() >= 1, "{cfg}");
+    assert_eq!(c["precisa_reconectar"], false, "falha temporária não pede reconexão");
+
+    // O Google volta: o pendente vai, o erro some.
+    e.mock.lock().unwrap().fora = false;
+    let r = sincronizar_ok(&e).await;
+    assert_eq!(r["enviados_criados"], 1, "{r}");
+    let (_, cfg) = api(&e, "GET", "/api/v1/calendario/config", None).await;
+    assert!(cfg["conectados"][0]["ultimo_erro"].is_null() && cfg["conectados"][0]["erros_seguidos"] == 0, "{cfg}");
     let _ = std::fs::remove_dir_all(&e.raiz);
 }

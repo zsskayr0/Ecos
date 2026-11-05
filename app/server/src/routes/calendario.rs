@@ -1,5 +1,5 @@
 //! Calendário externo (seção 11.13 / 6.5). Google é real (OAuth 2.0 com PKCE, tokens cifrados, sync incremental);
-//! Microsoft segue como contrato com `501` explícito, nunca um fluxo fingido.
+//! Microsoft responde `em_breve` (200, `disponivel: false`), nunca um fluxo fingido.
 //!
 //! O callback do Google chega sem cookie nem `Authorization`, então fica fora do guard de sessão: quem
 //! identifica o usuário é o `state` aleatório de uso único gravado em `oauth_pendente` ao iniciar o fluxo.
@@ -103,7 +103,8 @@ fn redirect_uri_de(headers: &HeaderMap) -> AppResult<String> {
 pub async fn conectar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(provider): Path<String>, headers: HeaderMap) -> AppResult<Json<serde_json::Value>> {
     exigir_provider(&provider)?;
     if provider == "microsoft" {
-        return Err(AppError::new(ErrorCode::NotImplemented).with_message("A integração com o Microsoft Outlook ainda não está disponível."));
+        // Ainda não existe: responde 200 com `em_breve` (a tela mostra "Em breve"), não um erro 501.
+        return Ok(Json(serde_json::json!({ "disponivel": false, "em_breve": true, "mensagem": "A integração com o Microsoft Outlook ainda não está disponível." })));
     }
     let cfg = state.config.google.clone().ok_or_else(|| erro_de_sync(SyncErro::Desligado))?;
     let redirect_uri = redirect_uri_de(&headers)?;
