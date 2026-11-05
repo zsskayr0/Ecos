@@ -166,3 +166,26 @@ async fn atalho_do_digest_nao_esconde_mudanca_no_corpo_de_tarefa() {
     let (_, sai) = links(&e, &format!("/api/v1/tarefas/{t}/links"), &a).await;
     assert_eq!(sai, vec![format!("nota:{n}")]);
 }
+
+#[tokio::test]
+async fn links_pendentes_listam_e_somem_ao_criar_a_nota() {
+    let e = nova();
+    let (_, a) = e.admin("ana").await;
+    let n = criar(&e, "/api/v1/notas", &a, json!({ "titulo": "Origem", "corpo": "[[Algo inexistente]] [[Origem]] [[tarefa:Nada]]" })).await;
+    criar(&e, "/api/v1/tarefas", &a, json!({ "titulo": "Outra", "corpo": "[[algo INEXISTENTE]]" })).await;
+
+    let (st, r) = e.chamar("GET", "/api/v1/links/pendentes", Some(&a), None).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let lista = r.as_array().unwrap();
+    assert_eq!(lista.len(), 1, "autolink e tarefa: explícito não contam: {r}");
+    assert_eq!(lista[0]["contagem"], 2);
+    assert_eq!(lista[0]["titulo"], "Algo inexistente");
+    assert!(lista[0]["origens"].as_array().unwrap().iter().any(|o| o["id"] == n.as_str()));
+
+    criar(&e, "/api/v1/notas", &a, json!({ "titulo": "Algo inexistente" })).await;
+    let (_, r) = e.chamar("GET", "/api/v1/links/pendentes", Some(&a), None).await;
+    assert!(r.as_array().unwrap().is_empty(), "{r}");
+
+    let (st, _) = e.chamar("GET", "/api/v1/links/pendentes", None, None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+}

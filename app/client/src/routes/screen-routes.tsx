@@ -37,6 +37,7 @@ const NotesRootScreen = carregar(() => import("@/screens/Notes/NotesRootScreen")
 const FolderScreen = carregar(() => import("@/screens/Notes/FolderScreen"), "FolderScreen");
 const NoteDetailScreen = carregar(() => import("@/screens/Notes/NoteDetailScreen"), "NoteDetailScreen");
 const FolderCreateScreen = carregar(() => import("@/screens/Notes/FolderCreateScreen"), "FolderCreateScreen");
+const LinksQuebradosScreen = carregar(() => import("@/screens/Notes/LinksQuebradosScreen"), "LinksQuebradosScreen");
 const SearchScreen = carregar(() => import("@/screens/Search/SearchScreen"), "SearchScreen");
 const AgendaScreen = carregar(() => import("@/screens/Agenda/AgendaScreen"), "AgendaScreen");
 const EventosScreen = carregar(() => import("@/screens/Eventos/EventosScreen"), "EventosScreen");
@@ -95,6 +96,7 @@ export const screenRoutes = (
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
 
     <Route path="/notas" element={tela(NotesRootScreen, <SkeletonItens tipo="nota" />)} />
+    <Route path="/notas/links-quebrados" element={tela(LinksQuebradosScreen)} />
     <Route path="/notas/pasta/nova" element={tela(FolderCreateScreen)} />
     <Route path="/notas/pasta/*" element={tela(FolderScreen)} />
     <Route path="/notas/nota/:id" element={tela(NoteDetailScreen, <SkeletonNotaDetalhe />)} />

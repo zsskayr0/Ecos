@@ -107,6 +107,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/tarefas/:id/links", get(tarefas::links))
         .route("/links/resolver", post(links::resolver))
         .route("/links/sugestoes", get(links::sugestoes))
+        .route("/links/pendentes", get(links::pendentes))
         .route("/notas/:id/pagina", get(notas::obter_pagina).patch(notas::atualizar_pagina))
         .route("/notas/:id/anexos", post(notas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/notas/:id/anexos/:nome_arquivo", get(notas::obter_anexo))

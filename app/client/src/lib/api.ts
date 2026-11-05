@@ -857,9 +857,19 @@ export const links = {
   sugestoes: (params: { q?: string; limite?: number; excluir_id?: string }, sinal?: AbortSignal) =>
     req<SugestaoLink[]>(`/links/sugestoes${qs(params)}`, sinal ? { signal: sinal } : undefined),
   de: (tipo: "nota" | "tarefa", id: string) => get<ConexoesItem>(`/${tipo === "tarefa" ? "tarefas" : "notas"}/${id}/links`),
+  pendentes: () => get<LinkPendente[]>("/links/pendentes"),
   resolver: (titulos: string[], origem?: { tipo: "nota" | "tarefa"; id: string }) =>
     post<{ resolvidos: Record<string, { tipo: "nota" | "tarefa"; id: string; titulo: string } | null> }>("/links/resolver", { titulos, origem }),
 };
+
+/** Wikilink sem destino, agrupado por título (dentro de um espaço). */
+export interface LinkPendente {
+  titulo: string;
+  contagem: number;
+  espaco: string;
+  pasta_sugerida: string | null;
+  origens: { tipo: "nota" | "tarefa"; id: string; titulo: string }[];
+}
 
 export const busca = {
   buscar: (q: string, params: { tipo?: "nota" | "tarefa"; espaco?: string } = {}) =>

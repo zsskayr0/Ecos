@@ -495,15 +495,22 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         por_espaco.entry(c.espaco.as_str()).or_default().push(c.clone());
     }
     let mut links_item: Vec<(&'static str, String, &'static str, String)> = Vec::new();
+    // Wikilinks sem destino (só os que uma nota resolveria: `tarefa:` explícito fica de fora).
+    let mut links_quebrados: Vec<(&'static str, String, String)> = Vec::new();
     let origens = notas
         .iter()
         .map(|n| (wikilink::TipoItem::Nota, &n.front_matter.id, chave_espaco(&n.front_matter.espaco, &n.front_matter.criado_por), &n.body))
         .chain(tarefas.iter().map(|t| (wikilink::TipoItem::Tarefa, &t.front_matter.id, chave_espaco(&t.front_matter.espaco, &t.front_matter.criado_por), &t.body)));
     for (tipo, id, espaco, corpo) in origens {
-        let Some(cands) = por_espaco.get(espaco.as_str()) else { continue };
+        let vazio = Vec::new();
+        let cands = por_espaco.get(espaco.as_str()).unwrap_or(&vazio);
         for r in wikilink::extract_refs(corpo) {
-            if let Some(d) = wikilink::resolver(&r, Some(&espaco), None, Some((tipo, id.as_str())), cands) {
-                links_item.push((tipo.como_str(), id.clone(), d.tipo.como_str(), d.id.clone()));
+            match wikilink::resolver(&r, Some(&espaco), None, Some((tipo, id.as_str())), cands) {
+                Some(d) => links_item.push((tipo.como_str(), id.clone(), d.tipo.como_str(), d.id.clone())),
+                // Autolink (o título é o do próprio item) não é link quebrado.
+                None if cands.iter().any(|c| c.id == *id && wikilink::normalizar_titulo(&c.titulo) == wikilink::normalizar_titulo(&r.titulo)) => {}
+                None if r.tipo != Some(wikilink::TipoItem::Tarefa) => links_quebrados.push((tipo.como_str(), id.clone(), r.titulo.clone())),
+                None => {}
             }
         }
     }
@@ -518,6 +525,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         let tx = conn.unchecked_transaction()?;
         tx.execute("DELETE FROM links_nota", [])?;
         tx.execute("DELETE FROM link_item", [])?;
+        tx.execute("DELETE FROM link_pendente", [])?;
         tx.execute("DELETE FROM nota_tag", [])?;
         tx.execute("DELETE FROM nota", [])?;
         tx.execute("DELETE FROM evento", [])?; // evento_tarefa/evento_nota caem em cascata
@@ -586,6 +594,10 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
         for (ot, oi, dt, di) in &links_item {
             tx.execute("INSERT OR IGNORE INTO link_item (origem_tipo, origem_id, destino_tipo, destino_id) VALUES (?1, ?2, ?3, ?4)", params![ot, oi, dt, di])?;
+        }
+
+        for (ot, oi, titulo) in &links_quebrados {
+            tx.execute("INSERT OR IGNORE INTO link_pendente (origem_tipo, origem_id, titulo_alvo) VALUES (?1, ?2, ?3)", params![ot, oi, titulo])?;
         }
 
         for (espaco, item) in &documentos {

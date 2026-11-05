@@ -167,3 +167,51 @@ pub async fn sugestoes(State(state): State<AppState>, Extension(usuario): Extens
         .await?;
     Ok(Json(Value::Array(itens)))
 }
+
+/// `GET /links/pendentes`: wikilinks sem destino, agrupados por (espaço, título). Só origens visíveis à pessoa.
+/// `pasta_sugerida` é a pasta de Notas da primeira origem que seja nota (tarefa tem árvore de pastas própria).
+pub async fn pendentes(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<Value>> {
+    let uid = usuario.0.clone();
+    let itens = state
+        .db
+        .with_read(move |conn| {
+            // (titulo_alvo, tipo, id, titulo_origem, espaco, pasta)
+            let mut linhas: Vec<(String, &'static str, String, String, String, Option<String>)> = Vec::new();
+            for (tabela, alias, tipo, pasta) in [("nota", "n", "nota", "n.pasta_id"), ("tarefa", "t", "tarefa", "NULL")] {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT p.titulo_alvo, {alias}.id, {alias}.titulo, {alias}.espaco, {pasta} FROM link_pendente p JOIN {tabela} {alias} ON p.origem_tipo = '{tipo}' AND {alias}.id = p.origem_id WHERE {}",
+                    visivel_sql(alias, &uid)
+                ))?;
+                for l in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?)))? {
+                    let (alvo, id, titulo, espaco, pasta) = l?;
+                    linhas.push((alvo, tipo, id, titulo, espaco, pasta));
+                }
+            }
+            linhas.sort_by(|a, b| a.3.to_lowercase().cmp(&b.3.to_lowercase()).then(a.2.cmp(&b.2)));
+            // Agrupa por (espaço, título normalizado): a resolução nunca cruza espaço, então "Ideias" pessoal e de equipe são pendências distintas.
+            let mut grupos: Vec<((String, String), Value, Vec<Value>, Option<String>, String)> = Vec::new();
+            for (alvo, tipo, id, titulo, espaco, pasta) in linhas {
+                let chave = (espaco.clone(), wikilink::normalizar_titulo(&alvo));
+                let origem = json!({ "tipo": tipo, "id": id, "titulo": titulo });
+                match grupos.iter_mut().find(|g| g.0 == chave) {
+                    Some(g) => {
+                        g.2.push(origem);
+                        if g.3.is_none() && tipo == "nota" {
+                            g.3 = pasta.filter(|p| !p.is_empty());
+                        }
+                    }
+                    None => {
+                        let pasta = if tipo == "nota" { pasta.filter(|p| !p.is_empty()) } else { None };
+                        grupos.push((chave, Value::String(alvo), vec![origem], pasta, espaco));
+                    }
+                }
+            }
+            grupos.sort_by(|a, b| b.2.len().cmp(&a.2.len()).then(a.0 .1.cmp(&b.0 .1)));
+            Ok(grupos
+                .into_iter()
+                .map(|(_, titulo, origens, pasta, espaco)| json!({ "titulo": titulo, "contagem": origens.len(), "espaco": espaco, "pasta_sugerida": pasta, "origens": origens }))
+                .collect::<Vec<_>>())
+        })
+        .await?;
+    Ok(Json(Value::Array(itens)))
+}
