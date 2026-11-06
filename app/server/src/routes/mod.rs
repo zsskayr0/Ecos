@@ -22,6 +22,7 @@ pub mod feed;
 pub mod grafico;
 pub mod health;
 pub mod links;
+pub mod renomear;
 pub mod media;
 pub mod metricas;
 pub mod lixeira;
@@ -105,6 +106,11 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/notas/:id", get(notas::obter).patch(notas::atualizar).delete(notas::excluir))
         .route("/notas/:id/links", get(notas::links))
         .route("/tarefas/:id/links", get(tarefas::links))
+        .route("/notas/:id/renomear/previa", post(renomear::previa_nota))
+        .route("/notas/:id/renomear", post(renomear::aplicar_nota))
+        .route("/tarefas/:id/renomear/previa", post(renomear::previa_tarefa))
+        .route("/tarefas/:id/renomear", post(renomear::aplicar_tarefa))
+        .route("/renomeacoes/:id/desfazer", post(renomear::desfazer))
         .route("/links/resolver", post(links::resolver))
         .route("/links/sugestoes", get(links::sugestoes))
         .route("/links/pendentes", get(links::pendentes))

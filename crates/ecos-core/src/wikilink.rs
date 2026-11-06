@@ -15,13 +15,129 @@ fn wikilink_pattern() -> &'static Regex {
     })
 }
 
+/// Trechos (em bytes) do corpo que são código: blocos cercados (``` ou ~~~) e código em linha (`x`).
+/// Wikilink dentro deles é texto literal: não vira link e nunca é reescrito.
+pub fn intervalos_de_codigo(body: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut cerca: Option<(char, usize, usize)> = None; // (caractere, tamanho, início do bloco)
+    let mut pos = 0;
+    for linha in body.split_inclusive('\n') {
+        let ini = pos;
+        pos += linha.len();
+        let sem_quebra = linha.trim_end_matches(['\n', '\r']);
+        let recuo = sem_quebra.len() - sem_quebra.trim_start_matches(' ').len();
+        let txt = &sem_quebra[recuo..];
+        let marca = txt.chars().next().filter(|c| (*c == '`' || *c == '~') && recuo <= 3);
+        let tam = marca.map_or(0, |m| txt.chars().take_while(|c| *c == m).count());
+        if let Some((c, n, comeco)) = cerca {
+            // Fecha com a mesma marca, pelo menos do mesmo tamanho e nada além de espaços depois.
+            if marca == Some(c) && tam >= n && txt[tam..].trim().is_empty() {
+                out.push((comeco, pos));
+                cerca = None;
+            }
+            continue;
+        }
+        if let (Some(m), true) = (marca, tam >= 3) {
+            // Uma cerca de crases não pode ter crase na linha de abertura (aí é código em linha).
+            if m == '~' || !txt[tam..].contains('`') {
+                cerca = Some((m, tam, ini));
+                continue;
+            }
+        }
+        // Código em linha: sequência de N crases até a próxima sequência de exatamente N.
+        let b = linha.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] != b'`' {
+                i += 1;
+                continue;
+            }
+            let n = b[i..].iter().take_while(|c| **c == b'`').count();
+            let mut j = i + n;
+            let mut fim = None;
+            while j < b.len() {
+                if b[j] == b'`' {
+                    let m = b[j..].iter().take_while(|c| **c == b'`').count();
+                    if m == n {
+                        fim = Some(j + m);
+                        break;
+                    }
+                    j += m;
+                } else {
+                    j += 1;
+                }
+            }
+            match fim {
+                Some(f) => {
+                    out.push((ini + i, ini + f));
+                    i = f;
+                }
+                None => i += n,
+            }
+        }
+    }
+    if let Some((_, _, comeco)) = cerca {
+        out.push((comeco, body.len())); // bloco sem fechamento vai até o fim
+    }
+    out
+}
+
+/// Ocorrências `[[...]]` fora de código: (início, fim, grupo 1 como (início, fim)).
+fn wikilinks_fora_de_codigo(body: &str) -> Vec<(usize, usize, (usize, usize))> {
+    let codigo = intervalos_de_codigo(body);
+    wikilink_pattern()
+        .captures_iter(body)
+        .filter_map(|c| {
+            let m = c.get(0)?;
+            let g = c.get(1)?;
+            let dentro = codigo.iter().any(|(a, b)| m.start() < *b && m.end() > *a);
+            (!dentro).then_some((m.start(), m.end(), (g.start(), g.end())))
+        })
+        .collect()
+}
+
+/// Reescreve os wikilinks do corpo (fora de código) que `troca` aceita. `troca` recebe a referência como
+/// escrita e devolve o título novo; o apelido (`|texto`), a caixa do prefixo e os espaços ao redor ficam como
+/// estavam. Com `forcar_prefixo`, um link sem prefixo ganha `nota:`/`tarefa:` de `tipo_alvo`.
+/// Devolve o corpo novo e quantos links mudaram.
+pub fn reescrever(body: &str, tipo_alvo: TipoItem, mut troca: impl FnMut(&Referencia) -> Option<Troca>) -> (String, usize) {
+    let mut out = String::with_capacity(body.len());
+    let mut cursor = 0;
+    let mut n = 0;
+    for (_, _, (gi, gf)) in wikilinks_fora_de_codigo(body) {
+        let inner = &body[gi..gf];
+        let Some(r) = parse_referencia(inner) else { continue };
+        let Some(t) = troca(&r) else { continue };
+        let (cabeca, resto) = match (r.tipo, inner.split_once(':')) {
+            (Some(_), Some((p, r))) => (&inner[..p.len() + 1], r),
+            _ => ("", inner),
+        };
+        let lead = &resto[..resto.len() - resto.trim_start().len()];
+        let trail = &resto[resto.trim_end().len()..];
+        let prefixo = if cabeca.is_empty() && t.forcar_prefixo { format!("{}:", tipo_alvo.como_str()) } else { cabeca.to_string() };
+        out.push_str(&body[cursor..gi]);
+        out.push_str(&format!("{prefixo}{lead}{}{trail}", t.titulo));
+        cursor = gf;
+        n += 1;
+    }
+    out.push_str(&body[cursor..]);
+    (out, n)
+}
+
+/// Resultado de `reescrever` para um link.
+#[derive(Debug, Clone)]
+pub struct Troca {
+    pub titulo: String,
+    pub forcar_prefixo: bool,
+}
+
 /// Títulos referenciados por wikilink no corpo, na ordem em que aparecem,
 /// sem duplicatas (uma Nota que linka outra duas vezes gera uma aresta só).
 pub fn extract_titles(body: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for caps in wikilink_pattern().captures_iter(body) {
-        let title = caps[1].trim().to_string();
+    for (_, _, (gi, gf)) in wikilinks_fora_de_codigo(body) {
+        let title = body[gi..gf].trim().to_string();
         if !title.is_empty() && seen.insert(title.clone()) {
             out.push(title);
         }
@@ -71,8 +187,8 @@ pub fn parse_referencia(bruto: &str) -> Option<Referencia> {
 pub fn extract_refs(body: &str) -> Vec<Referencia> {
     let mut vistos = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for caps in wikilink_pattern().captures_iter(body) {
-        if let Some(r) = parse_referencia(&caps[1]) {
+    for (_, _, (gi, gf)) in wikilinks_fora_de_codigo(body) {
+        if let Some(r) = parse_referencia(&body[gi..gf]) {
             if vistos.insert((r.tipo, normalizar_titulo(&r.titulo))) {
                 out.push(r);
             }
@@ -159,6 +275,37 @@ mod tests {
         assert_eq!(resolver(&ref_("X"), None, Some("pessoal:u1"), None, &c).unwrap().id, "a");
         assert_eq!(resolver(&ref_("X"), None, None, None, &c).unwrap().id, "c");
         assert_eq!(resolver(&ref_("X"), Some("pessoal:u1"), None, Some((TipoItem::Nota, "a")), &c).unwrap().id, "b");
+    }
+
+    fn troca_hellforge(r: &Referencia) -> Option<Troca> {
+        (normalizar_titulo(&r.titulo) == "hell forge").then(|| Troca { titulo: "Hellforge".into(), forcar_prefixo: false })
+    }
+
+    #[test]
+    fn reescrever_preserva_apelido_prefixo_e_espacos() {
+        let corpo = "[[Hell Forge]] [[hell forge|apelido]] [[ NOTA : Hell Forge ]] [[tarefa:Hell Forge]] [[Outra]]";
+        let (novo, n) = reescrever(corpo, TipoItem::Nota, |r| (r.tipo != Some(TipoItem::Tarefa)).then(|| troca_hellforge(r)).flatten());
+        assert_eq!(novo, "[[Hellforge]] [[Hellforge|apelido]] [[ NOTA : Hellforge ]] [[tarefa:Hell Forge]] [[Outra]]");
+        assert_eq!(n, 3);
+    }
+
+    #[test]
+    fn reescrever_forca_prefixo_so_quando_pedido() {
+        let (novo, _) = reescrever("[[X]] [[nota:X]]", TipoItem::Tarefa, |_| Some(Troca { titulo: "Y".into(), forcar_prefixo: true }));
+        assert_eq!(novo, "[[tarefa:Y]] [[nota:Y]]");
+    }
+
+    #[test]
+    fn codigo_nao_e_link_nem_e_reescrito() {
+        let corpo = "[[Hell Forge]] `[[Hell Forge]]` ``a [[Hell Forge]] ` b``\n```rust\nlet x = \"[[Hell Forge]]\";\n```\n~~~\n[[Hell Forge]]\n~~~\n[[Hell Forge]]\n";
+        let (novo, n) = reescrever(corpo, TipoItem::Nota, troca_hellforge);
+        assert_eq!(n, 2);
+        assert_eq!(novo.matches("[[Hell Forge]]").count(), 4);
+        assert_eq!(extract_titles(corpo), vec!["Hell Forge"]);
+        assert_eq!(extract_titles("```\n[[A]]\n```\nfim `[[B]]`"), Vec::<String>::new());
+        // Bloco sem fechamento vai até o fim; crase solta não esconde nada.
+        assert!(extract_titles("```\n[[A]]").is_empty());
+        assert_eq!(extract_titles("uma ` crase [[A]]"), vec!["A"]);
     }
 
     #[test]
