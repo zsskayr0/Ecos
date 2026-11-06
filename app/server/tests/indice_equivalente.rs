@@ -10,7 +10,7 @@ use serde_json::json;
 
 const TABELAS: &[&str] = &[
     "nota", "nota_tag", "links_nota", "link_item", "nota_fts", "tarefa", "tarefa_tag", "tarefa_fts", "tarefa_time_entry", "pasta_cache",
-    "documento_cache", "evento", "categoria_evento", "evento_tarefa", "evento_nota",
+    "documento_cache", "evento", "categoria_evento", "evento_tarefa", "evento_nota", "ref_item", "link_pendente",
 ];
 
 fn despejar(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<String>> {
@@ -61,8 +61,7 @@ async fn indice_do_zero(e: &Instancia) -> Vec<String> {
 }
 
 async fn conferir(e: &Instancia, passo: &str) {
-    // A reindexação extra costuma ser pulada (nada mudou desde a que a própria rota fez); o resultado é o mesmo.
-    ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();
+    // O índice é comparado COMO AS ROTAS O DEIXARAM, sem reindexação completa antes: é isso que prova a incremental.
     let atual = e.state.db.with(despejar).await.unwrap();
     let zero = indice_do_zero(e).await;
     assert_eq!(atual, zero, "índice divergiu do reconstruído depois de: {passo}");
@@ -134,12 +133,58 @@ async fn indice_incremental_igual_ao_completo_em_toda_operacao() {
     ok(st, &r);
     conferir(&e, "excluir tarefa").await;
 
+    // Segunda pessoa: títulos iguais aos de ana em outro espaço pessoal nunca se misturam com os dela.
+    let (_, token_b) = e.pessoa(&token, "bia").await;
+    let tb = Some(token_b.as_str());
+    let (st, nb) = e.chamar("POST", "/api/v1/notas", tb, Some(json!({ "titulo": "Alfa Renomeada", "corpo": "da bia, cita [[Beta]] e [[Alfa Renomeada]]" }))).await;
+    ok(st, &nb);
+    let (st, r) = e.chamar("POST", "/api/v1/tarefas", tb, Some(json!({ "titulo": "Beta", "corpo": "[[Alfa Renomeada]]" }))).await;
+    ok(st, &r);
+    conferir(&e, "segunda pessoa com títulos repetidos").await;
+
+    // Títulos repetidos no MESMO espaço: o desempate (mais recente, depois o menor id) muda a cada edição.
+    let (st, d1) = e.chamar("POST", "/api/v1/notas", t, Some(json!({ "titulo": "Duplicada", "corpo": "um" }))).await;
+    ok(st, &d1);
+    let (st, d2) = e.chamar("POST", "/api/v1/notas", t, Some(json!({ "titulo": "Duplicada", "corpo": "dois" }))).await;
+    ok(st, &d2);
+    let (st, r) = e.chamar("POST", "/api/v1/notas", t, Some(json!({ "titulo": "Cita duplicada", "corpo": "[[Duplicada]] [[nota:Duplicada]] [[tarefa:Duplicada]]" }))).await;
+    ok(st, &r);
+    conferir(&e, "duas notas com o mesmo título e uma que as cita").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{}", d1["id"].as_str().unwrap()), t, Some(json!({ "corpo": "um editado depois" }))).await;
+    ok(st, &r);
+    conferir(&e, "editar a mais antiga muda quem vence o desempate").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{}", d2["id"].as_str().unwrap()), t, Some(json!({ "titulo": "Outro nome" }))).await;
+    ok(st, &r);
+    conferir(&e, "renomear uma das duplicadas").await;
+    let (st, r) = e.chamar("POST", "/api/v1/tarefas", t, Some(json!({ "titulo": "Duplicada" }))).await;
+    ok(st, &r);
+    conferir(&e, "tarefa com o título de uma nota (nota vence sem prefixo)").await;
+
+    // Pastas: mover entre pastas e entre espaços recalcula contagens de origem, destino e ancestrais.
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{id_a}"), t, Some(json!({ "pasta": "Projetos/Ecos/Sub" }))).await;
+    ok(st, &r);
+    conferir(&e, "mover nota para pasta aninhada nova").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{id_a}"), t, Some(json!({ "pasta": "" }))).await;
+    ok(st, &r);
+    conferir(&e, "mover nota para a raiz").await;
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{id_a}"), t, Some(json!({ "espaco": espaco }))).await;
+    ok(st, &r);
+    conferir(&e, "mover nota para o espaço da equipe").await;
+    let (st, tm) = e.chamar("POST", "/api/v1/tarefas", t, Some(json!({ "titulo": "Mudar de pasta", "pasta": "A/B" }))).await;
+    ok(st, &tm);
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{}", tm["id"].as_str().unwrap()), t, Some(json!({ "pasta": "Outra/Pasta" }))).await;
+    ok(st, &r);
+    conferir(&e, "mover tarefa de pasta").await;
+
     // Edição por fora (arquivo mexido direto no disco, como o vigia de arquivos vê) também converge.
     let dir = e.raiz.join("ana/Notas");
     let arq = std::fs::read_dir(&dir).unwrap().flatten().map(|x| x.path()).find(|p| p.extension().map(|x| x == "md").unwrap_or(false)).unwrap();
     let conteudo = std::fs::read_to_string(&arq).unwrap();
     std::fs::write(&arq, format!("{conteudo}\nlinha extra por fora\n")).unwrap();
+    // Mudança por fora das rotas: quem a trata é a reconstrução completa (watcher), que NÃO pode ser pulada.
+    ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();
     conferir(&e, "arquivo editado por fora").await;
     std::fs::remove_file(&arq).unwrap();
+    ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();
     conferir(&e, "arquivo removido por fora").await;
 }

@@ -11,6 +11,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 use crate::db::reindex::reindexar_tudo;
+use crate::db::reindex_incremental::{reindexar_itens, relativo, Mudanca};
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::anexos_comuns::mime_por_extensao;
@@ -111,7 +112,7 @@ async fn editar_tempo<T>(state: &AppState, usuario_id: &str, tarefa_id: &str, f:
     let mut fm = doc.front_matter;
     let resultado = f(&mut fm.tempo)?;
     std::fs::write(&caminho, frontmatter::serialize(&fm, &doc.body)?)?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo)]).await?;
     Ok(resultado)
 }
 
@@ -392,7 +393,11 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let conteudo = frontmatter::serialize(&fm, payload.corpo.as_deref().unwrap_or(""))?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    if payload.recorrencia.is_none() {
+        reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
+    } else {
+        reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    }
     if let Some(regra) = payload.recorrencia {
         // Regra inválida: a Tarefa já foi criada; desfaz para não deixar uma tarefa que a pessoa não conseguiu criar.
         if let Err(err) = crate::routes::tarefas_serie::aplicar_regra(&state, &usuario.0, &fm.id, regra).await {
@@ -638,7 +643,17 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     for caminho in &outras_da_serie {
         crate::routes::tarefas_serie::aplicar_molde_em_outra(&state, caminho, &fm, &corpo)?;
     }
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    // Tarefa avulsa (fora de série) mexe em um arquivo só: incremental. Série propaga para outras ocorrências: completa.
+    if fm_antes.serie.is_none() && fm.serie.is_none() && outras_da_serie.is_empty() {
+        let raiz = &state.config.notes_root;
+        let mut mudancas = vec![Mudanca::Escrito(relativo(raiz, &caminho_absoluto_destino))];
+        if caminho_absoluto_destino != caminho_absoluto_atual {
+            mudancas.push(Mudanca::Removido(relativo(raiz, &caminho_absoluto_atual)));
+        }
+        reindexar_itens(&state.db, raiz, &mudancas).await?;
+    } else {
+        reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    }
     Ok(Json(serde_json::json!({ "id": fm.id, "titulo": fm.titulo })))
 }
 
@@ -676,7 +691,11 @@ pub async fn atualizar_status(State(state): State<AppState>, Extension(usuario):
         }
     }
 
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    if fm.serie.is_none() {
+        reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo)]).await?;
+    } else {
+        reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    }
     Ok(Json(serde_json::json!({ "id": fm.id, "status": payload.status, "concluida_em": fm.concluida_em, "proxima_id": proxima_id })))
 }
 
@@ -695,7 +714,11 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     let dir_anexos = anexos_dir(&state, &id, &caminho_relativo);
     crate::routes::lixeira::mover(&state, &caminho_relativo, "tarefa", &doc.front_matter.titulo, &dir_anexos)?;
     crate::routes::tarefas_serie::mover_para_lixeira(&state, &extras)?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    if doc.front_matter.serie.is_none() {
+        reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Removido(caminho_relativo)]).await?;
+    } else {
+        reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -723,7 +746,7 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
     let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
     let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
     std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo.clone())]).await?;
 
     Ok(Json(serde_json::json!({
         "nome_arquivo": midia.nome,

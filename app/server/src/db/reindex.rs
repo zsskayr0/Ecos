@@ -99,22 +99,22 @@ pub struct ResultadoReindex {
 }
 
 #[derive(Debug)]
-struct NotaColetada {
-    front_matter: NotaFrontMatter,
-    body: String,
-    caminho_relativo: String,
-    pasta_id: Option<String>,
-    hash_conteudo: String,
+pub(super) struct NotaColetada {
+    pub(super) front_matter: NotaFrontMatter,
+    pub(super) body: String,
+    pub(super) caminho_relativo: String,
+    pub(super) pasta_id: Option<String>,
+    pub(super) hash_conteudo: String,
 }
 
 #[derive(Debug)]
-struct TarefaColetada {
-    front_matter: TarefaFrontMatter,
-    caminho_relativo: String,
-    pasta_id: Option<String>,
+pub(super) struct TarefaColetada {
+    pub(super) front_matter: TarefaFrontMatter,
+    pub(super) caminho_relativo: String,
+    pub(super) pasta_id: Option<String>,
     /// mtime do arquivo — reserva de `atualizado_em` para tarefas anteriores ao campo.
-    modificado_em: Option<DateTime<Utc>>,
-    body: String,
+    pub(super) modificado_em: Option<DateTime<Utc>>,
+    pub(super) body: String,
 }
 
 #[derive(Debug)]
@@ -147,14 +147,14 @@ fn excecoes_json(excecoes: &[ecos_core::types::Excecao]) -> String {
     serde_json::to_string(&itens).unwrap_or_else(|_| "[]".into())
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(super) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Componente `_anexos` em qualquer nível — nunca conteúdo navegável em si
 /// (seção 1.3: fotos/desenhos/páginas ficam ao lado do `.md`, não são
 /// Nota/Documento/Pasta próprios).
-fn dentro_de_anexos(path: &Path) -> bool {
+pub(super) fn dentro_de_anexos(path: &Path) -> bool {
     path.components().any(|c| c.as_os_str() == "_anexos")
 }
 
@@ -162,7 +162,7 @@ fn dentro_de_anexos(path: &Path) -> bool {
 /// com `/` como separador sempre (independente do SO) — `None` = raiz. Ver
 /// seção 1.3 ("Pasta não tem `id` persistido... é derivada, a cada reindex,
 /// direto da árvore de diretórios").
-fn pasta_relativa(raiz: &Path, arquivo: &Path) -> Option<String> {
+pub(super) fn pasta_relativa(raiz: &Path, arquivo: &Path) -> Option<String> {
     let pai = arquivo.parent()?;
     if pai == raiz {
         return None;
@@ -377,6 +377,106 @@ fn coletar_documentos(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<Strin
     out
 }
 
+/// Grava (upsert) uma nota com tags e FTS. Usado pela reindexação completa e pela incremental, o que garante que as
+/// duas produzam as mesmas linhas. `existente` = já havia linha: limpa tags/FTS antigos e preserva os campos que só
+/// existem no índice (contador de acessos, OCR). `ocr` entra no FTS.
+pub(super) fn gravar_nota(tx: &rusqlite::Connection, item: &NotaColetada, existente: bool, ocr: Option<&str>) -> rusqlite::Result<()> {
+    let fm = &item.front_matter;
+    tx.execute(
+        "INSERT INTO nota (id, caminho_arquivo, titulo, modo, pasta_id, espaco, criado_em, \
+         atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca, criado_por) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, (SELECT id FROM usuario WHERE id = ?11)) \
+         ON CONFLICT (id) DO UPDATE SET caminho_arquivo = excluded.caminho_arquivo, titulo = excluded.titulo, modo = excluded.modo, \
+         pasta_id = excluded.pasta_id, espaco = excluded.espaco, criado_em = excluded.criado_em, atualizado_em = excluded.atualizado_em, \
+         ultima_revisao_em = excluded.ultima_revisao_em, hash_conteudo = excluded.hash_conteudo, criado_por = excluded.criado_por",
+        params![
+            fm.id,
+            item.caminho_relativo,
+            fm.titulo,
+            nota_modo_str(fm.modo),
+            item.pasta_id,
+            fm.espaco.to_string(),
+            fm.criado_em.to_rfc3339(),
+            fm.atualizado_em.to_rfc3339(),
+            fm.ultima_revisao_em.map(|d| d.to_rfc3339()),
+            item.hash_conteudo,
+            fm.criado_por,
+        ],
+    )?;
+    if existente {
+        tx.execute("DELETE FROM nota_tag WHERE nota_id = ?1", [&fm.id])?;
+        tx.execute("DELETE FROM nota_fts WHERE id = ?1", [&fm.id])?;
+    }
+    // O índice guarda o nome canônico; o arquivo mantém a grafia original até a pessoa renomear.
+    for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
+        tx.execute("INSERT OR IGNORE INTO nota_tag (nota_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
+    }
+    tx.execute("INSERT INTO nota_fts (id, titulo, corpo, ocr_texto_busca) VALUES (?1, ?2, ?3, ?4)", params![fm.id, fm.titulo, item.body, ocr])?;
+    Ok(())
+}
+
+/// Grava (upsert) uma tarefa com tags, tempo registrado e FTS (ver `gravar_nota`).
+pub(super) fn gravar_tarefa(tx: &rusqlite::Connection, item: &TarefaColetada, existente: bool) -> rusqlite::Result<()> {
+    let fm = &item.front_matter;
+    tx.execute(
+        "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
+         due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em, concluida_em, serie_id, ocorrencia_data) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, (SELECT id FROM usuario WHERE id = ?15), ?16, ?17, ?18, ?19) \
+         ON CONFLICT (id) DO UPDATE SET caminho_arquivo = excluded.caminho_arquivo, titulo = excluded.titulo, status = excluded.status, \
+         scheduled_at = excluded.scheduled_at, duration_min = excluded.duration_min, due_date = excluded.due_date, prioridade = excluded.prioridade, \
+         pasta_id = excluded.pasta_id, espaco = excluded.espaco, evento_provider = excluded.evento_provider, evento_event_id = excluded.evento_event_id, \
+         evento_synced_at = excluded.evento_synced_at, criado_em = excluded.criado_em, criado_por = excluded.criado_por, atualizado_em = excluded.atualizado_em, \
+         concluida_em = excluded.concluida_em, serie_id = excluded.serie_id, ocorrencia_data = excluded.ocorrencia_data",
+        params![
+            fm.id,
+            item.caminho_relativo,
+            fm.titulo,
+            tarefa_status_str(fm.status),
+            fm.scheduled_at.map(|d| d.to_rfc3339()),
+            fm.duration_min,
+            fm.due_date.map(|d| d.to_string()),
+            tarefa_prioridade_str(fm.prioridade),
+            item.pasta_id,
+            fm.espaco.to_string(),
+            fm.evento_externo.provider.map(calendario_provider_str),
+            fm.evento_externo.event_id,
+            fm.evento_externo.synced_at.map(|d| d.to_rfc3339()),
+            fm.criado_em.to_rfc3339(),
+            fm.criado_por,
+            fm.atualizado_em.or(item.modificado_em).unwrap_or(fm.criado_em).to_rfc3339(),
+            // Concluída antes do campo existir: a última edição é a melhor aproximação até a próxima mudança de status.
+            (if fm.status == TarefaStatus::Concluida { fm.concluida_em.or(fm.atualizado_em).or(item.modificado_em) } else { None }).map(|d| d.to_rfc3339()),
+            fm.serie.as_ref().map(|s| s.serie_id.clone()),
+            fm.serie.as_ref().map(|s| s.data.to_string()),
+        ],
+    )?;
+    if existente {
+        tx.execute("DELETE FROM tarefa_tag WHERE tarefa_id = ?1", [&fm.id])?;
+        tx.execute("DELETE FROM tarefa_time_entry WHERE tarefa_id = ?1", [&fm.id])?;
+        tx.execute("DELETE FROM tarefa_fts WHERE id = ?1", [&fm.id])?;
+    }
+    for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
+        tx.execute("INSERT OR IGNORE INTO tarefa_tag (tarefa_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
+    }
+    // Tempo alocado/trabalhado: a fonte é o front-matter; a tabela só o espelha.
+    for t in &fm.tempo {
+        tx.execute(
+            "INSERT OR REPLACE INTO tarefa_time_entry (id, tarefa_id, tipo, inicio_em, fim_em, duracao_min, foco, criado_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![t.id, fm.id, t.tipo.como_str(), t.inicio_em.to_rfc3339(), (t.inicio_em + chrono::Duration::minutes(t.duracao_min)).to_rfc3339(), t.duracao_min, t.foco, t.criado_em.to_rfc3339()],
+        )?;
+    }
+    tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
+    Ok(())
+}
+
+/// Referências de wikilink de um corpo, no formato da tabela `ref_item`: (tipo da referência, título normalizado, título bruto).
+pub(super) fn refs_do_corpo(corpo: &str) -> Vec<(&'static str, String, String)> {
+    wikilink::extract_refs(corpo)
+        .into_iter()
+        .map(|r| (r.tipo.map_or("", |t| t.como_str()), wikilink::normalizar_titulo(&r.titulo), r.titulo))
+        .collect()
+}
+
 /// Reindexa `Notas/` e `Tarefas/` do zero. Chamado no boot e sempre que o
 /// watcher de arquivos (`notify`) detecta escrita relevante.
 ///
@@ -497,6 +597,8 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     let mut links_item: Vec<(&'static str, String, &'static str, String)> = Vec::new();
     // Wikilinks sem destino (só os que uma nota resolveria: `tarefa:` explícito fica de fora).
     let mut links_quebrados: Vec<(&'static str, String, String)> = Vec::new();
+    // (tipo, id, espaço, tipo da referência, título normalizado, título bruto)
+    let mut refs_itens: Vec<(&'static str, String, String, &'static str, String, String)> = Vec::new();
     let origens = notas
         .iter()
         .map(|n| (wikilink::TipoItem::Nota, &n.front_matter.id, chave_espaco(&n.front_matter.espaco, &n.front_matter.criado_por), &n.body))
@@ -504,6 +606,9 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
     for (tipo, id, espaco, corpo) in origens {
         let vazio = Vec::new();
         let cands = por_espaco.get(espaco.as_str()).unwrap_or(&vazio);
+        for (rt, rn, rb) in refs_do_corpo(corpo) {
+            refs_itens.push((tipo.como_str(), id.clone(), espaco.clone(), rt, rn, rb));
+        }
         for r in wikilink::extract_refs(corpo) {
             match wikilink::resolver(&r, Some(&espaco), None, Some((tipo, id.as_str())), cands) {
                 Some(d) => links_item.push((tipo.como_str(), id.clone(), d.tipo.como_str(), d.id.clone())),
@@ -526,6 +631,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         tx.execute("DELETE FROM links_nota", [])?;
         tx.execute("DELETE FROM link_item", [])?;
         tx.execute("DELETE FROM link_pendente", [])?;
+        tx.execute("DELETE FROM ref_item", [])?;
         tx.execute("DELETE FROM nota_tag", [])?;
         tx.execute("DELETE FROM nota", [])?;
         tx.execute("DELETE FROM evento", [])?; // evento_tarefa/evento_nota caem em cascata
@@ -550,34 +656,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         // Links (calculados fora da trava) só entram depois de todas as notas: o destino pode vir depois da origem.
         for item in &notas {
             let fm = &item.front_matter;
-            tx.execute(
-                "INSERT INTO nota (id, caminho_arquivo, titulo, modo, pasta_id, espaco, criado_em, \
-                 atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca, criado_por) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, (SELECT id FROM usuario WHERE id = ?11))",
-                params![
-                    fm.id,
-                    item.caminho_relativo,
-                    fm.titulo,
-                    nota_modo_str(fm.modo),
-                    item.pasta_id,
-                    fm.espaco.to_string(),
-                    fm.criado_em.to_rfc3339(),
-                    fm.atualizado_em.to_rfc3339(),
-                    fm.ultima_revisao_em.map(|d| d.to_rfc3339()),
-                    item.hash_conteudo,
-                    fm.criado_por,
-                ],
-            )?;
-
-            // O índice guarda o nome canônico; o arquivo mantém a grafia original até a pessoa renomear.
-            for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
-                tx.execute("INSERT OR IGNORE INTO nota_tag (nota_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
-            }
-
-            tx.execute(
-                "INSERT INTO nota_fts (id, titulo, corpo, ocr_texto_busca) VALUES (?1, ?2, ?3, NULL)",
-                params![fm.id, fm.titulo, item.body],
-            )?;
+            gravar_nota(&tx, item, false, None)?;
 
             if let Some(pasta) = &item.pasta_id {
                 let chave = crate::espacos::fisica(&fm.espaco.to_string(), fm.criado_por.as_deref().unwrap_or(""));
@@ -594,6 +673,10 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
         for (ot, oi, dt, di) in &links_item {
             tx.execute("INSERT OR IGNORE INTO link_item (origem_tipo, origem_id, destino_tipo, destino_id) VALUES (?1, ?2, ?3, ?4)", params![ot, oi, dt, di])?;
+        }
+
+        for (t, id, esp, rt, rn, rb) in &refs_itens {
+            tx.execute("INSERT OR IGNORE INTO ref_item (origem_tipo, origem_id, espaco_chave, ref_tipo, titulo_norm, titulo_bruto) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![t, id, esp, rt, rn, rb])?;
         }
 
         for (ot, oi, titulo) in &links_quebrados {
@@ -613,47 +696,7 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
 
         for item in &tarefas {
             let fm = &item.front_matter;
-            tx.execute(
-                "INSERT INTO tarefa (id, caminho_arquivo, titulo, status, scheduled_at, duration_min, \
-                 due_date, prioridade, pasta_id, espaco, evento_provider, evento_event_id, evento_synced_at, criado_em, criado_por, atualizado_em, concluida_em, serie_id, ocorrencia_data) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, (SELECT id FROM usuario WHERE id = ?15), ?16, ?17, ?18, ?19)",
-                params![
-                    fm.id,
-                    item.caminho_relativo,
-                    fm.titulo,
-                    tarefa_status_str(fm.status),
-                    fm.scheduled_at.map(|d| d.to_rfc3339()),
-                    fm.duration_min,
-                    fm.due_date.map(|d| d.to_string()),
-                    tarefa_prioridade_str(fm.prioridade),
-                    item.pasta_id,
-                    fm.espaco.to_string(),
-                    fm.evento_externo.provider.map(calendario_provider_str),
-                    fm.evento_externo.event_id,
-                    fm.evento_externo.synced_at.map(|d| d.to_rfc3339()),
-                    fm.criado_em.to_rfc3339(),
-                    fm.criado_por,
-                    fm.atualizado_em.or(item.modificado_em).unwrap_or(fm.criado_em).to_rfc3339(),
-                    // Concluída antes do campo existir: a última edição é a melhor aproximação até a próxima mudança de status.
-                    (if fm.status == TarefaStatus::Concluida { fm.concluida_em.or(fm.atualizado_em).or(item.modificado_em) } else { None }).map(|d| d.to_rfc3339()),
-                    fm.serie.as_ref().map(|s| s.serie_id.clone()),
-                    fm.serie.as_ref().map(|s| s.data.to_string()),
-                ],
-            )?;
-
-            for tag in fm.tags.iter().filter_map(|t| ecos_core::tags::canonica(t)) {
-                tx.execute("INSERT OR IGNORE INTO tarefa_tag (tarefa_id, tag) VALUES (?1, ?2)", params![fm.id, tag])?;
-            }
-
-            // Tempo alocado/trabalhado: a fonte é o front-matter; a tabela só o espelha (o `DELETE FROM tarefa` acima a esvazia em cascata).
-            for t in &fm.tempo {
-                tx.execute(
-                    "INSERT OR REPLACE INTO tarefa_time_entry (id, tarefa_id, tipo, inicio_em, fim_em, duracao_min, foco, criado_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![t.id, fm.id, t.tipo.como_str(), t.inicio_em.to_rfc3339(), (t.inicio_em + chrono::Duration::minutes(t.duracao_min)).to_rfc3339(), t.duracao_min, t.foco, t.criado_em.to_rfc3339()],
-                )?;
-            }
-
-            tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
+            gravar_tarefa(&tx, item, false)?;
 
             // A contagem exibida na árvore de tarefas representa somente o trabalho
             // ainda ativo; concluídas continuam disponíveis na busca/listagem geral.

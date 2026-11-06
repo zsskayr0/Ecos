@@ -4,6 +4,7 @@
 //! `spawn_blocking` pra nunca travar o executor async do Axum.
 
 pub mod reindex;
+pub mod reindex_incremental;
 
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
@@ -15,7 +16,7 @@ use std::time::{Duration, Instant};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 28;
+const SCHEMA_VERSION_CONHECIDA: i64 = 29;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
@@ -47,6 +48,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0025_tag_cor_up.sql")).down(include_str!("../../migrations/0025_tag_cor_down.sql")),
         M::up(include_str!("../../migrations/0026_tarefa_arquivada_up.sql")).down(include_str!("../../migrations/0026_tarefa_arquivada_down.sql")),
         M::up(include_str!("../../migrations/0027_link_pendente_up.sql")).down(include_str!("../../migrations/0027_link_pendente_down.sql")),
+        M::up(include_str!("../../migrations/0028_ref_item_up.sql")).down(include_str!("../../migrations/0028_ref_item_down.sql")),
     ])
 }
 
@@ -54,6 +56,8 @@ fn migrations() -> Migrations<'static> {
 pub const LIMITE_LENTO: Duration = Duration::from_millis(150);
 /// Conexões somente-leitura (WAL permite leitores concorrentes com o escritor).
 const LEITORES: usize = 4;
+/// Por quanto tempo uma escrita do próprio servidor fica registrada para o watcher ignorá-la.
+const PROPRIA_TTL: Duration = Duration::from_secs(30);
 
 struct Interno {
     /// Escrita, reindex e tudo que não é leitura pura.
@@ -63,6 +67,9 @@ struct Interno {
     proximo: AtomicUsize,
     /// Resumo (SHA-256) do que a última reindexação completa gravou; `None` = desconhecido (boot ou em andamento).
     digest_aplicado: Arc<Mutex<Option<[u8; 32]>>>,
+    /// Arquivos que o próprio servidor acabou de escrever/remover (caminho relativo -> estado e momento): o índice já
+    /// os reflete, então o watcher e a varredura não precisam disparar uma reindexação completa por causa deles.
+    proprias: Mutex<std::collections::HashMap<String, (Option<(u64, std::time::SystemTime)>, Instant)>>,
 }
 
 #[derive(Clone)]
@@ -108,7 +115,32 @@ impl IndexDb {
                 }
             }
         }
-        Ok(Self(Arc::new(Interno { escrita: Mutex::new(conn), leitores, proximo: AtomicUsize::new(0), digest_aplicado: Arc::new(Mutex::new(None)) })))
+        Ok(Self(Arc::new(Interno { escrita: Mutex::new(conn), leitores, proximo: AtomicUsize::new(0), digest_aplicado: Arc::new(Mutex::new(None)), proprias: Mutex::new(Default::default()) })))
+    }
+
+    /// Anota que `relativo` (sob `notes_root`) foi escrito/removido pelo servidor, com o estado atual do arquivo.
+    pub fn registrar_escrita_propria(&self, notes_root: &Path, relativo: &str) {
+        let estado = std::fs::metadata(notes_root.join(relativo)).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+        let mut mapa = self.0.proprias.lock().unwrap_or_else(|e| e.into_inner());
+        mapa.retain(|_, (_, quando)| quando.elapsed() < PROPRIA_TTL);
+        mapa.insert(relativo.to_string(), (estado, Instant::now()));
+    }
+
+    /// `true` se a mudança vista em `absoluto` é a que o servidor mesmo fez (e o índice já reflete). Um diretório conta
+    /// quando contém algum arquivo próprio recente. Qualquer alteração posterior (tamanho/mtime) deixa de contar.
+    pub fn e_escrita_propria(&self, notes_root: &Path, absoluto: &Path) -> bool {
+        let Ok(rel) = absoluto.strip_prefix(notes_root) else { return false };
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        let mapa = self.0.proprias.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((estado, quando)) = mapa.get(&rel) {
+            let atual = std::fs::metadata(absoluto).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+            return quando.elapsed() < PROPRIA_TTL && *estado == atual;
+        }
+        if absoluto.is_dir() {
+            let prefixo = format!("{rel}/");
+            return mapa.iter().any(|(k, (_, quando))| k.starts_with(&prefixo) && quando.elapsed() < PROPRIA_TTL);
+        }
+        false
     }
 
     /// Resumo do que a última reindexação gravou (para pular reindexações sem mudança real).

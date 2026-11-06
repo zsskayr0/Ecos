@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::db::reindex::reindexar_tudo;
+use crate::db::reindex_incremental::{reindexar_itens, relativo, Mudanca};
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::anexos_comuns::mime_por_extensao;
@@ -245,9 +245,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let conteudo = frontmatter::serialize(&front_matter, &corpo)?;
     std::fs::write(&caminho_absoluto, conteudo)?;
 
-    // Reindex completo — simples e correto pra escala pessoal (seção 1.1: é
-    // cache reconstruível, refazer inteiro é barato).
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    // Incremental: só esta nota (a reconstrução completa fica para o boot e o watcher).
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
 
     Ok(Json(serde_json::json!({
         "id": front_matter.id,
@@ -301,7 +300,7 @@ pub async fn importar(State(state): State<AppState>, Extension(usuario): Extensi
     let conteudo = frontmatter::serialize(&doc.front_matter, &doc.body)?;
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(nome), "md");
     std::fs::write(&caminho_absoluto, conteudo)?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
 
     Ok(Json(serde_json::json!({
         "id": doc.front_matter.id,
@@ -425,7 +424,12 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         }
     }
 
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    let raiz = &state.config.notes_root;
+    let mut mudancas = vec![Mudanca::Escrito(relativo(raiz, &caminho_absoluto_destino))];
+    if caminho_absoluto_destino != caminho_absoluto_atual {
+        mudancas.push(Mudanca::Removido(relativo(raiz, &caminho_absoluto_atual)));
+    }
+    reindexar_itens(&state.db, raiz, &mudancas).await?;
 
     Ok(Json(serde_json::json!({ "id": fm.id, "titulo": fm.titulo, "atualizado_em": fm.atualizado_em })))
 }
@@ -439,7 +443,7 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     crate::routes::lixeira::mover(&state, &caminho_relativo, "nota", &doc.front_matter.titulo, &anexos_dir(&state, &id, &caminho_relativo))?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Removido(caminho_relativo)]).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -507,7 +511,7 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
     let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
     let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
     std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
-    reindexar_tudo(&state.db, &state.config.notes_root).await?;
+    reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo.clone())]).await?;
 
     Ok(Json(serde_json::json!({
         "nome_arquivo": midia.nome,
