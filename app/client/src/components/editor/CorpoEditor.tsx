@@ -1,12 +1,18 @@
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
+import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsMobile } from "@/lib/use-viewport";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
 import { preservandoScroll } from "@/lib/preservar-scroll";
+import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
+import { AvisoModoEscrita } from "@/components/tinta/AvisoModoEscrita";
+import { BarraTinta } from "@/components/tinta/BarraTinta";
+import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type Pincel } from "@/components/tinta/ColunaTinta";
+import { useTinta } from "@/lib/tinta/use-tinta";
+import { ativos, LARGURA_COLUNA_PADRAO, type Ferramenta } from "@/lib/tinta/tipos";
 
 interface Props {
   corpo: string;
@@ -28,7 +34,11 @@ interface Props {
   notaId?: string;
   /** Espaço em que "Criar nota" do `[[` cria a nova. */
   espaco?: string;
+  /** Nota que já existe: liga o Modo de escrita (tinta à mão sobre o texto). */
+  tintaNotaId?: string;
 }
+
+const AVISO_DIGITAR_COM_TINTA = "ecos.tinta.aviso-digitar";
 
 /**
  * Editor de corpo — toolbar única, usada tanto na criação quanto na edição
@@ -44,7 +54,59 @@ interface Props {
  * completa é a própria "aba de cima" pedida, sem seção separada ocupando
  * a tela pequena. Desktop mantém textarea + preview lado a lado.
  */
-export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false, notaId, espaco }: Props) {
+export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false, notaId, espaco, tintaNotaId }: Props) {
+  // ---- Modo de escrita (tinta). Sem `tintaNotaId` nada disto aparece. ----
+  const tinta = useTinta(tintaNotaId);
+  const [escrevendo, setEscrevendo] = useState(false);
+  const [avisoAberto, setAvisoAberto] = useState(false);
+  const [confirmarLimpar, setConfirmarLimpar] = useState(false);
+  const [dedoDesenha, setDedoDesenha] = useState(false);
+  const memoriaPincel = useRef<Record<Ferramenta, { cor: string; espessura: number }>>({ caneta: { cor: "auto", espessura: 2.5 }, "marca-texto": { cor: "#facc15", espessura: 16 } });
+  const [pincel, setPincel] = useState<Pincel>({ ferramenta: "caneta", ...memoriaPincel.current.caneta });
+  const tracosAtivos = ativos(tinta.tracos);
+  const comTinta = !!tintaNotaId && tracosAtivos.length > 0;
+  const colunaFixa = !!tintaNotaId && (escrevendo || comTinta);
+  const larguraColuna = tinta.largura ?? LARGURA_COLUNA_PADRAO;
+  const { desfazer: desfazerTinta, refazer: refazerTinta } = tinta;
+
+  function onCorpoChange(novo: string) {
+    if (comTinta) {
+      try {
+        if (!sessionStorage.getItem(AVISO_DIGITAR_COM_TINTA)) {
+          sessionStorage.setItem(AVISO_DIGITAR_COM_TINTA, "1");
+          avisar("Esta Nota tem anotações à mão: elas não acompanham o texto, então editar acima delas as desalinha.");
+        }
+      } catch { /* sessionStorage indisponível: sem aviso */ }
+    }
+    onCorpoChangeExterno(novo);
+  }
+
+  function alternarEscrita() {
+    if (escrevendo) {
+      setEscrevendo(false);
+      tinta.soltarSeVazia();
+      void tinta.gravarAgora();
+    } else if (tinta.largura !== null) setEscrevendo(true);
+    else setAvisoAberto(true);
+  }
+
+  function escolherFerramenta(f: FerramentaUI) {
+    if (pincel.ferramenta !== "borracha") memoriaPincel.current[pincel.ferramenta] = { cor: pincel.cor, espessura: pincel.espessura };
+    setPincel(f === "borracha" ? { ...pincel, ferramenta: f } : { ferramenta: f, ...memoriaPincel.current[f] });
+  }
+
+  useEffect(() => {
+    if (!escrevendo) return;
+    const teclas = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); desfazerTinta(); }
+      else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); refazerTinta(); }
+    };
+    window.addEventListener("keydown", teclas);
+    return () => window.removeEventListener("keydown", teclas);
+  }, [escrevendo, desfazerTinta, refazerTinta]);
+
   const areaRef = useRef<HTMLTextAreaElement>(null);
   /** Layout "document": o editor vivo (CodeMirror) expõe a seleção como se fosse um textarea. */
   const editorRef = useRef<AreaLike | null>(null);
@@ -231,7 +293,10 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
 
     return <div className={semBorda ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"} data-corpo-editor>
       <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
-        <div className={`flex min-w-0 flex-wrap items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
+        {escrevendo ? <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))}
+          dedoDesenha={dedoDesenha} onDedo={setDedoDesenha} podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
+          podeLimpar={tracosAtivos.length > 0} onLimpar={() => setConfirmarLimpar(true)} estado={tinta.estado} ehMobile={ehMobile} />
+        : <div className={`flex min-w-0 flex-wrap items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
             opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
             classeGatilho={`${ehMobile ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
@@ -256,17 +321,39 @@ export function CorpoEditor({ corpo, onCorpoChange, itemId, tipo, placeholder, r
             {emojiAberto && <SeletorEmoji aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />}
           </div>
           <ToolbarBtn Icon={RemoveFormatting} label="Limpar formatação" tamanho={tam} onClick={limparFormatacao} />
-        </div>
-        <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
-          className={`relative ml-auto flex ${ehMobile ? "h-11 w-11" : "h-8 w-8"} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
+        </div>}
+        {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Modo de escrita"} title={escrevendo ? "Voltar ao modo texto" : "Modo de escrita (escrever à mão sobre a Nota)"}
+          className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "bg-steel-500/25 text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
+          {escrevendo ? <Type size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
+        </button>}
+        {!escrevendo && <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+          className={`relative ${tintaNotaId ? "" : "ml-auto"} flex ${ehMobile ? "h-11 w-11" : "h-8 w-8"} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
           {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
           <Eye size={16} strokeWidth={1.75} aria-hidden
             className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:rotate(-45deg)_scaleY(0.06)_scaleX(0.9)] opacity-0 [transition-duration:300ms,120ms] [transition-delay:0ms,150ms]" : "[transform:none] opacity-100 [transition-duration:300ms,100ms] [transition-delay:70ms,0ms]"}`} />
           <Pencil size={15} strokeWidth={1.75} aria-hidden
             className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />
-        </button>
+        </button>}
       </div>
-      {preview
+      {tintaNotaId && <>
+        <AvisoModoEscrita open={avisoAberto} largura={LARGURA_COLUNA_PADRAO} onRecusar={() => setAvisoAberto(false)} onAceitar={() => { setAvisoAberto(false); tinta.converter(LARGURA_COLUNA_PADRAO); setEscrevendo(true); }} />
+        <ConfirmDeleteDialog open={confirmarLimpar} title="Limpar as anotações?" busy={false} description="Apaga toda a escrita à mão desta Nota. O texto não muda, e dá para desfazer enquanto a Nota estiver aberta." onCancel={() => setConfirmarLimpar(false)}
+          onConfirm={() => { setConfirmarLimpar(false); tinta.executar({ tipo: "apagar", ids: tracosAtivos.map((t) => t.id), em: new Date().toISOString() }); }} />
+        {tinta.erro && (escrevendo || comTinta) && <div role="alert" className="mb-3 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">{tinta.erro}</span>
+          {tinta.estado === "conflito" && <button type="button" onClick={tinta.recarregar} className="shrink-0 rounded-lg bg-surface-2 px-2 py-1 text-xs font-medium text-text-primary">Recarregar</button>}
+        </div>}
+      </>}
+      {tintaNotaId && !tinta.carregado
+        ? <div aria-hidden className={semBorda ? "min-h-[60vh]" : "min-h-40"} />
+        : colunaFixa
+        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar}>
+            <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
+              alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
+              className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
+          </ColunaTinta>
+        : preview
         ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
         : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}

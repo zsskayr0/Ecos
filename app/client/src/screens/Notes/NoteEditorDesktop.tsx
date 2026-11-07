@@ -276,7 +276,7 @@ export function NoteEditorDesktop() {
 
           {!noPainel && <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />}
 
-          <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview={!lerPreferenciasAplicativo().notaAbreEditando} />
+          <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview={!lerPreferenciasAplicativo().notaAbreEditando} tintaNotaId={id} />
 
           <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
 

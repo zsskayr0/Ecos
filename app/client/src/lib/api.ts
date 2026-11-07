@@ -1,4 +1,5 @@
 import type { Periodo, Painel, Ocorrencia, Pendencia, LinhaImportacao, RelatorioImportacao, PacoteNexus, RelatorioNexus } from "@/screens/Vault/types";
+import type { SalvarTintaNota, TintaNota } from "@/lib/tinta/tipos";
 /**
  * Real HTTP client against `ecos-app` (and, via its proxy, `ecos-vault-db`).
  * Contract matches the code in `app/server/src/routes/*` and
@@ -603,6 +604,11 @@ export const notas = {
       return req<{ nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string }>(`/notas/${id}/anexos`, { method: "POST", body: formData });
     },
     urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/notas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
+  },
+  /** Modo de escrita: tinta em `_anexos/<id>/tinta.json` (o `.md` não muda). 409 = outra aba gravou antes. */
+  tinta: {
+    obter: (id: string) => get<TintaNota>(`/notas/${id}/tinta`),
+    salvar: (id: string, payload: SalvarTintaNota) => put<{ revisao: number; largura_coluna: number | null }>(`/notas/${id}/tinta`, payload),
   },
 };
 

@@ -37,6 +37,7 @@ pub mod sync;
 pub mod sync_problemas;
 pub mod tags;
 pub mod tarefas;
+pub mod tinta;
 pub mod tarefas_serie;
 pub mod vault_proxy;
 
@@ -114,7 +115,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/links/resolver", post(links::resolver))
         .route("/links/sugestoes", get(links::sugestoes))
         .route("/links/pendentes", get(links::pendentes))
-        .route("/notas/:id/pagina", get(notas::obter_pagina).patch(notas::atualizar_pagina))
+        .route("/notas/:id/tinta", get(tinta::obter).put(tinta::salvar).layer(DefaultBodyLimit::max(tinta::TAMANHO_MAXIMO_BYTES)))
         .route("/notas/:id/anexos", post(notas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/notas/:id/anexos/:nome_arquivo", get(notas::obter_anexo))
         // Axum limita multipart a 2 MB por padrão. A biblioteca aceita até

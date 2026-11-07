@@ -309,7 +309,7 @@ pub async fn importar(State(state): State<AppState>, Extension(usuario): Extensi
     })))
 }
 
-async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
+pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
     let visivel = crate::espacos::visivel_sql("", usuario_id);
     let caminho: Option<String> = state
@@ -416,6 +416,14 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     } else {
         std::fs::write(&caminho_absoluto_destino, conteudo)?;
         std::fs::remove_file(&caminho_absoluto_atual)?;
+        // `_anexos/<id>` (tinta do Modo de escrita, anexos locais) mora ao lado do `.md`: muda de pasta junto.
+        let anexos_antes = anexos_dir(&state, &id, &caminho_relativo_atual);
+        let anexos_depois = dir_destino.join("_anexos").join(&id);
+        if anexos_antes.is_dir() && anexos_antes != anexos_depois && !anexos_depois.exists() {
+            std::fs::create_dir_all(dir_destino.join("_anexos"))?;
+            std::fs::rename(&anexos_antes, &anexos_depois)?;
+            if let Some(pasta) = anexos_antes.parent() { let _ = std::fs::remove_dir(pasta); }
+        }
         // A biblioteca de mídia é por espaço: o que o corpo referencia vai junto para o novo espaço.
         if fm.espaco.to_string() != espaco_antes {
             if let Err(err) = crate::espacos::levar_midia(&state.config.notes_root, &corpo, &crate::espacos::fisica(&espaco_antes, &usuario.0), &crate::espacos::fisica(&fm.espaco.to_string(), &usuario.0)) {
@@ -452,40 +460,12 @@ pub async fn links(State(state): State<AppState>, Extension(usuario): Extension<
     Ok(Json(crate::routes::links::links_do_item(&state, &usuario.0, ecos_core::wikilink::TipoItem::Nota, &id).await?))
 }
 
-fn anexos_dir(state: &AppState, nota_id: &str, caminho_relativo: &str) -> PathBuf {
+pub(crate) fn anexos_dir(state: &AppState, nota_id: &str, caminho_relativo: &str) -> PathBuf {
     let pai = absoluto(state, caminho_relativo)
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| notas_dir(state));
     pai.join("_anexos").join(nota_id)
-}
-
-/// `pagina.json` de uma Nota em Modo Página (seção 1.3-B).
-pub async fn obter_pagina(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
-    let caminho_json = anexos_dir(&state, &id, &caminho_relativo).join("pagina.json");
-    if !caminho_json.exists() {
-        return Ok(Json(serde_json::json!({ "caixas_texto": [], "tracos": [] })));
-    }
-    let bruto = std::fs::read_to_string(caminho_json)?;
-    let valor: serde_json::Value = serde_json::from_str(&bruto).map_err(|_| {
-        AppError::validation(vec![CampoInvalido {
-            campo: "pagina.json".into(),
-            motivo: "arquivo corrompido".into(),
-        }])
-    })?;
-    Ok(Json(valor))
-}
-
-/// Grava o canvas (seção 1.3-B). A regeneração fiel de `pagina.svg` exige um
-/// renderizador de canvas — isso é o editor do cliente Tauri (fora de
-/// escopo deste binário, seção 10.1); o servidor só persiste o dado vivo.
-pub async fn atualizar_pagina(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<serde_json::Value>) -> AppResult<Json<serde_json::Value>> {
-    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
-    let dir = anexos_dir(&state, &id, &caminho_relativo);
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join("pagina.json"), serde_json::to_string_pretty(&payload).unwrap_or_default())?;
-    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 // --- Anexos (biblioteca global `src/Media`, referenciada em Markdown) -----

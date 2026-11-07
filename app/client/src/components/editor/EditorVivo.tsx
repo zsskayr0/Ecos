@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
-import { Annotation, EditorState, Facet, Prec, type Range } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, Prec, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -33,6 +33,8 @@ interface Props {
   wikilinks?: OpcoesWikilink;
   /** Ctrl/Cmd+clique num `[[...]]`: recebe o texto de dentro (sem apelido). */
   aoAbrirWikilink?: (interno: string, clique: MouseEvent) => void;
+  /** Leitura de Nota com tinta (e Modo de escrita): o mesmo CodeMirror, sem edição, para o texto não mudar de lugar. */
+  somenteLeitura?: boolean;
 }
 
 const externa = Annotation.define<boolean>();
@@ -269,8 +271,12 @@ const tema = EditorView.theme({
   ".cm-linha-regua": { height: "1px", lineHeight: "1px", overflow: "hidden", background: "rgb(var(--ecos-border-rgb))" },
 });
 
-export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink }: Props) {
+const edicao = (somenteLeitura: boolean) => [EditorState.readOnly.of(somenteLeitura), EditorView.editable.of(!somenteLeitura)];
+
+export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink, somenteLeitura = false }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
+  const leitura = useRef(new Compartment());
+  const somenteLeituraInicial = useRef(somenteLeitura);
   const view = useRef<EditorView | null>(null);
   const aoMudar = useRef(onCorpoChange);
   aoMudar.current = onCorpoChange;
@@ -293,6 +299,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         Prec.highest(keymap.of(["Mod-b", "Mod-i"].map((tecla) => ({ key: tecla, run: () => { const f = atalhosRef.current?.[tecla]; if (!f) return false; f(); return true; } })))),
         keymap.of([...historyKeymap, ...defaultKeymap.filter((k) => k.key !== "Mod-i")]),
         EditorView.lineWrapping,
+        leitura.current.of(edicao(somenteLeituraInicial.current)),
         tema,
         EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" }),
         placeholder ? placeholderExt(placeholder) : [],
@@ -337,6 +344,10 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
     return () => { v.destroy(); view.current = null; areaRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: leitura.current.reconfigure(edicao(somenteLeitura)) });
+  }, [somenteLeitura]);
 
   // Corpo vindo de fora (sincronização, troca de item, ação da barra): reflete no documento sem devolver como edição.
   useEffect(() => {

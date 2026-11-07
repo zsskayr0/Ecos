@@ -14,6 +14,7 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
+import { LeituraComTinta } from "@/components/tinta/LeituraComTinta";
 import { preservandoScroll } from "@/lib/preservar-scroll";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -224,7 +225,7 @@ function NoteDetailMobile() {
       {editando ? (
         <div className="flex min-w-0 flex-col gap-6">
           <TitleField ariaLabel="Título da nota" value={tituloEdit} onChange={setTituloEdit} placeholder="Título da nota" className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
-          <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" />
+          <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" tintaNotaId={id} />
           <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
         </div>
       ) : (
@@ -241,7 +242,7 @@ function NoteDetailMobile() {
           </div>
 
           <div className="mb-6 min-w-0 break-words rounded-2xl border border-border bg-surface-1 p-5 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">
-            {nota.corpo.trim() ? <MarkdownPreview corpo={nota.corpo} itemId={id} tipo="nota" /> : <p className="text-text-muted">Nota vazia.</p>}
+            {id ? <LeituraComTinta notaId={id} corpo={nota.corpo} /> : nota.corpo.trim() ? <MarkdownPreview corpo={nota.corpo} itemId={id} tipo="nota" /> : <p className="text-text-muted">Nota vazia.</p>}
           </div>
 
           {nota.tags.length > 0 && (
