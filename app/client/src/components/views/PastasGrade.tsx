@@ -1,7 +1,7 @@
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { lazy, Suspense, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
-import { pastas as pastasApi } from "@/lib/api";
+import { ApiError, pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
@@ -29,6 +29,8 @@ export interface ItemExplorador {
   titulo?: string;
   nome?: string;
   caminho?: string;
+  /** O `.md` não segue `note-<Título>.md`/`task-<Título>.md`: aparece em vermelho até ser corrigido na página de problemas. */
+  fora_do_padrao?: boolean;
 }
 
 interface Props {
@@ -134,6 +136,8 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
   const [destinos, setDestinos] = useState<PastaResumo[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // A pasta é a mesma para notas e tarefas: o servidor recusa (409) apagar itens do outro tipo sem confirmação.
+  const [excluirTudo, setExcluirTudo] = useState(false);
   const { notificar } = useRefreshBus();
   const [expandidas, setExpandidas] = useState(false);
   // Na vista compacta, muitas subpastas viram "+N": o restante aparece ao clicar, sem empurrar o conteúdo para baixo.
@@ -173,7 +177,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
   function abrirAcao(pasta: PastaResumo, proxima: "renomear" | "mover" | "excluir") {
     setMenu(null); setPastaAtiva(pasta); setAcao(proxima); setNovoNome(pasta.nome); setNovaCor(pasta.cor ?? ""); setNovoIcone(pasta.icone ?? ""); setErro(null);
   }
-  function fecharAcao() { setAcao(null); setPastaAtiva(null); setErro(null); }
+  function fecharAcao() { setAcao(null); setPastaAtiva(null); setErro(null); setExcluirTudo(false); }
   async function renomear() {
     if (!pastaAtiva || !novoNome.trim() || ocupado) return;
     const pai = pastaAtiva.caminho.split("/").slice(0, -1).join("/");
@@ -194,8 +198,11 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
   async function excluir() {
     if (!pastaAtiva || ocupado) return;
     setOcupado(true); setErro(null);
-    try { await pastasApi.excluir({ tipo, espaco, caminho: pastaAtiva.caminho }); notificar(); fecharAcao(); avisar("Pasta excluída com sucesso.", "sucesso"); }
-    catch (e) { setErro(mensagemDeErro(e, "Não foi possível excluir a pasta. Ela pode precisar estar vazia.")); }
+    try { await pastasApi.excluir({ tipo, espaco, caminho: pastaAtiva.caminho, todos_os_tipos: excluirTudo || undefined }); notificar(); fecharAcao(); avisar("Pasta excluída com sucesso.", "sucesso"); }
+    catch (e) {
+      if (e instanceof ApiError && e.status === 409 && !excluirTudo) setExcluirTudo(true);
+      setErro(mensagemDeErro(e, "Não foi possível excluir a pasta. Ela pode precisar estar vazia."));
+    }
     finally { setOcupado(false); }
   }
 
@@ -280,7 +287,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
         <div className="overflow-hidden rounded-2xl border border-border bg-surface-1">
           <div className="flex min-h-11 items-center border-b border-border bg-surface-2/60 px-3 text-xs font-medium text-text-muted"><span className="flex-1">Nome</span><span className="hidden sm:block sm:w-24">Tipo</span><span className="w-8" /></div>
           {pastas.map((p) => <div key={p.caminho} className="group relative flex min-h-12 items-center border-b border-border px-3 last:border-b-0 hover:bg-surface-2"><button type="button" onClick={() => aoAbrir(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><IconePasta pasta={p} tamanho={18} corIcone={corIcone} /><span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{p.nome}</span><span className="hidden text-xs text-text-muted sm:block sm:w-24">{p.contagem_itens} {p.contagem_itens === 1 ? "item" : "itens"}</span><ChevronRight size={16} className="text-text-muted" /></button><button type="button" aria-label={`Ações para ${p.nome}`} aria-haspopup="menu" aria-expanded={menu === p.caminho} onClick={() => setMenu((atual) => atual === p.caminho ? null : p.caminho)} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={18} /></button>{menu === p.caminho && <div role="menu" className="absolute right-3 top-10 z-20 w-44 rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => { setMenu(null); aoAbrir(p); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Folder size={15} />Editar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "renomear")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><Pencil size={15} />Personalizar</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "mover")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2"><FolderInput size={15} />Mover</button><button type="button" role="menuitem" onClick={() => abrirAcao(p, "excluir")} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-error hover:bg-error/10"><Trash2 size={15} />Excluir</button></div>}</div>)}
-          {itens.map((item, indice) => { const Icone = item.tipo === "nota" ? StickyNote : item.tipo === "tarefa" ? ListChecks : FileText; const nome = item.titulo ?? item.nome ?? "Sem nome"; return <button key={`${item.tipo}:${item.id ?? item.caminho ?? indice}`} type="button" onClick={(evento) => aoAbrirItem?.(item, evento)} className="flex min-h-12 w-full items-center gap-3 border-b border-border px-3 text-left last:border-b-0 hover:bg-surface-2"><Icone size={18} strokeWidth={1.65} className="text-text-secondary" /><span className="min-w-0 flex-1 truncate text-sm text-text-primary">{nome}</span><span className="hidden text-xs capitalize text-text-muted sm:block sm:w-24">{item.tipo === "documento" ? "arquivo" : item.tipo}</span><ChevronRight size={16} className="text-text-muted" /></button>; })}
+          {itens.map((item, indice) => { const Icone = item.tipo === "nota" ? StickyNote : item.tipo === "tarefa" ? ListChecks : FileText; const nome = item.titulo ?? item.nome ?? "Sem nome"; return <button key={`${item.tipo}:${item.id ?? item.caminho ?? indice}`} type="button" onClick={(evento) => aoAbrirItem?.(item, evento)} title={item.fora_do_padrao ? "Nome de arquivo fora do padrão: corrija em Configurações › Problemas de arquivos" : undefined} data-fora-do-padrao={item.fora_do_padrao || undefined} className="flex min-h-12 w-full items-center gap-3 border-b border-border px-3 text-left last:border-b-0 hover:bg-surface-2"><Icone size={18} strokeWidth={1.65} className={item.fora_do_padrao ? "text-error" : "text-text-secondary"} /><span className={`min-w-0 flex-1 truncate text-sm ${item.fora_do_padrao ? "text-error" : "text-text-primary"}`}>{nome}</span><span className={`hidden text-xs sm:block sm:w-24 ${item.fora_do_padrao ? "text-error" : "capitalize text-text-muted"}`}>{item.fora_do_padrao ? "fora do padrão" : item.tipo === "documento" ? "arquivo" : item.tipo}</span><ChevronRight size={16} className="text-text-muted" /></button>; })}
           {!pastas.length && !itens.length && <p className="px-4 py-8 text-center text-sm text-text-muted">Esta pasta está vazia.</p>}
           {aoCriar && <button type="button" onClick={aoCriar} className="flex min-h-12 w-full items-center gap-3 px-3 text-left text-sm font-medium text-steel-300 hover:bg-surface-2"><FolderPlus size={18} />{rotuloCriar}</button>}
         </div>
@@ -294,7 +301,7 @@ export function PastasGrade({ pastas, chave, titulo = "Pastas", corIcone, aoAbri
             </div>
             {acao === "renomear" && <><label className="mb-2 block text-sm text-text-secondary" htmlFor="novo-nome-pasta">Nome</label><input id="novo-nome-pasta" autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="ecos-input mb-4 w-full !rounded-lg" /><Suspense fallback={<p className="text-sm text-text-muted">Carregando…</p>}><AparenciaPasta cor={novaCor || COR_INICIAL} icone={novoIcone || "Folder"} onCor={setNovaCor} onIcone={setNovoIcone} /></Suspense><div className="mt-4 flex items-center gap-3"><button type="button" disabled={ocupado || !novoNome.trim()} onClick={() => void renomear()} className="flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40"><Check size={16} />Salvar</button>{(novaCor || novoIcone) && <button type="button" onClick={() => { setNovaCor(""); setNovoIcone(""); }} className="min-h-10 rounded-lg px-3 text-sm text-text-secondary hover:bg-surface-2">Voltar ao padrão</button>}</div></>}
             {acao === "mover" && <><p className="mb-3 text-sm text-text-secondary">Escolha qualquer pasta na árvore como destino para <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>.</p><div className="max-h-[min(60dvh,28rem)] space-y-1 overflow-y-auto"><button type="button" disabled={ocupado} onClick={() => void mover("")} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Raiz</button><ArvorePastas opcoes={destinos.filter((d) => d.caminho !== pastaAtiva.caminho && !d.caminho.startsWith(`${pastaAtiva.caminho}/`)).map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[]} onSelect={(p) => { if (!ocupado) void mover(p); }} /></div></>}
-            {acao === "excluir" && <><p className="text-sm text-text-secondary">Excluir <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>? A pasta precisa estar vazia.</p><button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-white disabled:opacity-40"><Trash2 size={16} />Excluir pasta</button></>}
+            {acao === "excluir" && <><p className="text-sm text-text-secondary">Excluir <span className="font-medium text-text-primary">{pastaAtiva.nome}</span>? A pasta precisa estar vazia.</p><button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-white disabled:opacity-40"><Trash2 size={16} />{excluirTudo ? "Excluir tudo" : "Excluir pasta"}</button></>}
             {erro && <p role="alert" className="mt-3 text-sm text-error">{erro}</p>}
           </div>
         </Dialog>

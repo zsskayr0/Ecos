@@ -25,7 +25,8 @@ const LEIA_ME: &str = "Exportação de dados do Ecos\r\n\
 ===========================\r\n\r\n\
 manifesto.json          Seus dados de conta, a versão do formato e o resumo do que está neste arquivo.\r\n\
 configuracoes.json      Suas preferências de calendário e a rotina.\r\n\
-Pessoal/                Suas Notas, Tarefas e anexos (src/Media), no formato original: arquivos .md.\r\n\
+Pessoal/                Suas pastas, com notas, tarefas e arquivos juntos (.md no formato original).\r\n\
+Pessoal/.ecos_app/      Eventos, séries e a biblioteca de mídia (pasta oculta).\r\n\
 <Nome da equipe>/       Notas e Tarefas de equipes que VOCÊ criou. O que outras pessoas criaram não entra.\r\n\
 perfil/                 Sua foto de perfil, se houver.\r\n\r\n\
 Não entram: itens da lixeira, senhas e chaves de recuperação (ficam só como hash no servidor)\r\n\
@@ -44,7 +45,9 @@ fn relativo_seguro(rel: &str) -> bool {
 /// Identificação do formato do pacote: a restauração (`crate::restauracao`) só aceita o que traz isto.
 pub const FORMATO_PACOTE: &str = "ecos-exportacao";
 /// Sobe quando o conteúdo do pacote muda de forma incompatível; a restauração recusa versões mais novas que a sua.
-pub const VERSAO_FORMATO_PACOTE: u32 = 1;
+pub const VERSAO_FORMATO_PACOTE: u32 = 2;
+/// Primeira versão do pacote na árvore única (`.ecos_app/` no lugar de `Notas/`, `Tarefas/`, `Eventos/`...).
+pub const VERSAO_PACOTE_ARVORE_UNICA: u64 = 2;
 pub const ARQUIVO_CONFIGURACOES: &str = "configuracoes.json";
 
 struct DadosExportacao {
@@ -83,7 +86,7 @@ fn coletar_arquivos(state: &AppState, dados: &DadosExportacao, usuario_id: &str)
 fn montar_zip(destino: &Path, dados: &DadosExportacao, arquivos: &[(String, PathBuf)], usuario_id: &str, cofre_ativo: bool) -> std::io::Result<()> {
     let saida = std::io::BufWriter::new(std::fs::File::create(destino)?);
     let mut zip = ZipWriter::new(saida);
-    let anexos = arquivos.iter().filter(|(nome, _)| nome.contains("/src/Media/")).count();
+    let anexos = arquivos.iter().filter(|(nome, _)| nome.contains("/.ecos_app/Media/")).count();
     let manifesto = serde_json::json!({
         "formato": FORMATO_PACOTE,
         "versao_formato": VERSAO_FORMATO_PACOTE,
@@ -409,13 +412,13 @@ mod tests {
         assert_eq!(up.status(), StatusCode::OK);
         // Item que a Ana criou em equipe com outra dona, mais um item da Bia que NÃO pode vazar para o zip da Ana.
         let dir_b = crate::espacos::garantir_dir(&temp, "equipe:EQB", Some("Equipe B")).unwrap();
-        std::fs::create_dir_all(dir_b.join("Notas")).unwrap();
+        std::fs::create_dir_all(&dir_b).unwrap();
         let fm = |id: &str, por: &str| format!("---\nid: {id}\ntitulo: {id}\nmodo: texto\nespaco: equipe:EQB\ntags: []\ncriado_em: 2026-01-01T00:00:00Z\natualizado_em: 2026-01-01T00:00:00Z\ncriado_por: {por}\n---\ncorpo\n");
-        std::fs::write(dir_b.join("Notas/da-ana.md"), fm("01M2ZC20AAAAAAAAAAAAAAAAAA", "u1")).unwrap();
-        std::fs::write(dir_b.join("Notas/da-bia.md"), fm("01M2ZC20BBBBBBBBBBBBBBBBBB", "u2")).unwrap();
+        std::fs::write(dir_b.join("da-ana.md"), fm("01M2ZC20AAAAAAAAAAAAAAAAAA", "u1")).unwrap();
+        std::fs::write(dir_b.join("da-bia.md"), fm("01M2ZC20BBBBBBBBBBBBBBBBBB", "u2")).unwrap();
         let dir_a = crate::espacos::garantir_dir(&temp, "equipe:EQA", Some("Equipe A")).unwrap();
-        std::fs::create_dir_all(dir_a.join("Notas")).unwrap();
-        std::fs::write(dir_a.join("Notas/so-da-a.md"), "x").unwrap();
+        std::fs::create_dir_all(&dir_a).unwrap();
+        std::fs::write(dir_a.join("so-da-a.md"), "x").unwrap();
         crate::db::reindex::reindexar_tudo(&state.db, &temp).await.unwrap();
         let avatar_dir = temp.join(".ecos/avatares");
         std::fs::create_dir_all(&avatar_dir).unwrap();
@@ -431,9 +434,9 @@ mod tests {
         let itens = ler_zip(&zip);
         let nomes: Vec<&str> = itens.iter().map(|(n, _)| n.as_str()).collect();
         assert!(nomes.contains(&"manifesto.json") && nomes.contains(&"LEIA-ME.txt"));
-        assert!(nomes.iter().any(|n| n.starts_with("ana/Notas/") && n.ends_with(".md")), "notas: {nomes:?}");
-        assert!(nomes.iter().any(|n| n.starts_with("ana/Tarefas/") && n.ends_with(".md")), "tarefas: {nomes:?}");
-        assert!(itens.iter().any(|(n, d)| n.starts_with("ana/src/Media/") && d.as_slice() == &[7u8; 5000][..]), "anexo íntegro: {nomes:?}");
+        assert!(nomes.iter().any(|n| n.starts_with("ana/") && n.ends_with(".md")), "notas: {nomes:?}");
+        assert!(nomes.iter().any(|n| n.starts_with("ana/") && n.ends_with(".md")), "tarefas: {nomes:?}");
+        assert!(itens.iter().any(|(n, d)| n.starts_with("ana/.ecos_app/Media/") && d.as_slice() == &[7u8; 5000][..]), "anexo íntegro: {nomes:?}");
         assert!(nomes.contains(&"perfil/avatar.png"));
         assert!(nomes.iter().any(|n| n.ends_with("da-ana.md")), "item que ela criou na equipe: {nomes:?}");
         assert!(!nomes.iter().any(|n| n.ends_with("da-bia.md") || n.ends_with("so-da-a.md")), "não vaza item de outra pessoa: {nomes:?}");
@@ -483,10 +486,10 @@ mod tests {
         assert!(!temp.join("ana").exists(), "pasta pessoal apagada");
         assert!(!dir_a.exists(), "equipe em que era a única pessoa apagada");
         assert!(!avatar_dir.join("u1.png").exists(), "avatar apagado");
-        assert!(dir_b.join("Notas/da-bia.md").exists() && dir_b.join("Notas/da-ana.md").exists(), "equipe que continua preserva o histórico");
-        let da_ana = std::fs::read_to_string(dir_b.join("Notas/da-ana.md")).unwrap();
+        assert!(dir_b.join("da-bia.md").exists() && dir_b.join("da-ana.md").exists(), "equipe que continua preserva o histórico");
+        let da_ana = std::fs::read_to_string(dir_b.join("da-ana.md")).unwrap();
         assert!(!da_ana.contains("u1") && da_ana.contains("criado_por: null") && da_ana.contains("corpo"), "ID sai do front-matter, o conteúdo fica: {da_ana}");
-        assert!(std::fs::read_to_string(dir_b.join("Notas/da-bia.md")).unwrap().contains("criado_por: u2"), "autoria de outras pessoas intacta");
+        assert!(std::fs::read_to_string(dir_b.join("da-bia.md")).unwrap().contains("criado_por: u2"), "autoria de outras pessoas intacta");
 
         // Reentrada: nem o token antigo, nem o refresh antigo, nem a senha funcionam.
         let mesmo_token = app.clone().call(Request::get("/api/v1/me").header("authorization", &auth).body(Body::empty()).unwrap()).await.unwrap();

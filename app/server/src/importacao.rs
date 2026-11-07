@@ -137,6 +137,9 @@ fn montar_nota(texto: &str, nome_arquivo: &str, pasta: &str, agora: DateTime<Utc
     let fm = NotaFrontMatter {
         id: new_id(),
         titulo: titulo.clone(),
+        tipo: Default::default(),
+        aliases: vec![titulo.clone()],
+        extras: Default::default(),
         modo: NotaModo::default(),
         criado_em: criado,
         atualizado_em: atualizado,
@@ -334,7 +337,8 @@ fn relatorio(a: &Analise, token: &str, tamanho: u64) -> serde_json::Value {
 
 /// Grava as notas; qualquer falha desfaz arquivos e pastas criados por esta chamada.
 fn gravar_notas(base: &Path, notas: &[ItemNota], falhar_apos: Option<usize>) -> Result<Vec<PathBuf>, String> {
-    let raiz = base.join("Notas");
+    // Árvore única: as notas importadas vão direto para as pastas do espaço.
+    let raiz = base.to_path_buf();
     let mut arquivos: Vec<PathBuf> = Vec::new();
     let mut pastas: Vec<PathBuf> = Vec::new();
     let desfazer = |arquivos: &[PathBuf], pastas: &mut Vec<PathBuf>| {
@@ -352,7 +356,7 @@ fn gravar_notas(base: &Path, notas: &[ItemNota], falhar_apos: Option<usize>) -> 
                 return Err("falha simulada no meio da importação".into());
             }
             let dir = if nota.pasta.is_empty() { raiz.clone() } else { raiz.join(&nota.pasta) };
-            if !dir.starts_with(&raiz) {
+            if !dir.starts_with(&raiz) || nota.pasta.split('/').any(crate::espacos::nome_interno) {
                 return Err("caminho fora da raiz".into());
             }
             let mut p = Some(dir.as_path());
@@ -366,7 +370,7 @@ fn gravar_notas(base: &Path, notas: &[ItemNota], falhar_apos: Option<usize>) -> 
             }
             std::fs::create_dir_all(&dir).map_err(|e| format!("não foi possível criar a pasta de {}: {e}", nota.origem))?;
             pastas.extend(faltando);
-            let destino = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(&nota.titulo), "md");
+            let destino = naming::caminho_sem_colisao(&dir, &naming::nome_padrao(false, &nota.titulo), "md");
             // `create_new`: nunca sobrescreve um arquivo que apareceu entre a análise e a gravação.
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&destino).map_err(|e| format!("não foi possível gravar {}: {e}", nota.origem))?;

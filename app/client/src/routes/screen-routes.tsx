@@ -67,6 +67,7 @@ const IconesPersonalizadosScreen = carregar(() => import("@/screens/Settings/Ico
 const AboutScreen = carregar(() => import("@/screens/Settings/AboutScreen"), "AboutScreen");
 const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"), "LicensesScreen");
 const ProblemasSincronizacaoScreen = carregar(() => import("@/screens/Settings/ProblemasSincronizacaoScreen"), "ProblemasSincronizacaoScreen");
+const ProblemasArquivosScreen = carregar(() => import("@/screens/Settings/ProblemasArquivosScreen"), "ProblemasArquivosScreen");
 const CalendarPreferencesScreen = carregar(() => import("@/screens/Settings/CalendarPreferencesScreen"), "CalendarPreferencesScreen");
 const UsoDiarioScreen = carregar(() => import("@/screens/Settings/UsoDiarioScreen"), "UsoDiarioScreen");
 const NotificacoesPreferenciasScreen = carregar(() => import("@/screens/Settings/NotificacoesPreferenciasScreen"), "NotificacoesPreferenciasScreen");
@@ -74,6 +75,7 @@ const OrganizationScreen = carregar(() => import("@/screens/Settings/Organizatio
 const AdministracaoScreen = carregar(() => import("@/screens/Settings/AdministracaoScreen"), "AdministracaoScreen");
 const HelpScreen = carregar(() => import("@/screens/Help/HelpScreen"), "HelpScreen");
 const MediaScreen = carregar(() => import("@/screens/Media/MediaScreen"), "MediaScreen");
+const ArquivosScreen = carregar(() => import("@/screens/Files/ArquivosScreen"), "ArquivosScreen");
 const FileViewerScreen = carregar(() => import("@/screens/Media/FileViewerScreen"), "FileViewerScreen");
 const GraficoConfigScreen = carregar(() => import("@/screens/Settings/GraficoConfigScreen"), "GraficoConfigScreen");
 const GraficoScreen = carregar(() => import("@/screens/Grafico/GraficoScreen"), "GraficoScreen");
@@ -117,6 +119,7 @@ export const screenRoutes = (
     <Route path="/tarefas/pasta/nova" element={tela(TaskFolderCreateScreen)} />
     <Route path="/tarefas/pasta/*" element={tela(TaskFolderScreen)} />
     <Route path="/media" element={tela(MediaScreen, <SkeletonMidia />)} />
+    <Route path="/arquivos" element={tela(ArquivosScreen)} />
     <Route path="/media/ver" element={tela(FileViewerScreen)} />
     <Route path="/lixeira" element={tela(TrashScreen, <SkeletonLixeira />)} />
 
@@ -153,6 +156,7 @@ export const screenRoutes = (
       <Route path="grafico" element={tela(GraficoConfigScreen)} />
       <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
       <Route path="calendario/problemas" element={tela(ProblemasSincronizacaoScreen)} />
+      <Route path="arquivos/problemas" element={tela(ProblemasArquivosScreen)} />
       <Route path="uso-diario" element={tela(UsoDiarioScreen)} />
       <Route path="organizacao" element={tela(OrganizationScreen, <SkeletonOrganizacao />)} />
       <Route path="icones" element={tela(IconesPersonalizadosScreen)} />

@@ -1,12 +1,17 @@
 import { avisar } from "@/lib/toast";
 import { SkeletonLixeira } from "@/components/common/SkeletonTelas";
 import { useEffect, useState } from "react";
-import { FileText, Image as ImageIcon, RotateCcw, Trash2 } from "lucide-react";
+import { File, FileText, Folder, Image as ImageIcon, RotateCcw, Trash2 } from "lucide-react";
 import { lixeira, type ItemLixeira } from "@/lib/api";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
 
 import { mensagemDeErro } from "@/lib/erros";
+
+const ROTULO: Record<ItemLixeira["tipo"], string> = { nota: "Nota", tarefa: "Tarefa", evento: "Evento", media: "Media", arquivo: "Arquivo", pasta: "Pasta" };
+/** Para onde o item volta, na frase depois de restaurar. */
+const DESTINO: Record<ItemLixeira["tipo"], string> = { nota: "Notas", tarefa: "Tarefas", evento: "Eventos", media: "Media", arquivo: "Arquivos", pasta: "Arquivos" };
+
 export function TrashScreen() {
   const [itens, setItens] = useState<ItemLixeira[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -26,7 +31,7 @@ export function TrashScreen() {
     try {
       await lixeira.restaurar(item.id);
       setItens((lista) => lista?.filter((i) => i.id !== item.id) ?? []);
-      setMensagem(`${item.nome} foi restaurado em ${item.tipo === "nota" ? "Notas" : item.tipo === "tarefa" ? "Tarefas" : item.tipo === "evento" ? "Eventos" : "Media"}.`);
+      setMensagem(`${item.nome} foi restaurado em ${DESTINO[item.tipo] ?? "Media"}.`);
       notificar();
       avisar(`${item.nome} restaurado.`, "sucesso");
     } catch (e) { setErro(mensagemDeErro(e, "Não foi possível restaurar o arquivo. Tente novamente.")); }
@@ -34,12 +39,12 @@ export function TrashScreen() {
   }
   return <div className="px-4 pt-1 pb-nav-safe">
     <h1 className="mb-1 font-display text-2xl text-text-primary">Lixeira</h1>
-    <p className="mb-5 text-sm text-text-muted">Restaure notas, tarefas e arquivos da Media. Itens do Cofre não vão para a lixeira.</p>
+    <p className="mb-5 text-sm text-text-muted">Restaure notas, tarefas, arquivos e pastas. Itens do Cofre não vão para a lixeira.</p>
     {erro && <p role="alert" className="mb-4 text-sm text-error">{erro}</p>}
     {mensagem && <p role="status" className="mb-4 text-sm text-steel-300">{mensagem}</p>}
-    {itens === null ? <SkeletonLixeira itens={4} rotulo="Carregando lixeira…" /> : !itens.length && !erro ? <EmptyState icon={Trash2} title="A lixeira está vazia." subtitle="Notas, tarefas e arquivos da Media excluídos aparecerão aqui." /> : <div className="flex flex-col gap-3">{itens.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4">
-      {item.mime.startsWith("image/") ? <ImageIcon size={22} className="shrink-0 text-text-muted" /> : <FileText size={22} className="shrink-0 text-text-muted" />}
-      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-text-primary">{item.nome}</p><p className="mt-1 text-xs text-text-muted">{item.tipo === "nota" ? "Nota" : item.tipo === "tarefa" ? "Tarefa" : item.tipo === "evento" ? "Evento" : "Media"} · Excluído em {new Date(item.excluido_em).toLocaleDateString("pt-BR")}</p></div>
+    {itens === null ? <SkeletonLixeira itens={4} rotulo="Carregando lixeira…" /> : !itens.length && !erro ? <EmptyState icon={Trash2} title="A lixeira está vazia." subtitle="Notas, tarefas, arquivos e pastas excluídos aparecerão aqui." /> : <div className="flex flex-col gap-3">{itens.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface-1 p-4">
+      {item.tipo === "pasta" ? <Folder size={22} className="shrink-0 text-text-muted" /> : item.mime.startsWith("image/") ? <ImageIcon size={22} className="shrink-0 text-text-muted" /> : item.tipo === "arquivo" ? <File size={22} className="shrink-0 text-text-muted" /> : <FileText size={22} className="shrink-0 text-text-muted" />}
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-text-primary">{item.nome}</p><p className="mt-1 text-xs text-text-muted">{ROTULO[item.tipo] ?? "Media"}{(item.tipo === "arquivo" || item.tipo === "pasta") && item.caminho_original.includes("/") ? ` · ${item.caminho_original.slice(0, item.caminho_original.lastIndexOf("/"))}` : ""} · Excluído em {new Date(item.excluido_em).toLocaleDateString("pt-BR")}</p></div>
       <button type="button" disabled={!!restaurando} onClick={() => restaurar(item)} aria-label={`Restaurar ${item.nome}`} className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-2 text-xs font-medium text-steel-300 disabled:opacity-40"><RotateCcw size={15} />{restaurando === item.id ? "Restaurando..." : "Restaurar"}</button>
     </div>)}</div>}
   </div>;

@@ -1,4 +1,13 @@
-//! Layout em disco por espaço: `<notes_root>/<nome de usuário|Nome da Equipe>/{Notas,Tarefas}`.
+//! Layout em disco por espaço (árvore única, passo 5 do ADR):
+//!
+//! ```text
+//! <notes_root>/<nome de usuário|Nome da Equipe>/
+//!   .espaco                 marcador com a chave física
+//!   .ecos_app/Eventos/      eventos da agenda
+//!   .ecos_app/Series/       séries de tarefas
+//!   .ecos_app/Media/        biblioteca de mídia (referenciada como `src/Media/...`)
+//!   <pastas e arquivos da pessoa>   notas, tarefas e qualquer outro arquivo, juntos
+//! ```
 //!
 //! Cada diretório de espaço carrega um marcador `.espaco` com a **chave física**
 //! (`pessoal:<usuario_id>` ou `equipe:<id>`), então renomear a pessoa ou a equipe
@@ -16,6 +25,44 @@ use std::path::{Path, PathBuf};
 /// Pasta do layout anterior (um único espaço pessoal, sem dono); só existe até `migrar_pessoal_por_usuario`.
 pub const PESSOAL_DIR: &str = "Pessoal";
 pub const MARCADOR: &str = ".espaco";
+/// Pasta escondida, dentro de cada espaço, com o que é do sistema e não da pessoa.
+pub const APP_DIR: &str = ".ecos_app";
+/// Marca, dentro de `.ecos_app/`, que o espaço já está na árvore única.
+pub const MARCA_LAYOUT: &str = "layout";
+pub const LAYOUT_ATUAL: &str = "arvore-unica";
+/// Árvores do layout anterior: hoje as duas são a própria raiz do espaço.
+pub const ARVORES_LEGADAS: [&str; 2] = ["Notas", "Tarefas"];
+
+/// Nome que a árvore do espaço nunca mostra nem indexa como conteúdo da pessoa: ocultos (`.ecos_app`, `.espaco`,
+/// `.ecos-pastas.json`...) e anexos de nota/tarefa.
+pub fn nome_interno(nome: &str) -> bool {
+    nome.starts_with('.') || nome == "_anexos"
+}
+
+/// Caminho relativo ao espaço no layout anterior → no layout atual. `Notas/x` e `Tarefas/x` viram `x`;
+/// `Eventos/`, `Series/` e `src/Media/` vão para `.ecos_app/`. Caminho já no layout atual volta igual.
+pub fn caminho_no_layout_atual(rel: &str) -> String {
+    let rel = rel.trim_start_matches('/');
+    for arvore in ARVORES_LEGADAS {
+        if let Some(resto) = rel.strip_prefix(&format!("{arvore}/")) {
+            return resto.to_string();
+        }
+    }
+    for (antigo, novo) in [("Eventos/", ".ecos_app/Eventos/"), ("Series/", ".ecos_app/Series/"), ("src/Media/", ".ecos_app/Media/")] {
+        if let Some(resto) = rel.strip_prefix(antigo) {
+            return format!("{novo}{resto}");
+        }
+    }
+    rel.to_string()
+}
+
+/// O mesmo para um caminho relativo à raiz das notas (`<Espaço>/Notas/x` → `<Espaço>/x`).
+pub fn caminho_completo_no_layout_atual(rel: &str) -> String {
+    match rel.split_once('/') {
+        Some((espaco, resto)) => format!("{espaco}/{}", caminho_no_layout_atual(resto)),
+        None => rel.to_string(),
+    }
+}
 const PREFIXO_PESSOAL: &str = "pessoal:";
 
 /// Chave física de um espaço lógico para um usuário: `pessoal` vira `pessoal:<usuario_id>`.
@@ -172,8 +219,10 @@ pub fn garantir_dir(notes_root: &Path, espaco: &str, nome: Option<&str>) -> std:
     Ok(dir)
 }
 
-/// Raiz da árvore (`Notas` ou `Tarefas`) de um espaço.
+/// Raiz de uma área do espaço. `Notas` e `Tarefas` são a própria raiz (árvore única); as outras
+/// (`eventos_fs::DIR`, `MIDIA_DIR`...) são subpastas, criadas se faltarem.
 pub async fn raiz(state: &AppState, espaco: &str, arvore: &str) -> AppResult<PathBuf> {
+    let arvore = if ARVORES_LEGADAS.contains(&arvore) { "" } else { arvore };
     let notes_root = state.config.notes_root.clone();
     // Só consulta o banco para batizar uma pasta nova (equipe: nome da equipe; pessoal: nome de usuário do dono).
     let nome = if dir_existente(&notes_root, espaco).is_some() {
@@ -199,8 +248,8 @@ pub fn espaco_do_caminho(notes_root: &Path, relativo: &str) -> Option<String> {
     listar(notes_root).into_iter().find(|(_, d)| d.file_name().is_some_and(|n| n == topo)).map(|(e, _)| e)
 }
 
-/// Subpasta de mídia de cada espaço: `<Espaço>/src/Media/AAAA-MM/`.
-pub const MIDIA_DIR: &str = "src/Media";
+/// Subpasta de mídia de cada espaço: `<Espaço>/.ecos_app/Media/AAAA-MM/` (o prefixo nos Markdown continua `src/Media/`).
+pub const MIDIA_DIR: &str = ".ecos_app/Media";
 /// Prefixo das referências à mídia nos Markdown. É o mesmo em qualquer espaço: o espaço é resolvido no servidor.
 pub const PREFIXO_MIDIA: &str = "src/Media/";
 
@@ -259,13 +308,12 @@ pub fn midias_referenciadas(corpo: &str) -> Vec<String> {
 
 fn algum_md_referencia(dir_espaco: &Path, relativo: &str) -> bool {
     let alvo = format!("{PREFIXO_MIDIA}{relativo}");
-    ["Notas", "Tarefas"].iter().any(|arvore| {
-        walkdir::WalkDir::new(dir_espaco.join(arvore))
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
-            .any(|e| std::fs::read_to_string(e.path()).is_ok_and(|c| c.contains(&alvo)))
-    })
+    walkdir::WalkDir::new(dir_espaco)
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !nome_interno(&e.file_name().to_string_lossy()))
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
+        .any(|e| std::fs::read_to_string(e.path()).is_ok_and(|c| c.contains(&alvo)))
 }
 
 /// O item trocou de espaço: leva a mídia que o corpo referencia para a biblioteca do novo espaço.

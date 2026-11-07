@@ -12,12 +12,29 @@ use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
-async fn raiz_da_arvore(state: &AppState, usuario_id: &str, tipo: &str, espaco: Option<&str>) -> AppResult<std::path::PathBuf> {
-    let arvore = if tipo == "tarefa" { "Tarefas" } else { "Notas" };
+/// Raízes físicas do espaço, sem repetir. Na árvore única é uma só (a raiz do espaço); a lista existe para o código
+/// de pastas continuar valendo se um dia houver mais de uma.
+async fn raizes_do_espaco(state: &AppState, usuario_id: &str, tipo: &str, espaco: Option<&str>) -> AppResult<Vec<std::path::PathBuf>> {
     let espaco = espaco.filter(|e| !e.is_empty()).unwrap_or("pessoal");
     espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| AppError::validation(vec![CampoInvalido { campo: "espaco".into(), motivo }]))?;
     crate::espacos::exigir_acesso(state, usuario_id, espaco).await?;
-    crate::espacos::raiz(state, &crate::espacos::fisica(espaco, usuario_id), arvore).await
+    let fisica = crate::espacos::fisica(espaco, usuario_id);
+    let (primeira, segunda) = if tipo == "tarefa" { ("Tarefas", "Notas") } else { ("Notas", "Tarefas") };
+    let mut raizes = vec![crate::espacos::raiz(state, &fisica, primeira).await?];
+    let outra = crate::espacos::raiz(state, &fisica, segunda).await?;
+    if !raizes.contains(&outra) {
+        raizes.push(outra);
+    }
+    Ok(raizes)
+}
+
+/// Cor/ícone de cada pasta lógica: junta os `.ecos-pastas.json` das duas árvores; a do tipo pedido vence.
+fn meta_unificada(raizes: &[std::path::PathBuf]) -> MetaPastas {
+    let mut meta = MetaPastas::new();
+    for raiz in raizes.iter().rev() {
+        meta.extend(ler_meta(raiz));
+    }
+    meta
 }
 
 /// O caminho vem do cliente e é juntado à raiz do espaço: `..`, barra inicial ou unidade o levariam à pasta de outra pessoa.
@@ -33,14 +50,14 @@ fn caminho_dentro_da_raiz(campo: &str, caminho: &str, pode_ser_vazio: bool) -> A
 
 /// Cor e ícone das pastas ficam num único arquivo na raiz de cada árvore (`.ecos-pastas.json`: caminho -> {cor, icone}),
 /// já que a pasta em si é só um diretório. Acompanha a pasta quando o diretório é copiado.
-const ARQUIVO_META: &str = ".ecos-pastas.json";
-type MetaPastas = std::collections::BTreeMap<String, serde_json::Value>;
+pub(crate) const ARQUIVO_META: &str = ".ecos-pastas.json";
+pub(crate) type MetaPastas = std::collections::BTreeMap<String, serde_json::Value>;
 
-fn ler_meta(raiz: &std::path::Path) -> MetaPastas {
+pub(crate) fn ler_meta(raiz: &std::path::Path) -> MetaPastas {
     std::fs::read_to_string(raiz.join(ARQUIVO_META)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
-fn gravar_meta(raiz: &std::path::Path, meta: &MetaPastas) -> AppResult<()> {
+pub(crate) fn gravar_meta(raiz: &std::path::Path, meta: &MetaPastas) -> AppResult<()> {
     let arquivo = raiz.join(ARQUIVO_META);
     if meta.is_empty() {
         let _ = std::fs::remove_file(&arquivo);
@@ -94,7 +111,7 @@ fn definir_aparencia(meta: &mut MetaPastas, caminho: &str, cor: &Option<String>,
     }
 }
 
-fn mover_chaves(meta: &mut MetaPastas, de: &str, para: &str) {
+pub(crate) fn mover_chaves(meta: &mut MetaPastas, de: &str, para: &str) {
     let prefixo = format!("{de}/");
     let afetadas: Vec<String> = meta.keys().filter(|k| k.as_str() == de || k.starts_with(&prefixo)).cloned().collect();
     for chave in afetadas {
@@ -113,6 +130,7 @@ fn remover_chaves(meta: &mut MetaPastas, caminho: &str) {
 pub struct ListarQuery {
     #[serde(default)]
     pub recursivo: bool,
+    /// `nota` (notas e documentos), `tarefa` ou `todos`. Só filtra os itens: as subpastas são sempre as da pasta única.
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     #[serde(default)]
@@ -136,22 +154,16 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let visivel_item = crate::espacos::visivel_sql("", &usuario.0);
     let visivel_item_nota = visivel_item.clone();
 
-    let pastas: Vec<(String, String, i64, String)> = state
+    let pastas: Vec<(String, String, i64, i64, String)> = state
         .db
         .with_read({
-            let tipo = tipo.clone();
             let pasta_pai = pasta_pai.clone();
             let espaco = espaco.clone();
             move |conn| {
-                let sql = if espaco.is_some() { format!("SELECT caminho, nome, contagem_itens, espaco FROM pasta_cache WHERE tipo = ?1 AND espaco = ?2 AND {visivel_pasta}") } else { format!("SELECT caminho, nome, contagem_itens, espaco FROM pasta_cache WHERE tipo = ?1 AND {visivel_pasta}") };
-                let mut stmt = conn.prepare(&sql)?;
-                let converter = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?));
-                let bruto: Vec<(String, String, i64, String)> = if let Some(espaco) = espaco {
-                    stmt.query_map(rusqlite::params![tipo, espaco], converter)?.filter_map(|r| r.ok()).collect()
-                } else {
-                    stmt.query_map([&tipo], converter)?.filter_map(|r| r.ok()).collect()
-                };
-                let linhas = bruto.into_iter().filter(|(caminho, _, _, _)| {
+                let mut stmt = conn.prepare(&format!("SELECT caminho, nome, contagem_notas, contagem_tarefas, espaco FROM pasta_cache WHERE (?1 IS NULL OR espaco = ?1) AND {visivel_pasta}"))?;
+                let converter = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?, r.get::<_, String>(4)?));
+                let bruto: Vec<(String, String, i64, i64, String)> = stmt.query_map([&espaco], converter)?.filter_map(|r| r.ok()).collect();
+                let linhas = bruto.into_iter().filter(|(caminho, _, _, _, _)| {
                     let pai_de_caminho = caminho.rsplit_once('/').map(|(pai, _)| pai).unwrap_or("");
                     pai_de_caminho == pasta_pai || (recursivo && (pasta_pai.is_empty() || caminho.starts_with(&format!("{pasta_pai}/"))))
                 }).collect();
@@ -160,53 +172,61 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         })
         .await?;
 
-    let arvore = if tipo == "tarefa" { "Tarefas" } else { "Notas" };
+    let arvores: &[&str] = if tipo == "tarefa" { &["Tarefas", "Notas"] } else { &["Notas", "Tarefas"] };
     let mut metas: std::collections::HashMap<String, MetaPastas> = std::collections::HashMap::new();
-    for (_, _, _, esp) in &pastas {
+    for (_, _, _, _, esp) in &pastas {
         if !metas.contains_key(esp) {
-            let meta = match crate::espacos::raiz(&state, esp, arvore).await {
-                Ok(r) => ler_meta(&r),
-                Err(_) => MetaPastas::new(),
-            };
-            metas.insert(esp.clone(), meta);
+            let mut raizes = Vec::new();
+            for arvore in arvores {
+                if let Ok(r) = crate::espacos::raiz(&state, esp, arvore).await {
+                    raizes.push(r);
+                }
+            }
+            metas.insert(esp.clone(), meta_unificada(&raizes));
         }
     }
     let subpastas: Vec<_> = pastas
         .into_iter()
-        .map(|(caminho, nome, contagem_itens, esp)| {
+        .map(|(caminho, nome, notas, tarefas, esp)| {
             let aparencia = metas.get(&esp).and_then(|m| m.get(&caminho));
             let campo = |k: &str| aparencia.and_then(|a| a.get(k)).cloned().unwrap_or(serde_json::Value::Null);
-            serde_json::json!({ "caminho": caminho, "nome": nome, "contagem_itens": contagem_itens, "cor": campo("cor"), "icone": campo("icone") })
+            // `contagem_itens` continua sendo a do tipo pedido (contrato antigo); as duas contagens vêm à parte.
+            let contagem_itens = match tipo.as_str() { "tarefa" => tarefas, "todos" => notas + tarefas, _ => notas };
+            serde_json::json!({ "caminho": caminho, "nome": nome, "contagem_itens": contagem_itens, "contagem_notas": notas, "contagem_tarefas": tarefas, "cor": campo("cor"), "icone": campo("icone") })
         })
         .collect();
 
-    // Conteúdo direto (Notas e Documentos misturados, seção 11.5) — só faz
-    // sentido pra árvore de Notas; Tarefas não tem Documento.
+    // Conteúdo direto da pasta: notas e documentos (`nota`), tarefas (`tarefa`) ou tudo junto (`todos`).
     let espaco_itens = q.espaco.clone().filter(|e| !e.is_empty());
-    let itens: Vec<serde_json::Value> = if tipo == "tarefa" {
-        state
+    let mut itens: Vec<serde_json::Value> = Vec::new();
+    if tipo == "tarefa" || tipo == "todos" {
+        let pasta_pai = pasta_pai.clone();
+        let espaco_itens = espaco_itens.clone();
+        let tarefas: Vec<serde_json::Value> = state
             .db
             .with_read(move |conn| {
-                let mut stmt = conn.prepare(&format!("SELECT id, titulo, status FROM tarefa WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2) AND {visivel_item}"))?;
+                let mut stmt = conn.prepare(&format!("SELECT id, titulo, status, caminho_arquivo FROM tarefa WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2) AND {visivel_item}"))?;
                 let linhas = stmt
                     .query_map(rusqlite::params![&pasta_pai, &espaco_itens], |r| {
-                        Ok(serde_json::json!({ "tipo": "tarefa", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "status": r.get::<_, String>(2)? }))
+                        Ok(serde_json::json!({ "tipo": "tarefa", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "status": r.get::<_, String>(2)?, "fora_do_padrao": !crate::routes::arquivos_problemas::nome_no_padrao(true, &r.get::<_, String>(3)?) }))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(linhas)
             })
-            .await?
-    } else {
-        let mut itens = state
+            .await?;
+        itens.extend(tarefas);
+    }
+    if tipo != "tarefa" {
+        let notas: Vec<serde_json::Value> = state
             .db
             .with_read({
                 let pasta_pai = pasta_pai.clone();
                 let espaco_itens = espaco_itens.clone();
                 move |conn| {
-                    let mut stmt = conn.prepare(&format!("SELECT id, titulo, modo FROM nota WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2) AND {visivel_item_nota}"))?;
+                    let mut stmt = conn.prepare(&format!("SELECT id, titulo, modo, caminho_arquivo FROM nota WHERE COALESCE(pasta_id, '') = ?1 AND (?2 IS NULL OR espaco = ?2) AND {visivel_item_nota}"))?;
                     let linhas = stmt
                         .query_map(rusqlite::params![&pasta_pai, &espaco_itens], |r| {
-                            Ok(serde_json::json!({ "tipo": "nota", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "modo": r.get::<_, String>(2)? }))
+                            Ok(serde_json::json!({ "tipo": "nota", "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?, "modo": r.get::<_, String>(2)?, "fora_do_padrao": !crate::routes::arquivos_problemas::nome_no_padrao(false, &r.get::<_, String>(3)?) }))
                         })?
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(linhas)
@@ -228,9 +248,9 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                 Ok(linhas)
             })
             .await?;
+        itens.extend(notas);
         itens.extend(documentos);
-        itens
-    };
+    }
 
     Ok(Json(serde_json::json!({ "subpastas": subpastas, "itens": itens })))
 }
@@ -260,7 +280,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let nome = ecos_core::naming::sanitizar_nome_arquivo(&payload.nome);
     caminho_dentro_da_raiz("pasta_pai", payload.pasta_pai.as_deref().unwrap_or(""), true)?;
     validar_aparencia(&payload.cor, &payload.icone)?;
-    let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
+    let raiz = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?.remove(0);
     let dir = match &payload.pasta_pai {
         Some(p) if !p.is_empty() => raiz.join(p).join(&nome),
         _ => raiz.join(&nome),
@@ -294,22 +314,33 @@ pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extensi
     caminho_dentro_da_raiz("caminho_atual", &payload.caminho_atual, false)?;
     caminho_dentro_da_raiz("novo_caminho", &payload.novo_caminho, false)?;
     validar_aparencia(&payload.cor, &payload.icone)?;
-    let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
-    let de = raiz.join(&payload.caminho_atual);
-    let para = raiz.join(&payload.novo_caminho);
-    if !de.is_dir() {
+    let raizes = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
+    // A pasta lógica pode existir numa árvore ou nas duas: confere tudo antes de mexer em qualquer uma.
+    let com_pasta: Vec<&std::path::PathBuf> = raizes.iter().filter(|r| r.join(&payload.caminho_atual).is_dir()).collect();
+    if com_pasta.is_empty() {
         return Err(AppError::new(ErrorCode::NotFound));
     }
-    if let Some(pai) = para.parent() {
-        std::fs::create_dir_all(pai)?;
+    let mudou = payload.caminho_atual != payload.novo_caminho;
+    if mudou && com_pasta.iter().any(|r| r.join(&payload.novo_caminho).exists()) {
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Já existe uma pasta com esse nome."));
     }
-    if de != para {
-        std::fs::rename(&de, &para)?;
+    for raiz in &com_pasta {
+        let (de, para) = (raiz.join(&payload.caminho_atual), raiz.join(&payload.novo_caminho));
+        if let Some(pai) = para.parent() {
+            std::fs::create_dir_all(pai)?;
+        }
+        if mudou {
+            std::fs::rename(&de, &para)?;
+        }
     }
-    let mut meta = ler_meta(&raiz);
-    mover_chaves(&mut meta, &payload.caminho_atual, &payload.novo_caminho);
-    definir_aparencia(&mut meta, &payload.novo_caminho, &payload.cor, &payload.icone);
-    gravar_meta(&raiz, &meta)?;
+    for (i, raiz) in raizes.iter().enumerate() {
+        let mut meta = ler_meta(raiz);
+        mover_chaves(&mut meta, &payload.caminho_atual, &payload.novo_caminho);
+        if i == 0 {
+            definir_aparencia(&mut meta, &payload.novo_caminho, &payload.cor, &payload.icone);
+        }
+        gravar_meta(raiz, &meta)?;
+    }
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -321,21 +352,49 @@ pub struct ExcluirPastaPayload {
     #[serde(default = "tipo_padrao")]
     pub tipo: String,
     pub caminho: String,
+    /// A pasta é uma só para notas e tarefas: excluir pela tela de um tipo só leva junto itens do outro com `true`.
+    #[serde(default)]
+    pub todos_os_tipos: bool,
 }
 
 pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ExcluirPastaPayload>) -> AppResult<Json<serde_json::Value>> {
     caminho_dentro_da_raiz("caminho", &payload.caminho, false)?;
-    let raiz = raiz_da_arvore(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
-    let dir = raiz.join(&payload.caminho);
-    if !dir.is_dir() {
+    let raizes = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
+    let dirs: Vec<std::path::PathBuf> = raizes.iter().map(|r| r.join(&payload.caminho)).filter(|d| d.is_dir()).collect();
+    if dirs.is_empty() {
         return Err(AppError::new(ErrorCode::NotFound));
     }
+    if !payload.todos_os_tipos {
+        // Itens do outro tipo na pasta ou abaixo dela, em qualquer status: quem está na tela de Notas não vê as tarefas.
+        let chave = crate::espacos::fisica(payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal"), &usuario.0);
+        let (logico, dono) = (crate::espacos::logica(&chave).to_string(), crate::espacos::dono(&chave).map(str::to_string));
+        let caminho = payload.caminho.clone();
+        let outra = if payload.tipo == "tarefa" { "nota" } else { "tarefa" };
+        let outros: i64 = state
+            .db
+            .with_read(move |conn| {
+                conn.query_row(
+                    &format!("SELECT COUNT(*) FROM {outra} WHERE (pasta_id = ?1 OR pasta_id LIKE ?1 || '/%') AND espaco = ?2 AND (?3 IS NULL OR criado_por IS ?3)"),
+                    rusqlite::params![caminho, logico, dono],
+                    |r| r.get(0),
+                )
+            })
+            .await?;
+        if outros > 0 {
+            let o_que = if outra == "tarefa" { "tarefas" } else { "notas" };
+            return Err(AppError::new(ErrorCode::Conflict).with_message(format!("A pasta também tem {outros} {o_que}. Confirme para excluir tudo.")));
+        }
+    }
     // Cascata pro conteúdo (mesma semântica do `escopo` de Nota/Tarefa,
-    // seção 11.5) — remove a árvore inteira, inclusive `_anexos/`.
-    std::fs::remove_dir_all(&dir)?;
-    let mut meta = ler_meta(&raiz);
-    remover_chaves(&mut meta, &payload.caminho);
-    gravar_meta(&raiz, &meta)?;
+    // seção 11.5) — remove a pasta nas duas árvores, inclusive `_anexos/`.
+    for dir in &dirs {
+        std::fs::remove_dir_all(dir)?;
+    }
+    for raiz in &raizes {
+        let mut meta = ler_meta(raiz);
+        remover_chaves(&mut meta, &payload.caminho);
+        gravar_meta(raiz, &meta)?;
+    }
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

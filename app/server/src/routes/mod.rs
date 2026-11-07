@@ -3,6 +3,8 @@
 //! `/auth/*`.
 
 pub mod anexos_comuns;
+pub mod arquivos;
+pub mod arquivos_problemas;
 pub mod avatar;
 pub mod busca;
 pub mod calendario;
@@ -26,6 +28,7 @@ pub mod renomear;
 pub mod media;
 pub mod metricas;
 pub mod lixeira;
+pub mod lixeira_arquivos;
 pub mod nota_corpos;
 pub mod notas;
 pub mod notificacoes;
@@ -125,6 +128,14 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/media/arquivo/*caminho", get(media::obter_arquivo).delete(media::excluir))
         .route("/lixeira", get(media::listar_lixeira))
         .route("/lixeira/:id/restaurar", post(media::restaurar))
+        .route("/arquivos", get(arquivos::listar))
+        .route("/arquivos/conteudo", get(arquivos::conteudo))
+        .route("/arquivos/mover", post(arquivos::mover))
+        .route("/arquivos/renomear", post(arquivos::renomear))
+        .route("/arquivos/excluir", post(arquivos::excluir))
+        .route("/arquivos/enviar", post(arquivos::enviar).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
+        .route("/arquivos/problemas", get(arquivos_problemas::listar))
+        .route("/arquivos/problemas/corrigir", post(arquivos_problemas::corrigir))
         .route("/pastas", get(pastas::listar).post(pastas::criar).patch(pastas::renomear).delete(pastas::excluir))
         .route("/documentos/:hash", get(pastas::documento))
         .route("/tarefas", get(tarefas::listar).post(tarefas::criar))

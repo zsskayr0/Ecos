@@ -81,6 +81,9 @@ impl Default for NotaModo {
 pub struct NotaFrontMatter {
     pub id: String,
     pub titulo: String,
+    /// Sempre `nota` ao gravar; na leitura quem decide é `classificar` (ADR árvore única).
+    #[serde(default)]
+    pub tipo: crate::classificar::MarcaNota,
     #[serde(default)]
     pub modo: NotaModo,
     pub criado_em: DateTime<Utc>,
@@ -102,6 +105,13 @@ pub struct NotaFrontMatter {
     /// desta coluna existir (migration 0003) — nunca inventado depois.
     #[serde(default)]
     pub criado_por: Option<String>,
+    /// Nomes alternativos. O Ecos mantém o título aqui, porque o arquivo se chama `note-<Título>.md`/`task-<Título>.md`
+    /// e editores de Markdown resolvem `[[Título]]` pelo nome do arquivo ou por alias.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// Chaves que o Ecos não conhece (propriedades de outros editores, plugins…): voltam ao arquivo intactas a cada regravação.
+    #[serde(flatten)]
+    pub extras: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 /// Linha do índice local para Nota (cache derivado — seção 1.1/1.3).
@@ -187,6 +197,9 @@ pub struct Subtarefa {
 pub struct TarefaFrontMatter {
     pub id: String,
     pub titulo: String,
+    /// Sempre `tarefa` ao gravar (ver `NotaFrontMatter::tipo`).
+    #[serde(default)]
+    pub tipo: crate::classificar::MarcaTarefa,
     pub status: TarefaStatus,
     #[serde(default)]
     pub scheduled_at: Option<DateTime<Utc>>,
@@ -220,6 +233,13 @@ pub struct TarefaFrontMatter {
     /// Ocorrência de uma série recorrente (a regra mora no arquivo da série, ver `tarefa_serie`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serie: Option<crate::tarefa_serie::OcorrenciaRef>,
+    /// Nomes alternativos. O Ecos mantém o título aqui, porque o arquivo se chama `note-<Título>.md`/`task-<Título>.md`
+    /// e editores de Markdown resolvem `[[Título]]` pelo nome do arquivo ou por alias.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// Chaves que o Ecos não conhece (propriedades de outros editores, plugins…): voltam ao arquivo intactas a cada regravação.
+    #[serde(flatten)]
+    pub extras: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 /// Que tipo de tempo um registro guarda: `Planejado` é tempo ALOCADO num dia/horário do calendário (um bloco, que não

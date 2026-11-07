@@ -59,7 +59,7 @@ async fn uma_pessoa_nao_ve_nem_mexe_no_que_e_da_outra() {
     let (id_d, id_t, id_tarefa_d, id_eq) = (nota_d["id"].as_str().unwrap(), nota_t["id"].as_str().unwrap(), tarefa_d["id"].as_str().unwrap(), nota_eq["id"].as_str().unwrap());
 
     // Cada um em sua pasta, com o login no nome; a equipe na dela.
-    assert!(temp.join("diogo/Notas").is_dir() && temp.join("thaty/Notas").is_dir() && temp.join("Casa/Notas").is_dir());
+    assert!(temp.join("diogo").is_dir() && temp.join("thaty").is_dir() && temp.join("Casa").is_dir());
     assert!(!temp.join("Pessoal").exists(), "não existe mais um Pessoal comum");
     assert_eq!(std::fs::read_to_string(temp.join("diogo/.espaco")).unwrap(), "pessoal:U1");
 
@@ -103,7 +103,7 @@ async fn uma_pessoa_nao_ve_nem_mexe_no_que_e_da_outra() {
     assert_eq!(st, StatusCode::FORBIDDEN, "criar em equipe alheia");
     let (st, _) = chamar(&app, "PATCH", &format!("/api/v1/notas/{id_eq}"), &thaty, Some(serde_json::json!({ "espaco": "pessoal" }))).await;
     assert_eq!(st, StatusCode::OK, "membro pode trazer a nota da equipe para o próprio pessoal");
-    assert!(std::fs::read_dir(temp.join("thaty/Notas")).unwrap().count() >= 2, "foi para a pasta da Thaty, não para a do Diogo");
+    assert!(std::fs::read_dir(temp.join("thaty")).unwrap().count() >= 2, "foi para a pasta da Thaty, não para a do Diogo");
     let (st, _) = chamar(&app, "PATCH", &format!("/api/v1/notas/{id_d}"), &diogo, Some(serde_json::json!({ "espaco": "equipe:EQ" }))).await;
     assert_eq!(st, StatusCode::OK, "dono pode compartilhar a própria nota com a equipe");
     let (st, _) = chamar(&app, "PATCH", &format!("/api/v1/notas/{id_d}"), &visita, Some(serde_json::json!({ "espaco": "equipe:EQ" }))).await;
@@ -120,7 +120,7 @@ async fn uma_pessoa_nao_ve_nem_mexe_no_que_e_da_outra() {
         let (st, _) = chamar(&app, "POST", "/api/v1/pastas", token, Some(serde_json::json!({ "nome": "Ideias" }))).await;
         assert_eq!(st, StatusCode::OK);
     }
-    assert!(temp.join("diogo/Notas/Ideias").is_dir() && temp.join("thaty/Notas/Ideias").is_dir());
+    assert!(temp.join("diogo/Ideias").is_dir() && temp.join("thaty/Ideias").is_dir());
     let (_, pastas) = chamar(&app, "GET", "/api/v1/pastas?tipo=nota", &diogo, None).await;
     assert_eq!(pastas["subpastas"].as_array().unwrap().len(), 1, "{pastas}");
     let (_, pastas) = chamar(&app, "GET", "/api/v1/pastas?tipo=nota", &visita, None).await;
@@ -134,7 +134,7 @@ async fn uma_pessoa_nao_ve_nem_mexe_no_que_e_da_outra() {
     let subida: serde_json::Value = serde_json::from_slice(&to_bytes(subida.into_body(), 8192).await.unwrap()).unwrap();
     assert_eq!(subida["espaco"], "pessoal");
     let rel = subida["caminho"].as_str().unwrap().trim_start_matches("src/Media/").to_string();
-    assert!(temp.join("diogo/src/Media").join(&rel).is_file());
+    assert!(temp.join("diogo/.ecos_app/Media").join(&rel).is_file());
     let (st, _) = chamar(&app, "GET", &format!("/api/v1/media/arquivo/{rel}"), &diogo, None).await;
     assert_eq!(st, StatusCode::OK);
     let (st, _) = chamar(&app, "GET", &format!("/api/v1/media/arquivo/{rel}"), &thaty, None).await;
@@ -164,7 +164,7 @@ async fn uma_pessoa_nao_ve_nem_mexe_no_que_e_da_outra() {
     let (st, ev) = chamar(&app, "POST", "/api/v1/eventos", &diogo, Some(evento)).await;
     assert_eq!(st, StatusCode::OK, "{ev}");
     let id_ev = ev["id"].as_str().unwrap();
-    assert!(temp.join("diogo/Eventos").is_dir());
+    assert!(temp.join("diogo/.ecos_app/Eventos").is_dir());
     let (_, eventos) = chamar(&app, "GET", "/api/v1/eventos", &thaty, None).await;
     assert!(eventos.as_array().unwrap().is_empty(), "{eventos}");
     let (st, _) = chamar(&app, "GET", &format!("/api/v1/eventos/{id_ev}"), &thaty, None).await;
@@ -365,27 +365,27 @@ async fn duas_pessoas_e_duas_equipes_nao_alcancam_o_que_e_do_outro() {
     // Caminhos: `..` não leva à pasta de outra pessoa (renomear, apagar, criar e mover).
     let (st, _) = chamar(&app, "POST", "/api/v1/pastas", &alice, Some(serde_json::json!({ "nome": "Ideias" }))).await;
     assert_eq!(st, StatusCode::OK);
-    let pasta_da_alice = temp.join("alice/Notas/Ideias");
+    let pasta_da_alice = temp.join("alice/Ideias");
     assert!(pasta_da_alice.is_dir());
     for (metodo, corpo) in [
-        ("DELETE", serde_json::json!({ "caminho": "../../alice/Notas/Ideias" })),
+        ("DELETE", serde_json::json!({ "caminho": "../../alice/Ideias" })),
         ("DELETE", serde_json::json!({ "caminho": "" })),
-        ("DELETE", serde_json::json!({ "caminho": "/alice/Notas/Ideias" })),
-        ("PATCH", serde_json::json!({ "caminho_atual": "../../alice/Notas/Ideias", "novo_caminho": "roubada" })),
-        ("PATCH", serde_json::json!({ "caminho_atual": "x", "novo_caminho": "../../alice/Notas/roubada" })),
-        ("POST", serde_json::json!({ "nome": "x", "pasta_pai": "../../alice/Notas" })),
+        ("DELETE", serde_json::json!({ "caminho": "/alice/Ideias" })),
+        ("PATCH", serde_json::json!({ "caminho_atual": "../../alice/Ideias", "novo_caminho": "roubada" })),
+        ("PATCH", serde_json::json!({ "caminho_atual": "x", "novo_caminho": "../../alice/roubada" })),
+        ("POST", serde_json::json!({ "nome": "x", "pasta_pai": "../../alice" })),
     ] {
         let (st, resposta) = chamar(&app, metodo, "/api/v1/pastas", &bruno, Some(corpo.clone())).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{metodo} {corpo}: {resposta}");
     }
-    assert!(pasta_da_alice.is_dir() && !temp.join("alice/Notas/roubada").exists() && !temp.join("alice/Notas/x").exists());
+    assert!(pasta_da_alice.is_dir() && !temp.join("alice/roubada").exists() && !temp.join("alice/x").exists());
     let (st, minha) = chamar(&app, "POST", "/api/v1/notas", &bruno, Some(serde_json::json!({ "titulo": "Minha" }))).await;
     assert_eq!(st, StatusCode::OK);
     let id_min = minha["id"].as_str().unwrap().to_string();
     for (metodo, rota, corpo) in [
-        ("POST", "/api/v1/notas".to_string(), serde_json::json!({ "titulo": "fuga", "pasta": "../../alice/Notas" })),
-        ("PATCH", format!("/api/v1/notas/{id_min}"), serde_json::json!({ "pasta": "../../alice/Notas" })),
-        ("POST", "/api/v1/tarefas".to_string(), serde_json::json!({ "titulo": "fuga", "pasta": "../../alice/Tarefas" })),
+        ("POST", "/api/v1/notas".to_string(), serde_json::json!({ "titulo": "fuga", "pasta": "../../alice" })),
+        ("PATCH", format!("/api/v1/notas/{id_min}"), serde_json::json!({ "pasta": "../../alice" })),
+        ("POST", "/api/v1/tarefas".to_string(), serde_json::json!({ "titulo": "fuga", "pasta": "../../alice" })),
     ] {
         let (st, resposta) = chamar(&app, metodo, &rota, &bruno, Some(corpo)).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{metodo} {rota}: {resposta}");

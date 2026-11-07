@@ -2,7 +2,14 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentoJanela } from "./DocumentoJanela";
 
-const abrir = (aoFechar = vi.fn()) => render(<DocumentoJanela path="/tarefa/123" ordem={0} z={1} aoFechar={aoFechar} aoFocar={vi.fn()} conteudo={<p>Conteúdo da tarefa</p>} />);
+// As ações da janela (Focus, Slide, fixar) ficam recolhidas atrás de "Mostrar ações": o teste as abre primeiro
+// (quando a janela já nasce maximizada esse botão não existe).
+const abrir = (aoFechar = vi.fn()) => {
+  const r = render(<DocumentoJanela path="/tarefa/123" ordem={0} z={1} aoFechar={aoFechar} aoFocar={vi.fn()} conteudo={<p>Conteúdo da tarefa</p>} />);
+  const mostrar = screen.queryByRole("button", { name: "Mostrar ações" });
+  if (mostrar) fireEvent.click(mostrar);
+  return r;
+};
 
 describe("modo Focus da tarefa", () => {
   beforeEach(() => localStorage.clear());

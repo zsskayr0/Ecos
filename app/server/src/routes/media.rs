@@ -165,6 +165,7 @@ pub async fn listar_lixeira(State(state): State<AppState>, Extension(usuario): E
         itens.push(ItemLixeira { tipo: "media".into(), id, nome: nome_legivel(&nome), caminho_original: format!("src/Media/{caminho}"), tamanho_bytes: entry.metadata().map_err(std::io::Error::from)?.len(), mime: mime_por_extensao(&nome).to_string(), excluido_em: excluido.to_rfc3339() });
     }
     itens.extend(super::lixeira::listar(&state, &permitidos)?);
+    itens.extend(super::lixeira_arquivos::listar(&state, &permitidos)?);
     itens.sort_by(|a, b| b.excluido_em.cmp(&a.excluido_em));
     Ok(Json(itens))
 }
@@ -173,6 +174,10 @@ pub async fn restaurar(State(state): State<AppState>, Extension(usuario): Extens
     let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
     if id.starts_with("documento-") {
         super::lixeira::restaurar(&state, &id, &permitidos).await?;
+        return Ok(Json(serde_json::json!({ "ok": true, "message": "Item restaurado." })));
+    }
+    if id.starts_with(super::lixeira_arquivos::PREFIXO_ID) {
+        super::lixeira_arquivos::restaurar(&state, &id, &permitidos).await?;
         return Ok(Json(serde_json::json!({ "ok": true, "message": "Item restaurado." })));
     }
     if ulid::Ulid::from_string(&id).is_err() { return Err(AppError::new(ErrorCode::NotFound)); }
@@ -245,7 +250,8 @@ mod tests {
         let caminho = item["caminho"].as_str().unwrap();
         assert_eq!(item["nome"], "Relatorio legivel.pdf");
         assert!(caminho.starts_with("src/Media/"));
-        assert_eq!(std::fs::read(temp.join("teste").join(caminho)).unwrap(), data);
+        // O prefixo `src/Media/` é o do Markdown; no disco a biblioteca mora em `.ecos_app/Media/`.
+        assert_eq!(std::fs::read(temp.join("teste").join(crate::espacos::caminho_no_layout_atual(caminho))).unwrap(), data);
         let uri = format!("/api/v1/media/arquivo/{}", caminho.trim_start_matches("src/Media/").replace(' ', "%20"));
         let preview = app.clone().call(Request::get(uri).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(preview.status(), StatusCode::OK);
@@ -264,7 +270,8 @@ mod tests {
         let trash_id = trash[0]["id"].as_str().unwrap();
         let restored = app.clone().call(Request::post(format!("/api/v1/lixeira/{trash_id}/restaurar")).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(restored.status(), StatusCode::OK);
-        assert_eq!(std::fs::read(temp.join("teste").join(caminho)).unwrap(), data);
+        // O prefixo `src/Media/` é o do Markdown; no disco a biblioteca mora em `.ecos_app/Media/`.
+        assert_eq!(std::fs::read(temp.join("teste").join(crate::espacos::caminho_no_layout_atual(caminho))).unwrap(), data);
         let empty_trash = app.clone().call(Request::get("/api/v1/lixeira").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         let empty_trash: serde_json::Value = serde_json::from_slice(&to_bytes(empty_trash.into_body(), 8192).await.unwrap()).unwrap();
         assert_eq!(empty_trash, serde_json::json!([]));
@@ -312,7 +319,9 @@ mod tests {
             assert_eq!(created.status(), StatusCode::OK);
             let created: serde_json::Value = serde_json::from_slice(&to_bytes(created.into_body(), 8192).await.unwrap()).unwrap();
             let entity_id = created["id"].as_str().unwrap();
-            let path = walkdir::WalkDir::new(temp.join("teste").join(arvore)).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md")).unwrap().path().to_path_buf();
+            // Árvore única: nota e tarefa na mesma pasta; acha o arquivo pelo id.
+            let _ = arvore;
+            let path = walkdir::WalkDir::new(temp.join("teste")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "md") && std::fs::read_to_string(e.path()).is_ok_and(|c| c.contains(entity_id))).unwrap().path().to_path_buf();
             let original = std::fs::read(&path).unwrap();
             let attachments = path.parent().unwrap().join("_anexos").join(entity_id);
             std::fs::create_dir_all(&attachments).unwrap();

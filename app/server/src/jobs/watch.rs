@@ -1,4 +1,4 @@
-//! Watch de `Notas/`/`Tarefas/` (seção 4: "recálculo incremental disparado
+//! Watch da árvore de cada espaço (seção 4: "recálculo incremental disparado
 //! por evento de escrita relevante"). Roda numa thread própria (a API do
 //! `notify` é síncrona) e dispara uma reindexação completa, debounced, no
 //! runtime Tokio — reindex completo é rápido o bastante pra escala pessoal
@@ -104,8 +104,11 @@ pub fn iniciar(state: AppState) {
                         let mut partes = rel.components().map(|c| c.as_os_str());
                         let topo = partes.next();
                         let segundo = partes.next();
-                        // `.ecos`, o `src/` legado e a mídia de cada espaço (`<Espaço>/src`).
-                        !(topo.is_some_and(|c| c == ".ecos" || c == "src") || segundo.is_some_and(|c| c == "src"))
+                        let terceiro = partes.next();
+                        // `.ecos`, o `src/` legado e a mídia de cada espaço (`<Espaço>/.ecos_app/Media`; antes `<Espaço>/src`).
+                        // Eventos e séries, também em `.ecos_app/`, continuam disparando o reindex.
+                        let midia = segundo.is_some_and(|c| c == crate::espacos::APP_DIR) && terceiro.is_some_and(|c| c == "Media");
+                        !(topo.is_some_and(|c| c == ".ecos" || c == "src") || segundo.is_some_and(|c| c == "src") || midia)
                     });
                     // Escritas do próprio servidor já foram aplicadas ao índice pela reindexação incremental.
                     let externo = evento.paths.iter().any(|p| !p.components().any(|c| c.as_os_str() == "_anexos") && !state.db.e_escrita_propria(&notes_root, p));

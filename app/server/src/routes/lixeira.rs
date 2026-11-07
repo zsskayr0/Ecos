@@ -6,21 +6,29 @@ use crate::{error::{AppError, AppResult}, state::AppState};
 #[derive(Serialize, Deserialize)]
 pub struct Registro { pub item: super::media::ItemLixeira, pub anexos: Option<String> }
 fn root(s: &AppState) -> PathBuf { s.config.notes_root.join(".ecos/lixeira/documentos") }
+/// Caminho (relativo à raiz das notas) de um item da lixeira de documentos, conferido. Árvore única: nota e tarefa
+/// ficam em qualquer pasta do espaço (fora do que é interno; `_anexos/` é aceito por causa dos anexos), evento só em
+/// `<Espaço>/.ecos_app/Eventos/`.
 fn seguro(s: &AppState, rel: &str, tipo: &str) -> AppResult<PathBuf> {
-    let arvore = match tipo { "nota" => "Notas", "tarefa" => "Tarefas", "evento" => "Eventos", _ => return Err(AppError::new(ErrorCode::Forbidden)) };
+    if !matches!(tipo, "nota" | "tarefa" | "evento") { return Err(AppError::new(ErrorCode::Forbidden)); }
     let p = Path::new(rel);
     if p.components().any(|c| !matches!(c, Component::Normal(_))) { return Err(AppError::new(ErrorCode::Forbidden)); }
-    let mut partes = p.components().map(|c| c.as_os_str().to_string_lossy().to_string());
-    let primeiro = partes.next().unwrap_or_default();
-    // Registros antigos (layout sem espaço) apontam para `Notas/...`: voltam para o Pessoal.
-    let p = if primeiro == arvore {
-        Path::new(crate::espacos::PESSOAL_DIR).join(p)
-    } else {
-        let e_espaco = crate::espacos::listar(&s.config.notes_root).iter().any(|(_, d)| d.file_name().is_some_and(|n| n.to_string_lossy() == primeiro));
-        if !e_espaco || partes.next().as_deref() != Some(arvore) { return Err(AppError::new(ErrorCode::Forbidden)); }
-        p.to_path_buf()
-    };
-    let p = p.as_path();
+    let partes: Vec<String> = p.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    let Some(primeiro) = partes.first() else { return Err(AppError::new(ErrorCode::Forbidden)) };
+    // Registros de antes dos espaços apontam para `Notas/...`/`Tarefas/...`: voltam para o Pessoal, já na árvore única.
+    if crate::espacos::ARVORES_LEGADAS.contains(&primeiro.as_str()) {
+        return Ok(s.config.notes_root.join(crate::espacos::PESSOAL_DIR).join(crate::espacos::caminho_no_layout_atual(rel)));
+    }
+    let e_espaco = crate::espacos::listar(&s.config.notes_root).iter().any(|(_, d)| d.file_name().is_some_and(|n| n.to_string_lossy() == *primeiro));
+    let resto = &partes[1..];
+    let ok = e_espaco
+        && !resto.is_empty()
+        && if tipo == "evento" {
+            resto.join("/").starts_with(&format!("{}/", crate::eventos_fs::DIR))
+        } else {
+            resto.iter().all(|c| c == "_anexos" || !crate::espacos::nome_interno(c))
+        };
+    if !ok { return Err(AppError::new(ErrorCode::Forbidden)); }
     Ok(s.config.notes_root.join(p))
 }
 fn validar(s: &AppState, path: &Path) -> AppResult<()> {

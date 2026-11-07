@@ -1,11 +1,12 @@
+import { pastaDoArquivo } from "@/lib/caminho-item";
 import type { ArestaGrafico, NoGrafico } from "@/lib/api";
 
-/** As duas primeiras partes são o espaço físico e o tipo (Notas/Tarefas). */
+/** A primeira parte é o espaço físico; o resto, as pastas (caminho antigo com `Notas/`/`Tarefas/` também serve). */
 export function regiao(no: NoGrafico): { espaco: string; constelacao: string; sistema: string } {
   const partes = (no.caminho ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
-  const pastas = no.pasta !== undefined ? (no.pasta ?? "").replace(/\\/g, "/").split("/").filter(Boolean) : partes.slice(2, -1);
+  const pastas = no.pasta !== undefined ? (no.pasta ?? "").replace(/\\/g, "/").split("/").filter(Boolean) : (pastaDoArquivo(no.caminho ?? "") ?? "").split("/").filter(Boolean);
   const raiz = no.tipo === "tarefa" ? "Tarefas" : no.tipo === "evento" ? "Eventos" : "Notas";
-  return { espaco: no.espaco ?? "pessoal", constelacao: pastas[0] ?? partes[1] ?? raiz, sistema: pastas[1] ?? "Sem subpasta" };
+  return { espaco: no.espaco ?? "pessoal", constelacao: pastas[0] ?? raiz, sistema: pastas[1] ?? "Sem subpasta" };
 }
 
 export function chaveConstelacao(regiao: { espaco: string; constelacao: string }): string {

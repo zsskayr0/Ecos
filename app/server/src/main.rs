@@ -29,6 +29,8 @@ async fn main() -> anyhow::Result<()> {
 
     espacos::migrar_legado(&db, &config.notes_root).await?;
     espacos::migrar_pessoal_por_usuario(&db, &config.notes_root).await?;
+    // Passo 5 da árvore única: depois das migrações de layout anteriores, antes do reindex.
+    ecos_app::migracao_arvore::migrar_no_boot(&config.notes_root)?;
     tracing::info!(notes_root = %config.notes_root.display(), "reindexando na inicialização");
     let resultado = db::reindex::reindexar_tudo(&db, &config.notes_root).await?;
     tracing::info!(

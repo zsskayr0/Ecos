@@ -18,11 +18,6 @@ use crate::routes::anexos_comuns::mime_por_extensao;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
-fn tarefas_dir(state: &AppState) -> PathBuf {
-    // Só fallback: a raiz real de cada árvore depende do espaço (`espacos::raiz`).
-    state.config.notes_root.join(crate::espacos::PESSOAL_DIR).join("Tarefas")
-}
-
 pub(crate) fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
     state.config.notes_root.join(caminho_relativo)
 }
@@ -33,7 +28,7 @@ pub(crate) fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
 /// link relativo Markdown; o backend nunca precisa entender a referência,
 /// só preservar o arquivo.
 pub(crate) fn anexos_dir(state: &AppState, tarefa_id: &str, caminho_relativo: &str) -> PathBuf {
-    let pai = absoluto(state, caminho_relativo).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| tarefas_dir(state));
+    let pai = absoluto(state, caminho_relativo).parent().map(|p| p.to_path_buf()).unwrap_or_else(|| state.config.notes_root.clone());
     pai.join("_anexos").join(tarefa_id)
 }
 
@@ -367,13 +362,16 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     std::fs::create_dir_all(&dir)?;
 
-    let nome_arquivo = naming::sanitizar_nome_arquivo(&payload.titulo);
+    let nome_arquivo = naming::nome_padrao(true, &payload.titulo);
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &nome_arquivo, "md");
 
     let agora = Utc::now();
     let fm = TarefaFrontMatter {
         id: new_id(),
         titulo: payload.titulo.clone(),
+        tipo: Default::default(),
+        aliases: vec![payload.titulo.clone()],
+        extras: Default::default(),
         status: TarefaStatus::Pendente,
         scheduled_at: payload.scheduled_at,
         duration_min: Some(payload.duration_min.unwrap_or(5)),
@@ -543,6 +541,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
 
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
+        naming::atualizar_aliases(&mut fm.aliases, Some(&fm_antes.titulo), titulo);
     }
     let espaco_antes = fm.espaco.to_string();
     if let Some(espaco) = payload.espaco {
@@ -586,11 +585,12 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         None => caminho_absoluto_atual
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| tarefas_dir(&state)),
+            .unwrap_or_else(|| raiz_destino.clone()),
     };
     std::fs::create_dir_all(&dir_destino)?;
 
-    let nome_arquivo = naming::sanitizar_nome_arquivo(&fm.titulo);
+    let nome_atual = caminho_absoluto_atual.file_stem().and_then(|n| n.to_str());
+    let nome_arquivo = naming::nome_ao_editar(true, nome_atual, fm.titulo != fm_antes.titulo, &fm.titulo);
     let caminho_absoluto_destino = if dir_destino.join(format!("{nome_arquivo}.md")) == caminho_absoluto_atual {
         caminho_absoluto_atual.clone()
     } else {
@@ -1002,7 +1002,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(obter(&app, &token, &id).await["duration_min"], 90);
 
         // 6) Persistiu de verdade no arquivo `.md` (fonte da verdade), não só na memória/índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("teste").join("Tarefas")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
+        let arquivo = walkdir::WalkDir::new(raiz.join("teste")).into_iter().filter_map(Result::ok).find(|e| e.path().extension().map_or(false, |x| x == "md")).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("duration_min: 90"), "front matter: {conteudo}");
         assert!(conteudo.contains("2026-09-25T02:30:00"), "front matter: {conteudo}");
@@ -1079,7 +1079,7 @@ mod testes_agenda_mover_e_redimensionar {
         assert_eq!(t["duration_min"], 45);
 
         // 9) Persistiu no `.md` (a fonte da verdade), não só no índice.
-        let arquivo = walkdir::WalkDir::new(raiz.join("teste").join("Tarefas")).into_iter().filter_map(Result::ok)
+        let arquivo = walkdir::WalkDir::new(raiz.join("teste")).into_iter().filter_map(Result::ok)
             .find(|e| std::fs::read_to_string(e.path()).map_or(false, |c| c.contains("Escrever relatório"))).unwrap();
         let conteudo = std::fs::read_to_string(arquivo.path()).unwrap();
         assert!(conteudo.contains("planejado") && conteudo.contains("duracao_min: 90"), "front matter: {conteudo}");

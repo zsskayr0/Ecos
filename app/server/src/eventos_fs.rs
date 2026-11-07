@@ -4,7 +4,7 @@
 use ecos_core::types::CategoriaEvento;
 use std::path::Path;
 
-pub const DIR: &str = "Eventos";
+pub const DIR: &str = ".ecos_app/Eventos";
 pub const ARQUIVO_CATEGORIAS: &str = "_categorias.yaml";
 
 /// Categorias do espaço; arquivo ausente ou ilegível = nenhuma (o reindex nunca falha por isso).

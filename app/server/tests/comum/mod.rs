@@ -78,6 +78,27 @@ impl Instancia {
         (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
     }
 
+    /// Envio `multipart/form-data` com um campo `arquivo` (nome e bytes dados).
+    pub async fn enviar_arquivo(&self, uri: &str, token: &str, nome: &str, bytes: &[u8]) -> (StatusCode, Value) {
+        let limite = "ecos-limite-de-teste";
+        let mut corpo = format!("--{limite}\r\nContent-Disposition: form-data; name=\"arquivo\"; filename=\"{nome}\"\r\nContent-Type: application/octet-stream\r\n\r\n").into_bytes();
+        corpo.extend_from_slice(bytes);
+        corpo.extend_from_slice(format!("\r\n--{limite}--\r\n").as_bytes());
+        let origem: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let pedido = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .extension(axum::extract::ConnectInfo(origem))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", format!("multipart/form-data; boundary={limite}"))
+            .body(Body::from(corpo))
+            .unwrap();
+        let resposta = self.app.clone().call(pedido).await.unwrap();
+        let status = resposta.status();
+        let bytes = to_bytes(resposta.into_body(), 4 * 1024 * 1024).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    }
+
     pub async fn registrar(&self, usuario: &str, senha: &str) -> (StatusCode, Value) {
         self.chamar("POST", "/api/v1/auth/registrar", None, Some(json!({
             "nome_usuario": usuario, "senha": senha, "nome": "Pessoa de Teste",

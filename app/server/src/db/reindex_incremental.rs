@@ -7,7 +7,7 @@
 //!   referências de cada origem ficam em `ref_item`, então só as origens que citam o título afetado são refeitas
 //!   (sem reler corpos).
 //!
-//! Qualquer coisa fora do previsto (arquivo ilegível, front-matter inválido, `.md` fora de `Notas/`/`Tarefas/`)
+//! Qualquer coisa fora do previsto (arquivo ilegível, front-matter inválido, evento fora de `Eventos/`, `.md` fora de `Notas/`/`Tarefas/`)
 //! cai na reconstrução completa, que continua sendo a fonte da verdade.
 
 use super::reindex::{dentro_de_anexos, gravar_nota, gravar_tarefa, hex, pasta_relativa, refs_do_corpo, reindexar_tudo, NotaColetada, TarefaColetada};
@@ -15,13 +15,14 @@ use super::IndexDb;
 use chrono::{DateTime, Utc};
 use ecos_core::types::{NotaFrontMatter, TarefaFrontMatter, TarefaStatus};
 use ecos_core::wikilink::{self, Candidato, Referencia, TipoItem};
+use ecos_core::classificar::TipoArquivo;
 use ecos_core::frontmatter;
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
-/// Mudança em disco, com o caminho relativo à raiz das notas (`Espaço/Notas/Pasta/x.md`, separador `/`).
+/// Mudança em disco, com o caminho relativo à raiz das notas (`Espaço/Pasta/x.md`, separador `/`).
 #[derive(Debug, Clone)]
 pub enum Mudanca {
     /// O arquivo existe e foi criado/alterado (inclui o destino de uma renomeação ou movimentação).
@@ -45,19 +46,19 @@ struct Efeitos {
     pastas: Vec<(&'static str, String, String, i64)>,
 }
 
-fn partes(rel: &str) -> Option<(&str, &'static str)> {
+/// Diretório do espaço de um caminho `Espaço/Pasta/x.md`. Nada interno (`.ecos_app/`, ocultos, `_anexos/`) é item.
+fn partes(rel: &str) -> Option<&str> {
     let mut it = rel.split('/');
     let dir = it.next()?;
-    let arvore = match it.next()? {
-        "Notas" => "Notas",
-        "Tarefas" => "Tarefas",
-        _ => return None,
-    };
-    Some((dir, arvore))
+    let resto: Vec<&str> = it.collect();
+    if resto.is_empty() || resto.iter().any(|p| crate::espacos::nome_interno(p)) {
+        return None;
+    }
+    Some(dir)
 }
 
 fn ler_item(notes_root: &Path, rel: &str, espacos: &[(String, std::path::PathBuf)]) -> Result<Option<Item>, ()> {
-    let Some((dir_nome, arvore)) = partes(rel) else { return Ok(None) };
+    let Some(dir_nome) = partes(rel) else { return Ok(None) };
     let abs = notes_root.join(rel);
     if abs.extension().and_then(|e| e.to_str()) != Some("md") || dentro_de_anexos(Path::new(rel)) {
         return Ok(None);
@@ -66,9 +67,14 @@ fn ler_item(notes_root: &Path, rel: &str, espacos: &[(String, std::path::PathBuf
     let valor = crate::espacos::logica(espaco).parse::<ecos_core::types::Espaco>().map_err(|_| ())?;
     let dono = crate::espacos::dono(espaco).map(str::to_string);
     let raw = std::fs::read_to_string(&abs).map_err(|_| ())?;
-    let raiz_arvore = dir.join(arvore);
-    let pasta_id = pasta_relativa(&raiz_arvore, &abs);
-    if arvore == "Notas" {
+    // Árvore única: a pasta é relativa à raiz do espaço e o tipo vem só do conteúdo (como no reindex completo);
+    // evento fora de `.ecos_app/Eventos/` fica com a reconstrução.
+    let pasta_id = pasta_relativa(dir, &abs);
+    let tipo = ecos_core::classificar::classificar_com_padrao(&raw, TipoArquivo::Nota);
+    if tipo == TipoArquivo::Evento {
+        return Err(());
+    }
+    if tipo == TipoArquivo::Nota {
         let doc = frontmatter::parse::<NotaFrontMatter>(&raw).map_err(|_| ())?;
         let mut fm = doc.front_matter;
         fm.espaco = valor;
@@ -149,6 +155,17 @@ fn aplicar(conn: &Connection, ef: &mut Efeitos, item: &Item) -> rusqlite::Result
         Item::Nota(n, c) => ("nota", &n.front_matter.id, c, &n.front_matter.titulo, &n.pasta_id, true, &n.body),
         Item::Tarefa(t, c) => ("tarefa", &t.front_matter.id, c, &t.front_matter.titulo, &t.pasta_id, t.front_matter.status == TarefaStatus::Pendente, &t.body),
     };
+    // O mesmo arquivo (ou o mesmo id) pode ter trocado de tipo: a linha da outra tabela sai antes.
+    let outro = if tipo == "nota" { "tarefa" } else { "nota" };
+    let caminho = match item { Item::Nota(n, _) => &n.caminho_relativo, Item::Tarefa(t, _) => &t.caminho_relativo };
+    let ids_outro: Vec<String> = {
+        let mut stmt = conn.prepare_cached(&format!("SELECT id FROM {outro} WHERE caminho_arquivo = ?1 OR id = ?2"))?;
+        let v = stmt.query_map(params![caminho, id], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        v
+    };
+    for velho in ids_outro {
+        remover(conn, ef, outro, &velho)?;
+    }
     let antes = anterior(conn, tipo, id)?;
     if let Some(a) = &antes {
         registrar_saida(ef, tipo, a);
@@ -249,9 +266,10 @@ fn ajustar_pastas(conn: &Connection, ef: &Efeitos) -> rusqlite::Result<()> {
         let mut atual = pasta.as_str();
         loop {
             let nome = atual.rsplit('/').next().unwrap_or(atual);
-            conn.execute("INSERT OR IGNORE INTO pasta_cache (caminho, tipo, nome, espaco, contagem_itens) VALUES (?1, ?2, ?3, ?4, 0)", params![atual, tipo, nome, chave])?;
+            conn.execute("INSERT OR IGNORE INTO pasta_cache (caminho, nome, espaco) VALUES (?1, ?2, ?3)", params![atual, nome, chave])?;
             if *delta != 0 {
-                conn.execute("UPDATE pasta_cache SET contagem_itens = contagem_itens + ?1 WHERE caminho = ?2 AND tipo = ?3 AND espaco = ?4", params![delta, atual, tipo, chave])?;
+                let coluna = if *tipo == "tarefa" { "contagem_tarefas" } else { "contagem_notas" };
+                conn.execute(&format!("UPDATE pasta_cache SET {coluna} = {coluna} + ?1 WHERE caminho = ?2 AND espaco = ?3"), params![delta, atual, chave])?;
             }
             match atual.rsplit_once('/') {
                 Some((pai, _)) => atual = pai,

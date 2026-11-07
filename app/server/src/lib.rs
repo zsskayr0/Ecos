@@ -10,6 +10,7 @@ pub mod db;
 pub mod error;
 pub mod eventos_fs;
 pub mod espacos;
+pub mod migracao_arvore;
 pub mod jobs;
 pub mod middleware;
 pub mod importacao;

@@ -3,6 +3,7 @@ import {
   CalendarCheck2,
   CalendarClock,
   CalendarDays,
+  FolderTree,
   HelpCircle,
   Home,
   Library,
@@ -28,6 +29,7 @@ export type ModuloId =
   | "eventos"
   | "tarefas"
   | "notas"
+  | "arquivos"
   | "grafico"
   | "cofre"
   | "media"
@@ -54,6 +56,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
   eventos: { id: "eventos", titulo: "Eventos", icone: CalendarClock, raiz: "/eventos" },
   tarefas: { id: "tarefas", titulo: "Tarefas", icone: ListChecks, raiz: "/tarefas" },
   notas: { id: "notas", titulo: "Notas", icone: StickyNote, raiz: "/notas" },
+  arquivos: { id: "arquivos", titulo: "Arquivos", icone: FolderTree, raiz: "/arquivos" },
   grafico: { id: "grafico", titulo: "Gráfico", icone: Network, raiz: "/grafico" },
   cofre: { id: "cofre", titulo: "Cofre", icone: Wallet, raiz: "/cofre" },
   media: { id: "media", titulo: "Media", icone: Library, raiz: "/media" },
@@ -67,7 +70,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
 };
 
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
-export const RAIL_PRINCIPAL: ModuloId[] = ["inicio", "hoje", "agenda", "eventos", "tarefas", "notas", "grafico", "feed", "cofre", "media"];
+export const RAIL_PRINCIPAL: ModuloId[] = ["inicio", "hoje", "agenda", "eventos", "tarefas", "notas", "arquivos", "grafico", "feed", "cofre", "media"];
 export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira"];
 
 export function moduloDaRota(path: string): Modulo {
@@ -104,7 +107,8 @@ export function tituloDaRota(path: string): string {
   const partes = caminhoUrl.split("/").filter(Boolean);
   const [primeiro, segundo, terceiro] = partes;
   if (primeiro === "media" && segundo === "ver") {
-    const arquivo = nomeDoArquivo(new URLSearchParams(query).get("c") ?? "");
+    const busca = new URLSearchParams(query);
+    const arquivo = nomeDoArquivo(busca.get("c") ?? busca.get("a") ?? "");
     return arquivo || "Arquivo";
   }
   if (primeiro === "notas" && segundo === "nota") return "Nota";

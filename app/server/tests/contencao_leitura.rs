@@ -16,7 +16,7 @@ async fn semear(e: &Instancia, token: &str) -> (std::path::PathBuf, String) {
     let n_tarefas: usize = std::env::var("CONTENCAO_TAREFAS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
     let (_, n) = e.chamar("POST", "/api/v1/notas", Some(token), Some(json!({ "titulo": "modelonota", "corpo": "texto ".repeat(50), "tags": ["a"] }))).await;
     let id_nota = n["id"].as_str().unwrap().to_string();
-    let ndir = e.raiz.join("ana/Notas");
+    let ndir = e.raiz.join("ana");
     let narq = std::fs::read_dir(&ndir).unwrap().flatten().map(|x| x.path()).find(|p| std::fs::read_to_string(p).map(|s| s.contains(&id_nota)).unwrap_or(false)).unwrap();
     let nmodelo = std::fs::read_to_string(&narq).unwrap();
     for i in 0..n_notas {
@@ -24,7 +24,7 @@ async fn semear(e: &Instancia, token: &str) -> (std::path::PathBuf, String) {
     }
     let (_, t) = e.chamar("POST", "/api/v1/tarefas", Some(token), Some(json!({ "titulo": "modelo" }))).await;
     let id_modelo = t["id"].as_str().unwrap().to_string();
-    let dir = e.raiz.join("ana/Tarefas");
+    let dir = e.raiz.join("ana");
     let arq = std::fs::read_dir(&dir).unwrap().flatten().map(|x| x.path()).find(|p| std::fs::read_to_string(p).map(|s| s.contains(&id_modelo)).unwrap_or(false)).unwrap();
     let modelo = std::fs::read_to_string(&arq).unwrap();
     for i in 0..n_tarefas {

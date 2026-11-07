@@ -47,9 +47,76 @@ pub fn caminho_sem_colisao(dir: &Path, nome_base: &str, extensao: &str) -> PathB
     }
 }
 
+/// Padrão de nome dos `.md` do Ecos: `note-<Título>.md` e `task-<Título>.md`. O tipo é fixo desde a criação (uma
+/// tarefa nunca vira nota): o prefixo só torna o tipo visível no explorador de arquivos.
+pub const PREFIXO_NOTA: &str = "note-";
+pub const PREFIXO_TAREFA: &str = "task-";
+
+pub fn prefixo(tarefa: bool) -> &'static str {
+    if tarefa { PREFIXO_TAREFA } else { PREFIXO_NOTA }
+}
+
+/// Nome (sem extensão) de um item novo ou de título alterado.
+pub fn nome_padrao(tarefa: bool, titulo: &str) -> String {
+    format!("{}{}", prefixo(tarefa), sanitizar_nome_arquivo(titulo))
+}
+
+/// O nome (sem extensão) segue o padrão do tipo? `task-` numa nota (ou o contrário) também é fora do padrão.
+pub fn no_padrao(tarefa: bool, nome_sem_extensao: &str) -> bool {
+    nome_sem_extensao.strip_prefix(prefixo(tarefa)).is_some_and(|resto| !resto.trim().is_empty())
+}
+
+/// Nome de destino ao editar/mover: um arquivo já no padrão mantém o nome (inclusive o sufixo ` (2)`) enquanto o
+/// título não muda; qualquer outro caso — título novo ou nome fora do padrão — vai para o padrão, sem perguntar.
+pub fn nome_ao_editar(tarefa: bool, nome_atual: Option<&str>, titulo_mudou: bool, titulo: &str) -> String {
+    match nome_atual {
+        Some(atual) if !titulo_mudou && no_padrao(tarefa, atual) => atual.to_string(),
+        _ => nome_padrao(tarefa, titulo),
+    }
+}
+
+/// Mantém o título atual em `aliases` (para `[[Título]]` achar `note-Título.md` em qualquer editor de Markdown que
+/// resolva links pelo nome do arquivo) e tira o antigo. Aliases da própria pessoa ficam.
+pub fn atualizar_aliases(aliases: &mut Vec<String>, titulo_antigo: Option<&str>, titulo: &str) {
+    if let Some(antigo) = titulo_antigo.filter(|a| *a != titulo) {
+        aliases.retain(|a| a != antigo);
+    }
+    if !titulo.trim().is_empty() && !aliases.iter().any(|a| a == titulo) {
+        aliases.insert(0, titulo.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn padrao_de_nome_por_tipo() {
+        assert_eq!(nome_padrao(true, "Comprar: pão"), "task-Comprar_ pão");
+        assert_eq!(nome_padrao(false, "Plano"), "note-Plano");
+        assert!(no_padrao(true, "task-Comprar pão") && no_padrao(false, "note-Plano (2)"));
+        assert!(!no_padrao(true, "Comprar pão") && !no_padrao(false, "task-Plano") && !no_padrao(true, "task-"));
+    }
+
+    #[test]
+    fn editar_leva_o_nome_para_o_padrao() {
+        assert_eq!(nome_ao_editar(false, Some("note-Plano (2)"), false, "Plano"), "note-Plano (2)");
+        assert_eq!(nome_ao_editar(false, Some("Plano antigo"), false, "Plano antigo"), "note-Plano antigo");
+        assert_eq!(nome_ao_editar(true, Some("note-Lavar"), false, "Lavar"), "task-Lavar");
+        assert_eq!(nome_ao_editar(false, Some("Plano antigo"), true, "Plano novo"), "note-Plano novo");
+        assert_eq!(nome_ao_editar(true, None, false, "X"), "task-X");
+    }
+
+    #[test]
+    fn aliases_acompanham_o_titulo_sem_apagar_os_da_pessoa() {
+        let mut a = vec!["apelido".to_string()];
+        atualizar_aliases(&mut a, None, "Plano");
+        assert_eq!(a, ["Plano", "apelido"]);
+        atualizar_aliases(&mut a, Some("Plano"), "Plano B");
+        assert_eq!(a, ["Plano B", "apelido"]);
+        atualizar_aliases(&mut a, Some("Plano B"), "Plano B");
+        assert_eq!(a, ["Plano B", "apelido"]);
+    }
 
     #[test]
     fn substitui_caracteres_invalidos() {

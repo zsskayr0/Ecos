@@ -2,15 +2,21 @@ import { avisar } from "./toast";
 
 export type TipoItemCaminho = "nota" | "tarefa" | "evento";
 
-const RAIZ: Record<TipoItemCaminho, string> = { nota: "Notas", tarefa: "Tarefas", evento: "Eventos" };
+/** Árvore única: nota e tarefa moram direto nas pastas do espaço; só evento tem uma área própria. */
+const RAIZ: Record<TipoItemCaminho, string | null> = { nota: null, tarefa: null, evento: "Eventos" };
 
-/** O caminho de uma Nota às vezes vem do arquivo: a pasta é o trecho entre `Notas/` e o nome do arquivo. */
-export function pastaDoArquivoDeNota(caminhoArquivo: string): string | null {
-  const partes = caminhoArquivo.split("/");
-  const i = partes.indexOf("Notas");
-  if (i === -1) return null;
-  return partes.slice(i + 1, -1).join("/") || null;
+/**
+ * A pasta de uma nota/tarefa a partir do caminho do arquivo (`Espaço/Pasta/Sub/note-X.md`): o trecho entre o espaço e o
+ * nome. Caminho do layout antigo (`Espaço/Notas/Pasta/...`) também funciona.
+ */
+export function pastaDoArquivo(caminhoArquivo: string): string | null {
+  const partes = caminhoArquivo.split("\\").join("/").split("/").filter(Boolean);
+  const legado = partes[1] === "Notas" || partes[1] === "Tarefas";
+  return partes.slice(legado ? 2 : 1, -1).join("/") || null;
 }
+
+/** Nome antigo, mantido para quem já importa. */
+export const pastaDoArquivoDeNota = pastaDoArquivo;
 
 export interface EntradaCaminho {
   tipo: TipoItemCaminho;
@@ -22,11 +28,11 @@ export interface EntradaCaminho {
   titulo: string;
 }
 
-/** Caminho lógico no app: `Pessoal / Notas / Pasta / Subpasta / Título`. */
+/** Caminho lógico no app: `Pessoal / Pasta / Subpasta / Título` (evento: `Pessoal / Eventos / Título`). */
 export function caminhoDoItem({ tipo, espaco, equipes = [], pasta, titulo }: EntradaCaminho): string {
   const nomeEspaco = !espaco || espaco === "pessoal" ? "Pessoal" : equipes.find((e) => `equipe:${e.id}` === espaco)?.nome ?? "Equipe";
   const pastas = tipo === "evento" ? [] : (pasta ?? "").split("/").filter(Boolean);
-  return [nomeEspaco, RAIZ[tipo], ...pastas, titulo.trim() || "Sem título"].join(" / ");
+  return [nomeEspaco, RAIZ[tipo], ...pastas, titulo.trim() || "Sem título"].filter((p): p is string => !!p).join(" / ");
 }
 
 export async function copiarCaminho(entrada: EntradaCaminho): Promise<void> {

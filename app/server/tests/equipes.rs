@@ -19,7 +19,7 @@ async fn convite_leva_a_pessoa_para_a_equipe_e_ela_passa_a_ver_o_que_e_da_equipe
 
     let (_, nota) = e.chamar("POST", "/api/v1/notas", Some(&dono), Some(json!({ "titulo": "Lista da casa", "espaco": format!("equipe:{eq}") }))).await;
     let nota_id = nota["id"].as_str().unwrap().to_string();
-    assert!(e.raiz.join("Casa/Notas").is_dir(), "a equipe tem a própria pasta");
+    assert!(e.raiz.join("Casa").is_dir(), "a equipe tem a própria pasta");
 
     // Antes do convite, ninguém de fora enxerga a equipe nem o que há nela.
     assert_eq!(e.chamar("GET", &format!("/api/v1/equipes/{eq}"), Some(&thaty), None).await.0, StatusCode::NOT_FOUND);

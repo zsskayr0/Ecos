@@ -20,11 +20,6 @@ use crate::routes::anexos_comuns::mime_por_extensao;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
-fn notas_dir(state: &AppState) -> PathBuf {
-    // Só fallback: a raiz real de cada árvore depende do espaço (`espacos::raiz`).
-    state.config.notes_root.join(crate::espacos::PESSOAL_DIR).join("Notas")
-}
-
 fn absoluto(state: &AppState, caminho_relativo: &str) -> PathBuf {
     state.config.notes_root.join(caminho_relativo)
 }
@@ -224,13 +219,16 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     std::fs::create_dir_all(&dir)?;
 
-    let nome_arquivo = naming::sanitizar_nome_arquivo(&payload.titulo);
+    let nome_arquivo = naming::nome_padrao(false, &payload.titulo);
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &nome_arquivo, "md");
 
     let agora = Utc::now();
     let front_matter = NotaFrontMatter {
         id: new_id(),
         titulo: payload.titulo.clone(),
+        tipo: Default::default(),
+        aliases: vec![payload.titulo.clone()],
+        extras: Default::default(),
         modo: payload.modo.unwrap_or_default(),
         criado_em: agora,
         atualizado_em: agora,
@@ -298,7 +296,7 @@ pub async fn importar(State(state): State<AppState>, Extension(usuario): Extensi
     doc.front_matter.espaco = espaco.parse().unwrap_or(doc.front_matter.espaco);
     doc.front_matter.criado_por = Some(usuario.0.clone());
     let conteudo = frontmatter::serialize(&doc.front_matter, &doc.body)?;
-    let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(nome), "md");
+    let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::nome_padrao(false, nome), "md");
     std::fs::write(&caminho_absoluto, conteudo)?;
     reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
 
@@ -363,8 +361,10 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     let mut fm = doc.front_matter;
     let mut corpo = doc.body;
 
+    let titulo_antes = fm.titulo.clone();
     if let Some(titulo) = &payload.titulo {
         fm.titulo = titulo.clone();
+        ecos_core::naming::atualizar_aliases(&mut fm.aliases, Some(&titulo_antes), titulo);
     }
     let espaco_antes = fm.espaco.to_string();
     if let Some(espaco) = payload.espaco {
@@ -394,7 +394,7 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         None => caminho_absoluto_atual
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| notas_dir(&state)),
+            .unwrap_or_else(|| raiz_destino.clone()),
     };
     std::fs::create_dir_all(&dir_destino)?;
 
@@ -402,7 +402,8 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         fm.pasta_id = if p.is_empty() { None } else { Some(p.to_string()) };
     }
 
-    let nome_arquivo = naming::sanitizar_nome_arquivo(&fm.titulo);
+    let nome_atual = caminho_absoluto_atual.file_stem().and_then(|n| n.to_str());
+    let nome_arquivo = naming::nome_ao_editar(false, nome_atual, fm.titulo != titulo_antes, &fm.titulo);
     let caminho_absoluto_destino = if dir_destino.join(format!("{nome_arquivo}.md")) == caminho_absoluto_atual {
         caminho_absoluto_atual.clone()
     } else {
@@ -464,7 +465,7 @@ pub(crate) fn anexos_dir(state: &AppState, nota_id: &str, caminho_relativo: &str
     let pai = absoluto(state, caminho_relativo)
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| notas_dir(state));
+        .unwrap_or_else(|| state.config.notes_root.clone());
     pai.join("_anexos").join(nota_id)
 }
 

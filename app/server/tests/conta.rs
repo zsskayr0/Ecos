@@ -14,14 +14,14 @@ async fn excluir_conta_exige_a_frase_e_apaga_dados_arquivos_e_acesso() {
     let (_, da_thaty) = e.chamar("POST", "/api/v1/notas", Some(&thaty), Some(json!({ "titulo": "Diário", "corpo": "caju" }))).await;
     let (_, do_diogo) = e.chamar("POST", "/api/v1/notas", Some(&admin), Some(json!({ "titulo": "Do Diogo", "corpo": "abacaxi" }))).await;
     e.chamar("POST", "/api/v1/tarefas", Some(&thaty), Some(json!({ "titulo": "Tarefa da Thaty" }))).await;
-    assert!(e.raiz.join("thaty/Notas").is_dir());
+    assert!(e.raiz.join("thaty").is_dir());
     let _ = da_thaty;
 
     // Sem a frase: nada acontece.
     let (st, _) = e.chamar("DELETE", "/api/v1/me", Some(&thaty), Some(json!({ "confirm": "excluir" }))).await;
     assert_ne!(st, StatusCode::OK);
     assert_eq!(e.chamar("GET", "/api/v1/me", Some(&thaty), None).await.0, StatusCode::OK);
-    assert!(e.raiz.join("thaty/Notas").is_dir());
+    assert!(e.raiz.join("thaty").is_dir());
 
     let (st, corpo) = e.chamar("DELETE", "/api/v1/me", Some(&thaty), Some(json!({ "confirm": "EXCLUIR CONTA" }))).await;
     assert_eq!(st, StatusCode::OK, "{corpo}");

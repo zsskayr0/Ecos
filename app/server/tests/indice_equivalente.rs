@@ -177,7 +177,7 @@ async fn indice_incremental_igual_ao_completo_em_toda_operacao() {
     conferir(&e, "mover tarefa de pasta").await;
 
     // Edição por fora (arquivo mexido direto no disco, como o vigia de arquivos vê) também converge.
-    let dir = e.raiz.join("ana/Notas");
+    let dir = e.raiz.join("ana");
     let arq = std::fs::read_dir(&dir).unwrap().flatten().map(|x| x.path()).find(|p| p.extension().map(|x| x == "md").unwrap_or(false)).unwrap();
     let conteudo = std::fs::read_to_string(&arq).unwrap();
     std::fs::write(&arq, format!("{conteudo}\nlinha extra por fora\n")).unwrap();

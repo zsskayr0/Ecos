@@ -20,7 +20,7 @@ use crate::routes::tarefas::{absoluto, anexos_dir, caminho_por_id};
 use crate::state::AppState;
 
 /// Pasta (dentro do diretório do espaço) onde ficam os arquivos de série.
-pub const DIR: &str = "Series";
+pub const DIR: &str = ".ecos_app/Series";
 
 /// Serializa a geração de ocorrências: duas conclusões simultâneas da mesma série não podem criar a mesma data duas
 /// vezes (o processo é único, então um mutex basta).
@@ -156,6 +156,9 @@ pub async fn gerar_proxima(state: &AppState, serie_id: &str, depois: NaiveDate, 
     let fm = TarefaFrontMatter {
         id: new_id(),
         titulo: modelo.titulo.clone(),
+        tipo: Default::default(),
+        aliases: vec![modelo.titulo.clone()],
+        extras: Default::default(),
         status: TarefaStatus::Pendente,
         scheduled_at: modelo.hora.map(|h| instante(proxima, h, tz)),
         duration_min: modelo.duration_min,
@@ -172,7 +175,7 @@ pub async fn gerar_proxima(state: &AppState, serie_id: &str, depois: NaiveDate, 
         criado_por: base.criado_por.clone(),
         serie: Some(OcorrenciaRef { serie_id: serie.id.clone(), data: proxima, excecao: false }),
     };
-    let nome = naming::sanitizar_nome_arquivo(&fm.titulo);
+    let nome = naming::nome_padrao(true, &fm.titulo);
     let destino = naming::caminho_sem_colisao(&dir, &nome, "md");
     std::fs::write(&destino, frontmatter::serialize(&fm, &modelo.corpo)?)?;
     serie.geradas.push(proxima);
@@ -458,7 +461,8 @@ pub fn aplicar_molde_em_outra(state: &AppState, caminho_relativo: &str, molde: &
     let doc = frontmatter::parse::<TarefaFrontMatter>(&std::fs::read_to_string(&caminho)?)?;
     let mut fm = doc.front_matter;
     let titulo_mudou = fm.titulo != molde.titulo;
-    fm.titulo = molde.titulo.clone();
+    let titulo_antes = std::mem::replace(&mut fm.titulo, molde.titulo.clone());
+    naming::atualizar_aliases(&mut fm.aliases, Some(&titulo_antes), &molde.titulo);
     fm.duration_min = molde.duration_min;
     fm.prioridade = molde.prioridade;
     fm.tags = molde.tags.clone();
@@ -470,7 +474,7 @@ pub fn aplicar_molde_em_outra(state: &AppState, caminho_relativo: &str, molde: &
     let conteudo = frontmatter::serialize(&fm, corpo)?;
     let destino = if titulo_mudou {
         let dir = caminho.parent().map(Path::to_path_buf).ok_or(AppError::new(ErrorCode::InternalError))?;
-        naming::caminho_sem_colisao(&dir, &naming::sanitizar_nome_arquivo(&fm.titulo), "md")
+        naming::caminho_sem_colisao(&dir, &naming::nome_padrao(true, &fm.titulo), "md")
     } else {
         caminho.clone()
     };

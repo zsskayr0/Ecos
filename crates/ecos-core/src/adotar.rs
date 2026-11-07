@@ -1,6 +1,6 @@
 //! Adoção de um `.md` solto em `Notas/` (ex.: arquivo do Obsidian jogado na
 //! pasta). O arquivo ganha o bloco de front-matter que falta — `id`, `titulo`,
-//! `criado_em`, `atualizado_em` e `espaco` — e o **corpo nunca é tocado**
+//! `criado_em`, `atualizado_em`, `espaco` e `tipo` — e o **corpo nunca é tocado**
 //! (mesma regra de `frontmatter`). Campos que o arquivo já tem, inclusive os
 //! desconhecidos (`aliases`, `cssclasses`…), são mantidos como estão.
 
@@ -72,6 +72,7 @@ pub fn adotar(
     completar("criado_em", criado_em.to_rfc3339_opts(SecondsFormat::Secs, true));
     completar("atualizado_em", atualizado_em.to_rfc3339_opts(SecondsFormat::Secs, true));
     completar("espaco", "pessoal".to_string());
+    completar("tipo", "nota".to_string());
 
     let novo = frontmatter::serialize(&Value::Mapping(mapa), &corpo)?;
     // Só grava se o resultado realmente vira uma Nota válida.

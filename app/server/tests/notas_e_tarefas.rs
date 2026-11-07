@@ -14,7 +14,7 @@ async fn nota_criar_ler_editar_buscar_e_excluir() {
     let (st, criada) = e.chamar("POST", "/api/v1/notas", Some(&token), Some(json!({ "titulo": "Ideias de viagem", "corpo": "visitar Lisboa" }))).await;
     assert_eq!(st, StatusCode::OK, "{criada}");
     let id = criada["id"].as_str().unwrap().to_string();
-    assert!(e.raiz.join("diogo/Notas").is_dir(), "a nota vira arquivo .md na pasta da pessoa");
+    assert!(e.raiz.join("diogo").is_dir(), "a nota vira arquivo .md na pasta da pessoa");
 
     let (st, lida) = e.chamar("GET", &format!("/api/v1/notas/{id}"), Some(&token), None).await;
     assert_eq!((st, lida["titulo"].as_str()), (StatusCode::OK, Some("Ideias de viagem")), "{lida}");
@@ -55,7 +55,7 @@ async fn tarefa_criar_ler_editar_e_excluir() {
     let (st, criada) = e.chamar("POST", "/api/v1/tarefas", Some(&token), Some(json!({ "titulo": "Pagar o IPTU" }))).await;
     assert_eq!(st, StatusCode::OK, "{criada}");
     let id = criada["id"].as_str().unwrap().to_string();
-    assert!(e.raiz.join("diogo/Tarefas").is_dir());
+    assert!(e.raiz.join("diogo").is_dir());
 
     let (st, lida) = e.chamar("GET", &format!("/api/v1/tarefas/{id}"), Some(&token), None).await;
     assert_eq!((st, lida["titulo"].as_str()), (StatusCode::OK, Some("Pagar o IPTU")), "{lida}");

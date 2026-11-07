@@ -616,16 +616,16 @@ export const notas = {
 
 export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
-    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; cor?: string | null; icone?: string | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
+    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; contagem_notas?: number; contagem_tarefas?: number; cor?: string | null; icone?: string | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
   criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string; cor?: string; icone?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
   renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string; cor?: string; icone?: string }) => patch<{ ok: true }>("/pastas", payload),
-  excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string; espaco?: string }) => del<{ ok: true }>("/pastas", payload),
+  excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string; espaco?: string; todos_os_tipos?: boolean }) => del<{ ok: true }>("/pastas", payload),
 };
 
 // --- Media ---------------------------------------------------------------
 
 export interface Midia { caminho: string; nome: string; tamanho_bytes: number; mime: string; enviado_em: string; /** Biblioteca de mídia a que pertence (`pessoal` ou `equipe:<id>`). O caminho no Markdown não muda. */ espaco?: string }
-export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa" | "evento"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
+export interface ItemLixeira { id: string; tipo: "media" | "nota" | "tarefa" | "evento" | "arquivo" | "pasta"; nome: string; caminho_original: string; tamanho_bytes: number; mime: string; excluido_em: string }
 export const lixeira = {
   listar: () => get<ItemLixeira[]>("/lixeira"),
   restaurar: (id: string) => post<{ ok: true }>(`/lixeira/${encodeURIComponent(id)}/restaurar`),
@@ -1115,6 +1115,64 @@ export const calendario = {
 };
 
 /** Problemas de sincronização por item e as ações sobre eles. As que sobrescrevem algo exigem `confirmar`. */
+/** Item do explorador de arquivos (árvore única do espaço). `tipo`/`id`/`titulo` só em notas e tarefas indexadas. */
+export interface ArquivoExplorador {
+  nome: string;
+  caminho: string;
+  categoria: "markdown" | "pdf" | "imagem" | "audio" | "video" | "texto" | "outro";
+  tamanho_bytes: number;
+  modificado_em: string | null;
+  tipo?: "nota" | "tarefa";
+  id?: string;
+  titulo?: string;
+  fora_do_padrao?: boolean;
+}
+
+export const arquivos = {
+  listar: (params: { espaco?: string; pasta?: string }) =>
+    get<{ pasta: string; pastas: { nome: string; caminho: string }[]; arquivos: ArquivoExplorador[] }>(`/arquivos${qs(params)}`),
+  urlConteudo: (espaco: string, caminho: string) => `${BASE()}/arquivos/conteudo${qs({ espaco, caminho })}`,
+  baixar: async (espaco: string, caminho: string): Promise<ArrayBuffer> => {
+    const accessToken = obterAccessToken();
+    let resp: Response;
+    try {
+      resp = await fetch(arquivos.urlConteudo(espaco, caminho), { credentials: "include", headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+    } catch {
+      throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos.", 0);
+    }
+    if (!resp.ok) throw new ApiError("ARQUIVO_INDISPONIVEL", "Não foi possível abrir o arquivo.", resp.status);
+    return resp.arrayBuffer();
+  },
+  mover: (payload: { espaco?: string; itens: string[]; destino: string }) =>
+    post<{ movidos: { de: string; para: string }[]; falhas: { caminho: string; motivo: string }[] }>("/arquivos/mover", payload),
+  /** Mesma pasta. Para nota/tarefa `novo_nome` é o título (o arquivo segue o padrão e os links acompanham). */
+  renomear: (payload: { espaco?: string; caminho: string; novo_nome: string }) => post<{ caminho: string }>("/arquivos/renomear", payload),
+  /** Um arquivo por vez, para a pasta lógica `pasta` (vazio = raiz). Nome repetido ganha " (2)". */
+  enviar: (espaco: string, pasta: string, arquivo: File) => {
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    return req<{ caminho: string; nome: string }>(`/arquivos/enviar${qs({ espaco, pasta })}`, { method: "POST", body: dados });
+  },
+  /** Vai para a Lixeira; pasta vai inteira. */
+  excluir: (payload: { espaco?: string; itens: string[] }) => post<{ excluidos: string[]; falhas: { caminho: string; motivo: string }[] }>("/arquivos/excluir", payload),
+};
+
+/** `.md` cujo nome não segue `note-<Título>.md` / `task-<Título>.md`. */
+export interface ProblemaArquivo {
+  tipo: "nota" | "tarefa";
+  id: string;
+  titulo: string;
+  caminho: string;
+  problema: "sem_prefixo" | "prefixo_de_outro_tipo";
+  nome_sugerido: string;
+}
+
+export const problemasArquivos = {
+  listar: () => get<{ itens: ProblemaArquivo[] }>("/arquivos/problemas"),
+  corrigir: (payload: { itens?: { tipo: "nota" | "tarefa"; id: string }[]; todos?: boolean }) =>
+    post<{ corrigidos: { id: string; de: string; para: string }[]; falhas: { id: string; caminho: string; motivo: string }[] }>("/arquivos/problemas/corrigir", payload),
+};
+
 export const problemasSync = {
   listar: () => get<{ items: ProblemaSync[]; ignorados: number }>("/sync/problemas"),
   tentarTodos: () => post<ResumoSyncCalendario>("/sync/problemas/tentar-novamente"),

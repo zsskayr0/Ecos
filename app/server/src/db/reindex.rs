@@ -7,6 +7,7 @@
 use super::IndexDb;
 use chrono::{DateTime, Utc};
 use ecos_core::types::{CalendarioProvider, CategoriaEvento, EventoFrontMatter, NotaFrontMatter, NotaModo, TarefaFrontMatter, TarefaPrioridade, TarefaStatus};
+use ecos_core::classificar::TipoArquivo;
 use ecos_core::{frontmatter, wikilink};
 use rusqlite::params;
 use sha2::{Digest, Sha256};
@@ -158,6 +159,15 @@ pub(super) fn dentro_de_anexos(path: &Path) -> bool {
     path.components().any(|c| c.as_os_str() == "_anexos")
 }
 
+/// Percorre a árvore do espaço sem entrar no que é interno (`.ecos_app/`, ocultos, `_anexos/`): na árvore única os
+/// eventos, as séries e a mídia moram dentro do próprio espaço e não são conteúdo da pessoa.
+fn caminhar(raiz: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
+    WalkDir::new(raiz)
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !crate::espacos::nome_interno(&e.file_name().to_string_lossy()))
+        .filter_map(|e| e.ok())
+}
+
 /// Caminho da pasta-pai relativo à raiz da árvore (`Notas/` ou `Tarefas/`),
 /// com `/` como separador sempre (independente do SO) — `None` = raiz. Ver
 /// seção 1.3 ("Pasta não tem `id` persistido... é derivada, a cada reindex,
@@ -190,7 +200,7 @@ fn enumerar_pastas(raiz_arvore: &Path) -> Vec<String> {
     if !raiz_arvore.exists() {
         return out;
     }
-    for entry in WalkDir::new(raiz_arvore).min_depth(1).into_iter().filter_map(|e| e.ok()) {
+    for entry in caminhar(raiz_arvore).filter(|e| e.depth() >= 1) {
         if !entry.file_type().is_dir() || dentro_de_anexos(entry.path()) {
             continue;
         }
@@ -212,7 +222,7 @@ enum Adocao {
     Falhou(String),
 }
 
-/// `.md` solto em `Notas/` sem front-matter válido: completa o bloco (o corpo
+/// `.md` solto em `Notas/`, classificado como nota, sem front-matter válido: completa o bloco (o corpo
 /// nunca muda) e grava de forma atômica. Se a gravação falhar (somente leitura,
 /// aberto em outro programa) a nota fica de fora e o erro é registrado — sem o
 /// `id` gravado no arquivo ela mudaria de identidade a cada reindex.
@@ -246,83 +256,79 @@ fn adotar_arquivo(path: &Path, raw: &str) -> Adocao {
     Adocao::Adotado(novo)
 }
 
-fn coletar_notas(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<String>, adiados: &mut usize) -> Vec<NotaColetada> {
-    let mut out = Vec::new();
-    if !notas_dir.exists() {
-        return out;
+/// Varre uma árvore do espaço (`Notas/` ou `Tarefas/`) e classifica cada `.md` pelo conteúdo (`tipo` ou inferência,
+/// ver `ecos_core::classificar`): uma Tarefa pode morar em `Notas/` e vice-versa. `pasta_id` é relativo à árvore,
+/// então `Notas/Trabalho` e `Tarefas/Trabalho` dão a mesma pasta. A adoção de `.md` soltos só acontece onde
+/// `adotar` (hoje só `Notas/`); evento fora de `Eventos/` é ignorado com aviso.
+pub(super) fn coletar_arvore(
+    vault_root: &Path,
+    raiz_arvore: &Path,
+    padrao: TipoArquivo,
+    adotar: bool,
+    erros: &mut Vec<String>,
+    adiados: &mut usize,
+) -> (Vec<NotaColetada>, Vec<TarefaColetada>) {
+    let mut notas = Vec::new();
+    let mut tarefas = Vec::new();
+    if !raiz_arvore.exists() {
+        return (notas, tarefas);
     }
-    for entry in WalkDir::new(notas_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in caminhar(raiz_arvore) {
         let path = entry.path();
         if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") || dentro_de_anexos(path) {
             continue;
         }
-        let raw = match std::fs::read_to_string(path) {
+        let mut raw = match std::fs::read_to_string(path) {
             Ok(v) => v,
             Err(err) => {
                 erros.push(format!("{}: falha ao ler ({err})", path.display()));
                 continue;
             }
         };
-        let mut raw = raw;
-        if frontmatter::parse::<NotaFrontMatter>(&raw).is_err() {
-            match adotar_arquivo(path, &raw) {
-                Adocao::Adotado(novo) => raw = novo,
-                Adocao::Adiado => {
-                    *adiados += 1;
-                    continue;
-                }
-                Adocao::Falhou(msg) => {
-                    erros.push(format!("{}: {msg}", path.display()));
-                    continue;
-                }
-            }
-        }
-        match frontmatter::parse::<NotaFrontMatter>(&raw) {
-            Ok(doc) => {
-                let hash_conteudo = hex(&Sha256::digest(raw.as_bytes()));
-                out.push(NotaColetada {
-                    pasta_id: pasta_relativa(notas_dir, path),
+        match ecos_core::classificar::classificar_com_padrao(&raw, padrao) {
+            TipoArquivo::Tarefa => match frontmatter::parse::<TarefaFrontMatter>(&raw) {
+                Ok(doc) => tarefas.push(TarefaColetada {
+                    pasta_id: pasta_relativa(raiz_arvore, path),
                     caminho_relativo: caminho_relativo_str(vault_root, path),
-                    front_matter: doc.front_matter,
+                    modificado_em: entry.metadata().ok().and_then(|m| m.modified().ok()).map(DateTime::<Utc>::from),
                     body: doc.body,
-                    hash_conteudo,
-                });
+                    front_matter: doc.front_matter,
+                }),
+                Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
+            },
+            TipoArquivo::Evento => erros.push(format!("{}: evento fora de {}/ ignorado", path.display(), crate::eventos_fs::DIR)),
+            TipoArquivo::Nota => {
+                if frontmatter::parse::<NotaFrontMatter>(&raw).is_err() {
+                    if !adotar {
+                        erros.push(format!("{}: front-matter inválido", path.display()));
+                        continue;
+                    }
+                    match adotar_arquivo(path, &raw) {
+                        Adocao::Adotado(novo) => raw = novo,
+                        Adocao::Adiado => {
+                            *adiados += 1;
+                            continue;
+                        }
+                        Adocao::Falhou(msg) => {
+                            erros.push(format!("{}: {msg}", path.display()));
+                            continue;
+                        }
+                    }
+                }
+                match frontmatter::parse::<NotaFrontMatter>(&raw) {
+                    Ok(doc) => notas.push(NotaColetada {
+                        pasta_id: pasta_relativa(raiz_arvore, path),
+                        caminho_relativo: caminho_relativo_str(vault_root, path),
+                        hash_conteudo: hex(&Sha256::digest(raw.as_bytes())),
+                        front_matter: doc.front_matter,
+                        body: doc.body,
+                    }),
+                    Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
+                }
             }
-            Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
         }
     }
-    out
-}
-
-fn coletar_tarefas(vault_root: &Path, tarefas_dir: &Path, erros: &mut Vec<String>) -> Vec<TarefaColetada> {
-    let mut out = Vec::new();
-    if !tarefas_dir.exists() {
-        return out;
-    }
-    for entry in WalkDir::new(tarefas_dir).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") || dentro_de_anexos(path) {
-            continue;
-        }
-        let raw = match std::fs::read_to_string(path) {
-            Ok(v) => v,
-            Err(err) => {
-                erros.push(format!("{}: falha ao ler ({err})", path.display()));
-                continue;
-            }
-        };
-        match frontmatter::parse::<TarefaFrontMatter>(&raw) {
-            Ok(doc) => out.push(TarefaColetada {
-                pasta_id: pasta_relativa(tarefas_dir, path),
-                caminho_relativo: caminho_relativo_str(vault_root, path),
-                modificado_em: entry.metadata().ok().and_then(|m| m.modified().ok()).map(DateTime::<Utc>::from),
-                body: doc.body,
-                front_matter: doc.front_matter,
-            }),
-            Err(err) => erros.push(format!("{}: front-matter inválido ({err})", path.display())),
-        }
-    }
-    out
+    (notas, tarefas)
 }
 
 fn coletar_eventos(vault_root: &Path, eventos_dir: &Path, erros: &mut Vec<String>) -> Vec<EventoColetado> {
@@ -357,7 +363,7 @@ fn coletar_documentos(vault_root: &Path, notas_dir: &Path, erros: &mut Vec<Strin
     if !notas_dir.exists() {
         return out;
     }
-    for entry in WalkDir::new(notas_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in caminhar(notas_dir) {
         let path = entry.path();
         let e_pdf = path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false);
         if !path.is_file() || !e_pdf || dentro_de_anexos(path) {
@@ -509,21 +515,20 @@ fn coletar_tudo(notes_root: &Path) -> Coleta {
     let mut documentos = Vec::new();
     // (espaço, pasta) — pastas vazias também entram no índice.
     let mut pastas_notas: Vec<(String, String)> = Vec::new();
-    let mut pastas_tarefas: Vec<(String, String)> = Vec::new();
+    // Árvore única: todas as pastas vêm de `pastas_notas`; esta fica vazia (o formato da coleta não mudou).
+    let pastas_tarefas: Vec<(String, String)> = Vec::new();
     // O espaço de um item é o do diretório onde ele mora (o front-matter acompanha).
     // Em espaço pessoal, o dono é quem dá nome à pasta (marcador `pessoal:<id>`): o `criado_por` acompanha.
     for (espaco, dir) in crate::espacos::listar(&notes_root) {
         let Ok(valor) = crate::espacos::logica(&espaco).parse::<ecos_core::types::Espaco>() else { continue };
         let dono = crate::espacos::dono(&espaco).map(str::to_string);
-        let notas_dir = dir.join("Notas");
-        let tarefas_dir = dir.join("Tarefas");
-        let mut n = coletar_notas(&notes_root, &notas_dir, &mut erros, &mut adiados);
+        // Árvore única: notas e tarefas moram juntas na raiz do espaço; o tipo vem do conteúdo.
+        let (mut n, mut t) = coletar_arvore(&notes_root, &dir, TipoArquivo::Nota, true, &mut erros, &mut adiados);
         n.iter_mut().for_each(|x| {
             x.front_matter.espaco = valor.clone();
             if dono.is_some() { x.front_matter.criado_por = dono.clone(); }
         });
         notas.extend(n);
-        let mut t = coletar_tarefas(&notes_root, &tarefas_dir, &mut erros);
         t.iter_mut().for_each(|x| {
             x.front_matter.espaco = valor.clone();
             if dono.is_some() { x.front_matter.criado_por = dono.clone(); }
@@ -537,16 +542,15 @@ fn coletar_tudo(notes_root: &Path) -> Coleta {
         });
         eventos.extend(ev);
         categorias.extend(crate::eventos_fs::ler_categorias(&eventos_dir).into_iter().map(|c| (espaco.clone(), c)));
-        documentos.extend(coletar_documentos(&notes_root, &notas_dir, &mut erros).into_iter().map(|d| (espaco.clone(), d)));
-        pastas_notas.extend(enumerar_pastas(&notas_dir).into_iter().map(|p| (espaco.clone(), p)));
-        pastas_tarefas.extend(enumerar_pastas(&tarefas_dir).into_iter().map(|p| (espaco.clone(), p)));
+        documentos.extend(coletar_documentos(&notes_root, &dir, &mut erros).into_iter().map(|d| (espaco.clone(), d)));
+        pastas_notas.extend(enumerar_pastas(&dir).into_iter().map(|p| (espaco.clone(), p)));
     }
 
     let digest = Sha256::digest(format!("{notas:?}|{tarefas:?}|{eventos:?}|{categorias:?}|{documentos:?}|{pastas_notas:?}|{pastas_tarefas:?}").as_bytes()).to_vec();
     Coleta { erros, adiados, notas, tarefas, eventos, categorias, documentos, pastas_notas, pastas_tarefas, digest }
 }
 
-/// Reindexa `Notas/` e `Tarefas/`. Chamado no boot, após escritas das rotas e pelo watcher/ranking.
+/// Reindexa a árvore de cada espaço (notas e tarefas) e os eventos. Chamado no boot, após escritas das rotas e pelo watcher/ranking.
 pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<ResultadoReindex> {
     let inicio = std::time::Instant::now();
     let raiz = notes_root.to_path_buf();
@@ -758,13 +762,21 @@ pub async fn reindexar_tudo(db: &IndexDb, notes_root: &Path) -> anyhow::Result<R
         }
 
         acumular_contagens_pastas(&mut contagem_pastas);
+        // Pasta única (ADR árvore única): `Notas/X` e `Tarefas/X` são a mesma pasta, com uma contagem por tipo.
+        let mut por_pasta: std::collections::BTreeMap<(String, String), (i64, i64)> = std::collections::BTreeMap::new();
         for ((tipo, espaco, caminho), contagem) in contagem_pastas {
+            let c = por_pasta.entry((espaco, caminho)).or_insert((0, 0));
+            if tipo == "tarefa" {
+                c.1 += contagem;
+            } else {
+                c.0 += contagem;
+            }
+        }
+        for ((espaco, caminho), (notas, tarefas)) in por_pasta {
             let nome = caminho.rsplit('/').next().unwrap_or(&caminho).to_string();
             tx.execute(
-                "INSERT INTO pasta_cache (caminho, tipo, nome, espaco, contagem_itens) \
-                 VALUES (?1, ?2, ?3, ?4, ?5) \
-                 ON CONFLICT (tipo, caminho, espaco) DO UPDATE SET contagem_itens = excluded.contagem_itens",
-                params![caminho, tipo, nome, espaco, contagem],
+                "INSERT INTO pasta_cache (caminho, nome, espaco, contagem_notas, contagem_tarefas) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![caminho, nome, espaco, notas, tarefas],
             )?;
         }
 
@@ -790,10 +802,10 @@ mod testes_concluida_em {
     #[tokio::test]
     async fn indexa_concluida_em_com_fallback_pra_concluidas_antigas_e_null_pra_pendentes() {
         let raiz = std::env::temp_dir().join(format!("ecos-reindex-concluida-{}", ecos_core::new_id()));
-        std::fs::create_dir_all(raiz.join("Pessoal").join("Tarefas")).unwrap();
-        std::fs::create_dir_all(raiz.join("Pessoal").join("Notas")).unwrap();
+        std::fs::create_dir_all(raiz.join("Pessoal")).unwrap();
+        std::fs::create_dir_all(raiz.join("Pessoal")).unwrap();
         std::fs::write(raiz.join("Pessoal").join(".espaco"), "pessoal").unwrap();
-        let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Pessoal").join("Tarefas").join(nome), conteudo).unwrap();
+        let escreve = |nome: &str, conteudo: String| std::fs::write(raiz.join("Pessoal").join(nome), conteudo).unwrap();
         escreve("a.md", tarefa("a", "concluida", "atualizado_em: 2026-09-19T12:00:00Z\nconcluida_em: 2026-09-19T10:00:00Z\n"));
         escreve("b.md", tarefa("b", "concluida", "atualizado_em: 2026-09-10T08:00:00Z\n"));
         escreve("c.md", tarefa("c", "pendente", "atualizado_em: 2026-09-11T08:00:00Z\nconcluida_em: 2026-09-11T09:00:00Z\n"));
@@ -820,6 +832,63 @@ mod testes_concluida_em {
             .await
             .unwrap();
         assert!(usa_indice.contains("idx_tarefa_concluida_em"), "plano: {usa_indice}");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+}
+
+#[cfg(test)]
+mod testes_arvore_unica {
+    use super::*;
+    use crate::db::reindex_incremental::{reindexar_itens, Mudanca};
+
+    const TAREFA: &str = "---\nid: T1\ntitulo: Comprar\nstatus: pendente\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\n---\n";
+    const NOTA: &str = "---\nid: N1\ntitulo: Projeto\nespaco: pessoal\ncriado_em: 2026-09-01T10:00:00Z\natualizado_em: 2026-09-01T10:00:00Z\n---\ncorpo\n";
+
+    async fn linhas(db: &IndexDb) -> (Vec<(String, String, Option<String>)>, Vec<(String, String, i64)>) {
+        db.with(|c| {
+            let mut s = c.prepare("SELECT 'nota', id, pasta_id FROM nota UNION ALL SELECT 'tarefa', id, pasta_id FROM tarefa ORDER BY 2")?;
+            let itens = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+            let mut s = c.prepare("SELECT 'nota', caminho, contagem_notas FROM pasta_cache UNION ALL SELECT 'tarefa', caminho, contagem_tarefas FROM pasta_cache ORDER BY 1, 2")?;
+            let pastas = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok((itens, pastas))
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn tipo_vem_do_conteudo_e_nao_da_arvore() {
+        let raiz = std::env::temp_dir().join(format!("ecos-arvore-unica-{}", ecos_core::new_id()));
+        let pessoal = raiz.join("Pessoal");
+        std::fs::create_dir_all(pessoal.join("Trabalho")).unwrap();
+        std::fs::create_dir_all(pessoal.join("Casa")).unwrap();
+        std::fs::write(pessoal.join(".espaco"), "pessoal").unwrap();
+        // Tarefa legada (sem `tipo`) dentro de Notas/ e nota com `tipo` explícito dentro de Tarefas/.
+        std::fs::write(pessoal.join("Trabalho").join("Comprar.md"), TAREFA).unwrap();
+        std::fs::write(pessoal.join("Casa").join("Projeto.md"), NOTA.replacen("---\n", "---\ntipo: nota\n", 1)).unwrap();
+        let antes = std::fs::read_to_string(pessoal.join("Trabalho").join("Comprar.md")).unwrap();
+
+        let db = IndexDb::open(&raiz.join("indice.db")).unwrap();
+        let r = reindexar_tudo(&db, &raiz).await.unwrap();
+        assert!(r.erros.is_empty(), "{:?}", r.erros);
+        let (itens, pastas) = linhas(&db).await;
+        assert_eq!(itens, vec![("nota".into(), "N1".into(), Some("Casa".into())), ("tarefa".into(), "T1".into(), Some("Trabalho".into()))]);
+        assert!(pastas.contains(&("tarefa".into(), "Trabalho".into(), 1)), "{pastas:?}");
+        assert!(pastas.contains(&("nota".into(), "Casa".into(), 1)), "{pastas:?}");
+        // Pasta única: cada pasta aparece uma vez, com as duas contagens.
+        assert!(pastas.contains(&("nota".into(), "Trabalho".into(), 0)) && pastas.contains(&("tarefa".into(), "Casa".into(), 0)), "{pastas:?}");
+        // Ler não regrava: a tarefa em Notas/ não foi "adotada" como nota.
+        assert_eq!(std::fs::read_to_string(pessoal.join("Trabalho").join("Comprar.md")).unwrap(), antes);
+
+        // Incremental: o mesmo arquivo vira tarefa no lugar — a linha de nota some, igual à reconstrução.
+        let rel = "Pessoal/Casa/Projeto.md";
+        std::fs::write(raiz.join(rel), TAREFA.replace("T1", "N1").replacen("---\n", "---\ntipo: tarefa\n", 1)).unwrap();
+        reindexar_itens(&db, &raiz, &[Mudanca::Escrito(rel.into())]).await.unwrap();
+        let incremental = linhas(&db).await;
+        let db_zero = IndexDb::open(&raiz.join("zero.db")).unwrap();
+        reindexar_tudo(&db_zero, &raiz).await.unwrap();
+        assert_eq!(incremental, linhas(&db_zero).await);
+        assert!(incremental.0.iter().all(|(t, _, _)| t == "tarefa"), "{:?}", incremental.0);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

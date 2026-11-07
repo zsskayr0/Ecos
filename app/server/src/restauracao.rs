@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
-use crate::conta::{ARQUIVO_CONFIGURACOES, FORMATO_PACOTE, VERSAO_FORMATO_PACOTE};
+use crate::conta::{ARQUIVO_CONFIGURACOES, FORMATO_PACOTE, VERSAO_FORMATO_PACOTE, VERSAO_PACOTE_ARVORE_UNICA};
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
@@ -85,16 +85,23 @@ fn nome_seguro(nome: &str) -> bool {
         && Path::new(nome).components().all(|c| matches!(c, Component::Normal(_)))
 }
 
+/// Tipo pelo caminho (já no layout atual, ver `espacos::caminho_no_layout_atual`). Na árvore única nota e tarefa
+/// moram nas mesmas pastas: `Tipo::Nota` aqui quer dizer "da árvore", e o conteúdo decide depois.
 fn tipo_pelo_caminho(rel: &str) -> Option<Tipo> {
-    let mut partes = rel.split('/');
-    match (partes.next()?, partes.next()) {
-        ("Notas", Some(_)) => Some(Tipo::Nota),
-        ("Tarefas", Some(_)) => Some(Tipo::Tarefa),
-        ("Eventos", Some(_)) => Some(Tipo::Evento),
-        ("Series", Some(_)) => Some(Tipo::Serie),
-        ("src", Some("Media")) if rel.matches('/').count() >= 2 => Some(Tipo::Midia),
-        _ => None,
+    let dentro = |dir: &str| rel.strip_prefix(dir).and_then(|r| r.strip_prefix('/')).filter(|r| !r.is_empty());
+    if dentro(crate::eventos_fs::DIR).is_some() {
+        return Some(Tipo::Evento);
     }
+    if dentro(crate::routes::tarefas_serie::DIR).is_some() {
+        return Some(Tipo::Serie);
+    }
+    if dentro(crate::espacos::MIDIA_DIR).is_some_and(|r| r.contains('/')) {
+        return Some(Tipo::Midia);
+    }
+    if rel.split('/').any(|p| p.starts_with('.')) {
+        return None;
+    }
+    Some(Tipo::Nota)
 }
 
 /// Valida o pacote e o compara com o que já existe. Erro = pacote inválido ou incompatível (a restauração inteira
@@ -152,10 +159,18 @@ fn analisar(zip: &Path, dir_pessoal: Option<&Path>, ids_existentes: &HashSet<Str
             analise.ignorados.push((nome.to_string(), "a foto de perfil não é restaurada por aqui".into()));
             continue;
         }
-        let Some(rel) = nome.strip_prefix(&prefixo) else {
+        let Some(rel_pacote) = nome.strip_prefix(&prefixo) else {
             // Outra pasta de topo: item de equipe.
             analise.itens_de_equipe += 1;
             continue;
+        };
+        // Pacote de antes da árvore única: `Notas/x` → `x`, `Eventos/` → `.ecos_app/Eventos/`...
+        let rel_convertido;
+        let rel = if analise.versao_formato.unwrap_or(0) < VERSAO_PACOTE_ARVORE_UNICA {
+            rel_convertido = crate::espacos::caminho_no_layout_atual(rel_pacote);
+            rel_convertido.as_str()
+        } else {
+            rel_pacote
         };
         let Some(tipo_base) = tipo_pelo_caminho(rel) else {
             analise.ignorados.push((nome.to_string(), "tipo de arquivo que a restauração não recria".into()));
@@ -164,14 +179,22 @@ fn analisar(zip: &Path, dir_pessoal: Option<&Path>, ids_existentes: &HashSet<Str
         let em_anexos = rel.split('/').any(|s| s == "_anexos");
         let eh_md = rel.ends_with(".md") && !em_anexos && matches!(tipo_base, Tipo::Nota | Tipo::Tarefa | Tipo::Evento);
         let mut id = None;
-        let tipo = if eh_md { tipo_base } else if tipo_base == Tipo::Midia || tipo_base == Tipo::Serie { tipo_base } else { Tipo::Outro };
+        let mut tipo = if eh_md { tipo_base } else if tipo_base == Tipo::Midia || tipo_base == Tipo::Serie { tipo_base } else { Tipo::Outro };
         if eh_md {
             let motivo_invalido = match leitor.ler(indice, LIMITE_LEITURA_MD) {
                 Err(e) => Some(e.to_string()),
                 Ok(bytes) => match String::from_utf8(bytes) {
                     Err(_) => Some("o arquivo não é texto UTF-8".to_string()),
                     Ok(texto) => {
-                        let achado = match tipo_base {
+                        // Na árvore, o conteúdo diz se é nota ou tarefa (evento só vale em `.ecos_app/Eventos/`).
+                        if tipo_base == Tipo::Nota {
+                            tipo = match ecos_core::classificar::classificar(&texto) {
+                                ecos_core::classificar::TipoArquivo::Tarefa => Tipo::Tarefa,
+                                ecos_core::classificar::TipoArquivo::Evento => Tipo::Outro,
+                                ecos_core::classificar::TipoArquivo::Nota => Tipo::Nota,
+                            };
+                        }
+                        let achado = match tipo {
                             Tipo::Nota => frontmatter::parse::<NotaFrontMatter>(&texto).map(|d| d.front_matter.id).map_err(|e| e.to_string()),
                             Tipo::Tarefa => frontmatter::parse::<TarefaFrontMatter>(&texto).map(|d| d.front_matter.id).map_err(|e| e.to_string()),
                             _ => frontmatter::parse::<EventoFrontMatter>(&texto).map(|d| d.front_matter.id).map_err(|e| e.to_string()),
@@ -644,7 +667,8 @@ mod testes {
     }
 
     fn manifesto() -> serde_json::Value {
-        serde_json::json!({ "formato": FORMATO_PACOTE, "versao_formato": VERSAO_FORMATO_PACOTE, "pasta_pessoal": "ana", "usuario": { "nome_usuario": "ana" } })
+        // Pacote do formato 1 (antes da árvore única): `Notas/`, `Tarefas/`, `src/Media/` são convertidos na análise.
+        serde_json::json!({ "formato": FORMATO_PACOTE, "versao_formato": 1, "pasta_pessoal": "ana", "usuario": { "nome_usuario": "ana" } })
     }
 
     fn nota(id: &str) -> Vec<u8> {
@@ -695,10 +719,10 @@ mod testes {
     fn classifica_novos_iguais_conflitos_e_ignorados_sem_tocar_no_destino() {
         let t = temp();
         let base = t.join("ana");
-        std::fs::create_dir_all(base.join("Notas")).unwrap();
-        // Igual ao do pacote; diferente com o mesmo nome; id que já existe em outro caminho.
-        std::fs::write(base.join("Notas/igual.md"), nota("IGUAL")).unwrap();
-        std::fs::write(base.join("Notas/difere.md"), b"conteudo atual").unwrap();
+        std::fs::create_dir_all(&base).unwrap();
+        // Igual ao do pacote; diferente com o mesmo nome; id que já existe em outro caminho (destino na árvore única).
+        std::fs::write(base.join("igual.md"), nota("IGUAL")).unwrap();
+        std::fs::write(base.join("difere.md"), b"conteudo atual").unwrap();
         let p = pacote(&t, manifesto(), &[
             ("ana/Notas/igual.md", &nota("IGUAL")),
             ("ana/Notas/difere.md", &nota("DIFERE")),
@@ -712,16 +736,16 @@ mod testes {
         let ids: HashSet<String> = ["JA-EXISTE".to_string()].into();
         let a = analisar(&p, Some(&base), &ids).unwrap();
         let novos: Vec<&str> = a.novos.iter().map(|i| i.rel.as_str()).collect();
-        assert_eq!(novos, vec!["Notas/nova.md", "src/Media/2026-09/foto-01.png"]);
+        assert_eq!(novos, vec!["nova.md", ".ecos_app/Media/2026-09/foto-01.png"]);
         assert_eq!(a.iguais, 1);
         assert_eq!(a.conflitos.len(), 2);
-        let difere = a.conflitos.iter().find(|c| c.item.rel == "Notas/difere.md").unwrap();
+        let difere = a.conflitos.iter().find(|c| c.item.rel == "difere.md").unwrap();
         assert!(difere.copiavel);
-        let id = a.conflitos.iter().find(|c| c.item.rel == "Notas/id-existente.md").unwrap();
+        let id = a.conflitos.iter().find(|c| c.item.rel == "id-existente.md").unwrap();
         assert!(!id.copiavel);
         assert_eq!(a.itens_de_equipe, 1);
         assert!(a.ignorados.iter().any(|(n, _)| n == "ana/Notas/quebrada.md"));
-        assert_eq!(std::fs::read(base.join("Notas/difere.md")).unwrap(), b"conteudo atual", "analisar não escreve nada");
+        assert_eq!(std::fs::read(base.join("difere.md")).unwrap(), b"conteudo atual", "analisar não escreve nada");
         let _ = std::fs::remove_dir_all(&t);
     }
 
@@ -735,16 +759,18 @@ mod testes {
         let a = analisar(&p, Some(&base), &HashSet::new()).unwrap();
         let plano: Vec<(Item, String)> = a.novos.iter().map(|i| (i.clone(), i.rel.clone())).collect();
         assert_eq!(plano.len(), 3);
+        // Na árvore única nota e tarefa vão para a mesma pasta; o conteúdo diz o tipo.
+        assert!(a.novos.iter().any(|i| i.rel == "b.md" && i.tipo == Tipo::Tarefa) && a.novos.iter().any(|i| i.rel == "a.md" && i.tipo == Tipo::Nota));
         // Falha ao chegar no terceiro: os dois primeiros e as pastas criadas somem.
         let erro = aplicar_itens(&p, &base, &plano, Some(2)).unwrap_err();
         assert!(erro.contains("simulada"));
-        assert!(!base.join("Notas").exists() && !base.join("Tarefas").exists() && !base.join("src").exists(), "pastas criadas foram desfeitas");
+        assert!(!base.join("a.md").exists() && !base.join("b.md").exists() && !base.join(".ecos_app").exists(), "arquivos e pastas criados foram desfeitos");
         assert_eq!(std::fs::read(base.join("existente.txt")).unwrap(), b"nao toque");
         // Sem falha: grava tudo; rodar de novo não sobrescreve (o arquivo passou a existir).
         aplicar_itens(&p, &base, &plano, None).unwrap();
-        assert_eq!(std::fs::read(base.join("Notas/a.md")).unwrap(), nota("A"));
+        assert_eq!(std::fs::read(base.join("a.md")).unwrap(), nota("A"));
         assert!(aplicar_itens(&p, &base, &plano, None).is_err());
-        assert_eq!(std::fs::read(base.join("Notas/a.md")).unwrap(), nota("A"));
+        assert_eq!(std::fs::read(base.join("a.md")).unwrap(), nota("A"));
         let _ = std::fs::remove_dir_all(&t);
     }
 

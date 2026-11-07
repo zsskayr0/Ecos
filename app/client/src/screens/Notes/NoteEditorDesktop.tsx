@@ -1,3 +1,4 @@
+import { pastaDoArquivo } from "@/lib/caminho-item";
 import { avisar } from "@/lib/toast";
 import { avisarExcluido } from "@/lib/desfazer";
 import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
@@ -40,13 +41,9 @@ const chaveRascunho = (id: string) => `ecos.note-draft.v2:${id}`;
 const iguais = (a: CamposNota, b: CamposNota) => JSON.stringify(a) === JSON.stringify(b);
 const tagsFinais = (c: CamposNota) => [...new Set([...c.tags, ...descriptionTags(c.corpo)])];
 
-/** O backend não devolve a pasta: ela é o trecho do caminho do arquivo entre `Notas/` e o nome do arquivo. */
+/** O backend não devolve a pasta: ela vem do caminho do arquivo (ver `pastaDoArquivo`). */
 function pastaDoCaminho(caminho: string): string | null {
-  const partes = caminho.split("/");
-  const i = partes.indexOf("Notas");
-  if (i === -1) return null;
-  const pasta = partes.slice(i + 1, -1).join("/");
-  return pasta || null;
+  return pastaDoArquivo(caminho);
 }
 
 function camposDaNota(n: NotaApi): CamposNota {

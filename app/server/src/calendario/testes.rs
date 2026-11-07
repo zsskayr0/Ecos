@@ -422,7 +422,7 @@ async fn incremental_atualiza_renomeia_remove_ignora_repetidos_e_resolve_conflit
     let mut titulos: Vec<&str> = lista.as_array().unwrap().iter().map(|x| x["titulo"].as_str().unwrap()).collect();
     titulos.sort();
     assert_eq!(titulos, ["Alfa v2", "Gama"]);
-    assert!(e.raiz.join("teste/Eventos/Alfa v2.md").is_file() && !e.raiz.join("teste/Eventos/Alfa.md").exists(), "o arquivo acompanha o título");
+    assert!(e.raiz.join("teste/.ecos_app/Eventos/Alfa v2.md").is_file() && !e.raiz.join("teste/.ecos_app/Eventos/Alfa.md").exists(), "o arquivo acompanha o título");
     let (_, lix) = api(&e, "GET", "/api/v1/lixeira", None).await;
     assert!(lix.as_array().unwrap().iter().any(|i| i["nome"] == "Beta" && i["tipo"] == "evento"), "apagado no Google vai para a lixeira: {lix}");
 
@@ -530,7 +530,7 @@ async fn desconectar_revoga_no_google_e_deixa_os_eventos_privados_e_sem_vinculo(
     assert_eq!(depois.len(), 2, "nenhum evento é apagado ao desconectar");
     assert!(depois.iter().all(|x| x["visibilidade"] == "privado" && x["origem_google"] == false && x["sync_pendente"] == false), "{depois:?}");
     assert!(depois.iter().any(|x| x["id"] == privado["id"]));
-    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Do Google.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/.ecos_app/Eventos/Do Google.md")).unwrap();
     assert!(!arquivo.contains("google:") && !arquivo.contains("g-a"), "{arquivo}");
 
     assert_eq!(e.mock.lock().unwrap().revogacoes.len(), 1);
@@ -626,7 +626,7 @@ async fn push_cria_no_google_com_fuso_categoria_e_id_do_ecos_e_grava_o_vinculo()
     // Vínculo gravado no .md: o evento agora é do Google e não está mais pendente.
     let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{}", timed["id"].as_str().unwrap()), None).await;
     assert_eq!((d["origem_google"].as_bool(), d["sync_pendente"].as_bool()), (Some(true), Some(false)));
-    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Reunião.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/.ecos_app/Eventos/Reunião.md")).unwrap();
     assert!(arquivo.contains("event_id: g-novo-") && arquivo.contains("etag:"), "{arquivo}");
 
     // O eco no pull seguinte (mesmo etag) não duplica nem é tratado como mudança.
@@ -671,7 +671,7 @@ async fn push_atualiza_com_if_match_adia_no_412_e_recria_no_404() {
     let r = sincronizar_ok(&e).await;
     assert_eq!((r["enviados_criados"].as_u64(), r["enviados_atualizados"].as_u64()), (Some(1), Some(0)), "{r}");
     assert_eq!(e.mock.lock().unwrap().insercoes.len(), 2);
-    let arquivo = std::fs::read_to_string(e.raiz.join("teste/Eventos/Reunião v3.md")).unwrap();
+    let arquivo = std::fs::read_to_string(e.raiz.join("teste/.ecos_app/Eventos/Reunião v3.md")).unwrap();
     assert!(arquivo.contains("event_id: g-novo-"), "{arquivo}");
     let (_, d) = api(&e, "GET", &format!("/api/v1/eventos/{id}"), None).await;
     assert_eq!(d["sync_pendente"], false);
@@ -1033,8 +1033,8 @@ async fn duas_pessoas_no_mesmo_evento_do_google_cada_uma_com_o_seu_e_nada_de_uma
     let a = super::sync::sincronizar(&e.state, "usuario-teste").await.unwrap();
     let b = super::sync::sincronizar(&e.state, "usuario-2").await.unwrap();
     assert_eq!((a.criados, b.criados), (1, 1), "cada pessoa cria o seu (a segunda não atualiza o da primeira)");
-    assert!(std::fs::read_dir(e.raiz.join("teste/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
-    assert!(std::fs::read_dir(e.raiz.join("thaty/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
+    assert!(std::fs::read_dir(e.raiz.join("teste/.ecos_app/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
+    assert!(std::fs::read_dir(e.raiz.join("thaty/.ecos_app/Eventos")).unwrap().flatten().any(|f| f.file_name().to_string_lossy().starts_with("Reunião da família")));
     let donos: Vec<String> = e.state.db.with(|c| {
         let mut s = c.prepare("SELECT criado_por FROM evento WHERE google_event_id = 'g-convite' ORDER BY criado_por")?;
         let v = s.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;

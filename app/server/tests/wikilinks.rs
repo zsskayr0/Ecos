@@ -158,8 +158,9 @@ async fn atalho_do_digest_nao_esconde_mudanca_no_corpo_de_tarefa() {
     let (_, sai) = links(&e, &format!("/api/v1/tarefas/{t}/links"), &a).await;
     assert!(sai.is_empty());
     // Edita o .md por fora (sem rota) e reindexa: o corpo da tarefa entra no resumo.
-    let dir = e.raiz.join("ana/Tarefas");
-    let arq = std::fs::read_dir(&dir).unwrap().flatten().map(|x| x.path()).find(|p| p.extension().map(|x| x == "md").unwrap_or(false)).unwrap();
+    let dir = e.raiz.join("ana");
+    // Nota e tarefa moram juntas na árvore única: pega o arquivo da tarefa.
+    let arq = std::fs::read_dir(&dir).unwrap().flatten().map(|x| x.path()).find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("task-"))).unwrap();
     let c = std::fs::read_to_string(&arq).unwrap();
     std::fs::write(&arq, format!("{c}\nveja [[Alvo]]\n")).unwrap();
     ecos_app::db::reindex::reindexar_tudo(&e.state.db, &e.state.config.notes_root).await.unwrap();

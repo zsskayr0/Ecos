@@ -4,29 +4,34 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { FileText } from "lucide-react";
 import { DetailHeader } from "@/components/layout/DetailHeader";
 import { PdfReader, RECUO_LATERAL } from "@/components/common/PdfReader";
-import { media } from "@/lib/api";
+import { arquivos, media } from "@/lib/api";
 import { nomeDoArquivo } from "@/lib/format";
 import { useAjustarJanela } from "@/lib/documento-popup";
 import { useIsDesktop } from "@/lib/use-viewport";
 
 import { mensagemDeErro } from "@/lib/erros";
 const IMAGENS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"];
+const AUDIOS = ["mp3", "wav", "ogg", "m4a", "flac", "opus"];
+const VIDEOS = ["mp4", "webm", "mov", "m4v", "mkv"];
+const TEXTOS = ["md", "txt", "csv", "json", "log", "yml", "yaml", "xml", "html", "css", "js", "ts", "rs", "py", "sh", "toml", "ini"];
 
 /**
- * Visualizador de arquivos da biblioteca (`/media/ver?c=<caminho>`). Por ser
- * uma rota comum, abre igual a Tarefa/Nota: janela flutuante que arrasta,
- * redimensiona e vira aba no desktop; tela cheia no mobile.
+ * Visualizador de arquivos: da biblioteca (`/media/ver?c=<caminho>`) ou da árvore do espaço, vindo do explorador
+ * (`/media/ver?a=<caminho>&e=<espaço>`). Por ser uma rota comum, abre igual a Tarefa/Nota: janela flutuante que
+ * arrasta, redimensiona e vira aba no desktop; tela cheia no mobile.
  */
 export function FileViewerScreen() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const ajustarJanela = useAjustarJanela();
-  const caminho = params.get("c") ?? "";
+  const daArvore = params.get("a");
+  const espacoArvore = params.get("e") || "pessoal";
+  const caminho = daArvore ?? params.get("c") ?? "";
   const nome = nomeDoArquivo(caminho) || "Arquivo";
   const extensao = nome.includes(".") ? nome.split(".").pop()!.toLowerCase() : "";
-  const tipo = extensao === "pdf" ? "pdf" : IMAGENS.includes(extensao) ? "imagem" : "outro";
-  const url = caminho ? media.urlArquivo(caminho) : "";
+  const tipo = extensao === "pdf" ? "pdf" : IMAGENS.includes(extensao) ? "imagem" : AUDIOS.includes(extensao) ? "audio" : VIDEOS.includes(extensao) ? "video" : TEXTOS.includes(extensao) ? "texto" : "outro";
+  const url = !caminho ? "" : daArvore ? arquivos.urlConteudo(espacoArvore, caminho) : media.urlArquivo(caminho);
 
   const [dados, setDados] = useState<ArrayBuffer | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -34,16 +39,15 @@ export function FileViewerScreen() {
   useEffect(() => {
     setDados(null);
     setErro(null);
-    if (tipo !== "pdf" || !caminho) return;
+    if ((tipo !== "pdf" && tipo !== "texto") || !caminho) return;
     let vivo = true;
-    media
-      .baixar(caminho)
+    (daArvore ? arquivos.baixar(espacoArvore, caminho) : media.baixar(caminho))
       .then((d) => vivo && setDados(d))
-      .catch((e) => vivo && setErro(mensagemDeErro(e, "Não foi possível abrir o PDF.")));
+      .catch((e) => vivo && setErro(mensagemDeErro(e, tipo === "pdf" ? "Não foi possível abrir o PDF." : "Não foi possível abrir o arquivo.")));
     return () => {
       vivo = false;
     };
-  }, [caminho, tipo]);
+  }, [caminho, tipo, daArvore, espacoArvore]);
 
   const link = <a href={url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm text-steel-300 underline">Abrir ou baixar arquivo</a>;
 
@@ -76,6 +80,23 @@ export function FileViewerScreen() {
               className="max-h-full max-w-full rounded-xl object-contain"
             />
           </div>
+        ) : tipo === "audio" ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
+            <p className="max-w-full truncate text-sm font-medium text-text-primary">{nome}</p>
+            <audio src={url} controls className="w-full max-w-md" />
+          </div>
+        ) : tipo === "video" ? (
+          <div className="flex h-full items-center justify-center bg-black p-2">
+            <video src={url} controls className="max-h-full max-w-full" onLoadedMetadata={(e) => ajustarJanela?.({ larguraNatural: e.currentTarget.videoWidth || 1, alturaNatural: e.currentTarget.videoHeight || 1, extraLargura: 16, extraAltura: 16 })} />
+          </div>
+        ) : tipo === "texto" ? (
+          erro ? (
+            <div className="p-10 text-center"><p role="alert" className="text-sm text-error">{erro}</p>{link}</div>
+          ) : dados ? (
+            <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-relaxed text-text-primary">{new TextDecoder().decode(dados)}</pre>
+          ) : (
+            <EstadoCarregando texto="Carregando…" />
+          )
         ) : (
           <div className="p-12 text-center">
             <FileText size={44} className="mx-auto mb-3 text-steel-300" />

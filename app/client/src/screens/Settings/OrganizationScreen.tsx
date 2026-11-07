@@ -1,9 +1,9 @@
 import { Dialog } from "@/components/common/Dialog";
 import { SkeletonOrganizacao } from "@/components/common/SkeletonTelas";
 import { useEffect, useState, type MouseEvent } from "react";
-import { ChevronDown, Folder, FolderPlus, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
+import { ChevronDown, FileWarning, Folder, FolderPlus, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { pastas } from "@/lib/api";
+import { pastas, problemasArquivos } from "@/lib/api";
 import { PastasGrade, type ItemExplorador, type PastaResumo } from "@/components/views/PastasGrade";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -33,6 +33,7 @@ export function OrganizationScreen() {
   const [atualizando, setAtualizando] = useState(false);
   const [versaoLista, setVersaoLista] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
+  const [foraDoPadrao, setForaDoPadrao] = useState(0);
   const [novaAberta, setNovaAberta] = useState(false);
   const [nome, setNome] = useState("");
   const [criando, setCriando] = useState(false);
@@ -48,6 +49,11 @@ export function OrganizationScreen() {
       .finally(() => { if (ativa) setAtualizando(false); });
     return () => { ativa = false; };
   }, [tipo, espaco, pastaAtual, versao]);
+  useEffect(() => {
+    let ativa = true;
+    problemasArquivos.listar().then((r) => ativa && setForaDoPadrao(r.itens.length)).catch(() => undefined);
+    return () => { ativa = false; };
+  }, [versao]);
 
   async function criar() {
     if (!nome.trim() || criando) return;
@@ -99,6 +105,11 @@ export function OrganizationScreen() {
     </section>
 
     {erro && <p role="alert" className="mb-4 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error">{erro}</p>}
+    {foraDoPadrao > 0 && (
+      <button type="button" onClick={() => navigate("/configuracoes/arquivos/problemas")} className="mb-4 flex w-full items-center gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-left text-sm text-error hover:bg-error/15">
+        <FileWarning size={16} aria-hidden />{foraDoPadrao} arquivo{foraDoPadrao === 1 ? "" : "s"} fora do padrão de nome: ver e corrigir
+      </button>
+    )}
     {lista === null ? <SkeletonOrganizacao itens={4} rotulo="Carregando pastas…" /> : <>
       <nav aria-label="Caminho da pasta" className="mb-3 flex min-h-9 items-center gap-1 overflow-x-auto rounded-xl bg-surface-1 px-2 text-sm"><button type="button" onClick={() => setPastaAtual("")} className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 ${pastaAtual ? "text-text-secondary hover:bg-surface-2" : "text-text-primary"}`}><Folder size={15} className="text-steel-300" />Raiz</button>{pastaAtual.split("/").filter(Boolean).map((parte, indice, partes) => { const caminho = partes.slice(0, indice + 1).join("/"); return <span key={caminho} className="flex shrink-0 items-center gap-1"><span className="text-text-muted">/</span><button type="button" onClick={() => setPastaAtual(caminho)} className="rounded-lg px-1.5 py-1.5 text-text-secondary hover:bg-surface-2">{parte}</button></span>; })}</nav>
       <div className={`relative transition-[opacity,filter,transform] duration-200 ease-out ${atualizando ? "pointer-events-none opacity-55 blur-[1px]" : ""}`} aria-busy={atualizando}>
