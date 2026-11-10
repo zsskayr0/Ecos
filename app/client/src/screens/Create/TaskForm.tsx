@@ -14,13 +14,13 @@ function fieldsFromDraft(draft: CapturaDraft, espacoAtivo: string): TaskFields {
   };
 }
 
-export function TaskForm({ draft, setDraft, onSalvar, salvando }: {
-  draft: CapturaDraft; setDraft: SetDraft; onSalvar: () => void; salvando?: boolean;
+export function TaskForm({ draft, setDraft, onSalvar, salvando, embedded = false }: {
+  draft: CapturaDraft; setDraft: SetDraft; onSalvar: () => void; salvando?: boolean; embedded?: boolean;
 }) {
   const { espacoAtivo } = useAppUI();
-  return <div className="min-w-0 py-5 md:pt-4">
-    <TaskComposer value={fieldsFromDraft(draft, espacoAtivo)} saving={salvando} onSave={onSalvar} showPriority={false}
-      titleActions={<TaskPriority compact value={draft.prioridadeTarefa} onChange={(prioridade) => setDraft((previous) => ({ ...previous, prioridadeTarefa: prioridade }))} disabled={salvando} />}
+  return <div className={`min-w-0 pb-5 ${embedded ? "pt-5 md:pt-4" : "pt-1"}`}>
+    <TaskComposer value={fieldsFromDraft(draft, espacoAtivo)} saving={salvando} onSave={onSalvar} showPriority={!embedded} organizacaoCompacta={!embedded}
+      titleActions={embedded && <TaskPriority compact value={draft.prioridadeTarefa} onChange={(prioridade) => setDraft((previous) => ({ ...previous, prioridadeTarefa: prioridade }))} disabled={salvando} />}
       onChange={(patch) => setDraft((previous) => {
         const value = { ...fieldsFromDraft(previous, espacoAtivo), ...patch };
         return {

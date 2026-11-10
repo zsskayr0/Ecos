@@ -48,8 +48,8 @@
 }
 
 .ecos-capture-content {
-  padding-left: max(20px, calc(var(--ecos-safe-left) + 16px));
-  padding-right: max(20px, calc(var(--ecos-safe-right) + 16px));
+  padding-left: max(var(--ecos-margem-captura, 20px), calc(var(--ecos-safe-left) + 16px));
+  padding-right: max(var(--ecos-margem-captura, 20px), calc(var(--ecos-safe-right) + 16px));
 }
 
 .ecos-confirm-dialog {

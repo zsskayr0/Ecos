@@ -91,14 +91,14 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="Pasta e tags">
-      <div ref={raiz} className="relative">
+      <div ref={raiz} className="relative min-w-0 max-w-full">
         <button
           type="button"
           disabled={disabled}
           aria-haspopup="menu"
           aria-expanded={menuAberto}
           onClick={() => setMenuAberto((v) => !v)}
-          className="flex h-9 max-w-[16rem] items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary hover:border-steel-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-50"
+          className="flex h-9 max-w-[min(100%,16rem)] items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary hover:border-steel-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-50"
         >
           <Folder size={15} className="shrink-0 text-steel-300" />
           <span className="truncate">{nomeDaPasta}</span>

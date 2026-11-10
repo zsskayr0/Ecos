@@ -41,7 +41,7 @@ function lerLarguraSidebar(): number {
 }
 const ACTION = "flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-2 text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
 
-export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false }: {
+export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false, organizacaoCompacta = false }: {
   value: TaskFields; onChange: (patch: Partial<TaskFields>) => void; onSave: () => void;
   saving?: boolean; itemId?: string; editing?: boolean; dirty?: boolean;
   /** false quando quem hospeda o compositor já oferece o próprio botão Salvar fixo (desktop). */
@@ -55,6 +55,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   focusMode?: boolean;
   /** Modo Focus: controles que vão no topo do painel lateral (prioridade, duplicar…). */
   painelExtra?: ReactNode;
+  organizacaoCompacta?: boolean;
 }) {
   const id = useId();
   const painelFocus = useContext(PainelFocusTarefaContext);
@@ -173,6 +174,35 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   const abrirAoArrastarArquivo = (e: DragEvent<HTMLDivElement>) => { if (simples && Array.from(e.dataTransfer.types).includes("Files")) setMaisOpcoes(true); };
   const anexosNoPainel = focusMode && !!painelFocus;
   const anexosCampo = <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} escopoRef={raizComposer} estilo={anexosNoPainel ? "grade" : "lista"} compact />;
+  const camposOrganizacao = (
+    <div className={organizacaoCompacta ? "grid min-w-0 grid-cols-2 gap-2" : "space-y-4"} role={organizacaoCompacta ? "group" : undefined} aria-label={organizacaoCompacta ? "Pasta e tags" : undefined}>
+      <div ref={folderMenuRef} className="relative flex min-w-0 flex-col gap-2 text-sm text-text-secondary">
+        <span id={`${id}-folder-label`} className={organizacaoCompacta ? "sr-only" : undefined}>Pasta</span>
+        <button type="button" aria-haspopup="menu" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center !py-2.5 text-left transition-colors hover:border-steel-400 ${organizacaoCompacta ? "gap-2 !px-2" : "gap-3"}`}>
+          <Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} />
+        </button>
+        {folderMenuOpen && !largo && <button type="button" tabIndex={-1} aria-hidden="true" aria-label="Fechar seleção de pasta" onClick={() => setFolderMenuOpen(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
+        {folderMenuOpen && <div role="menu" aria-labelledby={`${id}-folder-label`} className={`${largo ? "absolute top-full z-30 mt-1 max-h-64 w-full rounded-xl p-1" : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70dvh,34rem)] rounded-2xl p-2"} overflow-y-auto border border-border bg-surface-1 shadow-nav`}>
+          {!largo && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta tarefa será organizada.</p></div><button type="button" onClick={() => setFolderMenuOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Fechar"><X size={17} /></button></div>}
+          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p>
+          <ArvorePastas opcoes={[{ valor: "", rotulo: "Nenhuma pasta" }, ...folders.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(value.pasta && !folders.some((p) => p.caminho === value.pasta) ? [{ valor: value.pasta, rotulo: value.pasta, pasta: true }] : [])]} valores={[value.pasta ?? ""]} onSelect={(pasta) => { onChange({ pasta: pasta || null }); setFolderMenuOpen(false); }} />
+          {value.pasta && <p className="px-3 pt-2 text-xs text-text-muted break-words">Criar dentro de {value.pasta.split("/").join(" / ")}</p>}
+          {folderError && <p role="alert" className="px-3 text-xs text-error">{folderError}</p>}
+          <div className="mt-1 flex gap-2 border-t border-border p-2"><input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarPasta(); } }} placeholder={value.pasta ? "Nova subpasta" : "Nova pasta"} aria-label="Nome da nova pasta" className={FIELD} /><button type="button" onClick={() => void criarPasta()} disabled={!newFolder.trim() || creatingFolder} className={`${ACTION} shrink-0 disabled:opacity-40`} aria-label="Criar pasta"><Plus size={18} /></button></div>
+        </div>}
+      </div>
+      <div className="min-w-0">
+        <label htmlFor={`${id}-tag`} className={organizacaoCompacta ? "sr-only" : "mb-2 block text-sm text-text-secondary"}>Tags</label>
+        <div className="flex gap-2">
+          <input id={`${id}-tag`} list={`${id}-tags`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} className={organizacaoCompacta ? `${FIELD} !px-2` : FIELD} placeholder={organizacaoCompacta ? "+ tag" : "Tag e Enter"} />
+          <button type="button" onClick={addTag} className={`${ACTION} shrink-0`} aria-label="Adicionar tag"><Plus size={18} /></button>
+        </div>
+        <datalist id={`${id}-tags`}>{catalogoTags.filter((t) => !allTags.includes(t.tag)).map((t) => <option key={t.tag} value={t.tag} />)}</datalist>
+      </div>
+      <div className={`flex flex-wrap gap-2 ${organizacaoCompacta ? "col-span-2 empty:hidden" : ""}`} aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}</div>
+      <div className={`flex flex-wrap gap-2 ${organizacaoCompacta ? "col-span-2 empty:hidden" : ""}`}>{catalogoTags.map((t) => t.tag).filter((t) => !allTags.includes(t)).slice(0, 5).map((tag) => <button key={tag} type="button" onClick={() => onChange({ tags: [...value.tags, tag] })} className="min-h-11 rounded-lg border border-border px-3 text-sm text-text-secondary">#{tag}</button>)}</div>
+    </div>
+  );
   return <div ref={raizComposer} className="flex min-w-0 flex-col gap-6" data-task-composer data-task-focus={focusMode || undefined} onDragEnter={abrirAoArrastarArquivo}>
     <div className={`flex min-w-0 items-center gap-3 ${focusMode ? "border-b border-border pb-2" : ""}`}>
       <TitleField id={`${id}-title`} value={value.titulo} onChange={(titulo) => onChange({ titulo })}
@@ -180,11 +210,12 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         className={focusMode ? "ecos-input min-w-0 flex-1 !rounded-none !border-0 !bg-transparent !shadow-none !px-0 !py-0 font-display !text-[2rem] font-semibold leading-tight text-text-primary placeholder:text-text-muted focus-visible:!outline-none" : `${FIELD} flex-1 !py-3 !text-xl`} />
       {titleActions}
     </div>
+    {organizacaoCompacta && camposOrganizacao}
     {showPriority && <TaskPriority value={value.prioridade} onChange={(prioridade) => onChange({ prioridade })} disabled={saving} />}
     {simples && <div className="flex flex-col gap-4" data-task-simples>
       <label className="flex min-w-0 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} disabled={saving} /></label>
       <button type="button" aria-expanded={false} onClick={() => setMaisOpcoes(true)} className="flex min-h-11 w-fit items-center gap-2 text-sm font-medium text-steel-300 hover:underline">
-        <SlidersHorizontal size={16} aria-hidden />Mais opções<span className="font-normal text-text-muted">descrição, anexos, duração, pasta, tags e subtarefas</span>
+        <SlidersHorizontal size={16} aria-hidden />Mais opções<span className="font-normal text-text-muted">{organizacaoCompacta ? "descrição, anexos, duração e subtarefas" : "descrição, anexos, duração, pasta, tags e subtarefas"}</span>
       </button>
     </div>}
     {!simples && !anexosNoPainel && anexosCampo}
@@ -249,24 +280,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         <section className="mt-6 space-y-4 border-t border-border pt-6">
           <h2 className="font-semibold text-text-primary">Organização</h2>
           <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} disabled={saving} />
-          <div ref={folderMenuRef} className="relative flex flex-col gap-2 text-sm text-text-secondary">
-            <span id={`${id}-folder-label`}>Pasta</span>
-            <button type="button" aria-haspopup="menu" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}>
-              <Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} />
-            </button>
-            {folderMenuOpen && !largo && <button type="button" tabIndex={-1} aria-hidden="true" aria-label="Fechar seleção de pasta" onClick={() => setFolderMenuOpen(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
-            {folderMenuOpen && <div role="menu" aria-labelledby={`${id}-folder-label`} className={`${largo ? "absolute top-full z-30 mt-1 max-h-64 w-full rounded-xl p-1" : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70dvh,34rem)] rounded-2xl p-2"} overflow-y-auto border border-border bg-surface-1 shadow-nav`}>
-              {!largo && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta tarefa será organizada.</p></div><button type="button" onClick={() => setFolderMenuOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2" aria-label="Fechar"><X size={17} /></button></div>}
-              <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p>
-              <ArvorePastas opcoes={[{ valor: "", rotulo: "Nenhuma pasta" }, ...folders.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(value.pasta && !folders.some((p) => p.caminho === value.pasta) ? [{ valor: value.pasta, rotulo: value.pasta, pasta: true }] : [])]} valores={[value.pasta ?? ""]} onSelect={(pasta) => { onChange({ pasta: pasta || null }); setFolderMenuOpen(false); }} />
-              {value.pasta && <p className="px-3 pt-2 text-xs text-text-muted break-words">Criar dentro de {value.pasta.split("/").join(" / ")}</p>}
-              {folderError && <p role="alert" className="px-3 text-xs text-error">{folderError}</p>}
-              <div className="mt-1 flex gap-2 border-t border-border p-2"><input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarPasta(); } }} placeholder={value.pasta ? "Nova subpasta" : "Nova pasta"} aria-label="Nome da nova pasta" className={FIELD} /><button type="button" onClick={() => void criarPasta()} disabled={!newFolder.trim() || creatingFolder} className={`${ACTION} shrink-0 disabled:opacity-40`} aria-label="Criar pasta"><Plus size={18} /></button></div>
-            </div>}
-          </div>
-          <div><label htmlFor={`${id}-tag`} className="mb-2 block text-sm text-text-secondary">Tags</label><div className="flex gap-2"><input id={`${id}-tag`} list={`${id}-tags`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} className={FIELD} placeholder="Tag e Enter" /><button type="button" onClick={addTag} className={`${ACTION} shrink-0`} aria-label="Adicionar tag"><Plus size={18} /></button></div></div>
-          <div className="flex flex-wrap gap-2" aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}</div>
-          <div className="flex flex-wrap gap-2"><datalist id={`${id}-tags`}>{catalogoTags.filter((t) => !allTags.includes(t.tag)).map((t) => <option key={t.tag} value={t.tag} />)}</datalist>{catalogoTags.map((t) => t.tag).filter((t) => !allTags.includes(t)).slice(0, 5).map((tag) => <button key={tag} type="button" onClick={() => onChange({ tags: [...value.tags, tag] })} className="min-h-11 rounded-lg border border-border px-3 text-sm text-text-secondary">#{tag}</button>)}</div>
+          {!organizacaoCompacta && camposOrganizacao}
         </section>
       </aside>}
     </div>}

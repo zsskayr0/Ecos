@@ -53,8 +53,8 @@ const ev = (id: string, titulo: string, inicio: string, fim: string, extra: Part
 
 let blocosDoServidor: BlocoPlanejado[] = [];
 
-function telaLarga() {
-  window.matchMedia = ((q: string) => ({ matches: true, media: q, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+function telaLarga(larga = true) {
+  window.matchMedia = ((q: string) => ({ matches: larga || q.includes("max-width"), media: q, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
 }
 
 function retangulo(left: number, top: number, right: number, bottom: number): DOMRect {
@@ -133,6 +133,40 @@ afterEach(() => {
   vi.restoreAllMocks();
   if (descritorScrollTop) Object.defineProperty(Element.prototype, "scrollTop", descritorScrollTop);
   else delete (Element.prototype as { scrollTop?: number }).scrollTop;
+});
+
+function deslizar(alvo: HTMLElement, dx: number, dy: number) {
+  const inicio = { identifier: 1, clientX: 160, clientY: 100 };
+  const fim = { identifier: 1, clientX: inicio.clientX + dx, clientY: inicio.clientY + dy };
+  fireEvent.touchStart(alvo, { touches: [inicio] });
+  fireEvent.touchMove(alvo, { touches: [fim] });
+  fireEvent.touchEnd(alvo, { touches: [], changedTouches: [fim] });
+}
+
+describe("navegação por toque", () => {
+  it("avança e volta um mês com o deslize horizontal e ignora a rolagem vertical", async () => {
+    telaLarga(false);
+    await abrirAgenda({ modo: "mes" });
+    const celula = () => document.querySelector<HTMLElement>("[data-dia-mes]")!;
+    deslizar(celula(), -20, 90);
+    expect(screen.getByRole("heading", { name: "setembro de 2026" })).toBeTruthy();
+    deslizar(celula(), -90, 10);
+    expect(await screen.findByRole("heading", { name: "outubro de 2026" })).toBeTruthy();
+    deslizar(celula(), 90, -10);
+    expect(await screen.findByRole("heading", { name: "setembro de 2026" })).toBeTruthy();
+  });
+
+  it("avança a semana pelo cabeçalho e preserva a rolagem horizontal da grade", async () => {
+    telaLarga(false);
+    await abrirAgenda();
+    const grade = screen.getByTestId("grade-rolagem");
+    Object.defineProperties(grade, { scrollWidth: { value: 896 }, clientWidth: { value: 340 } });
+    grade.style.overflowX = "auto";
+    deslizar(grade, -90, 0);
+    expect(document.querySelector('[data-coluna-dia="2026-09-20"]')).toBeTruthy();
+    deslizar(screen.getByRole("heading", { level: 1 }), -90, 0);
+    await waitFor(() => expect(document.querySelector('[data-coluna-dia="2026-09-27"]')).toBeTruthy());
+  });
 });
 
 describe("blocos de tempo na grade", () => {

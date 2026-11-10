@@ -1,5 +1,5 @@
 import { SkeletonAgendaLista } from "@/components/common/SkeletonTelas";
-﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type TouchEvent } from "react";
 import type { EventoLocal } from "@/lib/eventos-locais";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -147,6 +147,7 @@ export function AgendaScreen() {
   const dataPeriodo = paraISO(diaAtual);
   // Ao trocar de mês/semana/etc. a visão desliza para o lado de onde o período veio; ao trocar de modo, ela "acomoda" (sem remontar: a grade mantém a rolagem).
   const areaRef = useRef<HTMLDivElement>(null);
+  const toquePeriodo = useRef<{ id: number; x: number; y: number } | null>(null);
   const periodoDe = limitesDoPeriodo(modo, diaAtual).de;
   const periodoAnterior = useRef({ modo, de: periodoDe });
   useEffect(() => {
@@ -467,9 +468,47 @@ export function AgendaScreen() {
     return somarDias(atual, direcao * (modo === "tres_dias" ? 3 : modo === "quinzenal" ? 14 : modo === "semana" ? 7 : 1));
   });
 
+  function iniciarGestoPeriodo(e: TouchEvent<HTMLDivElement>) {
+    toquePeriodo.current = null;
+    const alvo = e.target;
+    if (desktop || e.touches.length !== 1 || !(alvo instanceof Element) || !e.currentTarget.contains(alvo)) return;
+    if (alvo.closest("[data-item], [data-resize], [role=menu], [role=listbox], input, select, textarea, [contenteditable]")) return;
+    // A grade semanal pode ter colunas fora da tela. Nesse trecho, o gesto continua rolando a grade.
+    for (let el: Element | null = alvo; el && el !== e.currentTarget; el = el.parentElement) {
+      if (el.scrollWidth > el.clientWidth && /^(auto|scroll)$/.test(getComputedStyle(el).overflowX)) return;
+    }
+    const toque = e.touches[0];
+    toquePeriodo.current = { id: toque.identifier, x: toque.clientX, y: toque.clientY };
+  }
+
+  function acompanharGestoPeriodo(e: TouchEvent<HTMLDivElement>) {
+    const inicio = toquePeriodo.current;
+    if (!inicio) return;
+    const toque = e.touches[0];
+    if (e.touches.length !== 1 || toque.identifier !== inicio.id) {
+      toquePeriodo.current = null;
+      return;
+    }
+    const dx = Math.abs(toque.clientX - inicio.x);
+    const dy = Math.abs(toque.clientY - inicio.y);
+    if (dy > 12 && dy > dx) toquePeriodo.current = null;
+  }
+
+  function concluirGestoPeriodo(e: TouchEvent<HTMLDivElement>) {
+    const inicio = toquePeriodo.current;
+    toquePeriodo.current = null;
+    const toque = e.changedTouches[0];
+    if (!inicio || !toque || toque.identifier !== inicio.id || e.touches.length !== 0) return;
+    const dx = toque.clientX - inicio.x;
+    const dy = toque.clientY - inicio.y;
+    if (Math.abs(dx) < 48 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+    e.preventDefault();
+    navegarPeriodo(dx < 0 ? 1 : -1);
+  }
+
   return (
     <div ref={agendaRef} className={`relative flex min-h-0 flex-col ${desktop ? "h-full px-4 pt-1 pb-4" : "h-[calc(100dvh-13rem-var(--ecos-safe-top)-var(--ecos-safe-bottom))] min-h-[30rem] px-3 pt-1"}`}>
-      <div ref={areaRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div ref={areaRef} className="flex min-h-0 flex-1 flex-col overflow-hidden" onTouchStart={iniciarGestoPeriodo} onTouchMove={acompanharGestoPeriodo} onTouchEnd={concluirGestoPeriodo} onTouchCancel={() => { toquePeriodo.current = null; }}>
       {modo === "mes" && (
         <VisaoMes onAbrirItem={abrirItemAgenda} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} eventos={eventosLocais} concluidas={concluidasNoDia} onSelecionar={selecionarDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
       )}

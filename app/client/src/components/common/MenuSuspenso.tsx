@@ -29,7 +29,8 @@ export const misturar = (cor: string, pct: number) => `color-mix(in srgb, ${cor}
 export const ALTURA_ITEM = 36;
 
 interface Props<T extends string> {
-  valor: T;
+  /** Ausente quando o menu dispara comandos, sem uma opção selecionada. */
+  valor?: T;
   opcoes: readonly OpcaoMenu<T>[];
   onChange: (valor: T) => void;
   ariaLabel: string;
@@ -157,7 +158,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       {montado && (
         <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto} style={fixo ? posicao : undefined}
           className={`ecos-menu ${classeMenu} absolute z-40 mt-1.5 ${largo ? "max-h-[25rem]" : "max-h-72"} overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
-          {arvore ? <ArvorePastas opcoes={opcoes} valores={[valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
+          {arvore ? <ArvorePastas opcoes={opcoes} valores={valor === undefined ? [] : [valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
           {buscar && (
             <label className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 flex h-11 items-center gap-2 bg-surface-1 px-3.5 text-text-muted focus-within:text-text-primary">
               <Search size={14} className="shrink-0" aria-hidden />
@@ -172,7 +173,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
           {lista.map((o, i) => {
             const ativo = o.valor === valor;
             return (
-              <button key={o.valor} type="button" role="menuitemradio" aria-checked={ativo} style={{ height: ALTURA_ITEM }}
+              <button key={o.valor} type="button" role={valor === undefined ? "menuitem" : "menuitemradio"} aria-checked={valor === undefined ? undefined : ativo} style={{ height: ALTURA_ITEM }}
                 onClick={() => { onChange(o.valor); fechar(); }}
                 onPointerEnter={() => setDestaque(i)} onFocus={() => setDestaque(i)} onPointerLeave={() => setDestaque(Math.max(0, lista.findIndex((x) => x.valor === valor)))}
                 className={`ecos-menu-item relative flex w-full items-center gap-2 rounded-lg border border-transparent px-2.5 text-left text-sm focus-visible:outline-none ${ativo || destaque === i ? "text-text-primary" : "text-text-secondary"}`}>

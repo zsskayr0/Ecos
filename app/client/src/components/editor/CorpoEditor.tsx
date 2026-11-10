@@ -1,9 +1,9 @@
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
-import { useIsMobile } from "@/lib/use-viewport";
+import { useIsDesktop, useIsMobile } from "@/lib/use-viewport";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
 import { preservandoScroll } from "@/lib/preservar-scroll";
@@ -112,6 +112,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   const editorRef = useRef<AreaLike | null>(null);
   const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
   const ehMobile = useIsMobile();
+  const barraCompacta = !useIsDesktop();
   const abrirDestino = useAbrirDestino();
   function abrirWikilink(interno: string, clique: MouseEvent) {
     const { referencia } = analisarWikilink(interno);
@@ -288,52 +289,70 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     const linhaFim = corpo.indexOf("\n", cursor);
     const linhaAtual = corpo.slice(inicioDaLinha(cursor), linhaFim === -1 ? corpo.length : linhaFim);
     const estiloAtual = /^# /.test(linhaAtual) ? "h1" : /^## /.test(linhaAtual) ? "h2" : /^### /.test(linhaAtual) ? "h3" : "p";
-    const tam = ehMobile ? "h-11 w-11" : "h-8 w-8";
+    const tam = barraCompacta ? "h-11 w-11" : "h-8 w-8";
     const separador = <span aria-hidden className="mx-1 h-5 w-px bg-border" />;
+    const comandosExtras = [
+      { valor: "tachado", rotulo: "Tachado", icone: Strikethrough, executar: () => alternarInline("~~") },
+      { valor: "numerada", rotulo: "Lista numerada", icone: ListOrdered, executar: () => alternarBloco(/^\d+\.\s/, (n) => `${n + 1}. `), novoGrupo: true },
+      { valor: "lista", rotulo: "Lista com marcadores", icone: List, executar: () => alternarBloco(/^[-*+]\s(?!\[[ xX]\])/, () => "- ") },
+      { valor: "checklist", rotulo: "Checklist", icone: ListChecks, executar: () => alternarBloco(/^[-*+]\s\[[ xX]\]\s/, () => "- [ ] ") },
+      { valor: "citacao", rotulo: "Citação", icone: Quote, executar: () => alternarBloco(/^>\s?/, () => "> ") },
+      { valor: "link", rotulo: "Link", icone: Link, executar: inserirLink, novoGrupo: true },
+      { valor: "wikilink", rotulo: "Wikilink [[nota]]", icone: Brackets, executar: () => envolverSelecao("[[", "]]") },
+      { valor: "codigo", rotulo: "Código", icone: Code, executar: () => alternarInline("`") },
+      { valor: "linha", rotulo: "Linha horizontal", icone: Minus, executar: () => inserirNoCursor("\n---\n") },
+      { valor: "emoji", rotulo: "Emoji", icone: Smile, executar: () => setEmojiAberto((v) => !v), novoGrupo: true },
+      { valor: "limpar", rotulo: "Limpar formatação", icone: RemoveFormatting, executar: limparFormatacao },
+    ];
+    const seletorEmoji = emojiAberto && <SeletorEmoji alinharDireita={barraCompacta} aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />;
 
-    return <div className={semBorda ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"} data-corpo-editor>
+    const controlesModo = <>
+      {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Modo de escrita"} title={escrevendo ? "Voltar ao modo texto" : "Modo de escrita (escrever à mão sobre a Nota)"}
+        className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "bg-steel-500/25 text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
+        {escrevendo ? <Type size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
+      </button>}
+      {!escrevendo && <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+        className={`relative ${tintaNotaId ? "" : "ml-auto"} flex ${tam} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
+        {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
+        <Eye size={16} strokeWidth={1.75} aria-hidden
+          className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:rotate(-45deg)_scaleY(0.06)_scaleX(0.9)] opacity-0 [transition-duration:300ms,120ms] [transition-delay:0ms,150ms]" : "[transform:none] opacity-100 [transition-duration:300ms,100ms] [transition-delay:70ms,0ms]"}`} />
+        <Pencil size={15} strokeWidth={1.75} aria-hidden
+          className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />
+      </button>}
+    </>;
+
+    return <div className="min-w-0" data-corpo-editor>
+      {barraCompacta && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>}
+      <div className={semBorda ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
       <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
         {escrevendo ? <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))}
           dedoDesenha={dedoDesenha} onDedo={setDedoDesenha} podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
           podeLimpar={tracosAtivos.length > 0} onLimpar={() => setConfirmarLimpar(true)} estado={tinta.estado} ehMobile={ehMobile} />
-        : <div className={`flex min-w-0 flex-wrap items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
+        : <div className={`flex min-w-0 items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${barraCompacta ? "w-full" : "flex-wrap"} ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
             opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
-            classeGatilho={`${ehMobile ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
+            classeGatilho={`${barraCompacta ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
             gatilho={({ aberto, atual }) => <><span>{atual?.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} /></>} />
           {separador}
           <ToolbarBtn Icon={Bold} label="Negrito (Ctrl+B)" tamanho={tam} onClick={() => alternarInline("**")} />
           <ToolbarBtn Icon={Italic} label="Itálico (Ctrl+I)" tamanho={tam} onClick={() => alternarInline("_")} />
-          <ToolbarBtn Icon={Strikethrough} label="Tachado" tamanho={tam} onClick={() => alternarInline("~~")} />
-          {separador}
-          <ToolbarBtn Icon={ListOrdered} label="Lista numerada" tamanho={tam} onClick={() => alternarBloco(/^\d+\.\s/, (n) => `${n + 1}. `)} />
-          <ToolbarBtn Icon={List} label="Lista com marcadores" tamanho={tam} onClick={() => alternarBloco(/^[-*+]\s(?!\[[ xX]\])/, () => "- ")} />
-          <ToolbarBtn Icon={ListChecks} label="Checklist" tamanho={tam} onClick={() => alternarBloco(/^[-*+]\s\[[ xX]\]\s/, () => "- [ ] ")} />
-          <ToolbarBtn Icon={Quote} label="Citação" tamanho={tam} onClick={() => alternarBloco(/^>\s?/, () => "> ")} />
-          {separador}
-          <ToolbarBtn Icon={Link} label="Link" tamanho={tam} onClick={inserirLink} />
-          <ToolbarBtn Icon={Brackets} label="Wikilink [[nota]]" tamanho={tam} onClick={() => envolverSelecao("[[", "]]")} />
-          <ToolbarBtn Icon={Code} label="Código" tamanho={tam} onClick={() => alternarInline("`")} />
-          <ToolbarBtn Icon={Minus} label="Linha horizontal" tamanho={tam} onClick={() => inserirNoCursor("\n---\n")} />
-          {separador}
-          <div className="relative">
-            <ToolbarBtn Icon={Smile} label="Emoji" tamanho={tam} onClick={() => setEmojiAberto((v) => !v)} />
-            {emojiAberto && <SeletorEmoji aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />}
-          </div>
-          <ToolbarBtn Icon={RemoveFormatting} label="Limpar formatação" tamanho={tam} onClick={limparFormatacao} />
+          {barraCompacta ? <>
+            <div className="ml-auto">
+              <MenuSuspenso ariaLabel="Mais opções de formatação" opcoes={comandosExtras} alinhar="dir" fixo larguraMin={220}
+                onChange={(valor) => comandosExtras.find((comando) => comando.valor === valor)?.executar()}
+                classeGatilho="flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
+                gatilho={() => <Ellipsis size={19} aria-hidden />} />
+            </div>
+            {seletorEmoji}
+          </> : comandosExtras.map(({ valor, rotulo, icone, executar, novoGrupo }) => {
+            const botao = <ToolbarBtn Icon={icone} label={rotulo} tamanho={tam} onClick={executar} />;
+            return <Fragment key={valor}>
+              {novoGrupo && separador}
+              {valor === "emoji" ? <div className="relative">{botao}{seletorEmoji}</div> : botao}
+            </Fragment>;
+          })}
         </div>}
-        {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Modo de escrita"} title={escrevendo ? "Voltar ao modo texto" : "Modo de escrita (escrever à mão sobre a Nota)"}
-          className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "bg-steel-500/25 text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
-          {escrevendo ? <Type size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
-        </button>}
-        {!escrevendo && <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
-          className={`relative ${tintaNotaId ? "" : "ml-auto"} flex ${ehMobile ? "h-11 w-11" : "h-8 w-8"} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
-          {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
-          <Eye size={16} strokeWidth={1.75} aria-hidden
-            className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:rotate(-45deg)_scaleY(0.06)_scaleX(0.9)] opacity-0 [transition-duration:300ms,120ms] [transition-delay:0ms,150ms]" : "[transform:none] opacity-100 [transition-duration:300ms,100ms] [transition-delay:70ms,0ms]"}`} />
-          <Pencil size={15} strokeWidth={1.75} aria-hidden
-            className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />
-        </button>}
+        {!barraCompacta && controlesModo}
       </div>
       {tintaNotaId && <>
         <AvisoModoEscrita open={avisoAberto} largura={LARGURA_COLUNA_PADRAO} onRecusar={() => setAvisoAberto(false)} onAceitar={() => { setAvisoAberto(false); tinta.converter(LARGURA_COLUNA_PADRAO); setEscrevendo(true); }} />
@@ -358,6 +377,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
             className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />}
+      </div>
     </div>;
   }
 
@@ -417,7 +437,7 @@ function ToolbarBtn({ Icon, onClick, label, disabled, tamanho = "h-11 w-11" }: {
 
 const EMOJIS = ["😀", "😄", "😊", "😉", "😍", "🤔", "😅", "😢", "😡", "👍", "👎", "👏", "🙏", "💪", "🔥", "⭐", "✨", "💡", "✅", "❌", "⚠️", "❗", "❓", "📌", "📎", "📅", "⏰", "📝", "📚", "💰", "🚀", "🎯", "🔒", "🎉", "❤️", "👀"];
 
-function SeletorEmoji({ aoEscolher, aoFechar }: { aoEscolher: (emoji: string) => void; aoFechar: () => void }) {
+function SeletorEmoji({ aoEscolher, aoFechar, alinharDireita }: { aoEscolher: (emoji: string) => void; aoFechar: () => void; alinharDireita: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) aoFechar(); };
@@ -426,7 +446,7 @@ function SeletorEmoji({ aoEscolher, aoFechar }: { aoEscolher: (emoji: string) =>
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc); };
   }, [aoFechar]);
-  return <div ref={ref} role="dialog" aria-label="Escolher emoji" className="absolute left-0 top-full z-40 mt-1 grid w-64 grid-cols-9 gap-0.5 rounded-xl border border-border bg-surface-2 p-1.5 shadow-nav ecos-fade-in">
+  return <div ref={ref} role="dialog" aria-label="Escolher emoji" className={`absolute top-full z-40 mt-1 grid w-64 grid-cols-9 gap-0.5 rounded-xl border border-border bg-surface-2 p-1.5 shadow-nav ecos-fade-in ${alinharDireita ? "right-0" : "left-0"}`}>
     {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => aoEscolher(emoji)} className="flex h-7 w-7 items-center justify-center rounded-md text-base hover:bg-surface-3">{emoji}</button>)}
   </div>;
 }

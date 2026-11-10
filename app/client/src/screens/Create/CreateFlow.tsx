@@ -389,8 +389,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
 
   return (
     <FormShell tipoAtivo={capturaAberta} onTrocarTipo={trocarTipoCaptura} onFechar={() => { void encerrar(); }} erro={erro} embedded={embedded} tiposPermitidos={contextoDesktop==="cofre"?["transacao"]:contextoDesktop==="ecos"?(capturaAberta==="transacao"?["transacao"]:["nota","tarefa"]):undefined}>
-      {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
-      {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} />}
+      {capturaAberta === "nota" && <NoteForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} embedded={embedded} />}
+      {capturaAberta === "tarefa" && <TaskForm draft={draft} setDraft={setDraft} onSalvar={salvar} salvando={salvando} embedded={embedded} />}
       {capturaAberta === "transacao" && <TransactionForm draft={draft} setDraft={setDraft} onSalvar={salvar} onFechar={() => { void encerrar(); }} salvando={salvando} anexos={<div className="cofre-anexos-par"><AnexosPendentes arquivos={anexosPendentes} onChange={setAnexosPendentes} /><AnexosPendentes arquivos={notasPendentes} onChange={setNotasPendentes} tipo="nota_fiscal" /></div>} />}
     </FormShell>
   );

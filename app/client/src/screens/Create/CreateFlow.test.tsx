@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreateFlow, MIN_CARACTERES_CRIACAO, temConteudoMinimo, type CapturaDraft, type SetDraft } from "./CreateFlow";
+import { CreateFlow, MIN_CARACTERES_CRIACAO, temConteudoMinimo } from "./CreateFlow";
 
 const criar = vi.hoisted(() => vi.fn(async () => ({ id: "n1" })));
 const atualizar = vi.hoisted(() => vi.fn(async () => ({})));
@@ -13,26 +13,33 @@ const ui = vi.hoisted(() => ({ idCaptura: 1, tipo: "nota" }));
 
 vi.mock("@/lib/api", () => ({
   notas: { criar, atualizar }, tarefas: { criar, atualizar }, vault: {},
+  pastas: { listar: async () => ({ subpastas: [] }) },
+  tagsApi: { listar: async () => [] },
   ApiError: class extends Error {},
 }));
 vi.mock("@/lib/formas-pagamento-store", () => ({
   useFormasPagamento: () => ({ lista: [], ativas: [], porCodigo: new Map(), carregando: false, indisponivel: false, erro: null, rotulo: (c?: string | null) => c ?? "", recarregar: vi.fn() }),
 }));
 vi.mock("@/lib/toast", () => ({ avisar }));
-vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ notificar }) }));
+vi.mock("@/lib/refresh-bus", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/refresh-bus")>(),
+  useRefreshBus: () => ({ notificar }),
+}));
+vi.mock("@/lib/use-viewport", () => ({ useIsMobile: () => true }));
 vi.mock("@/lib/ui-context", () => ({
   useAppUI: () => ({ capturaAberta: ui.tipo, idCaptura: ui.idCaptura, abrirCaptura, fecharCaptura, trocarTipoCaptura: vi.fn(), espacoAtivo: "pessoal", anexosDeCaptura: [], limparAnexosDeCaptura: vi.fn() }),
 }));
 vi.mock("@/screens/Eventos/EventoDialog", () => ({
   EventoDialog: ({ onSalvo }: { onSalvo: () => void }) => <button onClick={onSalvo}>Salvar evento de teste</button>,
 }));
-vi.mock("./NoteForm", () => ({
-  NoteForm: ({ draft, setDraft }: { draft: CapturaDraft; setDraft: SetDraft }) => (
-    <input aria-label="titulo" value={draft.texto} onChange={(e) => setDraft((d) => ({ ...d, texto: e.target.value }))} />
-  ),
+vi.mock("@/components/editor/CorpoEditor", () => ({ CorpoEditor: () => null }));
+vi.mock("@/components/editor/AttachmentsField", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/components/editor/AttachmentsField")>(),
+  AttachmentsField: () => null,
 }));
 
-function digitar(texto: string) { fireEvent.change(screen.getByLabelText("titulo"), { target: { value: texto } }); }
+const tituloNota = () => screen.getByLabelText<HTMLTextAreaElement>("Título da nota");
+function digitar(texto: string) { fireEvent.change(tituloNota(), { target: { value: texto } }); }
 async function passar(ms: number) { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); }
 
 describe("autosave da captura", () => {
@@ -50,6 +57,42 @@ describe("autosave da captura", () => {
     expect(temConteudoMinimo("R")).toBe(false);
     expect(temConteudoMinimo("  ab  ")).toBe(false);
     expect(temConteudoMinimo("a".repeat(MIN_CARACTERES_CRIACAO))).toBe(true);
+  });
+
+  it("exibe o seletor de tipo apenas na janela embutida", () => {
+    expect(screen.queryByRole("group", { name: "Tipo de captura" })).toBeNull();
+    cleanup();
+    render(<MemoryRouter><CreateFlow embedded contextoDesktop="ecos" /></MemoryRouter>);
+    expect(screen.queryByRole("group", { name: "Tipo de captura" })).not.toBeNull();
+  });
+
+  it("mantém o X no cabeçalho e coloca pasta e tags abaixo do título da nota", async () => {
+    await passar(0);
+    const organizacao = screen.getByLabelText("Pasta e tags");
+    const fechar = screen.getByRole("button", { name: "Fechar" });
+    const cabecalho = screen.getByRole("heading", { name: "Nova nota" });
+    expect(cabecalho.parentElement?.contains(fechar)).toBe(true);
+    expect(cabecalho.parentElement?.contains(organizacao)).toBe(false);
+    expect(tituloNota().compareDocumentPosition(organizacao) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("mostra a organização da nova tarefa abaixo do título, antes da prioridade", async () => {
+    cleanup();
+    ui.tipo = "tarefa";
+    render(<MemoryRouter><CreateFlow /></MemoryRouter>);
+    await passar(0);
+    const cabecalho = screen.getByRole("heading", { name: "Nova tarefa" });
+    const titulo = screen.getByLabelText("Título da tarefa");
+    const organizacao = screen.getByRole("group", { name: "Pasta e tags" });
+    const prioridade = screen.getByRole("group", { name: "Prioridade" });
+    expect(cabecalho.parentElement?.contains(screen.getByRole("button", { name: "Fechar" }))).toBe(true);
+    expect(titulo.compareDocumentPosition(organizacao) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(organizacao.compareDocumentPosition(prioridade) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pasta" })).toBeTruthy();
+    const tag = screen.getByRole("combobox", { name: "Tags" });
+    fireEvent.change(tag, { target: { value: "mobile" } });
+    fireEvent.keyDown(tag, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "Remover tag mobile" })).toBeTruthy();
   });
 
   it("oferece Evento no botão Criar e abre o editor existente", () => {
@@ -101,7 +144,7 @@ describe("autosave da captura", () => {
     const guardado = JSON.parse(localStorage.getItem("ecos.capture-draft-falha.v1") ?? "null");
     expect(guardado.tipo).toBe("nota");
     expect(guardado.draft.texto).toBe("Reunião importante");
-    expect((screen.getByLabelText("titulo") as HTMLInputElement).value).toBe("Reunião importante");
+    expect(tituloNota().value).toBe("Reunião importante");
   });
 
   it("uma nova sessão de captura (clique rápido, sem fechar) começa vazia e cria outro item", async () => {
@@ -113,7 +156,7 @@ describe("autosave da captura", () => {
     ui.idCaptura = 2;
     vista.rerender(<MemoryRouter><CreateFlow /></MemoryRouter>);
     await passar(10);
-    expect((screen.getByLabelText("titulo") as HTMLInputElement).value).toBe("");
+    expect(tituloNota().value).toBe("");
     digitar("Segunda");
     await passar(700);
     expect(criar).toHaveBeenCalledTimes(2);

@@ -13,14 +13,15 @@ interface Props {
   setDraft: SetDraft;
   onSalvar: () => void;
   salvando?: boolean;
+  embedded?: boolean;
 }
 
 /** Nova nota, no mesmo padrão da edição: título, pasta e tags à mão, anexos e o editor. */
-export function NoteForm({ draft, setDraft, onSalvar, salvando }: Props) {
+export function NoteForm({ draft, setDraft, salvando, embedded = false }: Props) {
   const { espacoAtivo } = useAppUI();
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   return (
-    <div className="flex min-w-0 flex-col gap-4 py-5 md:pt-4">
+    <div className={`flex min-w-0 flex-col gap-4 pb-5 ${embedded ? "pt-5 md:pt-4" : "pt-1"}`}>
       <TitleField
         value={draft.texto}
         onChange={(texto) => setDraft((d) => ({ ...d, texto }))}

@@ -11,6 +11,7 @@ import { useAppUI } from "@/lib/ui-context";
 import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
 
 const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/cofre", "/tarefas", "/media", "/arquivos", "/busca", "/lixeira"];
+const REGEX_SECAO_LARGA = /^\/(?:feed|notas|busca|tarefas|agenda|notificacoes)(?:\/|$)/i;
 /** Folder-browsing sub-routes keep the topbar too (avatar/notifications
  * shouldn't disappear just because you went one level deeper) — but not
  * `/pasta/nova` (a form screen with its own back+cancel header) and not
@@ -38,6 +39,10 @@ export function AppShell() {
   const timeoutDoAviso = useRef<ReturnType<typeof setTimeout>>();
   const comTopbar = temTopbar(location.pathname);
   const documentoAberto = location.pathname.startsWith("/tarefa/") || location.pathname.startsWith("/notas/nota/");
+  const secaoLarga = REGEX_SECAO_LARGA.test(location.pathname);
+  const largura = documentoAberto
+    ? "max-w-6xl"
+    : secaoLarga ? "max-w-2xl" : "max-w-md md:max-w-2xl";
 
   useEffect(() => { prefetchRotasProvaveis(); }, []);
 
@@ -83,7 +88,7 @@ export function AppShell() {
   }, [navigate]);
 
   return (
-    <div className={`mx-auto min-h-full bg-base ${documentoAberto ? "max-w-6xl" : "max-w-md md:max-w-2xl"}`}>
+    <div className={`mx-auto min-h-full bg-base ${largura}`}>
       {comTopbar && <Topbar />}
       <main className="pb-nav-safe">
         <Outlet />
