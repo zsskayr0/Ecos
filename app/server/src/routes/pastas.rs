@@ -111,6 +111,86 @@ fn definir_aparencia(meta: &mut MetaPastas, caminho: &str, cor: &Option<String>,
     }
 }
 
+/// Tags padrão da pasta (`tags` no `.ecos-pastas.json`): `None` mantém, lista vazia limpa. Guardadas na forma canônica.
+fn definir_tags(meta: &mut MetaPastas, caminho: &str, tags: &Option<Vec<String>>) {
+    let Some(tags) = tags else { return };
+    let lista = ecos_core::tags::normalizar_lista(tags);
+    let mut atual = meta.get(caminho).cloned().unwrap_or_else(|| serde_json::json!({}));
+    if lista.is_empty() {
+        if let Some(o) = atual.as_object_mut() {
+            o.remove("tags");
+        }
+    } else {
+        atual["tags"] = serde_json::json!(lista);
+    }
+    if atual.as_object().map_or(true, |o| o.is_empty()) {
+        meta.remove(caminho);
+    } else {
+        meta.insert(caminho.to_string(), atual);
+    }
+}
+
+/// Ajustes opcionais da pasta, no mesmo `.ecos-pastas.json`. Campo ausente mantém; vazio/falso/zero limpa.
+#[derive(Debug, Default, Deserialize)]
+pub struct ExtrasPasta {
+    /// Texto curto que descreve a pasta.
+    #[serde(default)]
+    pub descricao: Option<String>,
+    /// Pasta fixada: aparece antes das demais.
+    #[serde(default)]
+    pub fixada: Option<bool>,
+    /// `baixa`, `media` ou `alta`: prioridade das tarefas novas criadas aqui (vazio = a das preferências).
+    #[serde(default)]
+    pub prioridade_padrao: Option<String>,
+    /// Duração estimada (minutos) das tarefas novas criadas aqui (0 = a das preferências).
+    #[serde(default)]
+    pub duracao_padrao_min: Option<u32>,
+}
+
+fn validar_extras(e: &ExtrasPasta) -> AppResult<()> {
+    let invalido = |campo: &str, motivo: &str| AppError::validation(vec![CampoInvalido { campo: campo.into(), motivo: motivo.into() }]);
+    if e.descricao.as_deref().is_some_and(|d| d.chars().count() > 280) {
+        return Err(invalido("descricao", "use até 280 caracteres"));
+    }
+    if e.prioridade_padrao.as_deref().is_some_and(|p| !matches!(p, "" | "baixa" | "media" | "alta")) {
+        return Err(invalido("prioridade_padrao", "use baixa, media ou alta"));
+    }
+    if e.duracao_padrao_min.is_some_and(|m| m > 1440) {
+        return Err(invalido("duracao_padrao_min", "no máximo 24 horas"));
+    }
+    Ok(())
+}
+
+fn definir_extras(meta: &mut MetaPastas, caminho: &str, e: &ExtrasPasta) {
+    let mut atual = meta.get(caminho).cloned().unwrap_or_else(|| serde_json::json!({}));
+    let mut tocar = |campo: &str, valor: Option<serde_json::Value>| {
+        if let Some(o) = atual.as_object_mut() {
+            match valor {
+                Some(v) => { o.insert(campo.to_string(), v); }
+                None => { o.remove(campo); }
+            }
+        }
+    };
+    if let Some(d) = &e.descricao {
+        let d = d.trim();
+        tocar("descricao", (!d.is_empty()).then(|| serde_json::Value::String(d.to_string())));
+    }
+    if let Some(f) = e.fixada {
+        tocar("fixada", f.then(|| serde_json::Value::Bool(true)));
+    }
+    if let Some(p) = &e.prioridade_padrao {
+        tocar("prioridade_padrao", (!p.is_empty()).then(|| serde_json::Value::String(p.clone())));
+    }
+    if let Some(m) = e.duracao_padrao_min {
+        tocar("duracao_padrao_min", (m > 0).then(|| serde_json::json!(m)));
+    }
+    if atual.as_object().map_or(true, |o| o.is_empty()) {
+        meta.remove(caminho);
+    } else {
+        meta.insert(caminho.to_string(), atual);
+    }
+}
+
 pub(crate) fn mover_chaves(meta: &mut MetaPastas, de: &str, para: &str) {
     let prefixo = format!("{de}/");
     let afetadas: Vec<String> = meta.keys().filter(|k| k.as_str() == de || k.starts_with(&prefixo)).cloned().collect();
@@ -192,7 +272,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             let campo = |k: &str| aparencia.and_then(|a| a.get(k)).cloned().unwrap_or(serde_json::Value::Null);
             // `contagem_itens` continua sendo a do tipo pedido (contrato antigo); as duas contagens vêm à parte.
             let contagem_itens = match tipo.as_str() { "tarefa" => tarefas, "todos" => notas + tarefas, _ => notas };
-            serde_json::json!({ "caminho": caminho, "nome": nome, "contagem_itens": contagem_itens, "contagem_notas": notas, "contagem_tarefas": tarefas, "cor": campo("cor"), "icone": campo("icone") })
+            serde_json::json!({ "caminho": caminho, "nome": nome, "contagem_itens": contagem_itens, "contagem_notas": notas, "contagem_tarefas": tarefas, "cor": campo("cor"), "icone": campo("icone"), "tags": campo("tags"), "descricao": campo("descricao"), "fixada": campo("fixada"), "prioridade_padrao": campo("prioridade_padrao"), "duracao_padrao_min": campo("duracao_padrao_min") })
         })
         .collect();
 
@@ -268,6 +348,11 @@ pub struct CriarPastaPayload {
     pub cor: Option<String>,
     #[serde(default)]
     pub icone: Option<String>,
+    /// Tags padrão das notas e tarefas criadas nesta pasta.
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(flatten)]
+    pub extras: ExtrasPasta,
 }
 
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarPastaPayload>) -> AppResult<Json<serde_json::Value>> {
@@ -280,6 +365,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let nome = ecos_core::naming::sanitizar_nome_arquivo(&payload.nome);
     caminho_dentro_da_raiz("pasta_pai", payload.pasta_pai.as_deref().unwrap_or(""), true)?;
     validar_aparencia(&payload.cor, &payload.icone)?;
+    validar_extras(&payload.extras)?;
     let raiz = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?.remove(0);
     let dir = match &payload.pasta_pai {
         Some(p) if !p.is_empty() => raiz.join(p).join(&nome),
@@ -287,9 +373,11 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     std::fs::create_dir_all(&dir)?;
     let caminho_relativo = dir.strip_prefix(&raiz).unwrap_or(&dir).to_string_lossy().replace('\\', "/");
-    if payload.cor.is_some() || payload.icone.is_some() {
+    if payload.cor.is_some() || payload.icone.is_some() || payload.tags.is_some() || payload.extras.descricao.is_some() || payload.extras.fixada.is_some() || payload.extras.prioridade_padrao.is_some() || payload.extras.duracao_padrao_min.is_some() {
         let mut meta = ler_meta(&raiz);
         definir_aparencia(&mut meta, &caminho_relativo, &payload.cor, &payload.icone);
+        definir_tags(&mut meta, &caminho_relativo, &payload.tags);
+        definir_extras(&mut meta, &caminho_relativo, &payload.extras);
         gravar_meta(&raiz, &meta)?;
     }
     reindexar_tudo(&state.db, &state.config.notes_root).await?;
@@ -308,12 +396,18 @@ pub struct RenomearPastaPayload {
     pub cor: Option<String>,
     #[serde(default)]
     pub icone: Option<String>,
+    /// Tags padrão da pasta: ausente mantém, lista vazia limpa.
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(flatten)]
+    pub extras: ExtrasPasta,
 }
 
 pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<RenomearPastaPayload>) -> AppResult<Json<serde_json::Value>> {
     caminho_dentro_da_raiz("caminho_atual", &payload.caminho_atual, false)?;
     caminho_dentro_da_raiz("novo_caminho", &payload.novo_caminho, false)?;
     validar_aparencia(&payload.cor, &payload.icone)?;
+    validar_extras(&payload.extras)?;
     let raizes = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     // A pasta lógica pode existir numa árvore ou nas duas: confere tudo antes de mexer em qualquer uma.
     let com_pasta: Vec<&std::path::PathBuf> = raizes.iter().filter(|r| r.join(&payload.caminho_atual).is_dir()).collect();
@@ -338,6 +432,8 @@ pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extensi
         mover_chaves(&mut meta, &payload.caminho_atual, &payload.novo_caminho);
         if i == 0 {
             definir_aparencia(&mut meta, &payload.novo_caminho, &payload.cor, &payload.icone);
+            definir_tags(&mut meta, &payload.novo_caminho, &payload.tags);
+            definir_extras(&mut meta, &payload.novo_caminho, &payload.extras);
         }
         gravar_meta(raiz, &meta)?;
     }
