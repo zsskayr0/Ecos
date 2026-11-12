@@ -595,26 +595,26 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-1.5 text-xs text-text-muted">
-        <span className="truncate">Arraste um prazo para um horário para reservar tempo (ou use “Alocar tempo”) · arraste o bloco para mover · borda de baixo muda a duração · segure no toque · setas no teclado</span>
-        <div className="flex shrink-0 items-center gap-3">
+      <div className="flex flex-col gap-2 border-b border-border/60 px-4 py-2 text-xs text-text-muted md:flex-row md:items-center md:justify-between md:gap-3 md:py-1.5">
+        <span className="hidden truncate md:block">Arraste um prazo para um horário para reservar tempo (ou use “Alocar tempo”) · arraste o bloco para mover · borda de baixo muda a duração · segure no toque · setas no teclado</span>
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 md:w-auto md:shrink-0 md:justify-end">
         {diaTodo.length > 0 && modoFaixa === "ocultar" && (
           <button type="button" data-abre-lista onClick={(e) => abrirLista(null, e.currentTarget)} aria-expanded={lista?.dia === null && lista !== null} className="flex items-center gap-1 rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary hover:bg-surface-2">
             <ListChecks size={12} aria-hidden />O dia todo ({diaTodo.length})
           </button>
         )}
-        <div role="group" aria-label="Faixa O dia todo" className="flex items-center gap-1.5">
-          <span>Faixa</span>
-          <span className="flex overflow-hidden rounded border border-border">
+        <div role="group" aria-label="Faixa O dia todo" className="flex items-center gap-2">
+          <span className="font-medium">Faixa</span>
+          <span className="flex rounded-lg bg-surface-2 p-0.5">
             {MODOS_FAIXA.map(({ valor, rotulo }) => (
-              <button key={valor} type="button" aria-pressed={modoFaixa === valor} onClick={() => escolherModoFaixa(valor)} className={`px-1.5 py-0.5 text-xs transition-colors ${modoFaixa === valor ? "bg-steel-500 text-white" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}>{rotulo}</button>
+              <button key={valor} type="button" aria-pressed={modoFaixa === valor} onClick={() => escolherModoFaixa(valor)} className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${modoFaixa === valor ? "bg-steel-500 text-white shadow-sm" : "text-text-secondary hover:text-text-primary"}`}>{rotulo}</button>
             ))}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-2 font-medium">
           Encaixe
           <SeletorEcos ariaLabel="Encaixe ao arrastar" valor={String(encaixe)} onChange={(v) => onMudarEncaixe(Number(v))} alinhar="dir"
-            classe="rounded border border-border bg-surface-1 px-1.5 py-0.5 text-xs text-text-primary"
+            classe="h-8 rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-normal text-text-primary"
             opcoes={OPCOES_ENCAIXE.map((m) => ({ valor: String(m), rotulo: m === 60 ? "1 h" : `${m} min` }))} />
         </div>
         </div>

@@ -48,8 +48,8 @@ export function chaveDia(iso: string): string {
 }
 
 /** Agrupa pelo dia local de início, dias em ordem e eventos por horário. */
-export function agruparPorDia(eventos: Evento[]): { dia: string; eventos: Evento[] }[] {
-  const grupos = new Map<string, Evento[]>();
+export function agruparPorDia<T extends Evento>(eventos: T[]): { dia: string; eventos: T[] }[] {
+  const grupos = new Map<string, T[]>();
   for (const e of [...eventos].sort((a, b) => a.inicio.localeCompare(b.inicio))) {
     const dia = chaveDia(e.inicio);
     grupos.set(dia, [...(grupos.get(dia) ?? []), e]);

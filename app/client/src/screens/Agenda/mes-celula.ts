@@ -22,6 +22,6 @@ export function calcularVisiveis(total: number, alturaLinha: number): { visiveis
  */
 export function classeDiaMes({ ehHoje, ativo }: { ehHoje: boolean; ativo: boolean }): string {
   if (ehHoje) return "bg-steel-500 font-semibold text-white";
-  if (ativo) return "bg-surface-2 font-semibold text-text-primary ring-1 ring-border";
+  if (ativo) return "font-semibold text-text-primary ring-2 ring-steel-400";
   return "text-text-secondary hover:bg-surface-2";
 }

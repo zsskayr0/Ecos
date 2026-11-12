@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Dialog } from "@/components/common/Dialog";
+import { useArrastarRolagem } from "@/lib/arrastar-rolagem";
 import { createPortal } from "react-dom";
 import { CalendarDays, CheckCircle2, ChevronDown, Clock, Hourglass, LayoutDashboard, ListChecks, Lock, Cloud, Repeat, Wallet, X } from "lucide-react";
 import type { EventoLocal } from "@/lib/eventos-locais";
@@ -85,6 +86,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   const [saindo, setSaindo] = useState(false);
   const [concluidasAbertas, setConcluidasAbertas] = useState(false);
   const abasRef = useRef<HTMLDivElement>(null);
+  const arrastarAbas = useArrastarRolagem();
   const [indicador, setIndicador] = useState<{ left: number; width: number } | null>(null);
 
   const eventos = useMemo(() => eventosDoDia.filter((e) => !e.transacaoId).sort(porHorario), [eventosDoDia]);
@@ -249,10 +251,10 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
     return (
       <div className="flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Cartao i={0} icone={<CalendarDays size={14} />} rotulo="Eventos" detalhe={proximos[0] ? `Próximo às ${hhmm(proximos[0].minutos as number)}` : "Sem horário marcado"}>{eventos.length}</Cartao>
-          <Cartao i={1} icone={<ListChecks size={14} />} rotulo="Tarefas pendentes" detalhe={concluidas.length ? `${concluidas.length} concluída${concluidas.length === 1 ? "" : "s"} · ver` : "Nenhuma concluída"} aoClicar={concluidas.length ? () => { setConcluidasAbertas(true); setAba("tarefas"); } : undefined}>{pendentes.length}</Cartao>
-          <Cartao i={2} icone={<Wallet size={14} />} rotulo="Lançamentos" detalhe={`${lancamentos.length} no dia`} tom={saldo < 0 ? "text-error" : saldo > 0 ? "text-success" : "text-text-primary"}><span className="fonte-cofre">{moeda(saldoAnimado)}</span></Cartao>
-          <Cartao i={3} icone={<Clock size={14} />} rotulo="Tempo livre" detalhe={livre !== null ? "para produzir" : "sem rotina"}>{capacidade ? formatDuracao(Math.max(0, capacidade.tempo_livre_min ?? capacidade.disponivel_producao_min)) : "—"}</Cartao>
+          <Cartao i={0} icone={<CalendarDays size={14} />} rotulo="Eventos" detalhe={proximos[0] ? `Próximo às ${hhmm(proximos[0].minutos as number)}` : "Sem horário marcado"} aoClicar={() => setAba("eventos")}>{eventos.length}</Cartao>
+          <Cartao i={1} icone={<ListChecks size={14} />} rotulo="Tarefas pendentes" detalhe={concluidas.length ? `${concluidas.length} concluída${concluidas.length === 1 ? "" : "s"} ` : "Nenhuma concluída"} aoClicar={() => { if (concluidas.length) setConcluidasAbertas(true); setAba("tarefas"); }}>{pendentes.length}</Cartao>
+          <Cartao i={2} icone={<Wallet size={14} />} rotulo="Lançamentos" detalhe={`${lancamentos.length} no dia`} aoClicar={() => setAba("lancamentos")} tom={saldo < 0 ? "text-error" : saldo > 0 ? "text-success" : "text-text-primary"}><span className="fonte-cofre">{moeda(saldoAnimado)}</span></Cartao>
+          <Cartao i={3} icone={<Clock size={14} />} rotulo="Tempo livre" detalhe={livre !== null ? "para produzir" : "sem rotina"} aoClicar={() => setAba("tempo")}>{capacidade ? formatDuracao(Math.max(0, capacidade.tempo_livre_min ?? capacidade.disponivel_producao_min)) : "—"}</Cartao>
         </div>
         {capacidade && (
           <div style={{ ["--i" as string]: 4 }} className="ecos-cascata rounded-2xl border border-border bg-surface-1 p-4">
@@ -276,7 +278,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{hoje ? "Hoje" : "Agenda"}</p>
             <h2 className="truncate font-display text-xl capitalize text-text-primary">{titulo}</h2>
-            <div ref={abasRef} role="tablist" aria-label="Seções do dia" className="relative mt-3 flex gap-1 overflow-x-auto">
+            <div ref={abasRef} {...arrastarAbas} role="tablist" aria-label="Seções do dia" className="no-scrollbar relative mt-3 flex touch-pan-x gap-1 overflow-x-auto">
               {abas.map((a) => (
                 <button key={a.id} data-aba={a.id} role="tab" type="button" aria-selected={aba === a.id} onClick={() => setAba(a.id)} className={`flex shrink-0 items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-sm transition-colors duration-200 ${aba === a.id ? "text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-secondary"}`}>
                   <span className={`transition-transform duration-300 ${aba === a.id ? "scale-110" : ""}`}>{a.icone}</span>{a.rotulo}

@@ -84,6 +84,14 @@ function fatiasDaOcorrencia(o: Ocorrencia, diaInteiro: boolean): Fatia[] {
 }
 
 /** Itens da grade de um evento do servidor dentro da janela: série expandida, vários dias e dia inteiro viram um item por dia. */
+/** Evento de uma ocorrência: o mestre com início/fim daquela data; `ocorrencia` (só em série) identifica-a no servidor. */
+export type EventoOcorrencia = Evento & { ocorrencia?: string };
+
+/** Lista cada ocorrência que toca `[de, ate)` como um evento próprio (uma série vira várias linhas, nas datas certas). */
+export function expandirOcorrencias(lista: Evento[], de: Date, ate: Date): EventoOcorrencia[] {
+  return lista.flatMap((e) => ocorrenciasDoEvento(e, de, ate).map((o) => ({ ...e, inicio: o.inicio.toISOString(), fim: o.fim.toISOString(), ocorrencia: o.original?.toISOString() })));
+}
+
 export function eventoParaItens(e: Evento, de: Date, ate: Date): EventoLocal[] {
   const cor = e.cor ?? e.categoria?.cor ?? COR_EVENTO_PADRAO;
   const itens: EventoLocal[] = [];
