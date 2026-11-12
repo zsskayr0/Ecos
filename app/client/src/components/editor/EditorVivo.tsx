@@ -189,6 +189,12 @@ function montarDecoracoes(view: EditorView): DecorationSet {
           }
           return false;
         }
+        case "URL": {
+          // Endereço solto (autolink GFM ou <https://…>); o das formas `[x](url)` e imagens nunca chega aqui.
+          const t = state.sliceDoc(no.from, no.to);
+          if (/^https?:\/\//i.test(t)) decos.push(Decoration.mark({ class: "cm-link", attributes: { title: "Clique para abrir" } }).range(no.from, no.to));
+          return;
+        }
         default:
       }
     },
@@ -227,8 +233,10 @@ function montarDecoracoes(view: EditorView): DecorationSet {
 const plugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) { this.decorations = montarDecoracoes(view); }
-  update(u: { docChanged: boolean; selectionSet: boolean; focusChanged: boolean; viewportChanged: boolean; view: EditorView }) {
-    if (u.docChanged || u.selectionSet || u.focusChanged || u.viewportChanged) this.decorations = montarDecoracoes(u.view);
+  update(u: { docChanged: boolean; selectionSet: boolean; focusChanged: boolean; viewportChanged: boolean; view: EditorView; state: EditorState; startState: EditorState }) {
+    // A árvore do Markdown pode terminar de ser analisada depois do primeiro desenho (sem mudar o texto): refaz as marcas.
+    const arvore = syntaxTree(u.state) !== syntaxTree(u.startState);
+    if (u.docChanged || u.selectionSet || u.focusChanged || u.viewportChanged || arvore) this.decorations = montarDecoracoes(u.view);
   }
 }, { decorations: (p) => p.decorations });
 
@@ -255,7 +263,7 @@ const tema = EditorView.theme({
   ".cm-cod": { fontFamily: "\"IBM Plex Mono\", monospace", fontSize: "13.5px", background: "rgb(var(--ecos-surface-3-rgb))", borderRadius: "4px", padding: "1px 4px" },
   ".cm-bloco-cod": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "0.9em", background: "rgb(var(--ecos-surface-2-rgb))" },
   ".cm-citacao": { borderLeft: "3px solid rgb(var(--ecos-steel-500-rgb))", paddingLeft: "12px", color: "rgb(var(--ecos-text-secondary-rgb))" },
-  ".cm-link, .cm-wikilink": { color: "rgb(var(--ecos-steel-300-rgb))", textDecoration: "underline", textUnderlineOffset: "3px" },
+  ".cm-link, .cm-wikilink": { color: "rgb(var(--ecos-steel-300-rgb))", textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },
   ".cm-wikilink": { textDecoration: "none", fontWeight: "500" },
   ".cm-marcador": { display: "inline-block", width: "1.1em", color: "rgb(var(--ecos-steel-300-rgb))" },
   ".cm-caixa": { margin: "0 6px 0 0", width: "15px", height: "15px", verticalAlign: "-2px", accentColor: "rgb(var(--ecos-steel-500-rgb))", cursor: "pointer" },
@@ -308,6 +316,29 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         tabelas,
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : [],
         EditorView.domEventHandlers({
+          click(e, v) {
+            // Link web: `[texto](url)` ou endereço solto. Clique simples abre em outra aba (sem seleção em andamento).
+            if (e.button !== 0 || !v.state.selection.main.empty) return false;
+            const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+            for (const lado of [1, -1] as const) {
+              for (let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null = syntaxTree(v.state).resolveInner(pos, lado); n; n = n.parent) {
+                if (n.name !== "Link" && n.name !== "URL") continue;
+                const alvo = n.name === "Link" ? n.getChild("URL") : n;
+                const href = alvo ? v.state.sliceDoc(alvo.from, alvo.to).trim() : "";
+                if (!/^https?:\/\//i.test(href)) break;
+                // Só conta se o clique caiu de fato sobre o texto do link (não no espaço vazio depois dele).
+                const fim = v.coordsAtPos(n.to, -1);
+                const ini = v.coordsAtPos(n.from, 1);
+                const dentro = !!fim && !!ini && e.clientY >= Math.min(ini.top, fim.top) - 2 && e.clientY <= Math.max(ini.bottom, fim.bottom) + 2
+                  && (ini.top !== fim.top || (e.clientX >= ini.left - 2 && e.clientX <= fim.right + 2));
+                if (!dentro) break;
+                e.preventDefault();
+                window.open(href, "_blank", "noopener,noreferrer");
+                return true;
+              }
+            }
+            return false;
+          },
           mousedown(e, v) {
             if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || !abrirWikilinkRef.current) return false;
             const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
