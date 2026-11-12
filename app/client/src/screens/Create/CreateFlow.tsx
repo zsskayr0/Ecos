@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { dataPadraoNovaTarefa, lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { notas, tarefas, vault, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
+import { notas, pastas, tarefas, vault, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
 import { avisar } from "@/lib/toast";
 import { hojeISO } from "@/lib/format";
-import { taskTags } from "@/lib/task-fields";
+import { taskScheduledAt, taskTags } from "@/lib/task-fields";
+import { tagsPadraoDaPasta, unirTags } from "@/lib/tags-pasta";
 import { pastaDoCaminho, type PastaContexto } from "@/lib/pasta-contexto";
 import { inserirReferencia } from "@/components/editor/AttachmentsField";
 import { ChoicePopup } from "./ChoicePopup";
@@ -94,8 +95,11 @@ let cacheVazio: { chave: string; draft: CapturaDraft } | null = null;
 /** Rascunho em branco já com a prioridade e a duração padrão das preferências. Estável enquanto elas não mudam (a identidade é comparada). */
 export function rascunhoVazio(): CapturaDraft {
   const p = lerPreferenciasAplicativo();
-  const chave = `${p.tarefaPrioridade}|${p.tarefaDuracaoMin}`;
-  if (!cacheVazio || cacheVazio.chave !== chave) cacheVazio = { chave, draft: { ...DRAFT_VAZIO, prioridadeTarefa: p.tarefaPrioridade, duracaoMin: p.tarefaDuracaoMin } };
+  const dataTarefa = dataPadraoNovaTarefa(p.tarefaNovaData);
+  const chave = `${p.tarefaPrioridade}|${p.tarefaDuracaoMin}|${dataTarefa}|${p.tarefaNovaHorario}`;
+  if (!cacheVazio || cacheVazio.chave !== chave) {
+    cacheVazio = { chave, draft: { ...DRAFT_VAZIO, prioridadeTarefa: p.tarefaPrioridade, duracaoMin: p.tarefaDuracaoMin, dataTarefa, scheduledAt: taskScheduledAt(dataTarefa, p.tarefaNovaHorario) } };
+  }
   return cacheVazio.draft;
 }
 
@@ -214,10 +218,62 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
     if (padraoAplicado.current[capturaAberta]) return;
     padraoAplicado.current[capturaAberta] = true;
-    if (contexto?.tipo !== capturaAberta) return;
-    const pasta = contexto.pasta;
+    // Preferência "Nova tarefa/Nova nota": pasta atual (padrão), uma pasta fixa ou nenhuma.
+    const prefs = lerPreferenciasAplicativo();
+    const modo = capturaAberta === "tarefa" ? prefs.tarefaNovaPasta : prefs.notaNovaPasta;
+    const fixa = (capturaAberta === "tarefa" ? prefs.tarefaNovaPastaFixa : prefs.notaNovaPastaFixa).trim();
+    const pasta = modo === "nenhuma" ? null : modo === "fixa" ? (fixa || null) : contexto?.tipo === capturaAberta ? contexto.pasta : null;
+    if (!pasta) return;
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
   }, [capturaAberta, idCaptura, contexto?.tipo, contexto?.pasta]);
+
+  // Padrões que vêm da pasta escolhida: tags (as dela e das de cima, ou a lista manual das preferências) e, nas tarefas,
+  // prioridade e duração. Acompanham a pasta enquanto a pessoa troca de pasta; o que ela mesma mexeu fica. Cada captura recomeça do zero.
+  const padroesAuto = useRef<{ id: number; tarefa: string[]; nota: string[]; prio: string; dur: number; chave: string }>({ id: -1, tarefa: [], nota: [], prio: "", dur: 0, chave: "" });
+  const pastaAtual = capturaAberta === "tarefa" ? draft.pastaTarefa : capturaAberta === "nota" ? draft.pastaNota : null;
+  const espacoDaCaptura = capturaAberta === "tarefa" ? draft.espacoTarefa ?? espacoAtivo : espacoAtivo;
+  useEffect(() => {
+    if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
+    const tipo = capturaAberta;
+    const estado = padroesAuto.current;
+    const prefs = lerPreferenciasAplicativo();
+    if (estado.id !== idCaptura) { estado.id = idCaptura; estado.tarefa = []; estado.nota = []; estado.prio = prefs.tarefaPrioridade; estado.dur = prefs.tarefaDuracaoMin; estado.chave = ""; }
+    const chave = `${tipo}|${pastaAtual ?? ""}|${espacoDaCaptura}`;
+    if (estado.chave === chave) return;
+    estado.chave = chave;
+    const modo = tipo === "tarefa" ? prefs.tarefaNovaTagsModo : prefs.notaNovaTagsModo;
+    const global = { prioridade: prefs.tarefaPrioridade, duracao: prefs.tarefaDuracaoMin };
+    const aplicar = (lista: string[], padroes: { prioridade: PrioridadeTarefa; duracao: number } = global) => {
+      if (estado.chave !== chave) return; // a pasta mudou enquanto a lista vinha: vale a resposta mais nova
+      const anteriores = estado[tipo];
+      const prioAnterior = estado.prio;
+      const durAnterior = estado.dur;
+      estado[tipo] = lista;
+      estado.prio = padroes.prioridade;
+      estado.dur = padroes.duracao;
+      setDraft((d) => {
+        const atuais = tipo === "tarefa" ? d.tagsTarefa : d.tagsNota;
+        const novas = unirTags(atuais.filter((t) => !anteriores.includes(t)), lista);
+        let proximo = d;
+        if (novas.length !== atuais.length || novas.some((t, i) => t !== atuais[i])) proximo = tipo === "tarefa" ? { ...proximo, tagsTarefa: novas } : { ...proximo, tagsNota: novas };
+        if (tipo === "tarefa") {
+          if (d.prioridadeTarefa === prioAnterior && d.prioridadeTarefa !== padroes.prioridade) proximo = { ...proximo, prioridadeTarefa: padroes.prioridade };
+          if (d.duracaoMin === durAnterior && d.duracaoMin !== padroes.duracao) proximo = { ...proximo, duracaoMin: padroes.duracao };
+        }
+        return proximo;
+      });
+    };
+    const manual = tipo === "tarefa" ? prefs.tarefaNovaTags : prefs.notaNovaTags;
+    if (!pastaAtual || (modo === "manual" && tipo === "nota")) { aplicar(modo === "manual" ? manual : []); return; }
+    Promise.resolve().then(() => pastas.listar({ tipo, espaco: espacoDaCaptura, recursivo: true }))
+      .then((r) => {
+        const propria = r.subpastas.find((p) => p.caminho === pastaAtual);
+        const prioridade = (propria?.prioridade_padrao ?? global.prioridade) as PrioridadeTarefa;
+        const duracao = propria?.duracao_padrao_min || global.duracao;
+        aplicar(modo === "manual" ? manual : tagsPadraoDaPasta(pastaAtual, modo, r.subpastas), { prioridade, duracao });
+      })
+      .catch(() => aplicar(modo === "manual" ? manual : []));
+  }, [capturaAberta, idCaptura, pastaAtual, espacoDaCaptura]);
 
   // Transação aberta a partir de um dia do calendário nasce naquele dia.
   useEffect(() => {

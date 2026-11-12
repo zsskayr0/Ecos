@@ -1,3 +1,5 @@
+import { useContext } from "react";
+import { ModoFocusDocumentoContext } from "@/lib/documento-popup";
 import { TaskComposer } from "@/components/editor/TaskComposer";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { Cloud } from "lucide-react";
@@ -18,8 +20,10 @@ export function TaskForm({ draft, setDraft, onSalvar, salvando, embedded = false
   draft: CapturaDraft; setDraft: SetDraft; onSalvar: () => void; salvando?: boolean; embedded?: boolean;
 }) {
   const { espacoAtivo } = useAppUI();
+  // Criação maximizada (preferência "Nova tarefa"): as opções vão para o painel lateral do Focus.
+  const focoDocumento = useContext(ModoFocusDocumentoContext);
   return <div className={`min-w-0 pb-5 ${embedded ? "pt-5 md:pt-4" : "pt-1"}`}>
-    <TaskComposer value={fieldsFromDraft(draft, espacoAtivo)} saving={salvando} onSave={onSalvar} showPriority={!embedded} organizacaoCompacta={!embedded}
+    <TaskComposer value={fieldsFromDraft(draft, espacoAtivo)} saving={salvando} onSave={onSalvar} showPriority={!embedded} organizacaoCompacta={!embedded} focusMode={embedded && focoDocumento}
       titleActions={embedded && <TaskPriority compact value={draft.prioridadeTarefa} onChange={(prioridade) => setDraft((previous) => ({ ...previous, prioridadeTarefa: prioridade }))} disabled={salvando} />}
       onChange={(patch) => setDraft((previous) => {
         const value = { ...fieldsFromDraft(previous, espacoAtivo), ...patch };

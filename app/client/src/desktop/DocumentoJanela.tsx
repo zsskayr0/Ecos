@@ -158,6 +158,9 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao")));
   const tarefa = path.startsWith("/tarefa/");
   const podeFocus = tarefa || path.startsWith("/notas/nota/");
+  // Janela de criação (Nova nota/Nova tarefa): o formulário guarda o rascunho em si mesmo, então só pode existir uma cópia dele.
+  // Por isso ela pode nascer maximizada (preferência), mas sair do Focus fecha a criação (o que foi escrito é salvo ao fechar).
+  const captura = !!conteudo && (path === "/tarefas" || path === "/notas");
   // Modo Slide: só para a tarefa que está na lista que a tela mostra; ao sair, a janela recarrega o que foi editado lá.
   const tarefasDaLista = useTarefasDoSlide();
   const idDaTarefa = tarefa ? path.split("/")[2] : undefined;
@@ -166,6 +169,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   // Com a preferência ligada a tarefa (ou a nota) já abre maximizada (modo Focus).
   const [emFocus, setEmFocus] = useState(() => {
     const prefs = lerPreferenciasAplicativo();
+    if (captura) return path === "/tarefas" ? prefs.tarefaNovaMaximizada : prefs.notaNovaMaximizada;
     return tarefa ? prefs.tarefaMaximizada : path.startsWith("/notas/nota/") && prefs.notaMaximizada;
   });
   /** Animação de saída da camada Focus (a janela normal só volta a aparecer inteira depois dela). */
@@ -174,7 +178,11 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [chaveJanela, setChaveJanela] = useState(0);
   const [, setVersaoLayout] = useState(0);
   const janelaFocusRef = useRef<HTMLDivElement>(null);
-  const [painelFocusAberto, setPainelFocusAberto] = useState(() => !lerPreferenciasAplicativo().focusPainelRecolhido);
+  const [painelFocusAberto, setPainelFocusAberto] = useState(() => {
+    const prefs = lerPreferenciasAplicativo();
+    // Nota nova não tem painel de opções: só a tarefa nova usa a preferência própria.
+    return captura ? path === "/tarefas" && prefs.tarefaNovaPainelAberto : !prefs.focusPainelRecolhido;
+  });
   const painelFocusAbertoRef = useRef(painelFocusAberto);
   const saindoDoFocus = useRef(false);
   const [arrastando, setArrastando] = useState(false);
@@ -202,6 +210,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
 
   const sairDoFocus = useCallback(() => {
     if (!emFocus || saindoDoFocus.current) return emFocus;
+    if (captura) { aoFechar(); return true; }
     saindoDoFocus.current = true;
     setSaindoFocus(true);
     // A janela de trás recarrega já agora, escondida pela camada que ainda está saindo: sem piscar o "Carregando…".
@@ -210,7 +219,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       setEmFocus(false); setSaindoFocus(false); saindoDoFocus.current = false;
     }, reduzMovimento() ? 0 : 170);
     return true;
-  }, [emFocus]);
+  }, [emFocus, captura, aoFechar]);
   const alternarPainelFocus = useCallback(() => {
     const novo = !painelFocusAbertoRef.current;
     painelFocusAbertoRef.current = novo;
@@ -530,10 +539,10 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <AcoesJanelaContext.Provider value={acoesJanela}>
             {cabecalhoNoConteudo ? (
               <>
-                <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}><Fragment key={chaveJanela}>{corpo}</Fragment></div>
+                <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}><Fragment key={chaveJanela}>{captura && emFocus ? null : corpo}</Fragment></div>
                 <div ref={setMontagem} aria-hidden={!painelPx} className="h-full min-w-0 overflow-hidden border-border bg-surface-1" style={{ flex: painelPx ? "1 1 0" : "0 0 0", borderLeftWidth: painelPx ? 1 : 0 }} />
               </>
-            ) : <Fragment key={chaveJanela}>{corpo}</Fragment>}
+            ) : <Fragment key={chaveJanela}>{captura && emFocus ? null : corpo}</Fragment>}
           </AcoesJanelaContext.Provider>
           </PainelJanelaContext.Provider>
           </ModoFocusDocumentoContext.Provider>

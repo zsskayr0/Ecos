@@ -8,6 +8,17 @@ export type FormatoData = "completa" | "curta" | "mdy" | "dmy" | "ymd" | "relati
 export type PrioridadePadrao = "baixa" | "media" | "alta";
 export type VisualizacaoTarefasDesktop = "tabela" | "grade" | "kanban" | "matriz";
 export type VisualizacaoTarefasMobile = "cards" | "lista" | "agrupada";
+import type { ModoTagsPadrao } from "./tags-pasta";
+export type DataNovaTarefa = "nenhuma" | "hoje" | "amanha" | "em7dias";
+export type PastaNovoItem = "contexto" | "fixa" | "nenhuma";
+
+/** Data (AAAA-MM-DD, no relógio local) que a preferência pede para uma tarefa nova; "" = sem data. */
+export function dataPadraoNovaTarefa(modo: DataNovaTarefa, agora = new Date()): string {
+  if (modo === "nenhuma") return "";
+  const d = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + (modo === "amanha" ? 1 : modo === "em7dias" ? 7 : 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /** Escalas da interface, em % do tamanho original. */
 export const ESCALAS_INTERFACE = [90, 100, 110, 125] as const;
 export type EscalaInterface = (typeof ESCALAS_INTERFACE)[number];
@@ -59,6 +70,27 @@ export interface PreferenciasAplicativo {
   /** Encaixe (passo de arrastar e redimensionar) inicial da Agenda, em minutos. */
   agendaEncaixe: 5 | 10 | 15 | 30 | 60;
 
+  /* Nova tarefa e Nova nota: como o item já nasce */
+  /** Data que uma tarefa nova já traz (`hoje` = "date stick"). */
+  tarefaNovaData: DataNovaTarefa;
+  /** `HH:MM` que acompanha a data padrão; vazio = sem horário. Só vale quando há data padrão. */
+  tarefaNovaHorario: string;
+  /** `contexto`: a pasta em que a pessoa está; `fixa`: sempre a pasta escolhida; `nenhuma`: sem pasta. */
+  tarefaNovaPasta: PastaNovoItem;
+  tarefaNovaPastaFixa: string;
+  notaNovaPasta: PastaNovoItem;
+  notaNovaPastaFixa: string;
+  /** A janela de criação já abre maximizada (modo Focus). Sair do Focus fecha a criação, salvando o que foi escrito. */
+  tarefaNovaMaximizada: boolean;
+  notaNovaMaximizada: boolean;
+  /** Na criação maximizada de tarefa, o painel de opções já começa aberto. */
+  tarefaNovaPainelAberto: boolean;
+  /** De onde vêm as tags de um item novo: `hierarquia` (pasta e as de cima), `pasta` (só a própria) ou `manual` (a lista abaixo). */
+  tarefaNovaTagsModo: ModoTagsPadrao;
+  tarefaNovaTags: string[];
+  notaNovaTagsModo: ModoTagsPadrao;
+  notaNovaTags: string[];
+
   /* Aparência e conforto */
   escalaInterface: EscalaInterface;
   reduzirMovimento: ReduzirMovimento;
@@ -101,6 +133,19 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   visualizacaoTarefasMobile: "cards",
   capturaEnter: "nota",
   agendaEncaixe: 15,
+  tarefaNovaData: "nenhuma",
+  tarefaNovaHorario: "",
+  tarefaNovaPasta: "contexto",
+  tarefaNovaPastaFixa: "",
+  notaNovaPasta: "contexto",
+  notaNovaPastaFixa: "",
+  tarefaNovaMaximizada: false,
+  notaNovaMaximizada: false,
+  tarefaNovaPainelAberto: true,
+  tarefaNovaTagsModo: "hierarquia",
+  tarefaNovaTags: [],
+  notaNovaTagsModo: "hierarquia",
+  notaNovaTags: [],
   escalaInterface: 100,
   reduzirMovimento: "sistema",
   resumoDiario: false,

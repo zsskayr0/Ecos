@@ -616,9 +616,9 @@ export const notas = {
 
 export const pastas = {
   listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
-    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; contagem_notas?: number; contagem_tarefas?: number; cor?: string | null; icone?: string | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
-  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string; cor?: string; icone?: string }) => post<{ ok: true; caminho: string }>("/pastas", payload),
-  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string; cor?: string; icone?: string }) => patch<{ ok: true }>("/pastas", payload),
+    get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; contagem_notas?: number; contagem_tarefas?: number; cor?: string | null; icone?: string | null; /** Tags padrão das notas e tarefas criadas na pasta. */ tags?: string[] | null; descricao?: string | null; fixada?: boolean | null; prioridade_padrao?: "baixa" | "media" | "alta" | null; duracao_padrao_min?: number | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
+  criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string; cor?: string; icone?: string; tags?: string[]; descricao?: string; fixada?: boolean; prioridade_padrao?: "baixa" | "media" | "alta" | ""; duracao_padrao_min?: number }) => post<{ ok: true; caminho: string }>("/pastas", payload),
+  renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string; cor?: string; icone?: string; tags?: string[]; descricao?: string; fixada?: boolean; prioridade_padrao?: "baixa" | "media" | "alta" | ""; duracao_padrao_min?: number }) => patch<{ ok: true }>("/pastas", payload),
   excluir: (payload: { tipo?: "nota" | "tarefa"; caminho: string; espaco?: string; todos_os_tipos?: boolean }) => del<{ ok: true }>("/pastas", payload),
 };
 

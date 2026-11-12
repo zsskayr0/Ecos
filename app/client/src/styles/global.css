@@ -369,6 +369,23 @@ body::-webkit-scrollbar {
 .ecos-modal-out { animation: ecos-modal-out 160ms ease-in both; }
 .ecos-backdrop-in { animation: ecos-backdrop-in 200ms ease-out both; }
 .ecos-backdrop-out { animation: ecos-backdrop-out 160ms ease-in both; }
+/* Edição de pasta: a folha sobe da base no celular; no desktop a aba lateral sai de trás do painel principal. */
+@keyframes ecos-folha-in { from { transform: translateY(100%); } to { transform: none; } }
+
+@keyframes ecos-folha-out { to { transform: translateY(100%); } }
+
+@keyframes ecos-aba-in { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+
+@keyframes ecos-aba-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-24px); } }
+
+.ecos-folha-in { animation: ecos-folha-in 300ms cubic-bezier(.2, .8, .2, 1) backwards; }
+
+.ecos-folha-out { animation: ecos-folha-out 200ms ease-in both; }
+
+.ecos-aba-in { animation: ecos-aba-in 260ms cubic-bezier(.2, .8, .2, 1) backwards; will-change: transform, opacity; }
+
+.ecos-aba-out { animation: ecos-aba-out 160ms ease-in both; will-change: transform, opacity; }
+
 .ecos-pop { animation: ecos-pop 260ms ease-out; }
 .ecos-tremer { animation: ecos-tremer 260ms ease-in-out; }
 .ecos-cascata { animation: ecos-fade-in 300ms ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
@@ -377,7 +394,7 @@ body::-webkit-scrollbar {
 .ecos-colapsa[data-aberto="true"] { grid-template-rows: 1fr; opacity: 1; }
 .ecos-colapsa[data-aberto="true"] > div { overflow: visible; }
 @media (prefers-reduced-motion: reduce) {
-  .ecos-focus-in, .ecos-modal-in, .ecos-modal-out, .ecos-backdrop-in, .ecos-backdrop-out, .ecos-pop, .ecos-tremer, .ecos-cascata { animation: none; }
+  .ecos-folha-in, .ecos-folha-out, .ecos-aba-in, .ecos-aba-out, .ecos-focus-in, .ecos-modal-in, .ecos-modal-out, .ecos-backdrop-in, .ecos-backdrop-out, .ecos-pop, .ecos-tremer, .ecos-cascata { animation: none; }
   .ecos-colapsa { transition: none; }
 }
 

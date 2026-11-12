@@ -1,7 +1,9 @@
 import { SkeletonItens } from "@/components/common/SkeletonTelas";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Folder, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Folder, AlertTriangle, MoreHorizontal } from "lucide-react";
+import { EditarPasta } from "@/components/views/EditarPasta";
+import { usePastaAtual } from "@/lib/use-pasta-atual";
 import { ListaDeItens } from "@/components/views/ListaDeItens";
 import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
@@ -37,6 +39,12 @@ export function TaskFolderScreen() {
 
 
   const espaco = useEspacoFiltro();
+  const pastaAtual = usePastaAtual(caminho, "tarefa", espaco);
+  const [editando, setEditando] = useState(false);
+  // O servidor responde depois de o painel fechar: só segue para o nome novo se a pessoa ainda estiver nesta pasta.
+  const caminhoAtualRef = useRef(caminho);
+  caminhoAtualRef.current = caminho;
+  const caminhoOriginalNoPainel = caminho;
   useEffect(() => {
     let vivo = true;
     Promise.all([pastasApi.listar({ tipo: "tarefa", pasta_pai: caminho, espaco }), tarefasApi.listar({ pasta: caminho, espaco, limit: 100 })])
@@ -58,12 +66,14 @@ export function TaskFolderScreen() {
   return (
     <div className="px-4 pt-1">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 font-display text-2xl text-text-primary">
+        <h1 className="group flex items-center gap-2 font-display text-2xl text-text-primary">
           <button type="button" onClick={() => navigate(-1)} aria-label="Voltar para tarefas" className="-ml-1 rounded-lg p-1 text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary"><ChevronLeft size={21} /></button>
           <Folder size={22} className="text-cyan" />
           {nomeExibicao}
+          {pastaAtual && <button type="button" onClick={() => setEditando(true)} aria-label="Editar esta pasta" title="Editar esta pasta" className="ml-0.5 rounded-lg p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface-2 hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-60"><MoreHorizontal size={18} /></button>}
         </h1>
       </div>
+      {editando && pastaAtual && <EditarPasta pasta={pastaAtual} tipo="tarefa" espaco={espaco} aoFechar={() => setEditando(false)} aoSalvar={(novo) => { if (novo !== caminhoOriginalNoPainel && caminhoAtualRef.current === caminhoOriginalNoPainel) navigate(`/tarefas/pasta/${caminhoPastaNaRota(novo)}`, { replace: true }); }} />}
       {erro && (
         <div className="mb-4 flex items-start gap-2 rounded-2xl border border-error/40 bg-error/10 p-3 text-sm text-error">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" strokeWidth={1.75} />
