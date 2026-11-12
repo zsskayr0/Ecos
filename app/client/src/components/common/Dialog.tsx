@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
 /**
  * Pilha de diálogos abertos: só o do topo reage ao Esc, então um popup dentro
@@ -39,6 +39,8 @@ interface DialogProps {
   className?: string;
   /** Clique no scrim fecha. Padrão: true. */
   fecharNoScrim?: boolean;
+  /** Ajuste de posição em linha (ex.: acompanhar o teclado virtual). */
+  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -48,7 +50,7 @@ interface DialogProps {
  * da `ArmadilhaFoco` montada na raiz, que vale para todo `aria-modal="true"`.
  * O scrim é o próprio contêiner (não um botão), logo não entra na ordem de Tab.
  */
-export function Dialog({ onFechar, rotulo, rotuloId, descricaoId, className = "fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4", fecharNoScrim = true, children }: DialogProps) {
+export function Dialog({ onFechar, rotulo, rotuloId, descricaoId, className = "fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4", fecharNoScrim = true, style, children }: DialogProps) {
   useEscFecha(true, onFechar);
   return (
     <div
@@ -58,6 +60,7 @@ export function Dialog({ onFechar, rotulo, rotuloId, descricaoId, className = "f
       aria-labelledby={rotuloId}
       aria-describedby={descricaoId}
       className={className}
+      style={style}
       onMouseDown={(e) => { if (fecharNoScrim && e.target === e.currentTarget) onFechar(); }}
     >
       {children}

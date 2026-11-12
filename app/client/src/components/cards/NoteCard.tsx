@@ -12,7 +12,7 @@ import { anexosDaNota } from "@/lib/note-media";
 import { alternarChecklist, cortarCorpo, primeiroLink } from "@/lib/checklist";
 import { notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
-import { BotaoAcao, CLASSE_BARRA, AvisoCortado, CartaoLink, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, type PastaOpcao } from "./feed-comum";
+import { BotaoAcao, CLASSE_BARRA, aoClicarCartao, CLASSE_CARTAO_CLICAVEL, AvisoCortado, CartaoLink, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, type PastaOpcao } from "./feed-comum";
 
 const MAX_MINIATURAS = 3;
 
@@ -59,7 +59,8 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
   return (
     <article
       title={MOTIVO_LABEL[nota.motivoRanking]}
-      className={`group/cartao flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${cores.border}`}
+      onClick={aoClicarCartao(abrir)}
+      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${cores.border}`}
     >
       <div className="flex min-h-7 items-center justify-between gap-2">
         <PastaChip caminho={pasta} />

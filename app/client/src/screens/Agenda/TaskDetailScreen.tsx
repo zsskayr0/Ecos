@@ -225,7 +225,7 @@ export function TaskDetailScreen() {
 
   return <div className="ecos-detail-page min-w-0"><DetailHeader onBack={() => navigate(-1)} actions={tarefa && <>
     <BotaoCopiarCaminho variante="rotulo" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />
-    <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar tarefa" className={`${DETAIL_ACTION} text-text-secondary`}><Copy size={18} />Duplicar</button>
-    <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
+    <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar tarefa" title="Duplicar" className={`${DETAIL_ACTION} text-text-secondary`}><Copy size={18} /></button>
+    <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar" className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} /></button>
   </>} />{conteudo}</div>;
 }

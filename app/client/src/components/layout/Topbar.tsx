@@ -77,9 +77,9 @@ export function Topbar() {
         )}
       </div>}
 
-      <button onClick={() => navigate("/notificacoes")} aria-label="Notificações" className="relative p-1">
+      <button onClick={() => navigate("/notificacoes")} aria-label="Notificações" className="relative -mr-2 flex h-11 w-11 items-center justify-center">
         <Bell size={22} strokeWidth={1.75} className="text-text-primary" />
-        {naoLidas > 0 && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-cyan" />}
+        {naoLidas > 0 && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-cyan" />}
       </button>
     </header>
   );

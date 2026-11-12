@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 interface AvatarProps {
   nome: string;
   corFundo?: string;
@@ -14,15 +16,19 @@ export function Avatar({ nome, corFundo = "#3E6FA8", tamanho = 36, url }: Avatar
     .map((p) => p[0]?.toUpperCase())
     .join("");
 
-  if (url) {
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => setFalhou(false), [url]);
+
+  if (url && !falhou) {
     return (
       <img
         src={url}
         alt={nome}
+        onError={() => setFalhou(true)}
         width={tamanho}
         height={tamanho}
         className="rounded-full object-cover shrink-0"
-        style={{ width: tamanho, height: tamanho }}
+        style={{ width: tamanho, height: tamanho, minWidth: tamanho, maxWidth: "none", objectFit: "cover", borderRadius: "50%" }}
       />
     );
   }

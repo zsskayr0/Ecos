@@ -284,8 +284,8 @@ const ROTULO_AGRUPAMENTO: Record<AgruparPor, string> = { prazo: "Prazo", priorid
 function lerAgruparPor(): AgruparPor {
   try {
     const salvo = localStorage.getItem("ecos:agrupada:por");
-    return salvo === "prioridade" || salvo === "pasta" ? salvo : "prazo";
-  } catch { return "prazo"; }
+    return salvo === "prioridade" || salvo === "prazo" ? salvo : "pasta";
+  } catch { return "pasta"; }
 }
 
 function grupoDePrazo(t: Tarefa, hoje: number): string {

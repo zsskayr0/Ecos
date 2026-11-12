@@ -35,13 +35,13 @@ interface ItemMenu {
 /** Navegação lateral do mobile, organizada como o rail do desktop. */
 const MODULOS: ItemMenu[] = [
   { rota: "/hoje", rotulo: "Hoje", Icone: CalendarCheck2 },
+  { rota: "/feed", rotulo: "Feed", Icone: Newspaper },
   { rota: "/agenda", rotulo: "Agenda", Icone: CalendarDays },
   { rota: "/eventos", rotulo: "Eventos", Icone: CalendarClock },
   { rota: "/tarefas", rotulo: "Tarefas", Icone: ListChecks },
   { rota: "/notas", rotulo: "Notas", Icone: StickyNote },
   { rota: "/arquivos", rotulo: "Arquivos", Icone: FolderTree },
   { rota: "/grafico", rotulo: "Galáxia", Icone: Orbit },
-  { rota: "/feed", rotulo: "Feed", Icone: Newspaper },
   { rota: "/cofre", rotulo: "Cofre", Icone: Wallet },
   { rota: "/media", rotulo: "Media", Icone: Library },
 ];
@@ -67,7 +67,7 @@ export function Drawer() {
     if (!montado) return;
     if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setMontado(false); return; }
     setSaindo(true);
-    const t = window.setTimeout(() => { setMontado(false); setSaindo(false); }, 160);
+    const t = window.setTimeout(() => { setMontado(false); setSaindo(false); }, 220);
     return () => window.clearTimeout(t);
   }, [drawerAberto, montado]);
 
@@ -106,8 +106,8 @@ export function Drawer() {
   }
 
   return (
-    <Dialog rotulo="Menu principal" onFechar={fecharDrawer} className={`fixed inset-0 z-50 flex bg-black/50 backdrop-blur-[2px] ${saindo ? "ecos-drawer-sai" : ""}`}>
-      <aside aria-label="Navegação" className="flex h-full w-[82%] max-w-xs flex-col overflow-y-auto border-r border-border bg-surface-1 px-2 py-3 shadow-nav ecos-fade-in">
+    <Dialog rotulo="Menu principal" onFechar={fecharDrawer} className={`fixed inset-0 z-50 flex bg-black/50 backdrop-blur-[2px] ${saindo ? "ecos-drawer-sai" : "ecos-drawer-entra"}`}>
+      <aside aria-label="Navegação" className="flex h-full w-[82%] max-w-xs flex-col overflow-y-auto border-r border-border bg-surface-1 px-2 py-3 shadow-nav">
         <header className="mb-3 flex items-center justify-between px-2">
           <button type="button" onClick={() => ir("/perfil")} className="flex min-w-0 items-center gap-3 rounded-xl p-1 text-left hover:bg-surface-2">
             <Avatar nome={perfil ? nomeExibicao(perfil) : "?"} tamanho={40} url={urlFotoPerfil} />

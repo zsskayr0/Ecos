@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { avatarPerfil } from "./api";
+import { guardarRespostaOffline, obterRespostaOffline } from "./offline-store";
 
 const EVENTO_ATUALIZADO = "ecos:avatar-atualizado";
 const chaveLegada = (id: string) => `ecos:avatar:${id}`;
@@ -54,14 +55,26 @@ async function carregarFoto(id: string, versao?: number | null, forcar = false):
   if (!forcar && fotosEmMemoria.has(id) && versoesEmMemoria.get(id) === versao) return fotosEmMemoria.get(id);
   const existente = carregamentos.get(id);
   if (existente) return existente;
+  const chaveCopia = `avatar:${id}`;
   const carregamento = avatarPerfil.obter(id).then(async (blob) => {
     if (!blob) blob = await migrarFotoLegada(id);
+    // Guarda uma cópia: sem rede ou com o servidor instável, a foto continua aparecendo (o app funciona offline).
+    if (blob) void guardarRespostaOffline(chaveCopia, { blob }).catch(() => undefined);
     const anterior = fotosEmMemoria.get(id);
     const proxima = blob ? URL.createObjectURL(blob) : fotoLegada(id);
-    if (anterior?.startsWith("blob:") && anterior !== proxima) URL.revokeObjectURL(anterior);
+    // Outros componentes ainda podem estar exibindo o endereço anterior: só o libera depois de todos trocarem.
+    if (anterior?.startsWith("blob:") && anterior !== proxima) window.setTimeout(() => URL.revokeObjectURL(anterior), 60_000);
     fotosEmMemoria.set(id, proxima);
     versoesEmMemoria.set(id, versao);
     return proxima;
+  }).catch(async (erro) => {
+    // Falhou (offline, limite de requisições, servidor reiniciando): usa a última foto guardada, mas sem marcar a versão como
+    // carregada, para uma nova tentativa buscar a atual.
+    const copia = await obterRespostaOffline<{ blob?: Blob }>(chaveCopia).catch(() => undefined);
+    if (!copia?.blob) throw erro;
+    const url = URL.createObjectURL(copia.blob);
+    fotosEmMemoria.set(id, url);
+    return url;
   }).finally(() => carregamentos.delete(id));
   carregamentos.set(id, carregamento);
   return carregamento;
@@ -118,6 +131,17 @@ export function useFotoPerfil(id?: string, versao?: number | null) {
     setUrl(id ? fotosEmMemoria.get(id) ?? fotoLegada(id) : undefined);
     void recarregar();
   }, [id, recarregar, versao]);
+  // Se a primeira busca falhou (conexão, limite de requisições), tenta de novo com o tempo e ao voltar a rede/foco,
+  // em vez de deixar as iniciais até recarregar a página.
+  useEffect(() => {
+    if (!id) return;
+    const pendente = () => versoesEmMemoria.get(id) !== versao;
+    const tentar = () => { if (pendente()) void recarregar(); };
+    const atrasos = [3_000, 10_000, 30_000, 90_000].map((ms) => window.setTimeout(tentar, ms));
+    window.addEventListener("online", tentar);
+    window.addEventListener("focus", tentar);
+    return () => { atrasos.forEach(window.clearTimeout); window.removeEventListener("online", tentar); window.removeEventListener("focus", tentar); };
+  }, [id, versao, recarregar]);
   useEffect(() => {
     const atualizar = (evento: Event) => { if ((evento as CustomEvent<string>).detail === id) void recarregar(true); };
     window.addEventListener(EVENTO_ATUALIZADO, atualizar);

@@ -100,17 +100,19 @@ export function SearchScreen() {
   return (
     <div className="px-4 pt-1">
       <div className="mb-5 flex items-center gap-2">
-        <button aria-label="Voltar" onClick={() => navigate(-1)} className="text-text-muted">
+        <button aria-label="Voltar" onClick={() => navigate(-1)} className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-text-muted">
           <ChevronLeft size={22} />
         </button>
-        <div className="flex flex-1 items-center gap-2 rounded-2xl bg-surface-1 px-4 py-2.5">
-          <SearchIcon size={16} strokeWidth={1.75} className="text-text-muted" />
+        <div className="flex flex-1 items-center gap-2 rounded-2xl border border-transparent bg-surface-1 px-4 py-2.5 transition-colors focus-within:border-cyan/60">
+          <SearchIcon size={16} strokeWidth={1.75} className="shrink-0 text-text-muted" />
           <input
             autoFocus
+            type="search"
+            enterKeyHint="search"
             value={termo}
             onChange={(e) => setTermo(e.target.value)}
             placeholder="Buscar Notas, Tarefas, Transações..."
-            className="w-full bg-transparent text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none"
+            className="min-w-0 flex-1 appearance-none bg-transparent text-[15px] text-text-primary outline-none ring-0 placeholder:text-text-muted focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
           />
         </div>
       </div>

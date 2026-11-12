@@ -10,8 +10,8 @@ import { CreateFlow } from "@/screens/Create/CreateFlow";
 import { useAppUI } from "@/lib/ui-context";
 import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
 
-const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/cofre", "/tarefas", "/media", "/arquivos", "/busca", "/lixeira"];
-const REGEX_SECAO_LARGA = /^\/(?:feed|notas|busca|tarefas|agenda|notificacoes)(?:\/|$)/i;
+const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/eventos", "/cofre", "/tarefas", "/media", "/arquivos", "/busca", "/lixeira"];
+const REGEX_SECAO_LARGA = /^\/(?:feed|notas|busca|tarefas|agenda|eventos|notificacoes)(?:\/|$)/i;
 /** Folder-browsing sub-routes keep the topbar too (avatar/notifications
  * shouldn't disappear just because you went one level deeper) — but not
  * `/pasta/nova` (a form screen with its own back+cancel header) and not

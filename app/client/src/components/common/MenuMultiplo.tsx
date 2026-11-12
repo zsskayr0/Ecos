@@ -27,18 +27,21 @@ interface Props {
   pesquisavel?: boolean;
   placeholderBusca?: string;
   arvore?: boolean;
+  /** Posição fixa na tela: o menu escapa de contêineres com rolagem (ex.: faixa de filtros do celular). */
+  fixo?: boolean;
 }
 
 const VALOR_TODAS = "\u0000todas";
 
 /** Menu suspenso de escolha múltipla (mesmo visual do `MenuSuspenso`): clicar marca/desmarca e o menu continua aberto. */
-export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gatilho, classeGatilho = "", corAtiva, larguraMenu = "min-w-[14rem]", pesquisavel = false, placeholderBusca = "Pesquisar…", arvore = false }: Props) {
+export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gatilho, classeGatilho = "", corAtiva, larguraMenu = "min-w-[14rem]", pesquisavel = false, placeholderBusca = "Pesquisar…", arvore = false, fixo = false }: Props) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
   const [montado, setMontado] = useState(false);
   const [destaque, setDestaque] = useState(0);
   const [consulta, setConsulta] = useState("");
+  const [posicao, setPosicao] = useState<CSSProperties>({});
 
   const todasOpcoes: OpcaoMultipla[] = [{ valor: VALOR_TODAS, rotulo: todas.rotulo, icone: todas.icone }, ...opcoes];
   const termo = consulta.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
@@ -52,6 +55,26 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
     setConsulta("");
     window.setTimeout(() => setMontado(false), 110);
   }, []);
+
+  function abrir() {
+    if (fixo) {
+      const r = raiz.current!.getBoundingClientRect();
+      const largura = Math.min(arvore ? 288 : 224, window.innerWidth - 16);
+      const abaixo = window.innerHeight - r.bottom - 14;
+      const subir = abaixo < 200 && r.top > abaixo;
+      setPosicao({ position: "fixed", marginTop: 0, width: largura, minWidth: 0, left: Math.max(8, Math.min(r.left, window.innerWidth - largura - 8)), right: "auto",
+        top: subir ? "auto" : r.bottom + 6, bottom: subir ? window.innerHeight - r.top + 6 : "auto", maxHeight: Math.max(160, Math.min(288, subir ? r.top - 14 : abaixo)) });
+    }
+    setMontado(true); setAberto(true);
+  }
+
+  useEffect(() => {
+    if (!aberto || !fixo) return;
+    const aoRolar = (e: Event) => { if (!(e.target instanceof Node) || !raiz.current?.contains(e.target)) fechar(); };
+    window.addEventListener("resize", fechar);
+    document.addEventListener("scroll", aoRolar, true);
+    return () => { window.removeEventListener("resize", fechar); document.removeEventListener("scroll", aoRolar, true); };
+  }, [aberto, fixo, fechar]);
 
   function alternar(valor: string) {
     if (valor === VALOR_TODAS) return onChange([]);
@@ -90,18 +113,18 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
   return (
     <div ref={raiz} className="relative">
       <button type="button" data-gatilho aria-haspopup="menu" aria-expanded={aberto} aria-controls={id} aria-label={ariaLabel}
-        onClick={() => (aberto ? fechar() : (setMontado(true), setAberto(true)))} className={classeGatilho}
+        onClick={() => (aberto ? fechar() : abrir())} className={classeGatilho}
         style={corAtiva ? ({ borderColor: misturar(corAtiva, 70), backgroundColor: misturar(corAtiva, 18) } as CSSProperties) : undefined}>
         {gatilho({ aberto })}
       </button>
       {montado && (
-        <div id={id} role="menu" aria-label={ariaLabel} aria-multiselectable data-saindo={!aberto}
-          className={`ecos-menu absolute left-0 z-40 mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu}`}>
+        <div id={id} role="menu" aria-label={ariaLabel} aria-multiselectable data-saindo={!aberto} style={fixo ? posicao : undefined}
+          className={`ecos-menu ${fixo ? "z-50" : "absolute left-0 z-40"} mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu}`}>
           {pesquisavel && (
             <label className="sticky top-0 z-20 mb-1 flex h-10 items-center gap-2 rounded-lg border border-border bg-surface-1 px-2.5 focus-within:border-steel-400/70">
               <Search size={14} className="shrink-0 text-text-muted" aria-hidden />
               <input data-busca type="search" value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder={placeholderBusca}
-                className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted" aria-label={placeholderBusca} />
+                style={{ outline: "none", boxShadow: "none" }} className="min-w-0 flex-1 appearance-none bg-transparent text-sm text-text-primary outline-none ring-0 placeholder:text-text-muted [&::-webkit-search-cancel-button]:appearance-none" aria-label={placeholderBusca} />
               {consulta && <button type="button" onClick={() => setConsulta("")} className="text-xs text-text-muted hover:text-text-primary" aria-label="Limpar pesquisa">Limpar</button>}
             </label>
           )}

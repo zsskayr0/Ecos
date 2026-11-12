@@ -460,17 +460,16 @@ body::-webkit-scrollbar {
 
 
 
-/* Saída do Drawer: o contêiner some e o painel desliza para a esquerda. */
-
+/* Drawer: o painel desliza da esquerda para entrar e volta para a esquerda ao sair; o fundo escurece e some junto. */
+@keyframes ecos-drawer-fundo-entra { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ecos-drawer-sai { from { opacity: 1; } to { opacity: 0; } }
-
-@keyframes ecos-drawer-painel-sai { from { transform: translateX(0); } to { transform: translateX(-24px); } }
-
-.ecos-drawer-sai { animation: ecos-drawer-sai 160ms ease-in forwards; pointer-events: none; }
-
-.ecos-drawer-sai > aside { animation: ecos-drawer-painel-sai 160ms ease-in forwards; }
-
-@media (prefers-reduced-motion: reduce) { .ecos-drawer-sai, .ecos-drawer-sai > aside { animation: none; } }
+@keyframes ecos-drawer-painel-entra { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes ecos-drawer-painel-sai { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.ecos-drawer-entra { animation: ecos-drawer-fundo-entra 220ms ease-out; }
+.ecos-drawer-entra > aside { animation: ecos-drawer-painel-entra 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ecos-drawer-sai { animation: ecos-drawer-sai 220ms ease-in forwards; pointer-events: none; }
+.ecos-drawer-sai > aside { animation: ecos-drawer-painel-sai 220ms ease-in forwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-drawer-entra, .ecos-drawer-entra > aside, .ecos-drawer-sai, .ecos-drawer-sai > aside { animation: none; } }
 
 
 

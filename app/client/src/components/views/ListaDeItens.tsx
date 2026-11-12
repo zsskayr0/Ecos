@@ -188,7 +188,8 @@ export function ListaDeItens({ itens: itensDoServidor, modo, chave, mostrarCriad
 
   function selecionar(e: MouseEvent, item: FeedItem, ordem = itensVisiveis) {
     const controle = (e.target as HTMLElement).closest("[data-ecos-selection-control]");
-    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !controle) return false;
+    // Com a seleção já ativa, um toque/clique no item o alterna (como na galeria do celular).
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !controle && selecionados.size === 0) return false;
     e.preventDefault();
     e.stopPropagation();
     const chaveItem = chaveDo(item);
@@ -206,8 +207,33 @@ export function ListaDeItens({ itens: itensDoServidor, modo, chave, mostrarCriad
     if (!e.shiftKey) ancora.current = chaveItem;
     return true;
   }
+  /** Pressionar e segurar (toque) seleciona o item e liga o modo de seleção; o clique que vem logo depois é engolido. */
+  const pressao = useRef<{ id: number; x: number; y: number; timer: number } | null>(null);
+  const engolirClique = useRef(false);
+  function alternar(item: FeedItem) {
+    const chaveItem = chaveDo(item);
+    setSelecionados((anteriores) => { const proximos = new Set(anteriores); if (proximos.has(chaveItem)) proximos.delete(chaveItem); else proximos.add(chaveItem); return proximos; });
+    ancora.current = chaveItem;
+  }
+  function soltarPressao() { if (pressao.current) { window.clearTimeout(pressao.current.timer); pressao.current = null; } }
+  function aoPressionar(e: React.PointerEvent, item: FeedItem) {
+    if (e.pointerType !== "touch" || (e.target as HTMLElement).closest("[data-ecos-selection-control]")) return;
+    soltarPressao();
+    const timer = window.setTimeout(() => {
+      pressao.current = null;
+      engolirClique.current = true;
+      navigator.vibrate?.(15);
+      alternar(item);
+    }, 450);
+    pressao.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
+  }
+  function aoMoverPressao(e: React.PointerEvent) {
+    const p = pressao.current;
+    if (p && p.id === e.pointerId && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) soltarPressao();
+  }
+  const modoSelecao = selecionados.size > 0;
   const selecionado = (item: FeedItem) => selecionados.has(chaveDo(item));
-  const envolver = (item: FeedItem, filho: React.ReactNode, estaSaindo = false, estaEntrando = false) => !selecionavel ? <div key={`${item.tipo}-${item.id}`} className={estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""}>{filho}</div> : <div key={`${item.tipo}-${item.id}`} onClickCapture={(e) => { selecionar(e, item); }} className={`group relative [&>button]:pl-10 [&>article]:pl-10 ${estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""} ${selecionado(item) ? "rounded-card ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}><input data-ecos-selection-control type="checkbox" checked={selecionado(item)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className="absolute left-3 top-3 z-10 h-5 w-5 cursor-pointer appearance-none rounded-md border-2 border-text-muted bg-surface-1 shadow-sm transition-all checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[3px] checked:after:text-[13px] checked:after:leading-[15px] checked:after:text-white checked:after:content-['✓'] hover:border-steel-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100" />{filho}</div>;
+  const envolver = (item: FeedItem, filho: React.ReactNode, estaSaindo = false, estaEntrando = false) => !selecionavel ? <div key={`${item.tipo}-${item.id}`} className={estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""}>{filho}</div> : <div key={`${item.tipo}-${item.id}`} onPointerDown={(e) => aoPressionar(e, item)} onPointerMove={aoMoverPressao} onPointerUp={soltarPressao} onPointerCancel={soltarPressao} onContextMenu={(e) => { if (engolirClique.current) e.preventDefault(); }} onClickCapture={(e) => { if (engolirClique.current) { engolirClique.current = false; e.preventDefault(); e.stopPropagation(); return; } selecionar(e, item); }} className={`group relative [@media(hover:none)]:select-none ${modoSelecao ? "[&>button]:pl-10 [&>article]:pl-10" : "[@media(hover:hover)]:[&>button]:pl-10 [@media(hover:hover)]:[&>article]:pl-10"} ${estaSaindo ? "ecos-item-sai pointer-events-none" : estaEntrando ? "ecos-item-entra" : ""} ${selecionado(item) ? "rounded-card ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}><input data-ecos-selection-control type="checkbox" checked={selecionado(item)} readOnly aria-label={`Selecionar ${item.titulo || "item"}`} title="Selecionar — Shift seleciona um intervalo" className={`absolute left-3 top-3 z-10 h-5 w-5 cursor-pointer appearance-none rounded-md border-2 border-text-muted bg-surface-1 shadow-sm transition-all checked:border-steel-400 checked:bg-steel-500 checked:after:block checked:after:pl-[3px] checked:after:text-[13px] checked:after:leading-[15px] checked:after:text-white checked:after:content-['✓'] hover:border-steel-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${modoSelecao ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100"}`} />{filho}</div>;
   const acoes = itensSelecionados.length > 0 && <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-400/50 bg-surface-1 p-2 shadow-nav" role="toolbar" aria-label="Ações para itens selecionados">
     <span className="px-2 text-sm font-medium text-text-primary">{itensSelecionados.length} selecionado{itensSelecionados.length === 1 ? "" : "s"}</span>
     <div className="relative"><button type="button" onClick={() => { setMenuMoverAberto((aberto) => !aberto); setMenuPrioridadeAberto(false); setMenuEquipeAberto(false); }} disabled={processando} className="flex min-h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3 disabled:opacity-40"><FolderInput size={16} className="text-steel-300" />Mover<ChevronDown size={15} /></button>{menuMoverAberto && <div role="menu" className="absolute left-0 top-full z-30 mt-1 max-h-64 w-56 overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><button type="button" role="menuitem" onClick={() => void moverSelecionados(null)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-text-primary hover:bg-surface-2">Sem pasta</button><ArvorePastas opcoes={pastasDisponiveis.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[]} onSelect={(p) => void moverSelecionados(p)} /></div>}</div>

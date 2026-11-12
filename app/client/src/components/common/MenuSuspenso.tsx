@@ -1,4 +1,5 @@
 import { ArvorePastas } from "./ArvorePastas";
+import { useArrastarRolagem } from "@/lib/arrastar-rolagem";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, Search, type LucideIcon } from "lucide-react";
 import "./menu-suspenso.css";
@@ -147,6 +148,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
     return () => window.clearTimeout(t);
   }, [aberto, buscar]);
 
+  const arrastarMenu = useArrastarRolagem("y");
   const atual = opcoes.find((o) => o.valor === valor);
   return (
     <div ref={raiz} className="relative">
@@ -156,8 +158,8 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
         {gatilho({ aberto, atual })}
       </button>
       {montado && (
-        <div id={id} role="menu" aria-label={ariaLabel} data-alinhar={alinhar} data-saindo={!aberto} style={fixo ? posicao : undefined}
-          className={`ecos-menu ${classeMenu} absolute z-40 mt-1.5 ${largo ? "max-h-[25rem]" : "max-h-72"} overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
+        <div id={id} role="menu" aria-label={ariaLabel} {...arrastarMenu} data-alinhar={alinhar} data-saindo={!aberto} style={fixo ? posicao : undefined}
+          className={`ecos-menu no-scrollbar ${classeMenu} absolute z-40 mt-1.5 ${largo ? "max-h-[25rem]" : "max-h-72"} overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
           {arvore ? <ArvorePastas opcoes={opcoes} valores={valor === undefined ? [] : [valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
           {buscar && (
             <label className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 flex h-11 items-center gap-2 bg-surface-1 px-3.5 text-text-muted focus-within:text-text-primary">

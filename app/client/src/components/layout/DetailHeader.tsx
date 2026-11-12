@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 export const DETAIL_ACTION = "flex min-h-12 min-w-12 items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40";
 
 /** Shared safe-area header; its measured height keeps floating editors below it. */
-export function DetailHeader({ onBack, actions }: { onBack: () => void; actions?: ReactNode }) {
+export function DetailHeader({ onBack, actions, titulo }: { onBack: () => void; actions?: ReactNode; /** Conteúdo ao lado da seta de voltar (ex.: título editável). */ titulo?: ReactNode }) {
   const header = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const element = header.current;
@@ -18,7 +18,8 @@ export function DetailHeader({ onBack, actions }: { onBack: () => void; actions?
   }, []);
 
   return <header ref={header} className="ecos-detail-header sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-base" aria-label="Ações do documento">
-    <button type="button" onClick={onBack} className={`${DETAIL_ACTION} text-text-secondary`}><ChevronLeft size={20} />Voltar</button>
-    {actions && <div className="flex items-center gap-1 sm:gap-3">{actions}</div>}
+    <button type="button" onClick={onBack} aria-label="Voltar" title="Voltar" className={`${DETAIL_ACTION} text-text-secondary`}><ChevronLeft size={20} /></button>
+    {titulo && <div className="min-w-0 flex-1">{titulo}</div>}
+    <div className="flex shrink-0 items-center gap-1 sm:gap-3"><span data-slot-modo-editor className="flex items-center gap-1 empty:hidden" />{actions}</div>
   </header>;
 }

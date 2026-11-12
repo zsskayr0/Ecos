@@ -10,7 +10,7 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { tarefas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { alternarChecklist, cortarCorpo } from "@/lib/checklist";
-import { AvisoCortado, BotaoAcao, CLASSE_BARRA, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
+import { AvisoCortado, BotaoAcao, CLASSE_BARRA, CLASSE_CARTAO_CLICAVEL, aoClicarCartao, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
 
 /** A borda esquerda carrega a prioridade (como o roxo/verde das notas) — o fundo vermelho quebrava o ritmo do feed. */
 const BORDA_POR_PRIORIDADE = { baixa: "border-cyan/40", media: "border-warning/50", alta: "border-error" } as const;
@@ -79,7 +79,8 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
 
   return (
     <article
-      className={`group/cartao flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${BORDA_POR_PRIORIDADE[prioridade]} ${concluida ? "opacity-70" : ""}`}
+      onClick={aoClicarCartao((e) => abrirDocumento(`/tarefa/${tarefa.id}`, e))}
+      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${BORDA_POR_PRIORIDADE[prioridade]} ${concluida ? "opacity-70" : ""}`}
     >
       <div className="flex min-h-7 items-center justify-between gap-2">
         <PastaChip caminho={pasta} />
