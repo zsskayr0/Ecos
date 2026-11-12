@@ -64,14 +64,11 @@ export function IconeArquivo({ a, personalizados, size = 14, className = "" }: {
 }
 
 /** Ícone da pasta com a cor e o ícone que a pessoa escolheu ao criá-la; sem escolha, a pasta padrão (aberta ou fechada). */
-export function IconePasta({ pasta, aberta = false, size = 14, className = "" }: { pasta: PastaExplorador; aberta?: boolean; size?: number; className?: string }) {
-  const imagem = idDoIconeImagem(pasta.icone);
-  const caixa = { width: size, height: size };
-  if (imagem) return <span aria-hidden className={`flex shrink-0 items-center justify-center ${className}`} style={caixa}><IconeImagem id={imagem} size={size} /></span>;
-  const cor = pasta.cor || undefined;
+/** No explorador as pastas são sempre a pasta simples: ícone e cor personalizados valem nas telas de pastas, não aqui. */
+export function IconePasta({ aberta = false, size = 14, className = "" }: { pasta?: PastaExplorador; aberta?: boolean; size?: number; className?: string }) {
   return (
-    <span aria-hidden className={`flex shrink-0 items-center justify-center ${cor ? "" : "text-text-muted"} ${className}`} style={cor ? { ...caixa, color: cor } : caixa}>
-      {pasta.icone ? <IconePorNome nome={pasta.icone} padrao="Folder" size={size} /> : aberta ? <FolderOpen size={size} strokeWidth={1.7} /> : <Folder size={size} strokeWidth={1.7} />}
+    <span aria-hidden className={`flex shrink-0 items-center justify-center text-text-muted ${className}`} style={{ width: size, height: size }}>
+      {aberta ? <FolderOpen size={size} strokeWidth={1.7} /> : <Folder size={size} strokeWidth={1.7} />}
     </span>
   );
 }
