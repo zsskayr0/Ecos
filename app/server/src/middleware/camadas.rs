@@ -40,8 +40,10 @@ pub fn completar(api: Router, static_dir: Option<&Path>) -> Router {
         .layer(security_headers::nosniff())
         .layer(security_headers::referrer_policy())
         // limite global, frouxo — defesa em profundidade além dos limites específicos de cada grupo de rota sensível
-        // (seção 5.4). Preflights (OPTIONS) não contam.
-        .layer(RateLimitLayer::new(300, Duration::from_secs(60)));
+        // (seção 5.4). Preflights (OPTIONS) não contam. O limite é por IP, e atrás do Docker/proxy/NAT vários
+        // aparelhos e pessoas dividem o mesmo IP (cada tela ainda consulta a API em segundo plano), então 300/min
+        // estourava no uso normal; o rigor fica nas rotas de login, recuperação e pareamento.
+        .layer(RateLimitLayer::new(3000, Duration::from_secs(60)));
 
     if let Some(dir) = static_dir {
         let servico = tower_http::services::ServeDir::new(dir).not_found_service(tower_http::services::ServeFile::new(dir.join("index.html")));

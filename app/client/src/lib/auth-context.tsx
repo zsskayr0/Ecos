@@ -31,7 +31,16 @@ type Status = "carregando" | "autenticado" | "deslogado" | "indisponivel";
  * o app espera por ele em vez de mostrar o login como se a sessão tivesse caído. */
 const CHAVE_SESSAO_ATIVA = "ecos.sessao.ativa";
 const lerSessaoAtiva = () => { try { return localStorage.getItem(CHAVE_SESSAO_ATIVA) === "1"; } catch { return false; } };
-const gravarSessaoAtiva = (ativa: boolean) => { try { ativa ? localStorage.setItem(CHAVE_SESSAO_ATIVA, "1") : localStorage.removeItem(CHAVE_SESSAO_ATIVA); } catch { /* cache indisponível */ } };
+const CHAVE_PERFIL_LOCAL = "ecos:perfil-offline";
+const gravarSessaoAtiva = (ativa: boolean) => {
+  try {
+    if (ativa) localStorage.setItem(CHAVE_SESSAO_ATIVA, "1");
+    else { localStorage.removeItem(CHAVE_SESSAO_ATIVA); localStorage.removeItem(CHAVE_PERFIL_LOCAL); }
+  } catch { /* cache indisponível */ }
+};
+/** Cópia do último perfil: sem servidor o app abre direto com ela (modo offline) em vez de esperar numa tela de erro. */
+const gravarPerfilLocal = (p: Perfil) => { try { localStorage.setItem(CHAVE_PERFIL_LOCAL, JSON.stringify(p)); } catch { /* cache indisponível */ } };
+const lerPerfilLocal = (): Perfil | null => { try { const t = localStorage.getItem(CHAVE_PERFIL_LOCAL); return t ? JSON.parse(t) as Perfil : null; } catch { return null; } };
 
 interface AuthState {
   status: Status;
@@ -63,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [pedidoSaida, setPedidoSaida] = useState<PedidoSaida | null>(null);
+  const [usandoCopia, setUsandoCopia] = useState(false);
 
   const recarregarPerfil = useCallback(async () => {
     try {
@@ -70,7 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registrarCoresDasEquipes(p.equipes);
       setPerfil(p);
       setStatus("autenticado");
+      setUsandoCopia(false);
       gravarSessaoAtiva(true);
+      gravarPerfilLocal(p);
       agendarPreparacaoOffline(["pessoal", ...p.equipes.map((equipe) => `equipe:${equipe.id}`)]);
     } catch (e) {
       // Uma perda temporária de rede não deve apagar uma sessão válida nem
@@ -81,9 +93,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("deslogado");
         gravarSessaoAtiva(false);
       } else if (lerSessaoAtiva()) {
-        // Servidor fora do ar (conexão recusada, 502/503/504) para quem já estava logado: a sessão pode estar ótima.
+        // Servidor fora do ar ou sem rede para quem já estava logado: a sessão pode estar ótima. Abre o app com a cópia local
+        // do perfil (tudo o que já está no aparelho funciona e as alterações vão para a fila); a conexão volta sozinha depois.
         setErro(mensagemDeErro(e, "Não foi possível falar com o servidor."));
-        setStatus((previous) => previous === "carregando" ? "indisponivel" : previous);
+        const copia = lerPerfilLocal();
+        if (copia) {
+          setPerfil((atual) => atual ?? copia);
+          setUsandoCopia(true);
+          setStatus((previous) => previous === "carregando" ? "autenticado" : previous);
+        } else setStatus((previous) => previous === "carregando" ? "indisponivel" : previous);
       } else {
         setErro(mensagemDeErro(e, "Não foi possível falar com o servidor."));
         // No authenticated session exists during first load. A connection
@@ -159,6 +177,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void limparDadosOffline(); // cache e alterações pendentes pertencem à conta que saiu
     }
   }, [perfil]);
+
+  // Aberto com a cópia local: confere de novo em segundo plano até o servidor responder.
+  useEffect(() => {
+    if (!usandoCopia) return;
+    const tentar = () => { if (navigator.onLine) void recarregarPerfil(); };
+    const timer = window.setInterval(tentar, 10_000);
+    window.addEventListener("online", tentar);
+    return () => { window.clearInterval(timer); window.removeEventListener("online", tentar); };
+  }, [usandoCopia, recarregarPerfil]);
 
   // Enquanto o servidor não volta, tenta de novo sozinho.
   useEffect(() => {

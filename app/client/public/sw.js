@@ -1,4 +1,4 @@
-const CACHE_SHELL = "ecos-shell-v3";
+const CACHE_SHELL = "ecos-shell-v4";
 const ARQUIVOS_INICIAIS = ["/", "/index.html", "/favicon.svg"];
 
 self.addEventListener("install", (evento) => {
@@ -20,7 +20,8 @@ self.addEventListener("fetch", (evento) => {
 
   if (pedido.mode === "navigate") {
     evento.respondWith(
-      fetch(pedido)
+      // Sem rede o servidor pode simplesmente não responder: depois de 4 s abre a cópia guardada do app (offline).
+      Promise.race([fetch(pedido), new Promise((_, rejeitar) => setTimeout(() => rejeitar(new Error("sem resposta")), 4000))])
         .then((resposta) => {
           const copia = resposta.clone();
           void caches.open(CACHE_SHELL).then((cache) => cache.put("/index.html", copia)).catch(() => undefined);

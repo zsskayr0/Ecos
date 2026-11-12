@@ -220,13 +220,26 @@ async function respostaSemServidor<T>(path: string, init?: RequestInit): Promise
   throw new ApiError("CONEXAO_INDISPONIVEL", "Este conteúdo ainda não está disponível offline. Conecte-se uma vez para salvá-lo neste dispositivo.", 0);
 }
 
+/** Quanto esperar o servidor antes de tratá-lo como inacessível. Sem rede, o sistema pode deixar uma conexão pendurada por
+ * mais de um minuto: sem este limite o app ficava preso em vez de abrir com o que já está salvo no aparelho (modo offline). */
+const LIMITE_LEITURA_MS = 8_000;
+const LIMITE_ESCRITA_MS = 20_000;
+function limiteDaRequisicao(path: string, init?: RequestInit): number | null {
+  if (init?.signal || init?.body instanceof FormData || path.startsWith("/me/export") || path.includes("/anexos") || path.startsWith("/arquivos/enviar")) return null;
+  return (init?.method ?? "GET") === "GET" ? LIMITE_LEITURA_MS : LIMITE_ESCRITA_MS;
+}
+
 async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, sincronizando = false): Promise<T> {
   const geracao = geracaoCofre;
   const accessToken = obterAccessToken();
   let resp: Response;
+  const limite = limiteDaRequisicao(path, init);
+  const aborto = limite ? new AbortController() : null;
+  const relogio = limite && aborto ? window.setTimeout(() => aborto.abort(), limite) : 0;
   try {
     resp = await fetch(`${BASE()}${path}`, {
     ...init,
+    ...(aborto ? { signal: aborto.signal } : {}),
     credentials: "include",
     cache: path.startsWith("/vault/") ? "no-store" : init?.cache,
     headers: {
@@ -240,10 +253,12 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
     },
     });
   } catch {
+    window.clearTimeout(relogio);
     if (!sincronizando) return respostaSemServidor<T>(path, init);
     marcarServidorDisponivel(false);
     throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos. Verifique sua conexão e o endereço do servidor.", 0);
   }
+  window.clearTimeout(relogio);
 
   if (path.startsWith("/vault/") && path !== "/vault/bloquear" && geracao !== geracaoCofre) throw new ApiError("VAULT_LOCKED", "Cofre bloqueado. Abra novamente para continuar.", 423);
   if (resp.status < 500) marcarServidorDisponivel(true);
