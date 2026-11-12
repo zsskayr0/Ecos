@@ -2,7 +2,7 @@
   "name": "ecos-client",
   "private": true,
   "license": "MIT",
-  "version": "1.1.0-alpha",
+  "version": "1.2.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "vite",
