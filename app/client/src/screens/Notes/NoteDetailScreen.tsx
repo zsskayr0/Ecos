@@ -16,6 +16,8 @@ import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
 import { LeituraComTinta } from "@/components/tinta/LeituraComTinta";
 import { preservandoScroll } from "@/lib/preservar-scroll";
+import { AtalhoTema } from "@/components/editor/AtalhoTema";
+import { OpcoesNota } from "@/components/editor/OpcoesNota";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
@@ -23,7 +25,6 @@ import { useIsDesktop } from "@/lib/use-viewport";
 import { NoteEditorDesktop } from "./NoteEditorDesktop";
 import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
 import { pastaDoArquivoDeNota } from "@/lib/caminho-item";
-import { TitleField } from "@/components/common/TitleField";
 
 import { mensagemDeErro } from "@/lib/erros";
 import { useAtraso } from "@/lib/use-atraso";
@@ -117,7 +118,10 @@ function NoteDetailMobile() {
   useEffect(() => {
     if (!nota || jaAbriu.current === nota.id) return;
     jaAbriu.current = nota.id;
-    if (lerPreferenciasAplicativo().notaAbreEditando) entrarEdicao();
+    if (lerPreferenciasAplicativo().notaAbreEditando) { entrarEdicao(); return; }
+    // Nota com escrita à mão abre direto na edição (o CorpoEditor entra no Modo de escrita), sem passar pela leitura.
+    const abrindo = nota.id;
+    void notas.tinta.obter(abrindo).then((t) => { if (jaAbriu.current === abrindo && t.tracos.some((x) => !x.apagado_em)) entrarEdicao(); }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nota]);
 
@@ -205,11 +209,18 @@ function NoteDetailMobile() {
 
   return (
     <div className="ecos-detail-page min-w-0">
-      <DetailHeader onBack={() => navigate(-1)} actions={<>
-        <BotaoCopiarCaminho variante="rotulo" tipo="nota" espaco={nota.espaco} pasta={nota.caminho_arquivo ? pastaDoArquivoDeNota(nota.caminho_arquivo) : null} titulo={editando ? tituloEdit : nota.titulo} />
-        {!editando && <button type="button" onClick={entrarEdicao} className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} />Editar</button>}
-        {editando && <button type="button" disabled={salvando || enviandoAnexo} onClick={salvar} className={`${DETAIL_ACTION} text-steel-300`}>Concluir</button>}
-        <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} />Apagar</button>
+      <DetailHeader onBack={() => navigate(-1)}
+        titulo={editando ? <input aria-label="Título da nota" value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} placeholder="Título da nota" enterKeyHint="done"
+          className="block w-full min-w-0 truncate border-0 border-b border-transparent bg-transparent py-1 font-display text-xl text-text-primary caret-steel-300 transition-colors [outline:none!important] [box-shadow:none!important] placeholder:text-text-muted focus:border-steel-400" /> : <h1 className="truncate border-b border-transparent py-1 font-display text-xl text-text-primary">{nota.titulo}</h1>}
+        actions={<>
+        {!editando && <button type="button" onClick={entrarEdicao} aria-label="Editar nota" title="Editar" className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} /></button>}
+        <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : salvando ? "Salvando…" : editando ? "Editando" : "Salvo"} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} classeBotao={`${DETAIL_ACTION} text-text-secondary`}
+          anexos={editando ? <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact /> : undefined}
+          acoes={(fechar) => <>
+            <AtalhoTema />
+            <BotaoCopiarCaminho variante="linha" tipo="nota" espaco={nota.espaco} pasta={nota.caminho_arquivo ? pastaDoArquivoDeNota(nota.caminho_arquivo) : null} titulo={editando ? tituloEdit : nota.titulo} />
+            <button type="button" disabled={salvando} onClick={() => { fechar(); setConfirmandoDelete(true); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-error/40 px-3 text-sm text-error transition-colors hover:bg-error/10 disabled:opacity-40"><Trash2 size={16} />Apagar nota</button>
+          </>} />
       </>} />
       <div className="ecos-detail-content">
 
@@ -224,13 +235,10 @@ function NoteDetailMobile() {
 
       {editando ? (
         <div className="flex min-w-0 flex-col gap-6">
-          <TitleField ariaLabel="Título da nota" value={tituloEdit} onChange={setTituloEdit} placeholder="Título da nota" className="w-full rounded-xl border border-border bg-surface-2 p-4 font-display text-2xl text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400" />
           <CorpoEditor corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} rows={10} layout="document" tintaNotaId={id} />
-          <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />
         </div>
       ) : (
         <>
-          <h1 className="mb-3 break-words font-display text-2xl text-text-primary">{nota.titulo}</h1>
           <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
             <span>Criada em {formatDataHoraCompleta(nota.criado_em)} · Editada <TempoEdicao iso={nota.atualizado_em} /></span>
             {!nota.ultima_revisao_em && (
@@ -241,7 +249,7 @@ function NoteDetailMobile() {
             )}
           </div>
 
-          <div className="mb-6 min-w-0 break-words rounded-2xl border border-border bg-surface-1 p-5 text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">
+          <div className="mb-6 min-w-0 break-words text-sm [&_pre]:overflow-x-auto [&_img]:max-w-full">
             {id ? <LeituraComTinta notaId={id} corpo={nota.corpo} /> : nota.corpo.trim() ? <MarkdownPreview corpo={nota.corpo} itemId={id} tipo="nota" /> : <p className="text-text-muted">Nota vazia.</p>}
           </div>
 

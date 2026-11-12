@@ -90,10 +90,10 @@ export function AppShell() {
   return (
     <div className={`mx-auto min-h-full bg-base ${largura}`}>
       {comTopbar && <Topbar />}
-      <main className="pb-nav-safe">
+      <main className={documentoAberto ? "pb-[var(--ecos-safe-bottom)]" : "pb-nav-safe"}>
         <Outlet />
       </main>
-      <BottomNav />
+      {!documentoAberto && <BottomNav />}
       {!documentoAberto && <Fab />}
       <Drawer />
       <CreateFlow />

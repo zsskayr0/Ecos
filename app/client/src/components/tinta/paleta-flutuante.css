@@ -1,0 +1,68 @@
+/* Paleta flutuante do Modo de escrita: entrada do conteúdo e zonas de encaixe durante o arrasto. */
+@keyframes ecos-paleta-conteudo {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ecos-paleta-pulso {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.ecos-paleta-conteudo { animation: ecos-paleta-conteudo 200ms ease-out both; }
+.ecos-paleta-zona {
+  pointer-events: none;
+  position: fixed;
+  left: 0;
+  top: 0;
+  border-radius: 1rem;
+  border: 1.5px dashed rgb(var(--ecos-steel-400-rgb) / 0.35);
+  background: rgb(var(--ecos-steel-400-rgb) / 0.06);
+  opacity: 0;
+  transition: opacity 220ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.ecos-paleta-zona[data-visivel="true"] { opacity: 0.7; }
+.ecos-paleta-zona[data-ativa="true"] {
+  border-style: solid;
+  border-color: rgb(var(--ecos-steel-400-rgb) / 0.85);
+  background: rgb(var(--ecos-steel-400-rgb) / 0.22);
+  animation: ecos-paleta-pulso 900ms ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ecos-paleta-conteudo, .ecos-paleta-zona[data-visivel="true"] { opacity: 0.7; }
+.ecos-paleta-zona[data-ativa="true"] { animation: none; }
+}
+
+/* Aba do seletor de cor/espessura: desliza para fora da borda da paleta (o recorte fica no contêiner). */
+@keyframes ecos-aba-dir { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes ecos-aba-esq { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes ecos-aba-baixo { from { transform: translateY(-100%); } to { transform: none; } }
+@keyframes ecos-aba-cima { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes ecos-aba-cima-sai { from { transform: none; } to { transform: translateY(100%); } }
+.ecos-paleta-aba { animation-duration: 260ms; animation-timing-function: cubic-bezier(0.2, 0.9, 0.25, 1); animation-fill-mode: both; }
+.ecos-paleta-aba[data-lado="direita"] { animation-name: ecos-aba-dir; }
+.ecos-paleta-aba[data-lado="esquerda"] { animation-name: ecos-aba-esq; }
+.ecos-paleta-aba[data-lado="baixo"] { animation-name: ecos-aba-baixo; }
+.ecos-paleta-aba[data-lado="cima"] { animation-name: ecos-aba-cima; }
+@keyframes ecos-aba-dir-sai { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes ecos-aba-esq-sai { from { transform: none; } to { transform: translateX(100%); } }
+@keyframes ecos-aba-baixo-sai { from { transform: none; } to { transform: translateY(-100%); } }
+.ecos-paleta-aba[data-saindo="true"] { animation-duration: 200ms; animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.4); }
+.ecos-paleta-aba[data-saindo="true"][data-lado="direita"] { animation-name: ecos-aba-dir-sai; }
+.ecos-paleta-aba[data-saindo="true"][data-lado="esquerda"] { animation-name: ecos-aba-esq-sai; }
+.ecos-paleta-aba[data-saindo="true"][data-lado="baixo"] { animation-name: ecos-aba-baixo-sai; }
+.ecos-paleta-aba[data-saindo="true"][data-lado="cima"] { animation-name: ecos-aba-cima-sai; }
+@media (prefers-reduced-motion: reduce) { .ecos-paleta-aba { animation: none !important; } }
+
+
+/* Sketch "Ecos" do slide de espessura: os traços se desenham em sequência ao abrir. */
+@keyframes ecos-rabisco { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.ecos-rabisco { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ecos-rabisco 900ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+@media (prefers-reduced-motion: reduce) { .ecos-rabisco { animation: none; stroke-dashoffset: 0; } }
+
+/* O E da assinatura é um contorno preenchido: revela-se da esquerda para a direita. */
+@keyframes ecos-revela { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 -4px 0 0); } }
+.ecos-revela { animation: ecos-revela 600ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .ecos-revela { animation: none; } }
+
+/* Assinatura: cada traço do esqueleto é "escrito" em sequência, em velocidade constante. */
+.ecos-traco { stroke-dasharray: 1 2; stroke-linecap: round; stroke-dashoffset: 1; animation-name: ecos-rabisco; animation-timing-function: linear; animation-fill-mode: both; }
+@media (prefers-reduced-motion: reduce) { .ecos-traco { animation: none; stroke-dashoffset: 0; } }

@@ -156,3 +156,142 @@ export function novoTraco(ferramenta: Ferramenta, cor: string, espessura: number
   const pontos = simplificar(pontosBrutos).map((p) => ({ x: r1(p.x), y: r1(p.y), pressao: Math.round(Math.min(1, Math.max(0, p.pressao)) * 100) / 100 }));
   return { id: novoIdTraco(), ferramenta, cor, espessura, pontos, d: gerarD(ferramenta, pontos, espessura), criado_em: new Date().toISOString() };
 }
+
+/** Interpola pontos para no máximo `passo` px entre vizinhos (pressão também). */
+export function densificar(pontos: readonly PontoTinta[], passo = 2): PontoTinta[] {
+  if (pontos.length < 2) return pontos.map((p) => ({ ...p }));
+  const s: PontoTinta[] = [{ ...pontos[0] }];
+  for (let i = 1; i < pontos.length; i++) {
+    const a = pontos[i - 1], b = pontos[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / passo));
+    for (let k = 1; k <= n; k++) {
+      const f = k / n;
+      s.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, pressao: a.pressao + (b.pressao - a.pressao) * f });
+    }
+  }
+  return s;
+}
+
+/**
+ * Borracha por trecho: remove do traço os pontos a até `raio` (+ meia espessura) do caminho da borracha
+ * e devolve os pedaços que sobraram (mínimo 2 pontos cada). Um único pedaço do mesmo tamanho = nada mudou.
+ */
+export function cortar(t: Pick<Traco, "pontos" | "espessura">, caminhoBorracha: readonly { x: number; y: number }[], raio: number): PontoTinta[][] {
+  const pts = densificar(t.pontos, 2);
+  const lim = raio + t.espessura / 2;
+  const pedacos: PontoTinta[][] = [];
+  let atual: PontoTinta[] = [];
+  for (const p of pts) {
+    if (caminhoBorracha.some((a) => Math.hypot(p.x - a.x, p.y - a.y) <= lim)) {
+      if (atual.length >= 2) pedacos.push(atual);
+      atual = [];
+    } else atual.push(p);
+  }
+  if (atual.length >= 2) pedacos.push(atual);
+  return pedacos;
+}
+
+export type FormaReconhecida = "linha" | "circulo" | "elipse" | "triangulo" | "retangulo" | "quadrilatero";
+
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function distReta(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) {
+  const l = dist(a, b);
+  return l ? Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / l : dist(p, a);
+}
+
+function douglas(p: readonly { x: number; y: number }[], eps: number): { x: number; y: number }[] {
+  if (p.length < 3) return [...p];
+  let m = -1, k = 0;
+  for (let i = 1; i < p.length - 1; i++) { const d = distReta(p[i], p[0], p[p.length - 1]); if (d > m) { m = d; k = i; } }
+  if (m <= eps) return [p[0], p[p.length - 1]];
+  return [...douglas(p.slice(0, k + 1), eps).slice(0, -1), ...douglas(p.slice(k), eps)];
+}
+
+const pt = (x: number, y: number): PontoTinta => ({ x, y, pressao: 0.5 });
+const poligono = (v: readonly { x: number; y: number }[]) => densificar([...v, v[0]].map((q) => pt(q.x, q.y)), 2);
+
+/**
+ * Reconhece um traço feito à mão como figura geométrica (linha, círculo/elipse, triângulo, retângulo ou
+ * quadrilátero) e devolve os pontos da figura limpa. `null` = é um rabisco/letra, fica como está.
+ */
+export function reconhecerForma(pontos: readonly PontoTinta[]): { forma: FormaReconhecida; pontos: PontoTinta[] } | null {
+  const p = simplificar(pontos, 1.5);
+  if (p.length < 4) return null;
+  let comprimento = 0;
+  for (let i = 1; i < p.length; i++) comprimento += dist(p[i - 1], p[i]);
+  const xs = p.map((q) => q.x), ys = p.map((q) => q.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const diag = Math.hypot(x1 - x0, y1 - y0);
+  if (comprimento < 24 || diag < 16) return null;
+  const a = p[0], b = p[p.length - 1];
+  const folga = dist(a, b);
+
+  if (folga > comprimento * 0.2) {
+    // Aberto: só linha reta.
+    if (p.every((q) => distReta(q, a, b) <= Math.max(2.5, folga * 0.06))) {
+      let fim = { x: b.x, y: b.y };
+      const ang = Math.atan2(b.y - a.y, b.x - a.x), passo = Math.PI / 4;
+      const alvo = Math.round(ang / passo) * passo;
+      if (Math.abs(ang - alvo) < (4 * Math.PI) / 180) fim = { x: a.x + Math.cos(alvo) * folga, y: a.y + Math.sin(alvo) * folga };
+      return { forma: "linha", pontos: densificar([pt(a.x, a.y), pt(fim.x, fim.y)], 2) };
+    }
+    return null;
+  }
+
+  // Fechado: vértices por Douglas-Peucker (a partir do ponto mais distante do início).
+  let kf = 0, md = 0;
+  p.forEach((q, i) => { const d = dist(q, a); if (d > md) { md = d; kf = i; } });
+  const eps = diag * 0.07;
+  const v = [...douglas(p.slice(0, kf + 1), eps).slice(0, -1), ...douglas(p.slice(kf), eps)];
+  if (dist(v[v.length - 1], v[0]) < diag * 0.12) v.pop();
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, ra = (x1 - x0) / 2, rb = (y1 - y0) / 2;
+  const erro = ra > 4 && rb > 4 ? p.reduce((s, q) => s + Math.abs(Math.hypot((q.x - cx) / ra, (q.y - cy) / rb) - 1), 0) / p.length : 1;
+  if (v.length >= 5 && erro < 0.14) {
+    const circulo = Math.abs(ra - rb) / Math.max(ra, rb) < 0.14;
+    const r = (ra + rb) / 2;
+    const el = Array.from({ length: 73 }, (_, i) => { const t = (i / 72) * Math.PI * 2; return pt(cx + (circulo ? r : ra) * Math.cos(t), cy + (circulo ? r : rb) * Math.sin(t)); });
+    return { forma: circulo ? "circulo" : "elipse", pontos: el };
+  }
+  if (v.length === 3) return { forma: "triangulo", pontos: poligono(v) };
+  if (v.length === 4) {
+    const lados = v.map((q, i) => ({ x: v[(i + 1) % 4].x - q.x, y: v[(i + 1) % 4].y - q.y }));
+    const retos = lados.every((l, i) => { const m = lados[(i + 1) % 4]; return Math.abs(l.x * m.x + l.y * m.y) / (Math.hypot(l.x, l.y) * Math.hypot(m.x, m.y) || 1) < 0.35; });
+    const alinhado = lados.every((l) => { const g = Math.abs((Math.atan2(l.y, l.x) * 180) / Math.PI) % 90; return g < 10 || g > 80; });
+    if (retos && alinhado) return { forma: "retangulo", pontos: poligono([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]) };
+    return { forma: "quadrilatero", pontos: poligono(v) };
+  }
+  return null;
+}
+
+/** Ponto dentro do polígono (laço), pela regra par-ímpar. */
+export function pontoNoPoligono(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
+  let dentro = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) dentro = !dentro;
+  }
+  return dentro;
+}
+
+/** Traços (ativos) que o laço envolve: pelo menos metade dos pontos do traço fica dentro dele. */
+export function selecionadosPeloLaco(tracos: readonly Traco[], laco: readonly { x: number; y: number }[]): string[] {
+  if (laco.length < 3) return [];
+  return tracos.filter((t) => {
+    if (t.apagado_em) return false;
+    const pts = densificar(t.pontos, 4);
+    return pts.filter((p) => pontoNoPoligono(p.x, p.y, laco)).length * 2 >= pts.length;
+  }).map((t) => t.id);
+}
+
+/** Caixa que envolve todos os traços (com a margem da espessura), ou `null` se a lista é vazia. */
+export function caixaDoConjunto(tracos: readonly Traco[]): Caixa | null {
+  if (!tracos.length) return null;
+  return tracos.map(caixa).reduce((a, b) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }));
+}
+
+/** Cópia do traço movida/ampliada: ponto → `ancora + (ponto − ancora) × fator + (dx, dy)`; a espessura acompanha o fator. */
+export function transformarTraco(t: Traco, ancora: { x: number; y: number }, fator: number, dx: number, dy: number): Traco {
+  const pontos = t.pontos.map((p) => ({ x: ancora.x + (p.x - ancora.x) * fator + dx, y: ancora.y + (p.y - ancora.y) * fator + dy, pressao: p.pressao }));
+  return novoTraco(t.ferramenta, t.cor, Math.round(t.espessura * fator * 10) / 10 || t.espessura, pontos);
+}

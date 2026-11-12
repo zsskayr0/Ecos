@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { atinge, caixa, caminhoCentral, contornoCaneta, gerarD, intersecta, novoTraco, simplificar } from "./geometria";
+import { atinge, caixa, caixaDoConjunto, pontoNoPoligono, selecionadosPeloLaco, transformarTraco, caminhoCentral, contornoCaneta, cortar, densificar, gerarD, intersecta, novoTraco, reconhecerForma, simplificar } from "./geometria";
 import { aplicar, desfazer, historicoVazio, refazer, registrar } from "./historico";
 import { ativos } from "./tipos";
 
@@ -70,5 +70,72 @@ describe("histórico da tinta", () => {
     // Nova operação apaga o que dava para refazer.
     expect(registrar(r.h, { tipo: "adicionar", traco: t1 }).desfeitas).toHaveLength(0);
     expect(desfazer(historicoVazio(), [])).toBeNull();
+  });
+});
+
+const P = (x: number, y: number) => ({ x, y, pressao: 0.5 });
+const tremor = (n: number) => Math.sin(n * 12.9898) * 1.2;
+const caminhoPoligono = (v: { x: number; y: number }[], fecha = true) => densificar([...v, ...(fecha ? [v[0]] : [])].map((q) => P(q.x, q.y)), 4).map((q, i) => P(q.x + tremor(i), q.y + tremor(i + 7)));
+
+describe("borracha por trecho e formas", () => {
+  it("cortar remove só o trecho tocado e mantém os dois pedaços", () => {
+    const t = { pontos: [P(0, 0), P(100, 0)], espessura: 2 };
+    const pedacos = cortar(t, [P(50, 0)], 10);
+    expect(pedacos).toHaveLength(2);
+    expect(pedacos[0][pedacos[0].length - 1].x).toBeLessThan(42);
+    expect(pedacos[1][0].x).toBeGreaterThan(58);
+    expect(cortar(t, [P(50, 80)], 10)).toHaveLength(1);
+  });
+
+  it("substituir é desfeito devolvendo o traço original", () => {
+    const a = novoTraco("caneta", "auto", 3, linha(40));
+    const pedaco = novoTraco("caneta", "auto", 3, linha(10));
+    const op = { tipo: "substituir" as const, ids: [a.id], novos: [pedaco], em: "t" };
+    const feito = aplicar([a], op);
+    expect(ativos(feito).map((t) => t.id)).toEqual([pedaco.id]);
+    expect(ativos(aplicar(aplicar([a], op), { tipo: "apagar", ids: [pedaco.id], em: "u" }))).toHaveLength(0);
+    const h = registrar(historicoVazio(), op);
+    const r = desfazer(h, feito)!;
+    expect(r.tracos.map((t) => t.id)).toEqual([a.id]);
+    expect(ativos(r.tracos)).toHaveLength(1);
+  });
+
+  it("reconhece linha, círculo, retângulo e triângulo desenhados com tremor", () => {
+    expect(reconhecerForma(caminhoPoligono([P(10, 10), P(200, 40)], false))?.forma).toBe("linha");
+    const circ = Array.from({ length: 60 }, (_, i) => P(100 + 50 * Math.cos((i / 58) * Math.PI * 2) + tremor(i), 100 + 50 * Math.sin((i / 58) * Math.PI * 2) + tremor(i + 3)));
+    expect(reconhecerForma(circ)?.forma).toBe("circulo");
+    expect(reconhecerForma(caminhoPoligono([P(10, 10), P(150, 10), P(150, 90), P(10, 90)]))?.forma).toBe("retangulo");
+    expect(reconhecerForma(caminhoPoligono([P(80, 10), P(150, 120), P(10, 120)]))?.forma).toBe("triangulo");
+  });
+
+  it("não transforma curva solta nem letra em figura", () => {
+    const onda = Array.from({ length: 50 }, (_, i) => P(i * 5, 40 + Math.sin(i / 4) * 30));
+    expect(reconhecerForma(onda)).toBeNull();
+    expect(reconhecerForma([P(0, 0), P(1, 1), P(2, 1), P(3, 2)])).toBeNull();
+  });
+});
+
+describe("seleção por laço", () => {
+  const quadrado = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)];
+  it("ponto dentro e fora do polígono", () => {
+    expect(pontoNoPoligono(50, 50, quadrado)).toBe(true);
+    expect(pontoNoPoligono(150, 50, quadrado)).toBe(false);
+  });
+  it("seleciona só os traços envolvidos pelo laço", () => {
+    const dentro = novoTraco("caneta", "auto", 2, [P(10, 10), P(40, 40), P(60, 20)]);
+    const fora = novoTraco("caneta", "auto", 2, [P(200, 10), P(240, 40)]);
+    expect(selecionadosPeloLaco([dentro, fora], quadrado)).toEqual([dentro.id]);
+    expect(selecionadosPeloLaco([dentro], [P(0, 0), P(1, 1)])).toEqual([]);
+  });
+  it("mover e ampliar mudam os pontos e a espessura", () => {
+    const t = novoTraco("caneta", "auto", 4, [P(10, 10), P(30, 10), P(50, 30)]);
+    const m = transformarTraco(t, { x: 0, y: 0 }, 1, 5, -3);
+    expect(m.id).not.toBe(t.id);
+    expect(m.pontos[0]).toMatchObject({ x: 15, y: 7 });
+    const g = transformarTraco(t, { x: 10, y: 10 }, 2, 0, 0);
+    expect(g.pontos[g.pontos.length - 1]).toMatchObject({ x: 90, y: 50 });
+    expect(g.espessura).toBe(8);
+    expect(caixaDoConjunto([t, g])!.x1).toBeGreaterThan(80);
+    expect(caixaDoConjunto([])).toBeNull();
   });
 });

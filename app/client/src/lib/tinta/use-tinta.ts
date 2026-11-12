@@ -117,7 +117,7 @@ export function useTinta(notaId: string | undefined): TintaControle {
   }, [gravarAgora]);
 
   const executar = useCallback((op: Operacao) => {
-    if (op.tipo === "apagar" && !op.ids.length) return;
+    if (op.tipo !== "adicionar" && !op.ids.length) return;
     setTracos((t) => aplicar(t, op));
     setHist((h) => registrar(h, op));
     setLargura((l) => l ?? LARGURA_COLUNA_PADRAO);

@@ -56,9 +56,9 @@
 
 .ecos-detail-header {
 
-  padding-top: calc(max(var(--ecos-safe-top), 32px) + 16px);
+  padding-top: calc(max(var(--ecos-safe-top), 32px) - 14px);
 
-  padding-bottom: 12px;
+  padding-bottom: 4px;
 
   padding-left: max(16px, calc(var(--ecos-safe-left) + 12px));
 
@@ -1136,4 +1136,15 @@ body::-webkit-scrollbar {
 }
 @media (prefers-reduced-motion: reduce) {
   .ecos-sugestoes { animation: none; }
+}
+
+
+/* Modo de escrita: a página toda abaixo do cabeçalho é a mesma folha cinza, de borda a borda. */
+.ecos-detail-page[data-escrevendo] {
+  min-height: 100dvh;
+  background: var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)));
+}
+
+.ecos-detail-page[data-escrevendo] .ecos-detail-content {
+  padding: 0 !important;
 }

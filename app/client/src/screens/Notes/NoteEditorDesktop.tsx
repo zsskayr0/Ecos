@@ -10,8 +10,9 @@ import { AlertTriangle, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOp
 import { AcoesFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
 import { MiniGrafo } from "@/screens/Grafico/MiniGrafo";
 import { ApiError, notas } from "@/lib/api";
-import { TempoEdicao } from "@/components/common/TempoEdicao";
+import { OpcoesNota } from "@/components/editor/OpcoesNota";
 import { formatDataHoraCompleta } from "@/lib/format";
+import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { descriptionTags } from "@/lib/task-fields";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
@@ -221,6 +222,8 @@ export function NoteEditorDesktop() {
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";
 
   const noPainel = modoFocus && !!montagemPainel;
+  const opcoesNota = (classeBotao: string) => <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} classeBotao={classeBotao}
+    anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />} />;
   const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (
     <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>
@@ -228,6 +231,7 @@ export function NoteEditorDesktop() {
       {modoFocus && acoesFocus && createPortal(
         <>
           <BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
+          {opcoesNota("flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary")}
           <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
           <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
           <span aria-hidden className="mx-1 h-4 w-px bg-border" />
@@ -264,6 +268,7 @@ export function NoteEditorDesktop() {
           <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
             <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
             {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />}
+            {!modoFocus && opcoesNota("flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary")}
             {!modoFocus && <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
             {!modoFocus && <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
           </div>
@@ -271,21 +276,9 @@ export function NoteEditorDesktop() {
           {!noPainel && <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />}
           {!noPainel && <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />}
 
-          {!noPainel && <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />}
-
           <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview={!lerPreferenciasAplicativo().notaAbreEditando} tintaNotaId={id} />
 
           <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
-
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
-            <span>Criada em {formatDataHoraCompleta(nota.criado_em)} · Editada <TempoEdicao iso={nota.atualizado_em} /></span>
-            <span className="flex items-center gap-3">
-              {!nota.ultima_revisao_em && (
-                <button type="button" onClick={marcarRevisado} className="flex items-center gap-1 text-steel-300 hover:text-text-primary"><CheckCircle2 size={12} />Marcar revisado</button>
-              )}
-              <span aria-live="polite" className={erro ? "text-error" : ""}>{enviandoAnexo ? "Enviando anexo…" : estado}</span>
-            </span>
-          </div>
         </div>
       </div>
     </div>

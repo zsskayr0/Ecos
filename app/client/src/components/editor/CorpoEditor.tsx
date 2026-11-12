@@ -1,6 +1,10 @@
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Maximize, Printer } from "lucide-react";
+import { Toggle } from "@/components/common/Toggle";
+import { corDoFundo, ESTILOS_FOLHA, FUNDOS_FOLHA, useFolha } from "@/lib/tinta/folha";
+import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Keyboard, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsDesktop, useIsMobile } from "@/lib/use-viewport";
@@ -10,7 +14,8 @@ import { preservandoScroll } from "@/lib/preservar-scroll";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { AvisoModoEscrita } from "@/components/tinta/AvisoModoEscrita";
 import { BarraTinta } from "@/components/tinta/BarraTinta";
-import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type Pincel } from "@/components/tinta/ColunaTinta";
+import { PaletaFlutuante } from "@/components/tinta/PaletaFlutuante";
+import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type ModoBorracha, type Pincel } from "@/components/tinta/ColunaTinta";
 import { useTinta } from "@/lib/tinta/use-tinta";
 import { ativos, LARGURA_COLUNA_PADRAO, type Ferramenta } from "@/lib/tinta/tipos";
 
@@ -61,10 +66,19 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   const [avisoAberto, setAvisoAberto] = useState(false);
   const [confirmarLimpar, setConfirmarLimpar] = useState(false);
   const [dedoDesenha, setDedoDesenha] = useState(false);
+  const [folha, alterarFolha] = useFolha(tintaNotaId);
+  const [slotOpcoes, setSlotOpcoes] = useState<HTMLElement | null>(null);
   const memoriaPincel = useRef<Record<Ferramenta, { cor: string; espessura: number }>>({ caneta: { cor: "auto", espessura: 2.5 }, "marca-texto": { cor: "#facc15", espessura: 16 } });
   const [pincel, setPincel] = useState<Pincel>({ ferramenta: "caneta", ...memoriaPincel.current.caneta });
   const tracosAtivos = ativos(tinta.tracos);
   const comTinta = !!tintaNotaId && tracosAtivos.length > 0;
+  // Nota que já tem escrita à mão abre direto no Modo de escrita (uma vez), sem passar pelo texto comum.
+  const abriuEscrita = useRef(false);
+  useEffect(() => {
+    if (abriuEscrita.current || !tintaNotaId || !tinta.carregado) return;
+    abriuEscrita.current = true;
+    if (tracosAtivos.length > 0 && tinta.largura !== null) setEscrevendo(true);
+  }, [tintaNotaId, tinta.carregado, tinta.largura, tracosAtivos.length]);
   const colunaFixa = !!tintaNotaId && (escrevendo || comTinta);
   const larguraColuna = tinta.largura ?? LARGURA_COLUNA_PADRAO;
   const { desfazer: desfazerTinta, refazer: refazerTinta } = tinta;
@@ -91,8 +105,13 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   }
 
   function escolherFerramenta(f: FerramentaUI) {
-    if (pincel.ferramenta !== "borracha") memoriaPincel.current[pincel.ferramenta] = { cor: pincel.cor, espessura: pincel.espessura };
-    setPincel(f === "borracha" ? { ...pincel, ferramenta: f } : { ferramenta: f, ...memoriaPincel.current[f] });
+    if (pincel.ferramenta !== "borracha" && pincel.ferramenta !== "laco") memoriaPincel.current[pincel.ferramenta] = { cor: pincel.cor, espessura: pincel.espessura };
+    setPincel(f === "borracha" || f === "laco" ? { ...pincel, ferramenta: f } : { ferramenta: f, ...memoriaPincel.current[f], modoBorracha: pincel.modoBorracha });
+  }
+
+  /** Duplo clique no botão da S Pen: caneta ↔ marca-texto (da borracha volta para a caneta). */
+  function alternarCanetaMarca() {
+    escolherFerramenta(pincel.ferramenta === "caneta" ? "marca-texto" : "caneta");
   }
 
   useEffect(() => {
@@ -113,6 +132,9 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
   const ehMobile = useIsMobile();
   const barraCompacta = !useIsDesktop();
+  /** No celular, os botões de modo (escrever, pré-visualizar) vão para o cabeçalho da página, se ele tiver o espaço. */
+  const [slotModo, setSlotModo] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { setSlotModo(barraCompacta ? document.querySelector<HTMLElement>("[data-slot-modo-editor]") : null); }, [barraCompacta]);
   const abrirDestino = useAbrirDestino();
   function abrirWikilink(interno: string, clique: MouseEvent) {
     const { referencia } = analisarWikilink(interno);
@@ -122,6 +144,31 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     });
   }
   const [preview, setPreview] = useState(initialPreview);
+  // Nota com o Modo de escrita disponível não tem pré-visualização: o texto já é editado direto.
+  useEffect(() => { if (tintaNotaId && preview) setPreview(false); }, [tintaNotaId, preview]);
+  // Escrevendo, a página inteira abaixo do cabeçalho vira a folha cinza (sem faixas pretas em volta); ver `global.css`.
+  useEffect(() => {
+    if (!escrevendo) return;
+    const pagina = document.querySelector<HTMLElement>(".ecos-detail-page");
+    pagina?.setAttribute("data-escrevendo", "");
+    return () => pagina?.removeAttribute("data-escrevendo");
+  }, [escrevendo]);
+  // Os fundos escuros da folha só valem no tema escuro: no claro a tinta é escura e sumiria sobre eles.
+  const [temaClaro, setTemaClaro] = useState(() => document.documentElement.getAttribute("data-theme") === "light");
+  useEffect(() => {
+    const obs = new MutationObserver(() => setTemaClaro(document.documentElement.getAttribute("data-theme") === "light"));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+  const corFolha = temaClaro ? null : corDoFundo(folha.fundo);
+  useEffect(() => {
+    if (!escrevendo || !corFolha) return;
+    const pagina = document.querySelector<HTMLElement>(".ecos-detail-page");
+    pagina?.style.setProperty("--ecos-folha", corFolha);
+    return () => { pagina?.style.removeProperty("--ecos-folha"); };
+  }, [escrevendo, corFolha]);
+  // Itens da escrita (folha, fundo, dedo, limpar…) entram no menu "⋯" da nota, que é renderizado no cabeçalho da página.
+  useLayoutEffect(() => { setSlotOpcoes(tintaNotaId ? document.querySelector<HTMLElement>("[data-slot-opcoes-escrita]") : null); }, [tintaNotaId, escrevendo, tinta.carregado]);
   const [cursor, setCursor] = useState(0);
   const [emojiAberto, setEmojiAberto] = useState(false);
 
@@ -308,27 +355,53 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
 
     const controlesModo = <>
       {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Modo de escrita"} title={escrevendo ? "Voltar ao modo texto" : "Modo de escrita (escrever à mão sobre a Nota)"}
-        className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "bg-steel-500/25 text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
-        {escrevendo ? <Type size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
+        className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "text-text-secondary hover:bg-surface-3 hover:text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
+        {escrevendo ? <Keyboard size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
       </button>}
-      {!escrevendo && <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
+      {!escrevendo && !tintaNotaId && <button type="button" aria-pressed={preview} onClick={(e) => preservandoScroll(e.currentTarget, () => setPreview(!preview))} aria-label={preview ? "Editar descrição" : "Pré-visualizar descrição"}
         className={`relative ${tintaNotaId ? "" : "ml-auto"} flex ${tam} items-center justify-center rounded-lg text-steel-300 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}>
         {/* O olho fecha até virar um traço na diagonal e esse traço vira o lápis; na volta, o caminho inverso. */}
         <Eye size={16} strokeWidth={1.75} aria-hidden
           className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:rotate(-45deg)_scaleY(0.06)_scaleX(0.9)] opacity-0 [transition-duration:300ms,120ms] [transition-delay:0ms,150ms]" : "[transform:none] opacity-100 [transition-duration:300ms,100ms] [transition-delay:70ms,0ms]"}`} />
-        <Pencil size={15} strokeWidth={1.75} aria-hidden
-          className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />
+        {tintaNotaId ? <Keyboard size={16} strokeWidth={1.75} aria-hidden
+          className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} /> : <Pencil size={15} strokeWidth={1.75} aria-hidden
+          className={`absolute [transition-property:transform,opacity] ease-in-out motion-reduce:transition-none ${preview ? "[transform:none] opacity-100 [transition-duration:250ms,140ms] [transition-delay:90ms,120ms]" : "[transform:scale(0.7)] opacity-0 [transition-duration:250ms,120ms] [transition-delay:0ms,0ms]"}`} />}
       </button>}
     </>;
 
+    const fecharMenu = () => document.dispatchEvent(new CustomEvent("ecos:fechar-opcoes-nota"));
+    const rotuloMenu = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted";
+    const itemMenu = "flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary";
+    const conteudoMenu = <>
+      <div>
+        <span className={rotuloMenu}>Estilo da folha</span>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Estilo da folha">
+          {ESTILOS_FOLHA.map((e) => <button key={e.id} type="button" role="radio" aria-checked={folha.estilo === e.id} onClick={() => alterarFolha({ estilo: e.id })}
+            className={`min-h-[40px] rounded-lg border px-3 text-sm transition-colors ${folha.estilo === e.id ? "border-steel-400 bg-steel-500/20 text-text-primary" : "border-border text-text-secondary hover:bg-surface-2"}`}>{e.rotulo}</button>)}
+        </div>
+      </div>
+      {!temaClaro && <div>
+        <span className={rotuloMenu}>Cor de fundo</span>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Cor de fundo">
+          {FUNDOS_FOLHA.map((f) => <button key={f.id} type="button" role="radio" aria-checked={folha.fundo === f.id} aria-label={f.rotulo} title={f.rotulo} onClick={() => alterarFolha({ fundo: f.id })}
+            className={`h-9 w-9 rounded-full border-2 transition-transform ${folha.fundo === f.id ? "scale-110 border-steel-400" : "border-border"}`} style={{ background: f.cor ?? "rgb(var(--ecos-surface-1-rgb))" }} />)}
+        </div>
+      </div>}
+      {escrevendo && <label className="flex min-h-[44px] items-center justify-between gap-3 text-sm text-text-secondary">Desenhar com o dedo<Toggle checked={dedoDesenha} onChange={setDedoDesenha} label="Desenhar com o dedo" /></label>}
+      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); }}><Maximize size={16} />Tela cheia</button>
+      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); window.setTimeout(() => window.print(), 350); }}><Printer size={16} />Imprimir ou salvar em PDF</button>
+      {tracosAtivos.length > 0 && <button type="button" className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-error/40 px-3 text-sm text-error transition-colors hover:bg-error/10" onClick={() => { fecharMenu(); setConfirmarLimpar(true); }}>Limpar anotações</button>}
+    </>;
     return <div className="min-w-0" data-corpo-editor>
-      {barraCompacta && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>}
-      <div className={semBorda ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
-      <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
-        {escrevendo ? <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))}
-          dedoDesenha={dedoDesenha} onDedo={setDedoDesenha} podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
-          podeLimpar={tracosAtivos.length > 0} onLimpar={() => setConfirmarLimpar(true)} estado={tinta.estado} ehMobile={ehMobile} />
-        : <div className={`flex min-w-0 items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${barraCompacta ? "w-full" : "flex-wrap"} ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
+      {slotOpcoes && createPortal(conteudoMenu, slotOpcoes)}
+      {barraCompacta && (slotModo ? createPortal(controlesModo, slotModo) : !escrevendo && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>)}
+      <div style={escrevendo ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : undefined} className={semBorda ? "min-w-0" : escrevendo ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
+      {escrevendo ? <PaletaFlutuante aoSair={barraCompacta && slotModo ? undefined : alternarEscrita}>
+        {({ vertical, alinhar, embaixo }) => <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))} onModoBorracha={(modoBorracha: ModoBorracha) => setPincel((p) => ({ ...p, modoBorracha }))}
+          podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
+          ehMobile={ehMobile} vertical={vertical} alinhar={alinhar} embaixo={embaixo} />}
+      </PaletaFlutuante> : <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
+        <div className={`flex min-w-0 items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${barraCompacta ? "w-full" : "flex-wrap"} ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
             opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
             classeGatilho={`${barraCompacta ? "h-11" : "h-8"} flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400`}
@@ -351,9 +424,9 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
               {valor === "emoji" ? <div className="relative">{botao}{seletorEmoji}</div> : botao}
             </Fragment>;
           })}
-        </div>}
+        </div>
         {!barraCompacta && controlesModo}
-      </div>
+      </div>}
       {tintaNotaId && <>
         <AvisoModoEscrita open={avisoAberto} largura={LARGURA_COLUNA_PADRAO} onRecusar={() => setAvisoAberto(false)} onAceitar={() => { setAvisoAberto(false); tinta.converter(LARGURA_COLUNA_PADRAO); setEscrevendo(true); }} />
         <ConfirmDeleteDialog open={confirmarLimpar} title="Limpar as anotações?" busy={false} description="Apaga toda a escrita à mão desta Nota. O texto não muda, e dá para desfazer enquanto a Nota estiver aberta." onCancel={() => setConfirmarLimpar(false)}
@@ -367,7 +440,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
       {tintaNotaId && !tinta.carregado
         ? <div aria-hidden className={semBorda ? "min-h-[60vh]" : "min-h-40"} />
         : colunaFixa
-        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar}>
+        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo}>
             <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
               alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
               className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
