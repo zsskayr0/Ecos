@@ -6,7 +6,8 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
-import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { lerPreferenciasAplicativo, type OrdemPastas } from "@/lib/preferencias-aplicativo";
+import { compararPorUso, lerUsoPastas, registrarUsoPasta } from "@/lib/uso-pastas";
 import { TOM, misturar } from "@/components/common/MenuSuspenso";
 import { IconePorNome } from "@/components/common/IconePorNome";
 import { IconeImagem, idDoIconeImagem } from "@/lib/icones-personalizados";
@@ -131,7 +132,12 @@ export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas",
   // Pastas fixadas primeiro (a ordenação é estável: o resto mantém a ordem do servidor).
   const sobrepostas = usePastasOtimistas();
   useEffect(() => reconciliarPastasOtimistas(pastasRecebidas), [pastasRecebidas]);
-  const pastas = useMemo(() => [...comPastasOtimistas(pastasRecebidas, sobrepostas)].sort((a, b) => Number(!!b.fixada) - Number(!!a.fixada)), [pastasRecebidas, sobrepostas]);
+  const [ordem, setOrdem] = useState<OrdemPastas>(() => lerPreferenciasAplicativo().ordemPastas);
+  const pastas = useMemo(() => {
+    const uso = ordem === "uso" ? lerUsoPastas() : {};
+    const dentro = (a: PastaResumo, b: PastaResumo) => (ordem === "nome" ? a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }) : ordem === "itens" ? b.contagem_itens - a.contagem_itens || a.nome.localeCompare(b.nome, "pt-BR") : ordem === "uso" ? compararPorUso(a.caminho, b.caminho, uso) : 0);
+    return [...comPastasOtimistas(pastasRecebidas, sobrepostas)].sort((a, b) => Number(!!b.fixada) - Number(!!a.fixada) || dentro(a, b));
+  }, [pastasRecebidas, sobrepostas, ordem]);
   const espacoDaTela = useEspacoFiltro();
   const espaco = espacoProp ?? espacoDaTela;
   // Modo intercalado sem equipe escolhida: a lista mistura espaços, então não dá para saber de qual é a pasta.
@@ -156,6 +162,7 @@ export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas",
   // Na vista compacta, muitas subpastas viram "+N": o restante aparece ao clicar, sem empurrar o conteúdo para baixo.
   const pastasVisiveis = estilo === "compacta" && !expandidas && visualizacao === "grade" ? pastas.slice(0, LIMITE_COMPACTA) : pastas;
   const pastasEscondidas = pastas.length - pastasVisiveis.length;
+  const abrir = (p: PastaResumo) => { registrarUsoPasta(p.caminho); aoAbrir(p); };
   const tipo = chave === "tarefas" ? "tarefa" : "nota";
   const tom = chave === "tarefas" ? TOM.ciano : TOM.aco;
 
@@ -168,6 +175,7 @@ export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas",
     const aoMudarPreferencias = () => {
       const prefs = lerPreferenciasAplicativo();
       setEstilo(prefs.estiloPastas);
+      setOrdem(prefs.ordemPastas);
       setOcultas(lerOcultas(chave, visualizacao === "grade" && !prefs.pastasVisiveis));
     };
     window.addEventListener("ecos:preferencias-aplicativo", aoMudarPreferencias);
@@ -236,10 +244,10 @@ export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas",
 
       {visualizacao === "grade" && (
         <Recolhivel oculto={ocultas} cortar={animando}>
-        <div className={`gap-3 pb-1 ${estilo === "compacta" ? "flex flex-wrap" : "grid"}`} style={estilo === "compacta" ? undefined : { gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
+        <div className={`gap-3 pb-1 ${estilo === "compacta" ? "grid grid-cols-2 sm:flex sm:flex-wrap" : "grid"}`} style={estilo === "compacta" ? undefined : { gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
           {pastasVisiveis.map((p, i) => (
             <div key={p.caminho} style={entrada(i, ocultas)} className={`relative flex min-w-0 ${menu === p.caminho ? "z-30" : ""} rounded-card bg-surface-1 transition-[opacity,transform,background-color] duration-[230ms] hover:bg-surface-2 ${estilo === "compacta" ? "h-12 max-w-full !rounded-xl" : "aspect-square"} ${ocultas ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
-            <button type="button" onClick={() => aoAbrir(p)} className={`flex min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "items-center gap-2.5 pl-3 pr-10" : "flex-col justify-between p-4 pr-11"}`}>
+            <button type="button" onClick={() => abrir(p)} className={`flex min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${estilo === "compacta" ? "items-center gap-2.5 pl-3 pr-10" : "flex-col justify-between p-4 pr-11"}`}>
               <IconePasta pasta={p} tamanho={estilo === "compacta" ? 18 : 28} corIcone={corIcone} />
               {estilo === "compacta" ? (
                 <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="min-w-0 truncate text-sm font-semibold text-text-primary" title={p.nome}>{p.nome}</span><span className="shrink-0 text-xs text-text-muted">{p.contagem_itens}</span></span>

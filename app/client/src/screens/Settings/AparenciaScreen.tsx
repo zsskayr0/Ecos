@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronLeft, Contrast, FileType2, FolderTree, Cpu, Folder, Shapes, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn } from "lucide-react";
+import { ChevronDown, ChevronLeft, Contrast, FileType2, FolderTree, Cpu, Folder, Shapes, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn, Shapes as FormasIcone, Timer } from "lucide-react";
 import { useTema } from "@/lib/theme";
 import { Toggle } from "@/components/common/Toggle";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { limparEscolhaDePastas } from "@/components/views/PastasGrade";
 import { IconesPorExtensao } from "./IconesPorExtensao";
-import { ESCALAS_INTERFACE, lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type AltoContraste, type EstiloPastas, type IdiomaAplicativo, type MarcaArquivo, type PreferenciasAplicativo, type ReduzirMovimento } from "@/lib/preferencias-aplicativo";
+import { Segmentado } from "./campos-config";
+import { ESCALAS_INTERFACE, lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type AltoContraste, type EstiloPastas, type FormasEscrita, type IdiomaAplicativo, type MarcaArquivo, type OrdemPastas, type PreferenciasAplicativo, type ReduzirMovimento } from "@/lib/preferencias-aplicativo";
 
 const IDIOMAS = [
   { valor: "pt-BR", rotulo: "Português do Brasil", icone: Globe2, cor: TOM.aco },
@@ -14,11 +15,26 @@ const IDIOMAS = [
   { valor: "es-ES", rotulo: "Español", icone: Globe2, cor: TOM.violeta },
 ] as const;
 
+const ORDENS_PASTAS = [
+  { valor: "padrao", rotulo: "Padrão", icone: Rows3, cor: TOM.aco },
+  { valor: "nome", rotulo: "Nome (A–Z)", icone: Rows3, cor: TOM.ciano },
+  { valor: "itens", rotulo: "Mais itens", icone: Rows3, cor: TOM.violeta },
+  { valor: "uso", rotulo: "Mais usadas", icone: Rows3, cor: TOM.aco },
+] as const;
+
 const MOVIMENTOS = [
   { valor: "sistema", rotulo: "Usar configuração do sistema", icone: Wind, cor: TOM.aco },
   { valor: "desligado", rotulo: "Desligado", icone: Wind, cor: TOM.ciano },
   { valor: "ligado", rotulo: "Ligado", icone: Wind, cor: TOM.violeta },
 ] as const;
+
+const FORMAS_ESCRITA = [
+  { valor: "segurar", rotulo: "Ao segurar a caneta parada", icone: Shapes, cor: TOM.aco },
+  { valor: "ao-soltar", rotulo: "Automático, ao soltar", icone: Shapes, cor: TOM.ciano },
+  { valor: "desligado", rotulo: "Desligado", icone: Shapes, cor: TOM.violeta },
+] as const;
+
+const ESPERAS_FORMA = [{ id: "400", rotulo: "Rápido" }, { id: "650", rotulo: "Normal" }, { id: "1000", rotulo: "Lento" }] as const;
 
 const MARCAS_ARQUIVO = [
   { valor: "ambos", rotulo: "Ícone e selo (.PDF)", icone: FileType2, cor: TOM.aco },
@@ -131,6 +147,18 @@ export function AparenciaScreen() {
       </section>
 
       <section className="mt-6">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Escrita à mão</p>
+        <div className="rounded-2xl border border-border bg-surface-1">
+          <Linha Icone={FormasIcone} titulo="Reconhecer figuras" descricao="Transforma traços em linha reta, círculo, elipse, triângulo ou retângulo. “Ao segurar” só encaixa se você parar a caneta no fim do traço; “Automático” tenta ao soltar, e pode mexer em letras que lembrem uma figura.">
+            <Seletor valor={preferencias.escritaFormas} opcoes={FORMAS_ESCRITA} onChange={(escritaFormas: FormasEscrita) => alterar({ escritaFormas })} label="Reconhecer figuras" />
+          </Linha>
+          {preferencias.escritaFormas === "segurar" && <Linha Icone={Timer} titulo="Tempo de espera" descricao="Quanto tempo a caneta precisa ficar parada para encaixar a figura.">
+            <Segmentado valor={String(preferencias.escritaEsperaFormaMs <= 500 ? 400 : preferencias.escritaEsperaFormaMs >= 850 ? 1000 : 650) as "400" | "650" | "1000"} opcoes={ESPERAS_FORMA} onChange={(v) => alterar({ escritaEsperaFormaMs: Number(v) })} label="Tempo de espera" />
+          </Linha>}
+        </div>
+      </section>
+
+      <section className="mt-6">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p>
         <div className="rounded-2xl border border-border bg-surface-1">
           <Linha Icone={Folder} titulo="Mostrar pastas ao abrir" descricao="Em Notas e Tarefas as pastas começam ocultas. Ligue para vê-las sempre abertas; o botão da tela continua valendo.">
@@ -138,6 +166,9 @@ export function AparenciaScreen() {
           </Linha>
           <Linha Icone={LayoutGrid} titulo="Estilo das pastas" descricao="Grade com blocos quadrados, ou grade menor com um nome por linha, como uma lista.">
             <SeletorEstilo valor={preferencias.estiloPastas} onChange={(estiloPastas) => alterar({ estiloPastas })} />
+          </Linha>
+          <Linha Icone={Rows3} titulo="Ordem das pastas" descricao="Como as pastas se organizam em Notas e Tarefas. As fixadas ficam sempre no topo. “Mais usadas” aprende com as pastas que você abre neste aparelho.">
+            <Seletor valor={preferencias.ordemPastas} opcoes={ORDENS_PASTAS} onChange={(ordemPastas: OrdemPastas) => alterar({ ordemPastas })} label="Ordem das pastas" />
           </Linha>
           <Linha Icone={FolderTree} titulo="Modo explorador" descricao="No computador, o menu lateral mostra só Início, Agenda, Tarefas, Eventos e Cofre, com a árvore de arquivos do espaço embaixo.">
             <Toggle checked={preferencias.modoExplorador} onChange={(modoExplorador) => alterar({ modoExplorador })} label="Modo explorador" />

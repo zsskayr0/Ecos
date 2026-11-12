@@ -3,6 +3,8 @@ export type FormatoLink = "curto" | "relativo" | "absoluto";
 export type ExcluirAnexos = "perguntar" | "automatico" | "manter";
 export type DestinoExclusao = "sistema" | "ecos" | "permanente";
 export type EstiloPastas = "grade" | "compacta";
+/** Ordem das pastas nas telas de Notas e Tarefas (as fixadas ficam sempre no topo). */
+export type OrdemPastas = "padrao" | "nome" | "itens" | "uso";
 /** Como a árvore lateral marca os arquivos que não são nota nem tarefa: selo com a extensão, ícone, os dois ou nada. */
 export type MarcaArquivo = "ambos" | "selo" | "icone" | "nenhum";
 export type AltoContraste = "sistema" | "ligado" | "desligado";
@@ -26,7 +28,14 @@ export const ESCALAS_INTERFACE = [90, 100, 110, 125] as const;
 export type EscalaInterface = (typeof ESCALAS_INTERFACE)[number];
 export type ReduzirMovimento = "sistema" | "ligado" | "desligado";
 
+/** Modo de escrita: quando um traço à mão vira figura geométrica (linha, círculo, retângulo, triângulo). */
+export type FormasEscrita = "segurar" | "ao-soltar" | "desligado";
+
 export interface PreferenciasAplicativo {
+  /** Modo de escrita: reconhecimento de figuras ao segurar a caneta parada, ao soltar, ou desligado. */
+  escritaFormas: FormasEscrita;
+  /** Modo de escrita: quanto tempo (ms) a caneta parada espera antes de encaixar a figura (só em "segurar"). */
+  escritaEsperaFormaMs: number;
   idioma: IdiomaAplicativo;
   aceleracaoHardware: boolean;
   corretorOrtografico: boolean;
@@ -41,6 +50,8 @@ export interface PreferenciasAplicativo {
   pastasVisiveis: boolean;
   /** `grade`: blocos quadrados; `compacta`: blocos baixos, um nome por linha, como uma lista em grade. */
   estiloPastas: EstiloPastas;
+  /** `padrao`: a ordem do servidor; `nome` (A–Z); `itens`: mais itens primeiro; `uso`: mais abertas neste aparelho. */
+  ordemPastas: OrdemPastas;
   /** Desktop: menu lateral enxuto (Início, Agenda, Tarefas, Eventos, Cofre) com a árvore de arquivos embaixo. */
   modoExplorador: boolean;
   /** Marca dos arquivos que não são nota nem tarefa na árvore lateral. */
@@ -127,7 +138,10 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   excluirAnexos: "perguntar",
   destinoExclusao: "sistema",
   pastasVisiveis: false,
+  escritaFormas: "segurar",
+  escritaEsperaFormaMs: 650,
   estiloPastas: "grade",
+  ordemPastas: "padrao",
   modoExplorador: false,
   exploradorMarcaArquivo: "ambos",
   exploradorIconesExtensao: {},
@@ -144,7 +158,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   focusPainelRecolhido: true,
   mostrarConcluidas: false,
   visualizacaoTarefasDesktop: "tabela",
-  visualizacaoTarefasMobile: "cards",
+  visualizacaoTarefasMobile: "agrupada",
   capturaEnter: "nota",
   agendaEncaixe: 15,
   tarefaNovaData: "nenhuma",
