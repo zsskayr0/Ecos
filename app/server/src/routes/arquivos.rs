@@ -116,17 +116,18 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
     // Nota/tarefa: o índice diz o que o `.md` é (o tipo vem do conteúdo, não do nome).
     let caminhos: Vec<String> = arquivos.iter().filter(|a| categoria(&a.0) == "markdown").map(|a| a.2.clone()).collect();
-    let itens: std::collections::HashMap<String, (&'static str, String, String)> = state
+    let itens: std::collections::HashMap<String, (&'static str, String, String, Option<String>)> = state
         .db
         .with_read(move |conn| {
             let mut out = std::collections::HashMap::new();
             for c in caminhos {
                 for (tabela, tipo) in [("nota", "nota"), ("tarefa", "tarefa")] {
-                    let achado: Option<(String, String)> = conn
-                        .query_row(&format!("SELECT id, titulo FROM {tabela} WHERE caminho_arquivo = ?1"), [&c], |r| Ok((r.get(0)?, r.get(1)?)))
+                    let status = if tipo == "tarefa" { "status" } else { "NULL" };
+                    let achado: Option<(String, String, Option<String>)> = conn
+                        .query_row(&format!("SELECT id, titulo, {status} FROM {tabela} WHERE caminho_arquivo = ?1"), [&c], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                         .optional()?;
-                    if let Some((id, titulo)) = achado {
-                        out.insert(c.clone(), (tipo, id, titulo));
+                    if let Some((id, titulo, status)) = achado {
+                        out.insert(c.clone(), (tipo, id, titulo, status));
                         break;
                     }
                 }
@@ -135,22 +136,139 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         })
         .await?;
 
+    // Mídias que a nota ou tarefa referencia (biblioteca do espaço, `src/Media/...` no texto): viram "anexos" do item.
+    let espaco_fisico = {
+        let e = q.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal");
+        crate::espacos::fisica(e, &usuario.0)
+    };
+    let raiz_midia = crate::routes::media::raiz(&state, &espaco_fisico).await.ok();
+    let anexos_do_item = |relativo: &str| -> Vec<serde_json::Value> {
+        let Some(raiz_midia) = raiz_midia.as_ref() else { return Vec::new() };
+        let Ok(texto) = std::fs::read_to_string(notes_root.join(relativo)) else { return Vec::new() };
+        let mut vistos: Vec<PathBuf> = Vec::new();
+        let mut saida = Vec::new();
+        for candidato in crate::espacos::midias_referenciadas(&texto) {
+            let alvo = raiz_midia.join(&candidato);
+            if candidato.contains("..") || vistos.contains(&alvo) {
+                continue;
+            }
+            let Ok(meta) = std::fs::metadata(&alvo) else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            vistos.push(alvo);
+            let nome = candidato.rsplit('/').next().unwrap_or(&candidato).to_string();
+            saida.push(serde_json::json!({ "nome": nome, "caminho": format!("{}{}", crate::espacos::PREFIXO_MIDIA, candidato), "tamanho_bytes": meta.len() }));
+            if saida.len() >= 40 {
+                break;
+            }
+        }
+        saida
+    };
+
     arquivos.sort_by_key(|a| a.0.to_lowercase());
     let arquivos: Vec<serde_json::Value> = arquivos
         .into_iter()
         .map(|(nome, caminho, relativo, tamanho, modificado)| {
             let mut v = serde_json::json!({ "nome": nome, "caminho": caminho, "categoria": categoria(&nome), "tamanho_bytes": tamanho, "modificado_em": modificado });
-            if let Some((tipo, id, titulo)) = itens.get(&relativo) {
+            if let Some((tipo, id, titulo, status)) = itens.get(&relativo) {
                 v["tipo"] = serde_json::json!(tipo);
                 v["id"] = serde_json::json!(id);
                 v["titulo"] = serde_json::json!(titulo);
+                if let Some(status) = status {
+                    v["status"] = serde_json::json!(status);
+                }
                 v["fora_do_padrao"] = serde_json::json!(!crate::routes::arquivos_problemas::nome_no_padrao(*tipo == "tarefa", &relativo));
+                let anexos = anexos_do_item(&relativo);
+                if !anexos.is_empty() {
+                    v["anexos"] = serde_json::json!(anexos);
+                }
             }
             v
         })
         .collect();
-    let pastas: Vec<serde_json::Value> = pastas.into_values().map(|nome| serde_json::json!({ "nome": nome, "caminho": juntar(&pasta, &nome) })).collect();
+    // Cor e ícone escolhidos para a pasta (`.ecos-pastas.json` na raiz de cada árvore; a primeira raiz vale em conflito).
+    let mut aparencia = crate::routes::pastas::MetaPastas::new();
+    for raiz in raizes.iter().rev() {
+        aparencia.extend(crate::routes::pastas::ler_meta(raiz));
+    }
+    let pastas: Vec<serde_json::Value> = pastas
+        .into_values()
+        .map(|nome| {
+            let caminho = juntar(&pasta, &nome);
+            let campo = |k: &str| aparencia.get(&caminho).and_then(|a| a.get(k)).cloned().unwrap_or(serde_json::Value::Null);
+            serde_json::json!({ "nome": nome, "caminho": caminho, "cor": campo("cor"), "icone": campo("icone"), "tags": campo("tags"), "descricao": campo("descricao"), "fixada": campo("fixada"), "prioridade_padrao": campo("prioridade_padrao"), "duracao_padrao_min": campo("duracao_padrao_min") })
+        })
+        .collect();
     Ok(Json(serde_json::json!({ "pasta": pasta, "pastas": pastas, "arquivos": arquivos })))
+}
+
+/// Desce por uma pasta física contando o que há dentro (subpastas, arquivos e tamanho), sem seguir atalhos.
+fn percorrer(dir: &Path, notes_root: &Path, profundidade: u32, pastas: &mut u64, arquivos: &mut Vec<(String, String, u64)>) {
+    if profundidade > 64 {
+        return;
+    }
+    let Ok(entradas) = std::fs::read_dir(dir) else { return };
+    for entrada in entradas.flatten() {
+        let nome = entrada.file_name().to_string_lossy().to_string();
+        if interna(&nome) {
+            continue;
+        }
+        let Ok(meta) = entrada.metadata() else { continue };
+        if meta.is_dir() {
+            *pastas += 1;
+            percorrer(&entrada.path(), notes_root, profundidade + 1, pastas, arquivos);
+        } else if meta.is_file() {
+            arquivos.push((nome, crate::db::reindex_incremental::relativo(notes_root, &entrada.path()), meta.len()));
+        }
+    }
+}
+
+/// Resumo de uma pasta com tudo o que há dentro dela (subpastas incluídas): quantas pastas, arquivos, notas,
+/// tarefas e mídias, e quanto espaço ocupam.
+pub async fn resumo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
+    let pasta = q.pasta.clone().unwrap_or_default();
+    validar_caminho("pasta", &pasta, true)?;
+    let raizes = raizes(&state, &usuario.0, q.espaco.as_deref()).await?;
+    let notes_root = state.config.notes_root.clone();
+
+    let mut pastas = 0u64;
+    let mut arquivos: Vec<(String, String, u64)> = Vec::new();
+    let mut alguma_existe = pasta.is_empty();
+    for raiz in &raizes {
+        let dir = raiz.join(&pasta);
+        if !dir.is_dir() {
+            continue;
+        }
+        alguma_existe = true;
+        percorrer(&dir, &notes_root, 0, &mut pastas, &mut arquivos);
+    }
+    if !alguma_existe {
+        return Err(AppError::new(ErrorCode::NotFound));
+    }
+
+    let bytes: u64 = arquivos.iter().map(|a| a.2).sum();
+    let midias = arquivos.iter().filter(|a| matches!(categoria(&a.0), "imagem" | "audio" | "video")).count();
+    let caminhos: Vec<String> = arquivos.iter().filter(|a| categoria(&a.0) == "markdown").map(|a| a.1.clone()).collect();
+    let (notas, tarefas) = state
+        .db
+        .with_read(move |conn| {
+            let (mut notas, mut tarefas) = (0u64, 0u64);
+            for c in caminhos {
+                let nota: Option<i64> = conn.query_row("SELECT 1 FROM nota WHERE caminho_arquivo = ?1", [&c], |r| r.get(0)).optional()?;
+                if nota.is_some() {
+                    notas += 1;
+                    continue;
+                }
+                let tarefa: Option<i64> = conn.query_row("SELECT 1 FROM tarefa WHERE caminho_arquivo = ?1", [&c], |r| r.get(0)).optional()?;
+                if tarefa.is_some() {
+                    tarefas += 1;
+                }
+            }
+            Ok((notas, tarefas))
+        })
+        .await?;
+    Ok(Json(serde_json::json!({ "pastas": pastas, "arquivos": arquivos.len(), "notas": notas, "tarefas": tarefas, "midias": midias, "bytes": bytes })))
 }
 
 #[derive(Debug, Deserialize)]

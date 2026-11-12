@@ -71,10 +71,12 @@ const MODULOS: Record<ModuloId, Modulo> = {
 
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
 export const RAIL_PRINCIPAL: ModuloId[] = ["inicio", "hoje", "agenda", "eventos", "tarefas", "notas", "arquivos", "grafico", "feed", "cofre", "media"];
+/** Modo explorador: só os módulos que não são arquivos; notas e o resto ficam na árvore embaixo. */
+export const RAIL_EXPLORADOR: ModuloId[] = ["inicio", "agenda", "tarefas", "eventos", "cofre"];
 export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira"];
 
 export function moduloDaRota(path: string): Modulo {
-  const [primeiro] = path.split("/").filter(Boolean);
+  const [primeiro] = path.split(/[?#]/)[0].split("/").filter(Boolean);
   switch (primeiro) {
     case "tarefa":
       return MODULOS.agenda;

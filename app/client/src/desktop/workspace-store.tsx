@@ -27,7 +27,7 @@ export interface WorkspaceState {
 export type Side = "left" | "right";
 
 export type WorkspaceAction =
-  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path" }
+  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path"; side?: Side }
   | { type: "close-tab"; paneId: string; tabId: string }
   | { type: "activate-tab"; paneId: string; tabId: string }
   | { type: "focus-pane"; paneId: string }
@@ -130,7 +130,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
       const nova = novaPane(action.path, 0);
       return normalizar({
         focusedPaneId: nova.id,
-        panes: inserirPaneAoLado(state.panes, state.focusedPaneId, "right", nova),
+        panes: inserirPaneAoLado(state.panes, state.focusedPaneId, action.side ?? "right", nova),
       });
     }
 

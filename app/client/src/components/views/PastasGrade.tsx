@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { Check, ChevronRight, FileText, Folder, FolderInput, FolderPlus, ListChecks, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { ApiError, pastas as pastasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
@@ -42,7 +43,7 @@ export interface ItemExplorador {
 interface Props {
   pastas: PastaResumo[];
   /** Identifica o módulo (`notas`/`tarefas`): ocultar pastas vale para todas as telas dele. */
-  chave: "notas" | "tarefas";
+  chave: "notas" | "tarefas" | "tudo";
   titulo?: string;
   corIcone: string;
   aoAbrir: (pasta: PastaResumo) => void;
@@ -125,11 +126,16 @@ function Recolhivel({ oculto, cortar, children }: { oculto: boolean; cortar: boo
  * cabeçalho oculta e mostra todas de uma vez — a escolha vale para o módulo
  * inteiro e fica guardada.
  */
-export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas", corIcone, aoAbrir, aoCriar, rotuloCriar = "Nova pasta", espaco, visualizacao = "grade", itens = [], aoAbrirItem }: Props) {
+export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas", corIcone, aoAbrir, aoCriar, rotuloCriar = "Nova pasta", espaco: espacoProp, visualizacao = "grade", itens = [], aoAbrirItem }: Props) {
+  // Sem `espaco` explícito vale o espaço que a tela está mostrando; antes caía no Pessoal e apagava/renomeava a pasta errada.
   // Pastas fixadas primeiro (a ordenação é estável: o resto mantém a ordem do servidor).
   const sobrepostas = usePastasOtimistas();
   useEffect(() => reconciliarPastasOtimistas(pastasRecebidas), [pastasRecebidas]);
   const pastas = useMemo(() => [...comPastasOtimistas(pastasRecebidas, sobrepostas)].sort((a, b) => Number(!!b.fixada) - Number(!!a.fixada)), [pastasRecebidas, sobrepostas]);
+  const espacoDaTela = useEspacoFiltro();
+  const espaco = espacoProp ?? espacoDaTela;
+  // Modo intercalado sem equipe escolhida: a lista mistura espaços, então não dá para saber de qual é a pasta.
+  const semEspaco = !espaco;
   // No explorador (Organização) a lista também traz os itens: ele abre mostrando tudo, sem seguir o padrão de pastas.
   const padraoOculto = visualizacao === "grade" && !lerPreferenciasAplicativo().pastasVisiveis;
   const [ocultas, setOcultas] = useState(() => lerOcultas(chave, padraoOculto));
@@ -182,6 +188,7 @@ export function PastasGrade({ pastas: pastasRecebidas, chave, titulo = "Pastas",
     }
   }
   function abrirAcao(pasta: PastaResumo, proxima: "renomear" | "mover" | "excluir") {
+    if (semEspaco) { setMenu(null); avisar("Escolha um espaço (Pessoal ou uma equipe) para alterar pastas.", "erro"); return; }
     setMenu(null); setPastaAtiva(pasta); setAcao(proxima); setErro(null);
   }
   function fecharAcao() { setAcao(null); setPastaAtiva(null); setErro(null); setExcluirTudo(false); }

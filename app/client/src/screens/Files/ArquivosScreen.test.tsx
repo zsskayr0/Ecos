@@ -42,14 +42,15 @@ describe("ArquivosScreen", () => {
 
   it("lista pastas e arquivos, com o fora do padrão em vermelho", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    expect(await screen.findByText("note-Plano.md")).toBeTruthy();
-    expect(screen.getByText("lista.txt")).toBeTruthy();
-    expect(screen.getByText("Antiga.md").className).toContain("text-error");
+    expect(await within(await screen.findByRole("grid")).findByText("Plano")).toBeTruthy();
+    const grade = within(screen.getByRole("grid"));
+    expect(grade.getByText("lista.txt")).toBeTruthy();
+    expect(grade.getByText("Antiga").className).toContain("text-error");
   });
 
   it("duplo clique abre a nota no Ecos e o resto no visualizador", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.doubleClick(linha("note-Plano.md"));
     expect(abrirDocumento).toHaveBeenLastCalledWith("/notas/nota/N1", expect.anything());
     fireEvent.doubleClick(linha("lista.txt"));
@@ -58,20 +59,22 @@ describe("ArquivosScreen", () => {
 
   it("arrastar a seleção para uma pasta move todos os selecionados", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(linha("lista.txt"));
     fireEvent.click(linha("note-Plano.md"), { ctrlKey: true });
-    const dados = new Map<string, string>();
-    const dataTransfer = { setData: (t: string, v: string) => dados.set(t, v), getData: (t: string) => dados.get(t) ?? "", get types() { return [...dados.keys()]; }, effectAllowed: "", dropEffect: "" };
-    fireEvent.dragStart(linha("note-Plano.md"), { dataTransfer });
-    fireEvent.dragOver(linha("Projetos"), { dataTransfer });
-    fireEvent.drop(linha("Projetos"), { dataTransfer });
+    // O arrasto é por ponteiro: pressionar, andar além do limiar sobre a pasta de destino e soltar.
+    const alvo = linha("Projetos");
+    document.elementsFromPoint = () => [alvo];
+    const ponteiro = { pointerId: 1, pointerType: "mouse", button: 0 };
+    fireEvent.pointerDown(linha("note-Plano.md"), { ...ponteiro, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(window, { ...ponteiro, clientX: 60, clientY: 60 });
+    fireEvent.pointerUp(window, { ...ponteiro, clientX: 60, clientY: 60 });
     await waitFor(() => expect(arquivos.mover).toHaveBeenCalledWith({ espaco: "pessoal", itens: ["lista.txt", "note-Plano.md"], destino: "Projetos" }));
   });
 
   it("F2 renomeia o arquivo pelo nome e a nota pelo título", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(linha("lista.txt"));
     fireEvent.keyDown(linha("lista.txt"), { key: "F2" });
     const campo = await screen.findByLabelText("Nome");
@@ -88,7 +91,7 @@ describe("ArquivosScreen", () => {
 
   it("Delete pede confirmação e só então manda para a Lixeira", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(linha("lista.txt"));
     fireEvent.click(linha("Projetos"), { ctrlKey: true });
     fireEvent.keyDown(linha("lista.txt"), { key: "Delete" });
@@ -101,7 +104,7 @@ describe("ArquivosScreen", () => {
 
   it("Nova pasta cria na pasta aberta e recusa nome repetido", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(screen.getByRole("button", { name: /Nova pasta/ }));
     const dialogo = screen.getByRole("dialog");
     fireEvent.change(within(dialogo).getByLabelText("Nome"), { target: { value: "projetos" } });
@@ -115,7 +118,7 @@ describe("ArquivosScreen", () => {
 
   it("Enviar manda cada arquivo escolhido para a pasta aberta", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     const a = new File(["a"], "a.pdf"), b = new File(["b"], "b.png");
     fireEvent.change(screen.getByLabelText("Escolher arquivos para enviar"), { target: { files: [a, b] } });
     await waitFor(() => expect(arquivos.enviar).toHaveBeenCalledTimes(2));
@@ -125,7 +128,7 @@ describe("ArquivosScreen", () => {
 
   it("soltar arquivos do computador numa pasta envia para ela", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     const foto = new File(["x"], "foto.jpg");
     const dataTransfer = { types: ["Files"], files: [foto], getData: () => "", dropEffect: "" };
     fireEvent.dragOver(linha("Projetos"), { dataTransfer });
@@ -136,14 +139,27 @@ describe("ArquivosScreen", () => {
 
   it("Mover para… pelo menu escolhe a pasta numa lista, sem arrastar", async () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
-    await screen.findByText("note-Plano.md");
+    await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(screen.getByRole("button", { name: "Ações de lista.txt" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: /Mover para/ }));
     const dialogo = screen.getByRole("dialog");
-    expect((within(dialogo).getByRole("button", { name: "Mover aqui" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(within(dialogo).getByText("Projetos"));
-    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover aqui" }));
+    expect((within(dialogo).getByRole("button", { name: "Mover" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(await within(dialogo).findByText("Projetos"));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
     await waitFor(() => expect(arquivos.mover).toHaveBeenCalledWith({ espaco: "pessoal", itens: ["lista.txt"], destino: "Projetos" }));
   });
-});
 
+  it("a árvore lateral mostra arquivos (nota pelo título) e filtra", async () => {
+    render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
+    const arvore = within(await screen.findByRole("tree"));
+    expect(await arvore.findByText("Plano")).toBeTruthy();
+    expect(arvore.getByText("lista.txt")).toBeTruthy();
+    expect(arvore.getByText("Projetos")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Filtrar arquivos"), { target: { value: "plá" } });
+    const resultados = within(screen.getByRole("list", { name: "Resultados do filtro" }));
+    expect(resultados.getByText("Plano")).toBeTruthy();
+    expect(resultados.queryByText("lista.txt")).toBeNull();
+    fireEvent.doubleClick(resultados.getByText("Plano"));
+    expect(abrirDocumento).toHaveBeenLastCalledWith("/notas/nota/N1", expect.anything());
+  });
+});

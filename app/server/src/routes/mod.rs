@@ -26,6 +26,7 @@ pub mod health;
 pub mod links;
 pub mod renomear;
 pub mod media;
+pub mod media_revisao;
 pub mod metricas;
 pub mod lixeira;
 pub mod lixeira_arquivos;
@@ -125,11 +126,14 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         // 120 MB (validado no handler), então a camada precisa comportar a
         // requisição completa antes de ela chegar ao `Multipart`.
         .route("/media", get(media::listar).post(media::enviar).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
+        .route("/media/revisao", get(media_revisao::revisar))
+        .route("/media/revisao/descartar", post(media_revisao::descartar))
         .route("/media/arquivo/*caminho", get(media::obter_arquivo).delete(media::excluir))
         .route("/lixeira", get(media::listar_lixeira))
         .route("/lixeira/:id/restaurar", post(media::restaurar))
         .route("/arquivos", get(arquivos::listar))
         .route("/arquivos/conteudo", get(arquivos::conteudo))
+        .route("/arquivos/resumo", get(arquivos::resumo))
         .route("/arquivos/mover", post(arquivos::mover))
         .route("/arquivos/renomear", post(arquivos::renomear))
         .route("/arquivos/excluir", post(arquivos::excluir))

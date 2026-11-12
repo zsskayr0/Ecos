@@ -222,7 +222,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     const prefs = lerPreferenciasAplicativo();
     const modo = capturaAberta === "tarefa" ? prefs.tarefaNovaPasta : prefs.notaNovaPasta;
     const fixa = (capturaAberta === "tarefa" ? prefs.tarefaNovaPastaFixa : prefs.notaNovaPastaFixa).trim();
-    const pasta = modo === "nenhuma" ? null : modo === "fixa" ? (fixa || null) : contexto?.tipo === capturaAberta ? contexto.pasta : null;
+    const pasta = modo === "nenhuma" ? null : modo === "fixa" ? (fixa || null) : contexto?.tipo === capturaAberta || contexto?.tipo === "arquivos" ? contexto.pasta : null;
     if (!pasta) return;
     setDraft((d) => (capturaAberta === "tarefa" ? (d.pastaTarefa ? d : { ...d, pastaTarefa: pasta }) : d.pastaNota ? d : { ...d, pastaNota: pasta }));
   }, [capturaAberta, idCaptura, contexto?.tipo, contexto?.pasta]);

@@ -306,6 +306,24 @@ pub fn midias_referenciadas(corpo: &str) -> Vec<String> {
     achados
 }
 
+/// Todo caminho de mídia (`AAAA-MM/arquivo`, sem o prefixo) que algum Markdown de qualquer espaço referencia.
+pub fn todas_midias_referenciadas(notes_root: &Path) -> std::collections::HashSet<String> {
+    let mut achadas = std::collections::HashSet::new();
+    for (_, dir) in listar(notes_root) {
+        for e in walkdir::WalkDir::new(&dir)
+            .into_iter()
+            .filter_entry(|e| e.depth() == 0 || !nome_interno(&e.file_name().to_string_lossy()))
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "md"))
+        {
+            if let Ok(c) = std::fs::read_to_string(e.path()) {
+                achadas.extend(midias_referenciadas(&c));
+            }
+        }
+    }
+    achadas
+}
+
 fn algum_md_referencia(dir_espaco: &Path, relativo: &str) -> bool {
     let alvo = format!("{PREFIXO_MIDIA}{relativo}");
     walkdir::WalkDir::new(dir_espaco)

@@ -1,6 +1,7 @@
 import { TabBar } from "./TabBar";
 import { TabContent } from "./TabContent";
 import { useTabDrag } from "./tab-drag";
+import { useZonaArraste } from "@/lib/arraste-itens";
 import { useWorkspace, type Pane } from "./workspace-store";
 
 /** Só existe durante um arraste de aba, e só desenha: bordas laterais dividem o painel, o centro move a aba para dentro dele. Quem decide o alvo é `tab-drag.tsx`. */
@@ -24,6 +25,9 @@ function DropZones({ pane }: { pane: Pane }) {
 
 export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
   const { state, dispatch, fechando } = useWorkspace();
+  /** Arraste de item da sidebar: a faixa da borda onde soltar abre o item ao lado (quem decide é `arraste-itens`). */
+  const zonaArraste = useZonaArraste();
+  const zonaExterna = zonaArraste?.paneId === pane.id ? zonaArraste.lado : null;
   const recolhendo = state.panes.length > 1 && pane.tabs.length > 0 && pane.tabs.every((t) => fechando.includes(t.id));
 
   return (
@@ -40,6 +44,7 @@ export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
       <TabBar pane={pane} />
       {focada && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-[35px] z-10 h-px bg-cyan/60" />}
       <div data-pane-conteudo={pane.id} className="relative min-h-0 flex-1">
+        {zonaExterna && <div aria-hidden className={`pointer-events-none absolute inset-y-2 z-30 flex items-center justify-center rounded-lg border border-cyan/60 bg-cyan/15 ${zonaExterna === "left" ? "left-1" : "right-1"}`} style={{ width: 64 }}><span className="whitespace-nowrap text-xs font-medium text-cyan [writing-mode:vertical-rl]">Abrir ao lado</span></div>}
         {pane.tabs.map((tab) => (
           <TabContent key={tab.id} tabId={tab.id} path={tab.path} visible={tab.id === pane.activeTabId} fechando={fechando.includes(tab.id)} />
         ))}

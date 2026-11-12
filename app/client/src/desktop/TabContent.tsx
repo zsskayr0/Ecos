@@ -40,6 +40,7 @@ export function PathReporter({ tabId, hist, idx, chave }: { tabId?: string; hist
 
   useEffect(() => registrarNavegacao(chave, {
     ir: (d) => navigate(d),
+    navegar: (p) => navigate(p),
     podeVoltar: () => pilha.current.idx > 0,
     podeAvancar: () => pilha.current.idx < pilha.current.hist.length - 1,
   }), [chave, navigate]);

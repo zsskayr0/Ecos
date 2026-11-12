@@ -615,7 +615,7 @@ export const notas = {
 // --- Folders (section 11.5) -------------------------------------------------
 
 export const pastas = {
-  listar: (params: { tipo?: "nota" | "tarefa"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
+  listar: (params: { tipo?: "nota" | "tarefa" | "todos"; pasta_pai?: string; espaco?: string; recursivo?: boolean } = {}) =>
     get<{ subpastas: { caminho: string; nome: string; contagem_itens: number; contagem_notas?: number; contagem_tarefas?: number; cor?: string | null; icone?: string | null; /** Tags padrão das notas e tarefas criadas na pasta. */ tags?: string[] | null; descricao?: string | null; fixada?: boolean | null; prioridade_padrao?: "baixa" | "media" | "alta" | null; duracao_padrao_min?: number | null }[]; itens: Record<string, unknown>[] }>(`/pastas${qs(params)}`),
   criar: (payload: { tipo?: "nota" | "tarefa"; pasta_pai?: string; nome: string; espaco?: string; cor?: string; icone?: string; tags?: string[]; descricao?: string; fixada?: boolean; prioridade_padrao?: "baixa" | "media" | "alta" | ""; duracao_padrao_min?: number }) => post<{ ok: true; caminho: string }>("/pastas", payload),
   renomear: (payload: { tipo?: "nota" | "tarefa"; caminho_atual: string; novo_caminho: string; espaco?: string; cor?: string; icone?: string; tags?: string[]; descricao?: string; fixada?: boolean; prioridade_padrao?: "baixa" | "media" | "alta" | ""; duracao_padrao_min?: number }) => patch<{ ok: true }>("/pastas", payload),
@@ -1116,6 +1116,29 @@ export const calendario = {
 
 /** Problemas de sincronização por item e as ações sobre eles. As que sobrescrevem algo exigem `confirmar`. */
 /** Item do explorador de arquivos (árvore única do espaço). `tipo`/`id`/`titulo` só em notas e tarefas indexadas. */
+export interface PastaExplorador {
+  nome: string;
+  caminho: string;
+  /** Cor (#rrggbb) e ícone escolhidos para a pasta. */
+  cor?: string | null;
+  icone?: string | null;
+  /** Ajustes da pasta (os mesmos de `pastas.listar`). */
+  tags?: string[] | null;
+  descricao?: string | null;
+  fixada?: boolean | null;
+  prioridade_padrao?: "baixa" | "media" | "alta" | null;
+  duracao_padrao_min?: number | null;
+}
+
+/** Mídia da biblioteca do espaço que uma nota ou tarefa referencia no texto (`src/Media/...`). */
+export interface AnexoExplorador {
+  /** Nome do arquivo na biblioteca (leva um ULID no fim). */
+  nome: string;
+  /** Caminho na biblioteca, como no Markdown: `src/Media/AAAA-MM/arquivo`. */
+  caminho: string;
+  tamanho_bytes: number;
+}
+
 export interface ArquivoExplorador {
   nome: string;
   caminho: string;
@@ -1125,12 +1148,26 @@ export interface ArquivoExplorador {
   tipo?: "nota" | "tarefa";
   id?: string;
   titulo?: string;
+  /** Só em tarefas. */
+  status?: "pendente" | "concluida" | "arquivada";
   fora_do_padrao?: boolean;
+  /** Só em nota e tarefa: mídias que o texto referencia. */
+  anexos?: AnexoExplorador[];
 }
+
+export interface ItemRevisaoMidia { caminho: string; nome: string; espaco: string; tamanho_bytes: number; referenciada: boolean }
+export interface RevisaoMidias { orfas: ItemRevisaoMidia[]; duplicadas: ItemRevisaoMidia[][]; bytes_orfas: number }
+
+export const revisaoMidias = {
+  revisar: (espaco?: string) => get<RevisaoMidias>(`/media/revisao${qs({ espaco })}`),
+  descartar: (caminhos: string[]) => post<{ descartados: string[]; ignorados: string[] }>("/media/revisao/descartar", { caminhos }),
+};
 
 export const arquivos = {
   listar: (params: { espaco?: string; pasta?: string }) =>
-    get<{ pasta: string; pastas: { nome: string; caminho: string }[]; arquivos: ArquivoExplorador[] }>(`/arquivos${qs(params)}`),
+    get<{ pasta: string; pastas: PastaExplorador[]; arquivos: ArquivoExplorador[] }>(`/arquivos${qs(params)}`),
+  resumo: (params: { espaco?: string; pasta?: string }) =>
+    get<{ pastas: number; arquivos: number; notas: number; tarefas: number; midias: number; bytes: number }>(`/arquivos/resumo${qs(params)}`),
   urlConteudo: (espaco: string, caminho: string) => `${BASE()}/arquivos/conteudo${qs({ espaco, caminho })}`,
   baixar: async (espaco: string, caminho: string): Promise<ArrayBuffer> => {
     const accessToken = obterAccessToken();

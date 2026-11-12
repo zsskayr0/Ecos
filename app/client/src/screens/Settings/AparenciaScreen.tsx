@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronLeft, Contrast, Cpu, Folder, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn } from "lucide-react";
+import { ChevronDown, ChevronLeft, Contrast, FileType2, FolderTree, Cpu, Folder, Shapes, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn } from "lucide-react";
 import { useTema } from "@/lib/theme";
 import { Toggle } from "@/components/common/Toggle";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { limparEscolhaDePastas } from "@/components/views/PastasGrade";
-import { ESCALAS_INTERFACE, lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type AltoContraste, type EstiloPastas, type IdiomaAplicativo, type PreferenciasAplicativo, type ReduzirMovimento } from "@/lib/preferencias-aplicativo";
+import { IconesPorExtensao } from "./IconesPorExtensao";
+import { ESCALAS_INTERFACE, lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type AltoContraste, type EstiloPastas, type IdiomaAplicativo, type MarcaArquivo, type PreferenciasAplicativo, type ReduzirMovimento } from "@/lib/preferencias-aplicativo";
 
 const IDIOMAS = [
   { valor: "pt-BR", rotulo: "Português do Brasil", icone: Globe2, cor: TOM.aco },
@@ -17,6 +18,13 @@ const MOVIMENTOS = [
   { valor: "sistema", rotulo: "Usar configuração do sistema", icone: Wind, cor: TOM.aco },
   { valor: "desligado", rotulo: "Desligado", icone: Wind, cor: TOM.ciano },
   { valor: "ligado", rotulo: "Ligado", icone: Wind, cor: TOM.violeta },
+] as const;
+
+const MARCAS_ARQUIVO = [
+  { valor: "ambos", rotulo: "Ícone e selo (.PDF)", icone: FileType2, cor: TOM.aco },
+  { valor: "selo", rotulo: "Só o selo da extensão", icone: FileType2, cor: TOM.ciano },
+  { valor: "icone", rotulo: "Só o ícone", icone: FileType2, cor: TOM.violeta },
+  { valor: "nenhum", rotulo: "Só o nome", icone: FileType2, cor: TOM.aco },
 ] as const;
 
 const CONTRASTES = [
@@ -35,6 +43,8 @@ export function AparenciaScreen() {
   const navigate = useNavigate();
   const { modo, setTema } = useTema();
   const [preferencias, setPreferencias] = useState(lerPreferenciasAplicativo);
+  const [iconesAbertos, setIconesAbertos] = useState(false);
+  const totalIcones = Object.keys(preferencias.exploradorIconesExtensao).length;
   const alterar = (patch: Partial<PreferenciasAplicativo>) => setPreferencias((atual) => { const proxima = { ...atual, ...patch }; salvarPreferenciasAplicativo(proxima); return proxima; });
 
   return (
@@ -129,6 +139,24 @@ export function AparenciaScreen() {
           <Linha Icone={LayoutGrid} titulo="Estilo das pastas" descricao="Grade com blocos quadrados, ou grade menor com um nome por linha, como uma lista.">
             <SeletorEstilo valor={preferencias.estiloPastas} onChange={(estiloPastas) => alterar({ estiloPastas })} />
           </Linha>
+          <Linha Icone={FolderTree} titulo="Modo explorador" descricao="No computador, o menu lateral mostra só Início, Agenda, Tarefas, Eventos e Cofre, com a árvore de arquivos do espaço embaixo.">
+            <Toggle checked={preferencias.modoExplorador} onChange={(modoExplorador) => alterar({ modoExplorador })} label="Modo explorador" />
+          </Linha>
+          <Linha Icone={FolderTree} titulo="Sugestões na barra de endereço" descricao="Na tela de Arquivos, ao clicar no caminho para digitar, mostra uma lista de pastas que combinam com o que você escreve.">
+            <Toggle checked={preferencias.arquivosSugestoesCaminho} onChange={(arquivosSugestoesCaminho) => alterar({ arquivosSugestoesCaminho })} label="Sugestões na barra de endereço" />
+          </Linha>
+          {preferencias.modoExplorador && (
+            <>
+              <Linha Icone={FileType2} titulo="Marca dos arquivos na árvore" descricao="Como os arquivos que não são notas nem tarefas (PDF, planilhas, imagens…) aparecem no menu lateral: com ícone, com o selo da extensão à direita, os dois ou só o nome.">
+                <Seletor valor={preferencias.exploradorMarcaArquivo} opcoes={MARCAS_ARQUIVO} onChange={(exploradorMarcaArquivo: MarcaArquivo) => alterar({ exploradorMarcaArquivo })} label="Marca dos arquivos na árvore" />
+              </Linha>
+              <Linha Icone={Shapes} titulo="Ícones por tipo de arquivo" descricao="Escolha um ícone próprio para cada extensão. Sem escolha, vale o ícone padrão do tipo.">
+                <button type="button" onClick={() => setIconesAbertos(true)} className="flex min-h-10 shrink-0 items-center rounded-xl border border-border bg-surface-2 px-3 text-sm text-text-primary hover:bg-surface-3">
+                  {totalIcones ? `${totalIcones} personalizado${totalIcones === 1 ? "" : "s"}` : "Escolher"}
+                </button>
+              </Linha>
+            </>
+          )}
         </div>
       </section>
 
@@ -140,6 +168,7 @@ export function AparenciaScreen() {
           </Linha>
         </div>
       </section>
+      {iconesAbertos && <IconesPorExtensao valor={preferencias.exploradorIconesExtensao} onChange={(exploradorIconesExtensao) => alterar({ exploradorIconesExtensao })} aoFechar={() => setIconesAbertos(false)} />}
     </div>
   );
 }

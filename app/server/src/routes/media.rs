@@ -29,9 +29,9 @@ fn espaco_valido(espaco: Option<&str>) -> AppResult<String> {
 pub struct EspacoQuery { pub espaco: Option<String> }
 
 /// Guarda o espaço de origem de um item da lixeira de mídia (`<id>.espaco`, ao lado da pasta do item).
-fn marcador_lixeira(state: &AppState, id: &str) -> PathBuf { raiz_lixeira(state).join(format!("{id}.espaco")) }
+pub(super) fn marcador_lixeira(state: &AppState, id: &str) -> PathBuf { raiz_lixeira(state).join(format!("{id}.espaco")) }
 
-fn nome_legivel(nome: &str) -> String {
+pub(super) fn nome_legivel(nome: &str) -> String {
     let (base, ext) = nome.rsplit_once('.').map(|(b, e)| (b, format!(".{e}"))).unwrap_or((nome, String::new()));
     let base = base.rsplit_once('-').filter(|(_, id)| ulid::Ulid::from_string(id).is_ok()).map(|(b, _)| b).unwrap_or(base);
     format!("{base}{ext}")
@@ -133,7 +133,7 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
     Ok(Json(serde_json::json!({ "ok": true, "message": "Arquivo movido para a lixeira." })))
 }
 
-fn raiz_lixeira(state: &AppState) -> PathBuf { state.config.notes_root.join(".ecos/lixeira/media") }
+pub(super) fn raiz_lixeira(state: &AppState) -> PathBuf { state.config.notes_root.join(".ecos/lixeira/media") }
 
 #[derive(Serialize, serde::Deserialize)]
 pub struct ItemLixeira {

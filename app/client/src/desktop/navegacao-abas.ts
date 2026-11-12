@@ -3,6 +3,8 @@ export interface NavegacaoAba {
   ir: (delta: -1 | 1) => void;
   podeVoltar: () => boolean;
   podeAvancar: () => boolean;
+  /** Leva a aba a outra rota (o MemoryRouter dela): é como a sidebar abre uma pasta numa aba de Arquivos que já existe. */
+  navegar?: (path: string) => void;
 }
 
 const registro = new Map<string, NavegacaoAba>();

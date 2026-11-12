@@ -3,6 +3,8 @@ export type FormatoLink = "curto" | "relativo" | "absoluto";
 export type ExcluirAnexos = "perguntar" | "automatico" | "manter";
 export type DestinoExclusao = "sistema" | "ecos" | "permanente";
 export type EstiloPastas = "grade" | "compacta";
+/** Como a árvore lateral marca os arquivos que não são nota nem tarefa: selo com a extensão, ícone, os dois ou nada. */
+export type MarcaArquivo = "ambos" | "selo" | "icone" | "nenhum";
 export type AltoContraste = "sistema" | "ligado" | "desligado";
 export type FormatoData = "completa" | "curta" | "mdy" | "dmy" | "ymd" | "relativo";
 export type PrioridadePadrao = "baixa" | "media" | "alta";
@@ -39,6 +41,14 @@ export interface PreferenciasAplicativo {
   pastasVisiveis: boolean;
   /** `grade`: blocos quadrados; `compacta`: blocos baixos, um nome por linha, como uma lista em grade. */
   estiloPastas: EstiloPastas;
+  /** Desktop: menu lateral enxuto (Início, Agenda, Tarefas, Eventos, Cofre) com a árvore de arquivos embaixo. */
+  modoExplorador: boolean;
+  /** Marca dos arquivos que não são nota nem tarefa na árvore lateral. */
+  exploradorMarcaArquivo: MarcaArquivo;
+  /** Ícone escolhido por extensão (sem ponto, minúscula) na árvore lateral; sem entrada vale o ícone padrão do tipo. */
+  exploradorIconesExtensao: Record<string, string>;
+  /** Tela de Arquivos: a barra de endereço mostra sugestões de pastas enquanto você digita. */
+  arquivosSugestoesCaminho: boolean;
   /** `sistema` segue `prefers-contrast: more` do sistema operacional. */
   altoContraste: AltoContraste;
   /** Calendários (Agenda, seletores de data) começam a semana na segunda em vez do domingo. */
@@ -118,6 +128,10 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   destinoExclusao: "sistema",
   pastasVisiveis: false,
   estiloPastas: "grade",
+  modoExplorador: false,
+  exploradorMarcaArquivo: "ambos",
+  exploradorIconesExtensao: {},
+  arquivosSugestoesCaminho: true,
   altoContraste: "sistema",
   semanaComecaSegunda: false,
   formatoData: "dmy",

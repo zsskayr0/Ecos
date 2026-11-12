@@ -5,6 +5,8 @@ import { RefreshProvider } from "@/lib/refresh-bus";
 import { PastasGrade } from "./PastasGrade";
 import { ToastHost } from "@/lib/toast";
 
+const espacoDaTela = vi.hoisted(() => ({ valor: "pessoal" as string | undefined }));
+vi.mock("@/lib/use-espaco-filtro", () => ({ useEspacoFiltro: () => espacoDaTela.valor }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
   pastas: { listar: vi.fn(), renomear: vi.fn(), excluir: vi.fn() },
@@ -14,7 +16,17 @@ const pasta = { caminho: "Arquivo", nome: "Arquivo", contagem_itens: 0 };
 
 describe("ações e árvore de destino das pastas", () => {
   // As pastas começam ocultas por padrão; estes testes exercitam as ações, então abrem as pastas.
-  beforeEach(() => { localStorage.setItem("ecos:pastas-ocultas:v2:notas", "0"); });
+  beforeEach(() => { localStorage.setItem("ecos:pastas-ocultas:v2:notas", "0"); espacoDaTela.valor = "pessoal"; });
+
+  it("sem espaço explícito, exclui no espaço que a tela mostra (equipe), nunca no Pessoal", async () => {
+    espacoDaTela.valor = "equipe:CRBS";
+    vi.mocked(pastas.excluir).mockResolvedValue({ ok: true });
+    render(<RefreshProvider><PastasGrade chave="notas" corIcone="text-cyan" pastas={[pasta]} aoAbrir={vi.fn()} /></RefreshProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Ações para Arquivo" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Excluir" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Excluir pasta/ }));
+    await waitFor(() => expect(pastas.excluir).toHaveBeenCalledWith(expect.objectContaining({ espaco: "equipe:CRBS", caminho: "Arquivo" })));
+  });
 
   it("mostra as quatro ações pedidas e não oferece criar subpasta nos três pontos", () => {
     const abrir = vi.fn();
