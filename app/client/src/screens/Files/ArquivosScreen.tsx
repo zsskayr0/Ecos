@@ -1,12 +1,13 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as PointerReact } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ChevronsDownUp, FolderInput, FolderOpen, FolderPlus, LayoutGrid, List, MoreHorizontal, Paperclip, Pencil, RotateCw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ChevronsDownUp, CircleDot, FileText, Flag, FolderInput, FolderOpen, FolderPlus, HardDrive, LayoutGrid, List, MoreHorizontal, Paperclip, Pencil, PencilLine, RotateCw, Search, Tags, Trash2, Upload, X } from "lucide-react";
 import { arquivos, pastas as pastasApi, type ArquivoExplorador, type PastaExplorador } from "@/lib/api";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { Dialog } from "@/components/common/Dialog";
 import { MenuSuspenso } from "@/components/common/MenuSuspenso";
+import { ESTADO_VAZIO, PASTAS_INDEXADAS, PESO_PRIORIDADE, estadoInicial, filtrar, filtrosAtivos, type EstadoFiltros, type ItemFiltravel } from "@/components/views/filtros/modelo";
 import { MenuExplorador, type ItemMenuExplorador } from "@/desktop/MenuExplorador";
 import { MoverExplorador, type ItemParaMover } from "@/desktop/MoverExplorador";
 import { RevisarMidias } from "@/components/files/RevisarMidias";
@@ -21,6 +22,8 @@ import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { mensagemDeErro } from "@/lib/erros";
 import { avisar } from "@/lib/toast";
 import { aoPressionarItem } from "@/lib/arraste-itens";
+import { FiltrosExplorador } from "./FiltrosExplorador";
+import { reunirPastas, type ConteudoPasta } from "./pastas-explorador";
 
 /** Tipo de dado do arrastar-e-soltar interno: a lista de caminhos lógicos sendo movidos. */
 /** Mesmo limite do servidor por arquivo. */
@@ -28,7 +31,16 @@ const LIMITE_ENVIO = 120 * 1024 * 1024;
 const CHAVE_VISTA = "ecos.arquivos.vista.v1";
 
 type Vista = "lista" | "grade";
-type ChaveOrdem = "nome" | "tipo" | "tamanho" | "modificado";
+const ORDENS = [
+  { valor: "nome", rotulo: "Nome", icone: ArrowDownAZ },
+  { valor: "tipo", rotulo: "Tipo", icone: FileText },
+  { valor: "tamanho", rotulo: "Tamanho", icone: HardDrive },
+  { valor: "modificado", rotulo: "Modificado", icone: PencilLine },
+  { valor: "status", rotulo: "Status", icone: CircleDot },
+  { valor: "prioridade", rotulo: "Prioridade", icone: Flag },
+  { valor: "tags", rotulo: "Tags", icone: Tags },
+] as const;
+type ChaveOrdem = typeof ORDENS[number]["valor"];
 interface PreferenciaVista { vista: Vista; chave: ChaveOrdem; dir: 1 | -1 }
 
 /** Como a pessoa quer ver a pasta (lista ou grade) e a ordem: fica neste aparelho. */
@@ -39,7 +51,7 @@ function lerVista(): PreferenciaVista {
     if (!s) return padrao;
     return {
       vista: s.vista === "grade" ? "grade" : "lista",
-      chave: s.chave === "tipo" || s.chave === "tamanho" || s.chave === "modificado" ? s.chave : "nome",
+      chave: ORDENS.find((opcao) => opcao.valor === s.chave)?.valor ?? padrao.chave,
       dir: s.dir === -1 ? -1 : 1,
     };
   } catch { return padrao; }
@@ -64,6 +76,25 @@ function destinoInvalido(itens: string[], destino: string) {
 /** Nota e tarefa aparecem pelo título; o resto, pelo nome do arquivo (o nome de verdade fica na dica). */
 function nomeExibido(l: Linha) {
   return l.arquivo && (l.arquivo.tipo === "nota" || l.arquivo.tipo === "tarefa") && l.arquivo.titulo ? l.arquivo.titulo : l.nome;
+}
+
+function itemParaFiltro(linha: Linha, espaco: string): ItemFiltravel & { linha: Linha } {
+  const arquivo = linha.arquivo;
+  const pasta = pai(linha.caminho);
+  const base = { linha, espaco, titulo: nomeExibido(linha), tags: arquivo?.tags ?? linha.info?.tags ?? undefined };
+  if (linha.pasta) return { ...base, tipo: "pasta", pasta: linha.caminho };
+  if (!arquivo?.tipo) return { ...base, tipo: "arquivo", pasta };
+  const dono = arquivo.criado_por_nome
+    ? { id: arquivo.criado_por ?? null, nome: arquivo.criado_por_nome }
+    : undefined;
+  if (arquivo.tipo === "nota") return { ...base, tipo: "nota", pastaId: pasta, dono };
+  return {
+    ...base, tipo: "tarefa", pasta, dono,
+    status: arquivo.status ?? "pendente",
+    prioridade: arquivo.prioridade,
+    scheduledAt: arquivo.scheduled_at,
+    dueDate: arquivo.due_date,
+  };
 }
 
 function rotuloDe(linha: Linha) {
@@ -158,13 +189,6 @@ function RenomearDialog({ linha, onFechar, onSalvar }: { linha: Linha; onFechar:
   );
 }
 
-const ORDENS: { valor: ChaveOrdem; rotulo: string }[] = [
-  { valor: "nome", rotulo: "Nome" },
-  { valor: "tipo", rotulo: "Tipo" },
-  { valor: "tamanho", rotulo: "Tamanho" },
-  { valor: "modificado", rotulo: "Modificado" },
-];
-
 /**
  * Explorador de arquivos: a árvore única do espaço (notas, tarefas e qualquer outro arquivo nas mesmas pastas).
  * Desktop: barra de caminho e ferramentas no topo, conteúdo em lista ou grade, seleção com Ctrl/Shift e mover
@@ -179,11 +203,14 @@ export function ArquivosScreen() {
   const abrirDocumento = useAbrirDocumento();
   const { versao, notificar } = useRefreshBus();
   const espaco = useEspacoFiltro() ?? "pessoal";
-  const { icones: iconesExtensao, marca } = useMarcasArquivo();
+  const { icones: iconesExtensao, marca, colorirPrioridade } = useMarcasArquivo();
   const [params, setParams] = useSearchParams();
   const pastaAtual = params.get("pasta") ?? "";
   const setPastaAtual = useCallback((p: string) => setParams(p ? { pasta: p } : {}), [setParams]);
-  const [conteudo, setConteudo] = useState<{ pastas: PastaExplorador[]; arquivos: ArquivoExplorador[] } | null>(null);
+  const [conteudoCarregado, setConteudo] = useState<{
+    espaco: string; pasta: string; pastas: PastaExplorador[]; arquivos: ArquivoExplorador[];
+  } | null>(null);
+  const conteudo = conteudoCarregado?.pasta === pastaAtual && conteudoCarregado.espaco === espaco ? conteudoCarregado : null;
   const [arvore, setArvore] = useState<string[]>([]);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
@@ -203,13 +230,6 @@ export function ArquivosScreen() {
   const seletorArquivos = useRef<HTMLInputElement>(null);
   const cartao = useRef<HTMLDivElement>(null);
   const [alturaLista, setAlturaLista] = useState<number | null>(null);
-  // A lista ocupa exatamente o que sobra da tela (a página não rola; rola só a lista).
-  useEffect(() => {
-    const medir = () => { const el = cartao.current; if (el) setAlturaLista(Math.max(240, window.innerHeight - el.getBoundingClientRect().top - 8)); };
-    medir();
-    window.addEventListener("resize", medir);
-    return () => window.removeEventListener("resize", medir);
-  }, [desktop, conteudo, erro]);
   const [retangulo, setRetangulo] = useState<{ l: number; t: number; w: number; h: number } | null>(null);
   const ignorarClique = useRef(false);
   const [resumo, setResumo] = useState<{ pastas: number; arquivos: number; notas: number; tarefas: number; midias: number; bytes: number } | null>(null);
@@ -217,8 +237,12 @@ export function ArquivosScreen() {
   const [editandoCaminho, setEditandoCaminho] = useState(false);
   // Config por dispositivo (Aparência › Pastas): sugestões na barra de endereço. Lida ao abrir a barra, sempre em dia.
   const [comSugestoes, setComSugestoes] = useState(() => lerPreferenciasAplicativo().arquivosSugestoesCaminho);
+  const [padraoTarefas, setPadraoTarefas] = useState(() => estadoInicial(true));
   useEffect(() => {
-    const atualizar = () => setComSugestoes(lerPreferenciasAplicativo().arquivosSugestoesCaminho);
+    const atualizar = () => {
+      setComSugestoes(lerPreferenciasAplicativo().arquivosSugestoesCaminho);
+      setPadraoTarefas(estadoInicial(true));
+    };
     window.addEventListener("ecos:preferencias-aplicativo", atualizar);
     return () => window.removeEventListener("ecos:preferencias-aplicativo", atualizar);
   }, []);
@@ -230,6 +254,24 @@ export function ArquivosScreen() {
   const carregandoArvore = useRef(new Set<string>());
   const [filtro, setFiltro] = useState("");
   const [filtroPasta, setFiltroPasta] = useState("");
+  const [filtrosEscolhidos, setFiltrosEscolhidos] = useState<Partial<EstadoFiltros> | null>(null);
+  const [catalogoPastas, setCatalogoPastas] = useState<{ escopo: string; caminhos: string[] } | null>(null);
+  const [consultaPastas, setConsultaPastas] = useState<{ escopo: string; conteudo?: ConteudoPasta; erro?: string } | null>(null);
+  const pastasSelecionadas = filtrosEscolhidos?.pastas ?? ESTADO_VAZIO.pastas;
+  const pastasIndexadas = pastasSelecionadas.includes(PASTAS_INDEXADAS);
+  const visaoCombinada = desktop && modoExplorador && pastasSelecionadas.length > 0;
+  const escopoPasta = JSON.stringify([espaco, pastaAtual]);
+  const escopoCombinado = JSON.stringify([escopoPasta, versao, pastasSelecionadas]);
+  const resultadoCombinado = consultaPastas?.escopo === escopoCombinado ? consultaPastas : null;
+  const conteudoVisivel = visaoCombinada ? resultadoCombinado?.conteudo : conteudo;
+  const erroVisivel = visaoCombinada ? resultadoCombinado?.erro : erro;
+  // A lista ocupa exatamente o que sobra da tela (a página não rola; rola só a lista).
+  useEffect(() => {
+    const medir = () => { const el = cartao.current; if (el) setAlturaLista(Math.max(240, window.innerHeight - el.getBoundingClientRect().top - 8)); };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [desktop, conteudoVisivel, erroVisivel]);
   const [vista, setVista] = useState<PreferenciaVista>(lerVista);
   const alterarVista = (patch: Partial<PreferenciaVista>) => setVista((atual) => {
     const proxima = { ...atual, ...patch };
@@ -246,7 +288,18 @@ export function ArquivosScreen() {
   }, [espaco, setPastaAtual]);
 
   // Outra pasta, outra seleção e outro filtro.
-  useEffect(() => { setSelecao(new Set()); setAncora(null); setFiltroPasta(""); setMenuCtx(null); }, [pastaAtual, espaco]);
+  useEffect(() => {
+    setSelecao(new Set());
+    setAncora(null);
+    setFiltroPasta("");
+    setFiltrosEscolhidos(null);
+    setMenuCtx(null);
+  }, [pastaAtual, espaco, modoExplorador]);
+
+  useEffect(() => {
+    setSelecao(new Set());
+    setAncora(null);
+  }, [padraoTarefas.status]);
 
   useEffect(() => {
     let vivo = true;
@@ -254,14 +307,35 @@ export function ArquivosScreen() {
     arquivos.listar({ espaco, pasta: pastaAtual })
       .then((r) => {
         if (!vivo) return;
-        setConteudo(r);
-        // Recarregar a mesma pasta (depois de renomear, mover...) mantém o que ainda existe selecionado.
-        const existentes = new Set([...r.pastas, ...r.arquivos].map((i) => i.caminho));
-        setSelecao((atual) => new Set([...atual].filter((c) => existentes.has(c))));
+        setConteudo({ ...r, espaco, pasta: pastaAtual });
       })
       .catch((e) => vivo && setErro(mensagemDeErro(e, "Não foi possível abrir a pasta.")));
     return () => { vivo = false; };
   }, [espaco, pastaAtual, versao]);
+
+  useEffect(() => {
+    if (!desktop || !modoExplorador) return;
+    let vivo = true;
+    pastasApi.listar({ espaco, pasta_pai: pastaAtual, recursivo: true }).then((r) => {
+      if (vivo) setCatalogoPastas({ escopo: escopoPasta, caminhos: r.subpastas.map((pasta) => pasta.caminho) });
+    }).catch(() => undefined); // As subpastas diretas continuam disponíveis pela listagem de arquivos.
+    return () => { vivo = false; };
+  }, [desktop, modoExplorador, espaco, pastaAtual, escopoPasta, versao]);
+
+  useEffect(() => {
+    if (!visaoCombinada) return;
+    let vivo = true;
+    reunirPastas(espaco, pastasIndexadas ? [pastaAtual] : pastasSelecionadas, pastasIndexadas, () => vivo)
+      .then((resultado) => { if (vivo) setConsultaPastas({ escopo: escopoCombinado, conteudo: resultado }); })
+      .catch((e) => { if (vivo) setConsultaPastas({ escopo: escopoCombinado, erro: mensagemDeErro(e, "Não foi possível reunir as pastas.") }); });
+    return () => { vivo = false; };
+  }, [visaoCombinada, espaco, pastaAtual, pastasSelecionadas, pastasIndexadas, escopoCombinado]);
+
+  useEffect(() => {
+    if (!conteudoVisivel) return;
+    const existentes = new Set([...conteudoVisivel.pastas, ...conteudoVisivel.arquivos].map((item) => item.caminho));
+    setSelecao((atual) => new Set([...atual].filter((caminho) => existentes.has(caminho))));
+  }, [conteudoVisivel]);
 
   // Totais da pasta com tudo o que há dentro (subpastas incluídas), para o rodapé.
   useEffect(() => {
@@ -305,27 +379,69 @@ export function ArquivosScreen() {
     });
   }, [pastaAtual]);
 
-  const linhas: Linha[] = useMemo(() => conteudo ? [
-    ...conteudo.pastas.map((p) => ({ caminho: p.caminho, nome: p.nome, pasta: true, info: p })),
-    ...conteudo.arquivos.map((a) => ({ caminho: a.caminho, nome: a.nome, pasta: false, arquivo: a })),
-  ] : [], [conteudo]);
+  const linhas: Linha[] = useMemo(() => conteudoVisivel ? [
+    ...conteudoVisivel.pastas.map((p) => ({ caminho: p.caminho, nome: p.nome, pasta: true, info: p })),
+    ...conteudoVisivel.arquivos.map((a) => ({ caminho: a.caminho, nome: a.nome, pasta: false, arquivo: a })),
+  ] : [], [conteudoVisivel]);
+
+  const opcoesDePastas = useMemo(() => {
+    const prefixo = pastaAtual ? `${pastaAtual}/` : "";
+    const caminhos = new Set(conteudo?.pastas.map((pasta) => pasta.caminho));
+    if (catalogoPastas?.escopo === escopoPasta) {
+      for (const caminho of catalogoPastas.caminhos) {
+        if (caminho.startsWith(prefixo) && caminho !== pastaAtual) caminhos.add(caminho);
+      }
+    }
+    return [
+      { caminho: pastaAtual, nome: "Pasta atual" },
+      ...[...caminhos].sort((a, b) => a.localeCompare(b, "pt-BR"))
+        .map((caminho) => ({ caminho, nome: caminho.slice(prefixo.length).replace(/\//g, " / ") })),
+    ];
+  }, [conteudo, catalogoPastas, escopoPasta, pastaAtual]);
+
+  const itensFiltraveis = useMemo(() => desktop && modoExplorador ? linhas.map((linha) => itemParaFiltro(linha, espaco)) : [],
+    [desktop, modoExplorador, linhas, espaco]);
+  const temTarefas = itensFiltraveis.some((item) => item.tipo === "tarefa");
+  const padraoFiltros = temTarefas ? padraoTarefas : ESTADO_VAZIO;
+  const filtrosPasta = useMemo(() => ({ ...padraoFiltros, ...filtrosEscolhidos }), [padraoFiltros, filtrosEscolhidos]);
+  const nFiltros = desktop && modoExplorador ? filtrosAtivos(filtrosPasta, false) : 0;
+
+  function alterarFiltrosPasta(filtros: EstadoFiltros) {
+    const { status, ...restante } = filtros;
+    setFiltrosEscolhidos(status === padraoFiltros.status ? restante : filtros);
+    setSelecao(new Set());
+    setAncora(null);
+  }
 
   /** O que a tela mostra: com o filtro da pasta, e na ordem escolhida (pastas sempre antes dos arquivos). */
   const visiveis = useMemo(() => {
     const termo = semAcento(filtroPasta.trim());
-    const base = termo ? linhas.filter((l) => semAcento(`${nomeExibido(l)} ${l.nome}`).includes(termo)) : linhas;
+    const filtradas = nFiltros ? filtrar(itensFiltraveis, { ...filtrosPasta, pastas: [] }).map((item) => item.linha) : linhas;
+    const base = termo ? filtradas.filter((l) => semAcento(`${nomeExibido(l)} ${l.nome}`).includes(termo)) : filtradas;
     const por = (a: Linha, b: Linha): number => {
-      const nomes = nomeExibido(a).localeCompare(nomeExibido(b), "pt-BR", { numeric: true, sensitivity: "base" });
+      const nomes = nomeExibido(a).localeCompare(nomeExibido(b), "pt-BR", { numeric: true, sensitivity: "base" }) * vista.dir;
       if (a.pasta || vista.chave === "nome") return nomes;
+      // Um arquivo sem esse atributo fica depois dos arquivos que o têm nas duas direções.
+      const compararOpcional = <T,>(primeiro: T | undefined, segundo: T | undefined, comparar: (a: T, b: T) => number) => {
+        if (primeiro === segundo) return nomes;
+        if (primeiro === undefined) return 1;
+        if (segundo === undefined) return -1;
+        return comparar(primeiro, segundo) * vista.dir || nomes;
+      };
       switch (vista.chave) {
-        case "tipo": return rotuloDe(a).localeCompare(rotuloDe(b), "pt-BR") || nomes;
-        case "tamanho": return (a.arquivo?.tamanho_bytes ?? 0) - (b.arquivo?.tamanho_bytes ?? 0) || nomes;
-        default: return (a.arquivo?.modificado_em ?? "").localeCompare(b.arquivo?.modificado_em ?? "") || nomes;
+        case "tipo": return rotuloDe(a).localeCompare(rotuloDe(b), "pt-BR") * vista.dir || nomes;
+        case "tamanho": return ((a.arquivo?.tamanho_bytes ?? 0) - (b.arquivo?.tamanho_bytes ?? 0)) * vista.dir || nomes;
+        case "modificado": return (a.arquivo?.modificado_em ?? "").localeCompare(b.arquivo?.modificado_em ?? "") * vista.dir || nomes;
+        case "status":
+          return compararOpcional(a.arquivo?.status, b.arquivo?.status, (x, y) => x.localeCompare(y, "pt-BR"));
+        case "prioridade":
+          return compararOpcional(a.arquivo?.prioridade, b.arquivo?.prioridade, (x, y) => PESO_PRIORIDADE[x] - PESO_PRIORIDADE[y]);
+        case "tags":
+          return ((a.arquivo?.tags?.length ?? 0) - (b.arquivo?.tags?.length ?? 0)) * vista.dir || nomes;
       }
     };
-    const ordenar = (lista: Linha[]) => [...lista].sort((a, b) => por(a, b) * vista.dir);
-    return [...ordenar(base.filter((l) => l.pasta)), ...ordenar(base.filter((l) => !l.pasta))];
-  }, [linhas, filtroPasta, vista.chave, vista.dir]);
+    return [...base.filter((l) => l.pasta).sort(por), ...base.filter((l) => !l.pasta).sort(por)];
+  }, [linhas, filtroPasta, filtrosPasta, itensFiltraveis, nFiltros, vista.chave, vista.dir]);
 
   const abrir = useCallback((linha: Linha, evento?: MouseEvent) => {
     if (linha.pasta) { setPastaAtual(linha.caminho); return; }
@@ -354,7 +470,11 @@ export function ArquivosScreen() {
   async function mover(itens: string[], destino: string) {
     if (destinoInvalido(itens, destino)) return;
     // Some da lista na hora (otimista); se o servidor discordar, o recarregamento corrige.
-    setConteudo((c) => (c ? { pastas: c.pastas.filter((p) => !itens.includes(p.caminho)), arquivos: c.arquivos.filter((a) => !itens.includes(a.caminho)) } : c));
+    setConteudo((c) => c && ({
+      ...c,
+      pastas: c.pastas.filter((p) => !itens.includes(p.caminho)),
+      arquivos: c.arquivos.filter((a) => !itens.includes(a.caminho)),
+    }));
     setSelecao(new Set());
     try {
       const r = await arquivos.mover({ espaco, itens, destino });
@@ -367,6 +487,16 @@ export function ArquivosScreen() {
 
   /** A pasta aberta (ou uma de cima dela) foi renomeada, movida (`para`) ou excluída (`null`): a tela segue junto. */
   function acompanhar(de: string, para: string | null) {
+    setFiltrosEscolhidos((atuais) => {
+      if (!atuais?.pastas?.some((pasta) => pasta === de || pasta.startsWith(`${de}/`))) return atuais;
+      const pastas = atuais.pastas.flatMap((pasta) => {
+        if (pasta !== de && !pasta.startsWith(`${de}/`)) return [pasta];
+        if (para === null) return [];
+        const destino = para + pasta.slice(de.length);
+        return !pastaAtual || destino.startsWith(`${pastaAtual}/`) ? [destino] : [];
+      });
+      return { ...atuais, pastas: [...new Set(pastas)] };
+    });
     if (pastaAtual !== de && !pastaAtual.startsWith(`${de}/`)) return;
     setPastaAtual(para === null ? pai(de) : para + pastaAtual.slice(de.length));
   }
@@ -690,7 +820,8 @@ export function ArquivosScreen() {
   function iconeDaLinha(l: Linha, tamanhoIcone: number) {
     return l.pasta
       ? <IconePasta pasta={l.info!} size={tamanhoIcone} className={l.info?.cor ? "" : "text-steel-300"} />
-      : <IconeArquivo a={l.arquivo!} personalizados={iconesExtensao} size={tamanhoIcone} className={corDoIcone(l)} />;
+      : <IconeArquivo a={l.arquivo!} personalizados={iconesExtensao} size={tamanhoIcone} className={corDoIcone(l)}
+          colorirPrioridade={desktop && modoExplorador && colorirPrioridade} />;
   }
 
   function Seta({ chave }: { chave: ChaveOrdem }) {
@@ -789,39 +920,65 @@ export function ArquivosScreen() {
       )}
     </nav>
   );
+  const grupoBarra = "flex shrink-0 items-center rounded-xl border border-border bg-surface-1 p-0.5";
+  const botaoCompacto = "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2 hover:text-text-primary";
 
   return (
-    <div className={`px-4 ${desktop ? "pb-2 pt-2" : "pt-1 pb-nav-safe"}`}>
+    <div className={`px-4 ${desktop ? "pb-2" : "pt-1 pb-nav-safe"}`}>
       {desktop ? (
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {barraCaminho}
           {!comArvore && (
-            <label className="flex h-9 w-52 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-surface-1 px-2.5 text-text-muted focus-within:border-steel-400">
+            <label className="flex h-9 w-52 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-surface-1 px-2.5 text-text-muted focus-within:border-steel-400 focus-within:ring-2 focus-within:ring-steel-400/25">
               <Search size={14} className="shrink-0" />
-              <input value={filtroPasta} onChange={(e) => setFiltroPasta(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setFiltroPasta("")} placeholder="Filtrar nesta pasta…" aria-label="Filtrar nesta pasta" className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted" />
+              <input value={filtroPasta} onChange={(e) => setFiltroPasta(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setFiltroPasta("")} placeholder="Filtrar nesta pasta…" aria-label="Filtrar nesta pasta" className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-muted focus-visible:outline-none" />
               {filtroPasta && <button type="button" aria-label="Limpar filtro" onClick={() => setFiltroPasta("")} className="text-text-muted hover:text-text-primary"><X size={13} /></button>}
             </label>
           )}
-          <MenuSuspenso
-            valor={vista.chave}
-            ariaLabel="Ordenar por"
-            alinhar="dir"
-            fixo
-            opcoes={ORDENS.map((o) => ({ ...o, icone: ArrowUpDown }))}
-            onChange={(chave) => alterarVista({ chave })}
-            classeGatilho="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-surface-1 px-2.5 text-[13px] text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-            gatilho={({ atual }) => <><ArrowUpDown size={14} />{atual?.rotulo ?? "Ordenar"}</>}
-          />
-          <button type="button" onClick={() => alterarVista({ dir: vista.dir === 1 ? -1 : 1 })} aria-label={vista.dir === 1 ? "Ordem crescente: inverter" : "Ordem decrescente: inverter"} title={vista.dir === 1 ? "Crescente" : "Decrescente"}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-1 text-text-secondary hover:bg-surface-2 hover:text-text-primary">{vista.dir === 1 ? <ArrowUp size={15} /> : <ArrowDown size={15} />}</button>
-          <div className="flex shrink-0 rounded-xl border border-border bg-surface-1 p-0.5" role="group" aria-label="Modo de exibição">
+          {!comArvore && <FiltrosExplorador key={escopoPasta} estado={filtrosPasta} onChange={alterarFiltrosPasta}
+            itens={itensFiltraveis} pastas={opcoesDePastas} visiveis={visiveis.length} nFiltros={nFiltros} />}
+          <div role="group" aria-label="Ordenação" className={comArvore ? "flex shrink-0 items-center gap-2" : grupoBarra}>
+            <MenuSuspenso
+              valor={vista.chave}
+              ariaLabel="Ordenar por"
+              alinhar="centro"
+              fixo
+              opcoes={ORDENS}
+              onChange={(chave) => alterarVista({ chave })}
+              classeGatilho={`flex shrink-0 items-center gap-1.5 text-[13px] text-text-secondary hover:bg-surface-2 hover:text-text-primary ${comArvore ? "h-9 rounded-xl border border-border bg-surface-1 px-2.5" : "h-8 rounded-lg px-2"}`}
+              gatilho={({ atual }) => <><ArrowUpDown size={14} />{atual?.rotulo ?? "Ordenar"}</>}
+            />
+            {!comArvore && <span aria-hidden className="h-4 w-px shrink-0 bg-border" />}
+            <button type="button" onClick={() => alterarVista({ dir: vista.dir === 1 ? -1 : 1 })} aria-label={vista.dir === 1 ? "Ordem crescente: inverter" : "Ordem decrescente: inverter"} title={vista.dir === 1 ? "Crescente" : "Decrescente"}
+              className={comArvore ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-1 text-text-secondary hover:bg-surface-2 hover:text-text-primary" : botaoCompacto}>
+              <ArrowUp size={15} aria-hidden
+                className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${vista.dir === 1 ? "rotate-0" : "rotate-180"}`} />
+            </button>
+          </div>
+          {!comArvore && (
+            <div role="group" aria-label="Adicionar à pasta" className={grupoBarra}>
+              <button type="button" aria-label="Nova pasta" title="Nova pasta" onClick={() => setCriandoPasta(true)} className={botaoCompacto}>
+                <FolderPlus size={16} aria-hidden />
+              </button>
+              <button type="button" aria-label="Enviar" title="Enviar arquivos" disabled={!!enviando} onClick={() => seletorArquivos.current?.click()}
+                className={`${botaoCompacto} disabled:opacity-50`}>
+                <Upload size={16} aria-hidden />
+              </button>
+            </div>
+          )}
+          <div className={`relative ${grupoBarra}`} role="group" aria-label="Modo de exibição">
+            <span aria-hidden className={`pointer-events-none absolute left-0.5 top-0.5 h-8 w-8 rounded-lg bg-surface-3 transition-transform duration-200 ease-out motion-reduce:transition-none ${vista.vista === "grade" ? "translate-x-full" : "translate-x-0"}`} />
             {([["lista", List, "Lista"], ["grade", LayoutGrid, "Grade"]] as const).map(([id, Icone, rotulo]) => (
               <button key={id} type="button" aria-pressed={vista.vista === id} aria-label={rotulo} title={rotulo} onClick={() => alterarVista({ vista: id })}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${vista.vista === id ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-secondary"}`}><Icone size={15} /></button>
+                className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200 motion-reduce:transition-none ${vista.vista === id ? "text-text-primary" : "text-text-muted hover:text-text-secondary"}`}><Icone size={15} /></button>
             ))}
           </div>
-          <button type="button" onClick={() => setCriandoPasta(true)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-surface-2 px-3 text-sm font-medium text-text-primary hover:bg-surface-3"><FolderPlus size={16} />Nova pasta</button>
-          <button type="button" disabled={!!enviando} onClick={() => seletorArquivos.current?.click()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-surface-2 px-3 text-sm font-medium text-text-primary hover:bg-surface-3 disabled:opacity-50"><Upload size={16} />Enviar</button>
+          {comArvore && (
+            <>
+              <button type="button" onClick={() => setCriandoPasta(true)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-surface-2 px-3 text-sm font-medium text-text-primary hover:bg-surface-3"><FolderPlus size={16} />Nova pasta</button>
+              <button type="button" disabled={!!enviando} onClick={() => seletorArquivos.current?.click()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-surface-2 px-3 text-sm font-medium text-text-primary hover:bg-surface-3 disabled:opacity-50"><Upload size={16} />Enviar</button>
+            </>
+          )}
         </div>
       ) : (
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -878,7 +1035,7 @@ export function ArquivosScreen() {
           )}
           {enviando && !desktop && <p role="status" className="mb-2 text-xs text-steel-300">Enviando {Math.min(enviando.feitos + 1, enviando.total)} de {enviando.total}…</p>}
           {desktop && enviando && <p role="status" className="mb-2 flex min-h-8 items-center text-xs text-steel-300">Enviando {Math.min(enviando.feitos + 1, enviando.total)} de {enviando.total}…</p>}
-          {erro ? <EstadoErro mensagem={erro} onTentarDeNovo={() => notificar()} /> : !conteudo ? <EstadoCarregando texto="Carregando…" /> : (
+          {erroVisivel ? <EstadoErro mensagem={erroVisivel} onTentarDeNovo={() => notificar()} /> : !conteudoVisivel ? <EstadoCarregando texto={visaoCombinada ? "Reunindo pastas…" : "Carregando…"} /> : (
             <div ref={cartao} style={desktop && alturaLista ? { height: alturaLista } : undefined} role="grid" aria-label="Arquivos" aria-multiselectable={desktop} tabIndex={-1} onKeyDown={teclaNaLista} {...soltarEm(pastaAtual)}
               onMouseDown={iniciarRetangulo}
               onContextMenu={(e) => {
@@ -898,7 +1055,7 @@ export function ArquivosScreen() {
               {visiveis.length === 0 && (
                 <div className="flex flex-col items-center gap-2 px-4 py-14 text-center text-text-muted">
                   <FolderOpen size={34} strokeWidth={1.3} />
-                  <p className="text-sm">{filtroPasta ? "Nada encontrado nesta pasta." : desktop ? "Esta pasta está vazia. Solte arquivos aqui para enviar." : "Esta pasta está vazia."}</p>
+                  <p className="text-sm">{filtroPasta || nFiltros ? "Nada encontrado nesta pasta." : desktop ? "Esta pasta está vazia. Solte arquivos aqui para enviar." : "Esta pasta está vazia."}</p>
                 </div>
               )}
 
@@ -927,6 +1084,7 @@ export function ArquivosScreen() {
                         {iconeDaLinha(linha, 38)}
                         <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>
                         <span className="text-[10px] uppercase tracking-wide text-text-muted">{s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>
+                        {visaoCombinada && <span className="w-full truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                         {!!linha.arquivo?.anexos?.length && <span className="absolute left-1 top-1"><BadgeAnexos quantidade={linha.arquivo.anexos.length} aberto={false} aoAlternar={() => abrir(linha)} /></span>}
                       </div>
                     );
@@ -957,7 +1115,10 @@ export function ArquivosScreen() {
                   >
                     <span role="gridcell" className="flex min-w-0 items-center gap-2.5">
                       {iconeDaLinha(linha, 18)}
-                      <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>
+                        {visaoCombinada && <span className="truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
+                      </span>
                       {anexos.length > 0 && <BadgeAnexos quantidade={anexos.length} aberto={aberto} aoAlternar={() => alternarAnexos(linha.caminho)} />}
                     </span>
                     {desktop ? <>
@@ -971,26 +1132,33 @@ export function ArquivosScreen() {
                     </> : <span role="gridcell" className="text-text-muted">{linha.pasta ? <ChevronRight size={16} /> : <span className="text-xs">{rotuloDe(linha)}</span>}</span>}
                     <span role="gridcell" className={selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}>{acoes(linha)}</span>
                   </div>
-                  {aberto && anexos.map((m) => (
-                    <div key={m.caminho} role="row" tabIndex={0} title={m.nome}
-                      onDoubleClick={(e) => desktop && abrirDocumento(rotaDoAnexo(m), e)}
-                      onKeyDown={(e) => { if (e.key === "Enter") abrirDocumento(rotaDoAnexo(m)); }}
-                      className={`grid min-h-9 cursor-default select-none items-center gap-3 border-b border-border/70 bg-surface-2/40 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto]"}`}>
-                      <span role="gridcell" className="flex min-w-0 items-center gap-2.5 pl-7">
-                        <IconeArquivo a={anexoComoArquivo(m)} personalizados={iconesExtensao} size={16} className="text-text-muted" />
-                        <span className="truncate text-text-secondary">{anexoComoArquivo(m).nome}</span>
-                      </span>
-                      {desktop ? <>
-                        <span role="gridcell" className="text-xs text-text-muted">anexo</span>
-                        <span role="gridcell" className="text-right text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>
-                        <span role="gridcell" /><span role="gridcell" />
-                      </> : <span role="gridcell" className="text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>}
+                  {anexos.length > 0 && (
+                    <div role="rowgroup" aria-hidden={!aberto} {...(!aberto ? { inert: "" } : {})}
+                      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${aberto ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                      <div role="presentation" className="min-h-0 overflow-hidden">
+                        {anexos.map((m) => (
+                          <div key={m.caminho} role="row" tabIndex={aberto ? 0 : -1} title={m.nome}
+                            onDoubleClick={(e) => desktop && abrirDocumento(rotaDoAnexo(m), e)}
+                            onKeyDown={(e) => { if (e.key === "Enter") abrirDocumento(rotaDoAnexo(m)); }}
+                            className={`grid min-h-9 cursor-default select-none items-center gap-3 border-b border-border/70 bg-surface-2/40 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-steel-400 ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto]"}`}>
+                            <span role="gridcell" className="flex min-w-0 items-center gap-2.5 pl-7">
+                              <IconeArquivo a={anexoComoArquivo(m)} personalizados={iconesExtensao} size={16} className="text-text-muted" />
+                              <span className="truncate text-text-secondary">{anexoComoArquivo(m).nome}</span>
+                            </span>
+                            {desktop ? <>
+                              <span role="gridcell" className="text-xs text-text-muted">anexo</span>
+                              <span role="gridcell" className="text-right text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>
+                              <span role="gridcell" /><span role="gridcell" />
+                            </> : <span role="gridcell" className="text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
                   </Fragment>
                 );
               })}
-          {desktop && conteudo && !erro && (
+          {desktop && (
             <p className="sticky bottom-0 z-10 mt-auto flex h-8 items-center gap-3 border-t border-border bg-surface-1 px-3 text-xs text-text-muted" aria-live="polite">
               <span>
                 {[
@@ -1002,7 +1170,7 @@ export function ArquivosScreen() {
                   espacoUsado ? tamanho(espacoUsado) : "",
                 ].filter(Boolean).join(" · ") || "Nenhum item"}
               </span>
-              {resumo && resumo.pastas > 0 && (
+              {!visaoCombinada && resumo && resumo.pastas > 0 && (
                 <span className="hidden truncate xl:block" title="Total da pasta, contando as subpastas">
                   Com subpastas: {[resumo.pastas ? plural(resumo.pastas, "pasta", "pastas") : "", resumo.notas ? plural(resumo.notas, "nota", "notas") : "", resumo.tarefas ? plural(resumo.tarefas, "tarefa", "tarefas") : "", resumo.midias ? plural(resumo.midias, "mídia", "mídias") : "", resumo.arquivos - resumo.notas - resumo.tarefas - resumo.midias > 0 ? plural(resumo.arquivos - resumo.notas - resumo.tarefas - resumo.midias, "arquivo", "arquivos") : "", tamanho(resumo.bytes)].filter(Boolean).join(" · ")}
                 </span>

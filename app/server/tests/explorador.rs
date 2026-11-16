@@ -157,13 +157,21 @@ async fn criar_pasta_e_enviar_arquivos_pelo_explorador() {
     let e = nova();
     let (_, token) = e.admin("diogo").await;
     let t = Some(token.as_str());
-    e.chamar("POST", "/api/v1/tarefas", t, Some(json!({ "titulo": "Entregar", "pasta": "Trabalho" }))).await;
+    let (st, r) = e.chamar("POST", "/api/v1/tarefas", t, Some(json!({
+        "titulo": "Entregar", "pasta": "Trabalho", "prioridade": "alta", "tags": ["projeto"], "due_date": "2026-11-30"
+    }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
 
     // Nova pasta pela rota de pastas: aparece no explorador.
     let (st, r) = e.chamar("POST", "/api/v1/pastas", t, Some(json!({ "nome": "Contratos", "pasta_pai": "Trabalho" }))).await;
     assert_eq!(st, StatusCode::OK, "{r}");
     let (_, trabalho) = e.chamar("GET", "/api/v1/arquivos?pasta=Trabalho", t, None).await;
     assert_eq!(nomes(&trabalho, "pastas"), ["Contratos"], "{trabalho}");
+    let tarefa = &trabalho["arquivos"][0];
+    assert_eq!(tarefa["prioridade"], "alta");
+    assert_eq!(tarefa["due_date"], "2026-11-30");
+    assert_eq!(tarefa["tags"], json!(["projeto"]));
+    assert_eq!(tarefa["criado_por_nome"], "diogo");
 
     // Enviar: nome original, repetido ganha (2) (mesmo se o repetido estiver na outra árvore).
     let (st, r) = e.enviar_arquivo("/api/v1/arquivos/enviar?pasta=Trabalho/Contratos", &token, "Aluguel 2026.pdf", b"%PDF-1.4").await;

@@ -42,7 +42,6 @@ export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
       }
     >
       <TabBar pane={pane} />
-      {focada && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-[35px] z-10 h-px bg-cyan/60" />}
       <div data-pane-conteudo={pane.id} className="relative min-h-0 flex-1">
         {zonaExterna && <div aria-hidden className={`pointer-events-none absolute inset-y-2 z-30 flex items-center justify-center rounded-lg border border-cyan/60 bg-cyan/15 ${zonaExterna === "left" ? "left-1" : "right-1"}`} style={{ width: 64 }}><span className="whitespace-nowrap text-xs font-medium text-cyan [writing-mode:vertical-rl]">Abrir ao lado</span></div>}
         {pane.tabs.map((tab) => (

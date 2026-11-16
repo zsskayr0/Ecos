@@ -1,6 +1,8 @@
 /* Menus suspensos do app: entram/saem com um leve deslize e escala a partir do gatilho. */
 .ecos-menu { transform-origin: top left; animation: ecos-menu-entra 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .ecos-menu[data-alinhar="dir"] { transform-origin: top right; }
+.ecos-menu[data-alinhar="centro"] { transform-origin: top center; }
+.ecos-menu-centro { left: 50%; translate: -50% 0; }
 .ecos-menu[data-saindo="true"] { animation: ecos-menu-sai 110ms ease-in both; pointer-events: none; }
 .ecos-menu-item { transition: background-color 120ms ease, color 120ms ease, transform 120ms ease; }
 .ecos-menu-item:hover, .ecos-menu-item:focus-visible { transform: translateX(2px); }

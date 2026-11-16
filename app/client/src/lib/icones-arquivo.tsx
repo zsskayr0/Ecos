@@ -38,7 +38,7 @@ export function iconePadrao(a: ArquivoExplorador): LucideIcon {
 
 function lerMarcas() {
   const p = lerPreferenciasAplicativo();
-  return { marca: p.exploradorMarcaArquivo, icones: p.exploradorIconesExtensao };
+  return { marca: p.exploradorMarcaArquivo, icones: p.exploradorIconesExtensao, colorirPrioridade: p.exploradorColorirPrioridade };
 }
 
 /** Marca dos arquivos e ícones por extensão (Configurações › Aparência › Pastas), sempre em dia com a preferência. */
@@ -52,14 +52,31 @@ export function useMarcasArquivo() {
   return marcas;
 }
 
+const PRIORIDADES_ICONE = {
+  alta: { cor: "rgb(var(--ecos-error-rgb))", rotulo: "Prioridade alta" },
+  media: { cor: "rgb(var(--ecos-warning-rgb))", rotulo: "Prioridade média" },
+  baixa: { cor: "rgb(var(--ecos-cyan-rgb))", rotulo: "Prioridade baixa" },
+} as const;
+
 /** Ícone do arquivo: o que a pessoa escolheu para a extensão, ou o padrão do tipo. */
-export function IconeArquivo({ a, personalizados, size = 14, className = "" }: { a: ArquivoExplorador; personalizados: Record<string, string>; size?: number; className?: string }) {
+export function IconeArquivo({ a, personalizados, size = 14, className = "", colorirPrioridade = false }: {
+  a: ArquivoExplorador;
+  personalizados: Record<string, string>;
+  size?: number;
+  className?: string;
+  colorirPrioridade?: boolean;
+}) {
   const escolhido = a.tipo ? undefined : personalizados[extensaoDe(a)];
   const imagem = idDoIconeImagem(escolhido);
   const caixa = { width: size, height: size };
   if (imagem) return <span aria-hidden className={`flex shrink-0 items-center justify-center ${className}`} style={caixa}><IconeImagem id={imagem} size={size} /></span>;
   if (escolhido) return <span aria-hidden className={`flex shrink-0 items-center justify-center ${className}`} style={caixa}><IconePorNome nome={escolhido} padrao="File" size={size} /></span>;
   const Padrao = iconePadrao(a);
+  const prioridade = colorirPrioridade && a.tipo === "tarefa" && a.prioridade ? PRIORIDADES_ICONE[a.prioridade] : undefined;
+  if (prioridade) {
+    return <Padrao size={size} strokeWidth={1.7} className={`shrink-0 ${className}`} style={{ color: prioridade.cor }}
+      role="img" aria-label={prioridade.rotulo}><title>{prioridade.rotulo}</title></Padrao>;
+  }
   return <Padrao size={size} strokeWidth={1.7} className={`shrink-0 ${className}`} />;
 }
 

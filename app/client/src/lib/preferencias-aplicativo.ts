@@ -54,6 +54,8 @@ export interface PreferenciasAplicativo {
   ordemPastas: OrdemPastas;
   /** Desktop: menu lateral enxuto (Início, Agenda, Tarefas, Eventos, Cofre) com a árvore de arquivos embaixo. */
   modoExplorador: boolean;
+  /** No modo Explorador, a prioridade define a cor do ícone de tarefa. */
+  exploradorColorirPrioridade: boolean;
   /** Marca dos arquivos que não são nota nem tarefa na árvore lateral. */
   exploradorMarcaArquivo: MarcaArquivo;
   /** Ícone escolhido por extensão (sem ponto, minúscula) na árvore lateral; sem entrada vale o ícone padrão do tipo. */
@@ -143,6 +145,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   estiloPastas: "grade",
   ordemPastas: "padrao",
   modoExplorador: false,
+  exploradorColorirPrioridade: true,
   exploradorMarcaArquivo: "ambos",
   exploradorIconesExtensao: {},
   arquivosSugestoesCaminho: true,

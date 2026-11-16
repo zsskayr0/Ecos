@@ -1,0 +1,12 @@
+.ecos-filtros-explorador {
+  top: calc(100% + 6px);
+}
+
+.ecos-menu.ecos-filtros-explorador:not([data-saindo="true"]) {
+  /* Remove o recorte ao abrir para deixar os submenus aparecerem fora do painel. */
+  animation-fill-mode: backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ecos-filtros-explorador[data-saindo="true"] { opacity: 0; }
+}

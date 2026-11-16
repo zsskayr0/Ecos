@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronLeft, Contrast, FileType2, FolderTree, Cpu, Folder, Shapes, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn, Shapes as FormasIcone, Timer } from "lucide-react";
+import { ChevronDown, ChevronLeft, Contrast, FileType2, Flag, FolderTree, Cpu, Folder, Shapes, Globe2, LayoutGrid, Moon, Monitor, Rows3, SpellCheck2, Sun, Wind, ZoomIn, Shapes as FormasIcone, Timer } from "lucide-react";
 import { useTema } from "@/lib/theme";
 import { Toggle } from "@/components/common/Toggle";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
@@ -178,6 +178,9 @@ export function AparenciaScreen() {
           </Linha>
           {preferencias.modoExplorador && (
             <>
+              <Linha Icone={Flag} titulo="Ícones de tarefa por prioridade" descricao="No modo Explorador, colore os ícones das tarefas em vermelho para prioridade alta, âmbar para média e ciano para baixa.">
+                <Toggle checked={preferencias.exploradorColorirPrioridade} onChange={(exploradorColorirPrioridade) => alterar({ exploradorColorirPrioridade })} label="Ícones de tarefa por prioridade" />
+              </Linha>
               <Linha Icone={FileType2} titulo="Marca dos arquivos na árvore" descricao="Como os arquivos que não são notas nem tarefas (PDF, planilhas, imagens…) aparecem no menu lateral: com ícone, com o selo da extensão à direita, os dois ou só o nome.">
                 <Seletor valor={preferencias.exploradorMarcaArquivo} opcoes={MARCAS_ARQUIVO} onChange={(exploradorMarcaArquivo: MarcaArquivo) => alterar({ exploradorMarcaArquivo })} label="Marca dos arquivos na árvore" />
               </Linha>

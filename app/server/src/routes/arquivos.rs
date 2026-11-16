@@ -116,19 +116,47 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
     // Nota/tarefa: o índice diz o que o `.md` é (o tipo vem do conteúdo, não do nome).
     let caminhos: Vec<String> = arquivos.iter().filter(|a| categoria(&a.0) == "markdown").map(|a| a.2.clone()).collect();
-    let itens: std::collections::HashMap<String, (&'static str, String, String, Option<String>)> = state
+    let dono_pessoal = usuario.0.clone();
+    let itens = state
         .db
         .with_read(move |conn| {
             let mut out = std::collections::HashMap::new();
-            for c in caminhos {
-                for (tabela, tipo) in [("nota", "nota"), ("tarefa", "tarefa")] {
-                    let status = if tipo == "tarefa" { "status" } else { "NULL" };
-                    let achado: Option<(String, String, Option<String>)> = conn
-                        .query_row(&format!("SELECT id, titulo, {status} FROM {tabela} WHERE caminho_arquivo = ?1"), [&c], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            for (tabela, campos_tarefa) in [
+                ("nota", "NULL, NULL, NULL, NULL"),
+                ("tarefa", "d.status, d.prioridade, d.scheduled_at, d.due_date"),
+            ] {
+                let mut consulta = conn.prepare(&format!(
+                    "SELECT d.id, d.titulo, {campos_tarefa}, u.id, u.nome_usuario, \
+                     (SELECT json_group_array(tag) FROM {tabela}_tag WHERE {tabela}_id = d.id) \
+                     FROM {tabela} d LEFT JOIN usuario u ON u.id = COALESCE(d.criado_por, CASE WHEN d.espaco = 'pessoal' THEN ?2 END) \
+                     WHERE d.caminho_arquivo = ?1"
+                ))?;
+                for c in &caminhos {
+                    if out.contains_key(c) {
+                        continue;
+                    }
+                    let achado = consulta
+                        .query_row([c, &dono_pessoal], |r| {
+                            let tags: String = r.get(8)?;
+                            let mut item = serde_json::json!({
+                                "tipo": tabela,
+                                "id": r.get::<_, String>(0)?,
+                                "titulo": r.get::<_, String>(1)?,
+                                "criado_por": r.get::<_, Option<String>>(6)?,
+                                "criado_por_nome": r.get::<_, Option<String>>(7)?,
+                                "tags": serde_json::from_str::<Vec<String>>(&tags).unwrap_or_default(),
+                            });
+                            if tabela == "tarefa" {
+                                item["status"] = serde_json::json!(r.get::<_, String>(2)?);
+                                item["prioridade"] = serde_json::json!(r.get::<_, String>(3)?);
+                                item["scheduled_at"] = serde_json::json!(r.get::<_, Option<String>>(4)?);
+                                item["due_date"] = serde_json::json!(r.get::<_, Option<String>>(5)?);
+                            }
+                            Ok(item)
+                        })
                         .optional()?;
-                    if let Some((id, titulo, status)) = achado {
-                        out.insert(c.clone(), (tipo, id, titulo, status));
-                        break;
+                    if let Some(item) = achado {
+                        out.insert(c.clone(), item);
                     }
                 }
             }
@@ -171,14 +199,9 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         .into_iter()
         .map(|(nome, caminho, relativo, tamanho, modificado)| {
             let mut v = serde_json::json!({ "nome": nome, "caminho": caminho, "categoria": categoria(&nome), "tamanho_bytes": tamanho, "modificado_em": modificado });
-            if let Some((tipo, id, titulo, status)) = itens.get(&relativo) {
-                v["tipo"] = serde_json::json!(tipo);
-                v["id"] = serde_json::json!(id);
-                v["titulo"] = serde_json::json!(titulo);
-                if let Some(status) = status {
-                    v["status"] = serde_json::json!(status);
-                }
-                v["fora_do_padrao"] = serde_json::json!(!crate::routes::arquivos_problemas::nome_no_padrao(*tipo == "tarefa", &relativo));
+            if let Some(item) = itens.get(&relativo).and_then(serde_json::Value::as_object) {
+                v["fora_do_padrao"] = serde_json::json!(!crate::routes::arquivos_problemas::nome_no_padrao(item["tipo"] == "tarefa", &relativo));
+                v.as_object_mut().unwrap().extend(item.clone());
                 let anexos = anexos_do_item(&relativo);
                 if !anexos.is_empty() {
                     v["anexos"] = serde_json::json!(anexos);

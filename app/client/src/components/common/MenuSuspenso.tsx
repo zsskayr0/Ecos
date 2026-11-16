@@ -2,6 +2,7 @@ import { ArvorePastas } from "./ArvorePastas";
 import { useArrastarRolagem } from "@/lib/arrastar-rolagem";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, Search, type LucideIcon } from "lucide-react";
+import { posicaoSubmenu } from "./posicao-submenu";
 import "./menu-suspenso.css";
 
 /** Cores do app (seguem o tema claro/escuro). Qualquer valor CSS de cor também serve. */
@@ -37,7 +38,7 @@ interface Props<T extends string> {
   ariaLabel: string;
   /** Desenha o conteúdo do botão que abre o menu. */
   gatilho: (estado: { aberto: boolean; atual: OpcaoMenu<T> | undefined }) => ReactNode;
-  alinhar?: "esq" | "dir";
+  alinhar?: "esq" | "dir" | "centro";
   /** Classes do botão. */
   classeGatilho?: string;
   /** Pinta o botão com esta cor (o filtro está ativo). `null`/ausente = visual neutro. */
@@ -46,6 +47,7 @@ interface Props<T extends string> {
   arvore?: boolean;
   /** Mantém o menu dentro da janela, sem recorte por painéis com rolagem. */
   fixo?: boolean;
+  lateral?: boolean;
   /** Campo de pesquisa no topo da lista (só com muitas opções, ex.: categorias e pagadores). */
   buscar?: boolean;
   /** Lista mais larga e mais alta que o gatilho (com `fixo`). */
@@ -59,7 +61,7 @@ interface Props<T extends string> {
 }
 
 /** Menu suspenso do Ecos, no lugar do `<select>` nativo. Anima entrada e saída, fecha com Esc/clique fora e navega por setas. */
-export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, buscar = false, largo = false, larguraMin, classeMenu = "", onAbrirChange }: Props<T>) {
+export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLabel, gatilho, alinhar = "esq", classeGatilho = "", corAtiva, larguraMenu = "min-w-[11rem]", arvore = false, fixo = false, lateral = false, buscar = false, largo = false, larguraMin, classeMenu = "", onAbrirChange }: Props<T>) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
@@ -82,7 +84,9 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
     window.setTimeout(() => { setMontado(false); setBusca(""); }, 110);
   }, []);
   const abrir = () => {
-    if (fixo) {
+    if (lateral) {
+      setPosicao(posicaoSubmenu(raiz.current!, opcoes.length * ALTURA_ITEM + 10 + (buscar ? 48 : 0)));
+    } else if (fixo) {
       const r = raiz.current!.getBoundingClientRect();
       // Um ancestral com `transform` (as janelas do Ecos) vira o referencial do `fixed`: converte as coordenadas para ele.
       let ref: HTMLElement | null = raiz.current!.parentElement;
@@ -96,9 +100,11 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       // Abre para o lado que comporta a lista; se nenhum comporta, para o que tem mais espaço (nunca só a barra de pesquisa).
       const subir = abaixo < preciso && acima > abaixo;
       const largura = Math.min(Math.max(r.width, larguraMin ?? (largo ? 320 : 176)), window.innerWidth - 16);
+      const esquerda = alinhar === "centro" ? r.left + (r.width - largura) / 2
+        : alinhar === "dir" ? r.right - largura : r.left;
       setPosicao({
         position: "fixed", marginTop: 0, width: largura, minWidth: 0,
-        left: Math.max(8, Math.min((alinhar === "dir" ? r.right - largura : r.left) - o.left, o.width - largura - 8)),
+        left: Math.max(8, Math.min(esquerda - o.left, o.width - largura - 8)),
         right: "auto", top: subir ? "auto" : r.bottom - o.top + 6,
         bottom: subir ? (ref ? o.bottom : altura) - r.top + 6 : "auto",
         maxHeight: Math.max(Math.min(preciso, 160), Math.min(alturaMax, subir ? acima : abaixo)),
@@ -108,7 +114,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
   };
 
   useEffect(() => {
-    if (!aberto || !fixo) return;
+    if (!aberto || !(fixo || lateral)) return;
     const aoRolar = (e: Event) => {
       if (!(e.target instanceof Node) || !raiz.current?.contains(e.target)) fechar();
     };
@@ -118,7 +124,7 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       window.removeEventListener("resize", fechar);
       document.removeEventListener("scroll", aoRolar, true);
     };
-  }, [aberto, fixo, fechar]);
+  }, [aberto, fixo, lateral, fechar]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -158,8 +164,8 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
         {gatilho({ aberto, atual })}
       </button>
       {montado && (
-        <div id={id} role="menu" aria-label={ariaLabel} {...arrastarMenu} data-alinhar={alinhar} data-saindo={!aberto} style={fixo ? posicao : undefined}
-          className={`ecos-menu no-scrollbar ${classeMenu} absolute z-40 mt-1.5 ${largo ? "max-h-[25rem]" : "max-h-72"} overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "dir" ? "right-0" : "left-0"}`}>
+        <div id={id} role="menu" aria-label={ariaLabel} {...arrastarMenu} data-alinhar={alinhar} data-saindo={!aberto} style={fixo || lateral ? posicao : undefined}
+          className={`ecos-menu no-scrollbar ${classeMenu} absolute z-40 mt-1.5 ${largo ? "max-h-[25rem]" : "max-h-72"} overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu} ${alinhar === "centro" && !fixo && !lateral ? "ecos-menu-centro" : alinhar === "dir" ? "right-0" : "left-0"}`}>
           {arvore ? <ArvorePastas opcoes={opcoes} valores={valor === undefined ? [] : [valor]} onSelect={(v) => { onChange(v as T); fechar(); }} /> : <>
           {buscar && (
             <label className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 flex h-11 items-center gap-2 bg-surface-1 px-3.5 text-text-muted focus-within:text-text-primary">

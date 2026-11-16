@@ -1,18 +1,21 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const abrirDocumento = vi.fn();
+const modoExplorador = vi.fn(() => false);
 vi.mock("@/lib/api", async () => {
   const real = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return { ...real, arquivos: { ...real.arquivos, listar: vi.fn(), mover: vi.fn(), renomear: vi.fn(), excluir: vi.fn(), enviar: vi.fn() }, pastas: { ...real.pastas, listar: vi.fn(), criar: vi.fn() } };
 });
 vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ versao: 0, notificar: vi.fn() }) }));
 vi.mock("@/lib/use-espaco-filtro", () => ({ useEspacoFiltro: () => "pessoal" }));
-vi.mock("@/lib/use-viewport", () => ({ useIsDesktop: () => true }));
+vi.mock("@/lib/use-viewport", () => ({ useIsDesktop: () => true, useIsMobile: () => false }));
 vi.mock("@/lib/documento-popup", () => ({ useAbrirDocumento: () => abrirDocumento }));
+vi.mock("@/lib/use-modo-explorador", () => ({ useModoExplorador: () => modoExplorador() }));
 
 import { arquivos, pastas } from "@/lib/api";
+import { CHAVE_PREFERENCIAS_APLICATIVO } from "@/lib/preferencias-aplicativo";
 import { ArquivosScreen } from "./ArquivosScreen";
 
 const conteudo = {
@@ -30,7 +33,10 @@ const linha = (caminho: string) => document.querySelector(`[role=row][data-camin
 describe("ArquivosScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem("ecos.arquivos.vista.v1");
+    localStorage.removeItem(CHAVE_PREFERENCIAS_APLICATIVO);
     abrirDocumento.mockReset();
+    modoExplorador.mockReturnValue(false);
     vi.mocked(arquivos.listar).mockResolvedValue(conteudo);
     vi.mocked(arquivos.mover).mockResolvedValue({ movidos: [{ de: "lista.txt", para: "Projetos/lista.txt" }], falhas: [] });
     vi.mocked(arquivos.renomear).mockResolvedValue({ caminho: "novo.txt" });
@@ -46,6 +52,244 @@ describe("ArquivosScreen", () => {
     const grade = within(screen.getByRole("grid"));
     expect(grade.getByText("lista.txt")).toBeTruthy();
     expect(grade.getByText("Antiga").className).toContain("text-error");
+  });
+
+  it("ordena por status, prioridade e quantidade de tags sem misturar pastas e arquivos", async () => {
+    modoExplorador.mockReturnValue(true);
+    localStorage.setItem(CHAVE_PREFERENCIAS_APLICATIVO, JSON.stringify({ mostrarConcluidas: true }));
+    vi.mocked(arquivos.listar).mockResolvedValue({
+      ...conteudo,
+      arquivos: [
+        conteudo.arquivos[0],
+        { nome: "alta.md", caminho: "alta.md", categoria: "markdown", tamanho_bytes: 10, modificado_em: null,
+          tipo: "tarefa", status: "pendente", prioridade: "alta", tags: ["uma"] },
+        { nome: "baixa.md", caminho: "baixa.md", categoria: "markdown", tamanho_bytes: 10, modificado_em: null,
+          tipo: "tarefa", status: "arquivada", prioridade: "baixa", tags: ["uma", "duas"] },
+      ],
+    });
+    const tela = () => <MemoryRouter><ArquivosScreen /></MemoryRouter>;
+    const { unmount } = render(tela());
+    const caminhos = () => within(screen.getByRole("grid")).getAllByRole("row")
+      .flatMap((row) => row.dataset.caminho ? [row.dataset.caminho] : []);
+    await within(await screen.findByRole("grid")).findByText("Plano");
+    async function ordenarPor(nome: string) {
+      fireEvent.click(screen.getByRole("button", { name: "Ordenar por" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: nome }));
+      await waitFor(() => expect(screen.queryByRole("menu", { name: "Ordenar por" })).toBeNull());
+    }
+
+    await ordenarPor("Status");
+    expect(caminhos()).toEqual(["Projetos", "baixa.md", "alta.md", "note-Plano.md"]);
+    await ordenarPor("Prioridade");
+    expect(caminhos()).toEqual(["Projetos", "alta.md", "baixa.md", "note-Plano.md"]);
+    fireEvent.click(screen.getByRole("button", { name: "Ordem crescente: inverter" }));
+    expect(caminhos()).toEqual(["Projetos", "baixa.md", "alta.md", "note-Plano.md"]);
+    await ordenarPor("Tags");
+    fireEvent.click(screen.getByRole("button", { name: "Ordem decrescente: inverter" }));
+    expect(caminhos()).toEqual(["Projetos", "note-Plano.md", "alta.md", "baixa.md"]);
+
+    unmount();
+    render(tela());
+    await within(await screen.findByRole("grid")).findByText("Plano");
+    expect(screen.getByRole("button", { name: "Ordenar por" }).textContent).toBe("Tags");
+    expect(caminhos()).toEqual(["Projetos", "note-Plano.md", "alta.md", "baixa.md"]);
+  });
+
+  it("aplica a preferência de concluídas ao abrir e ao limpar os filtros do explorador", async () => {
+    modoExplorador.mockReturnValue(true);
+    vi.mocked(arquivos.listar).mockResolvedValue({
+      ...conteudo,
+      arquivos: [...conteudo.arquivos, {
+        nome: "task-Pendente.md", caminho: "task-Pendente.md", categoria: "markdown", tamanho_bytes: 10,
+        modificado_em: null, tipo: "tarefa", status: "pendente", titulo: "Tarefa pendente",
+      }, {
+        nome: "task-Concluida.md", caminho: "task-Concluida.md", categoria: "markdown", tamanho_bytes: 10,
+        modificado_em: null, tipo: "tarefa", status: "concluida", titulo: "Tarefa concluída",
+      }],
+    });
+    render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
+    const arquivosDaPasta = within(await screen.findByRole("grid"));
+    expect(arquivosDaPasta.getByText("Tarefa pendente")).toBeTruthy();
+    expect(arquivosDaPasta.getByText("Plano")).toBeTruthy();
+    expect(arquivosDaPasta.queryByText("Tarefa concluída")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    const painel = within(screen.getByRole("dialog", { name: "Filtros desta pasta" }));
+    const status = painel.getByRole("button", { name: "Filtrar por status" });
+    expect(status.textContent).toBe("Pendentes");
+    fireEvent.click(status);
+    fireEvent.click(painel.getByRole("menuitemradio", { name: "Todos os status" }));
+    expect(arquivosDaPasta.getByText("Tarefa concluída")).toBeTruthy();
+
+    fireEvent.click(painel.getByRole("button", { name: "Limpar filtros" }));
+    expect(arquivosDaPasta.queryByText("Tarefa concluída")).toBeNull();
+    act(() => {
+      localStorage.setItem(CHAVE_PREFERENCIAS_APLICATIVO, JSON.stringify({ mostrarConcluidas: true }));
+      window.dispatchEvent(new CustomEvent("ecos:preferencias-aplicativo"));
+    });
+    expect(arquivosDaPasta.getByText("Tarefa concluída")).toBeTruthy();
+  });
+
+  it("colore a prioridade dos ícones por padrão apenas no modo explorador e permite desligar", async () => {
+    vi.mocked(arquivos.listar).mockResolvedValue({
+      ...conteudo,
+      arquivos: [...conteudo.arquivos, {
+        nome: "task-Urgente.md", caminho: "task-Urgente.md", categoria: "markdown", tamanho_bytes: 10,
+        modificado_em: null, tipo: "tarefa", status: "pendente", prioridade: "alta", titulo: "Urgente",
+      }],
+    });
+    const tela = () => <MemoryRouter><ArquivosScreen /></MemoryRouter>;
+    const { rerender } = render(tela());
+    const arquivosDaPasta = within(await screen.findByRole("grid"));
+    expect(arquivosDaPasta.queryByRole("img", { name: "Prioridade alta" })).toBeNull();
+    modoExplorador.mockReturnValue(true);
+    rerender(tela());
+    expect(arquivosDaPasta.getByRole("img", { name: "Prioridade alta" })).toBeTruthy();
+
+    act(() => {
+      localStorage.setItem(CHAVE_PREFERENCIAS_APLICATIVO, JSON.stringify({ exploradorColorirPrioridade: false }));
+      window.dispatchEvent(new CustomEvent("ecos:preferencias-aplicativo"));
+    });
+    expect(arquivosDaPasta.queryByRole("img", { name: "Prioridade alta" })).toBeNull();
+  });
+
+  it("no modo explorador, combina o popup de filtros com a busca da pasta", async () => {
+    modoExplorador.mockReturnValue(true);
+    vi.mocked(arquivos.listar).mockResolvedValue({
+      ...conteudo,
+      arquivos: [...conteudo.arquivos, {
+        nome: "task-Entrega.md", caminho: "task-Entrega.md", categoria: "markdown", tamanho_bytes: 120,
+        modificado_em: null, tipo: "tarefa", status: "pendente", prioridade: "alta", titulo: "Entrega",
+        tags: ["projeto"], criado_por: "u1", criado_por_nome: "Ana",
+      }],
+    });
+    render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
+    const arquivosDaPasta = within(await screen.findByRole("grid"));
+    await arquivosDaPasta.findByText("Entrega");
+    const gatilho = screen.getByRole("button", { name: "Filtros" });
+    fireEvent.click(gatilho);
+    const popup = screen.getByRole("dialog", { name: "Filtros desta pasta" });
+    vi.spyOn(popup, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({
+      x: window.innerWidth - 264, y: 80, width: 224, height: 220,
+    }));
+    const painel = within(popup);
+    const prioridade = painel.getByRole("button", { name: "Filtrar por prioridade" });
+    fireEvent.click(prioridade);
+    const opcoesDePrioridade = painel.getByRole("menu", { name: "Filtrar por prioridade" });
+    expect(opcoesDePrioridade.style.left).toBe(`${window.innerWidth - 494}px`);
+    expect(opcoesDePrioridade.style.width).toBe("224px");
+    fireEvent.keyDown(opcoesDePrioridade, { key: "Escape" });
+    expect(prioridade.getAttribute("aria-expanded")).toBe("false");
+    expect(gatilho.getAttribute("aria-expanded")).toBe("true");
+    await waitFor(() => expect(painel.queryByRole("menu")).toBeNull());
+
+    fireEvent.click(prioridade);
+    fireEvent.click(painel.getByRole("menuitemradio", { name: "Alta" }));
+    expect(arquivosDaPasta.queryByText("Plano")).toBeNull();
+    expect(arquivosDaPasta.getByText("Entrega")).toBeTruthy();
+
+    fireEvent.keyDown(prioridade, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Filtros desta pasta" })).toBeNull();
+    expect(document.activeElement).toBe(gatilho);
+    const busca = screen.getByRole("textbox", { name: "Filtrar nesta pasta" });
+    fireEvent.change(busca, { target: { value: "Plano" } });
+    expect(arquivosDaPasta.queryByText("Entrega")).toBeNull();
+
+    fireEvent.click(gatilho);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Filtros desta pasta" })).getByRole("button", { name: "Limpar filtros" }));
+    expect(arquivosDaPasta.getByText("Plano")).toBeTruthy();
+    expect(arquivosDaPasta.queryByText("Entrega")).toBeNull();
+  });
+
+  it("parte da pasta aberta e mantém as tags selecionadas ao reabrir o popup", async () => {
+    modoExplorador.mockReturnValue(true);
+    const pasta = "Trabalho/2026";
+    vi.mocked(arquivos.listar).mockResolvedValue({
+      pasta,
+      pastas: [{ nome: "Projetos", caminho: `${pasta}/Projetos` }],
+      arquivos: conteudo.arquivos.map((arquivo) => ({
+        ...arquivo,
+        caminho: `${pasta}/${arquivo.nome}`,
+        tags: arquivo.titulo === "Plano" ? ["projeto"] : [],
+      })),
+    });
+    render(<MemoryRouter initialEntries={[`/arquivos?pasta=${encodeURIComponent(pasta)}`]}><ArquivosScreen /></MemoryRouter>);
+    const grade = within(await screen.findByRole("grid"));
+    await grade.findByText("Plano");
+    const gatilho = screen.getByRole("button", { name: "Filtros" });
+    fireEvent.click(gatilho);
+    const popup = screen.getByRole("dialog", { name: "Filtros desta pasta" });
+    const painel = within(popup);
+    expect(painel.queryByRole("button", { name: "Filtrar por equipe" })).toBeNull();
+    fireEvent.click(painel.getByRole("button", { name: "Filtrar por pasta" }));
+    const menuPastas = painel.getByRole("menu", { name: "Filtrar por pasta" });
+    expect(menuPastas.style.width).toBe("224px");
+    const pastas = within(menuPastas);
+    expect(pastas.getByRole("menuitemcheckbox", { name: "Padrão" }).getAttribute("aria-checked")).toBe("true");
+    expect(pastas.getByRole("menuitemcheckbox", { name: "Indexadas" })).toBeTruthy();
+    expect(pastas.getByRole("menuitemcheckbox", { name: "Pasta atual" })).toBeTruthy();
+    expect(pastas.getByRole("menuitemcheckbox", { name: "Projetos" })).toBeTruthy();
+    expect(pastas.queryByRole("menuitemcheckbox", { name: "Trabalho" })).toBeNull();
+
+    const tags = painel.getByRole("button", { name: "Filtrar por tags" });
+    fireEvent.pointerDown(tags);
+    fireEvent.click(tags);
+    fireEvent.click(within(painel.getByRole("menu", { name: "Filtrar por tags" })).getByRole("menuitemcheckbox", { name: "projeto" }));
+    expect(grade.queryByText("Antiga")).toBeNull();
+    expect(grade.getByText("Plano")).toBeTruthy();
+
+    fireEvent.pointerDown(gatilho);
+    fireEvent.click(gatilho);
+    expect(popup.getAttribute("data-saindo")).toBe("true");
+    await waitFor(() => expect(popup.isConnected).toBe(false));
+    fireEvent.click(gatilho);
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar por tags" }));
+    const tag = within(screen.getByRole("menu", { name: "Filtrar por tags" })).getByRole("menuitemcheckbox", { name: "projeto" });
+    expect(tag.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("reúne o conteúdo de pastas selecionadas e indexa as subpastas sem trocar o endereço", async () => {
+    modoExplorador.mockReturnValue(true);
+    const raiz = "Trabalho";
+    const arquivo = (caminho: string) => ({
+      nome: caminho.split("/").pop()!, caminho, categoria: "texto" as const, tamanho_bytes: 10, modificado_em: null,
+    });
+    const alfa = { nome: "Alfa", caminho: `${raiz}/Alfa` };
+    const beta = { nome: "Beta", caminho: `${raiz}/Beta` };
+    const interna = { nome: "Interna", caminho: `${raiz}/Alfa/Interna` };
+    vi.mocked(arquivos.listar).mockImplementation(async ({ pasta = "" }) => {
+      if (pasta === raiz) return { pasta, pastas: [alfa, beta], arquivos: [arquivo(`${raiz}/raiz.txt`)] };
+      if (pasta === alfa.caminho) return { pasta, pastas: [interna], arquivos: [arquivo(`${pasta}/alfa.txt`)] };
+      if (pasta === beta.caminho) return { pasta, pastas: [], arquivos: [arquivo(`${pasta}/beta.txt`)] };
+      if (pasta === interna.caminho) return { pasta, pastas: [], arquivos: [arquivo(`${pasta}/profundo.txt`)] };
+      throw new Error(`Pasta inesperada: ${pasta}`);
+    });
+    render(<MemoryRouter initialEntries={["/arquivos?pasta=Trabalho"]}><ArquivosScreen /></MemoryRouter>);
+    const lista = () => within(screen.getByRole("grid"));
+    await within(await screen.findByRole("grid")).findByText("raiz.txt");
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar por pasta" }));
+    const escolher = (name: string) => fireEvent.click(screen.getByRole("menuitemcheckbox", { name }));
+
+    escolher("Alfa");
+    await within(await screen.findByRole("grid")).findByText("alfa.txt");
+    expect(lista().queryByText("raiz.txt")).toBeNull();
+    escolher("Beta");
+    await within(await screen.findByRole("grid")).findByText("beta.txt");
+    expect(lista().getByText("alfa.txt")).toBeTruthy();
+    expect(lista().getByText("Trabalho/Beta")).toBeTruthy();
+    expect(lista().queryByText("profundo.txt")).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "Caminho" })).getByRole("button", { name: "Trabalho" })).toBeTruthy();
+
+    escolher("Indexadas");
+    await within(await screen.findByRole("grid")).findByText("profundo.txt");
+    expect(lista().getByText("raiz.txt")).toBeTruthy();
+    expect(lista().getByText("beta.txt")).toBeTruthy();
+    expect(lista().queryByText("Interna")).toBeNull();
+
+    escolher("Padrão");
+    expect(lista().getByText("raiz.txt")).toBeTruthy();
+    expect(lista().queryByText("alfa.txt")).toBeNull();
   });
 
   it("duplo clique abre a nota no Ecos e o resto no visualizador", async () => {
@@ -103,6 +347,7 @@ describe("ArquivosScreen", () => {
   });
 
   it("Nova pasta cria na pasta aberta e recusa nome repetido", async () => {
+    modoExplorador.mockReturnValue(true);
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
     await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(screen.getByRole("button", { name: /Nova pasta/ }));
@@ -117,10 +362,16 @@ describe("ArquivosScreen", () => {
   });
 
   it("Enviar manda cada arquivo escolhido para a pasta aberta", async () => {
+    modoExplorador.mockReturnValue(true);
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
     await within(await screen.findByRole("grid")).findByText("Plano");
+    const seletor = screen.getByLabelText("Escolher arquivos para enviar");
+    const abrirSeletor = vi.fn();
+    seletor.addEventListener("click", abrirSeletor);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    expect(abrirSeletor).toHaveBeenCalledOnce();
     const a = new File(["a"], "a.pdf"), b = new File(["b"], "b.png");
-    fireEvent.change(screen.getByLabelText("Escolher arquivos para enviar"), { target: { files: [a, b] } });
+    fireEvent.change(seletor, { target: { files: [a, b] } });
     await waitFor(() => expect(arquivos.enviar).toHaveBeenCalledTimes(2));
     expect(arquivos.enviar).toHaveBeenCalledWith("pessoal", "", a);
     expect(arquivos.enviar).toHaveBeenCalledWith("pessoal", "", b);

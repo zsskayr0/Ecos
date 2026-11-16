@@ -2,6 +2,7 @@ import { ArvorePastas } from "./ArvorePastas";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, Search, type LucideIcon } from "lucide-react";
 import { ALTURA_ITEM, TOM, misturar } from "./MenuSuspenso";
+import { posicaoSubmenu } from "./posicao-submenu";
 import "./menu-suspenso.css";
 
 export interface OpcaoMultipla {
@@ -29,12 +30,15 @@ interface Props {
   arvore?: boolean;
   /** Posição fixa na tela: o menu escapa de contêineres com rolagem (ex.: faixa de filtros do celular). */
   fixo?: boolean;
+  lateral?: boolean;
+  /** Texto mostrado quando não há nenhuma opção além de "Todas". */
+  mensagemSemOpcoes?: string;
 }
 
 const VALOR_TODAS = "\u0000todas";
 
 /** Menu suspenso de escolha múltipla (mesmo visual do `MenuSuspenso`): clicar marca/desmarca e o menu continua aberto. */
-export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gatilho, classeGatilho = "", corAtiva, larguraMenu = "min-w-[14rem]", pesquisavel = false, placeholderBusca = "Pesquisar…", arvore = false, fixo = false }: Props) {
+export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gatilho, classeGatilho = "", corAtiva, larguraMenu = "min-w-[14rem]", pesquisavel = false, placeholderBusca = "Pesquisar…", arvore = false, fixo = false, lateral = false, mensagemSemOpcoes }: Props) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState(false);
@@ -57,7 +61,10 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
   }, []);
 
   function abrir() {
-    if (fixo) {
+    if (lateral) {
+      const altura = todasOpcoes.length * ALTURA_ITEM + 10 + (pesquisavel ? 44 : 0);
+      setPosicao(posicaoSubmenu(raiz.current!, altura + (opcoes.length === 0 && mensagemSemOpcoes ? 36 : 0)));
+    } else if (fixo) {
       const r = raiz.current!.getBoundingClientRect();
       const largura = Math.min(arvore ? 288 : 224, window.innerWidth - 16);
       const abaixo = window.innerHeight - r.bottom - 14;
@@ -69,12 +76,12 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
   }
 
   useEffect(() => {
-    if (!aberto || !fixo) return;
+    if (!aberto || !(fixo || lateral)) return;
     const aoRolar = (e: Event) => { if (!(e.target instanceof Node) || !raiz.current?.contains(e.target)) fechar(); };
     window.addEventListener("resize", fechar);
     document.addEventListener("scroll", aoRolar, true);
     return () => { window.removeEventListener("resize", fechar); document.removeEventListener("scroll", aoRolar, true); };
-  }, [aberto, fixo, fechar]);
+  }, [aberto, fixo, lateral, fechar]);
 
   function alternar(valor: string) {
     if (valor === VALOR_TODAS) return onChange([]);
@@ -118,8 +125,8 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
         {gatilho({ aberto })}
       </button>
       {montado && (
-        <div id={id} role="menu" aria-label={ariaLabel} aria-multiselectable data-saindo={!aberto} style={fixo ? posicao : undefined}
-          className={`ecos-menu ${fixo ? "z-50" : "absolute left-0 z-40"} mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu}`}>
+        <div id={id} role="menu" aria-label={ariaLabel} aria-multiselectable data-saindo={!aberto} style={fixo || lateral ? posicao : undefined}
+          className={`ecos-menu ${lateral ? "no-scrollbar z-40" : fixo ? "z-50" : "absolute left-0 z-40"} mt-1.5 max-h-72 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-surface-1 p-1 shadow-nav ${arvore ? "w-72 max-w-[calc(100vw-2rem)]" : larguraMenu}`}>
           {pesquisavel && (
             <label className="sticky top-0 z-20 mb-1 flex h-10 items-center gap-2 rounded-lg border border-border bg-surface-1 px-2.5 focus-within:border-steel-400/70">
               <Search size={14} className="shrink-0 text-text-muted" aria-hidden />
@@ -138,16 +145,18 @@ export function MenuMultiplo({ valores, opcoes, onChange, ariaLabel, todas, gati
                 onClick={() => alternar(o.valor)}
                 onPointerEnter={() => setDestaque(i)} onFocus={() => setDestaque(i)}
                 className={`ecos-menu-item relative flex w-full items-center gap-2 rounded-lg border border-transparent px-2.5 text-left text-sm focus-visible:outline-none ${ativo || destaque === i ? "text-text-primary" : "text-text-secondary"}`}>
-                {o.icone && <o.icone size={15} className="shrink-0" style={{ color: o.cor ?? "currentColor" }} />}
+                {o.icone && <o.icone size={15} className={lateral ? "ecos-menu-icone shrink-0" : "shrink-0"} style={{ color: o.cor ?? "currentColor" }} />}
                 <span className="min-w-0 flex-1 truncate">{o.rotulo}</span>
+                {lateral ? (ativo && <Check size={14} className="shrink-0" style={{ color: o.cor ?? TOM.aco }} />) : (
                 <span aria-hidden className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors duration-150 ${ativo ? "" : "border-border"}`}
                   style={ativo ? { backgroundColor: o.cor ?? TOM.aco, borderColor: o.cor ?? TOM.aco } : undefined}>
                   {ativo && <Check size={12} strokeWidth={3} className="text-white" />}
-                </span>
+                </span>)}
               </button>
             );
           })}
           </>}
+          {opcoes.length === 0 && mensagemSemOpcoes && <p className="px-2.5 py-2 text-sm text-text-muted">{mensagemSemOpcoes}</p>}
         </div>
       )}
     </div>

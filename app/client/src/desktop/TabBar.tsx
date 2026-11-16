@@ -19,9 +19,9 @@ export function TabBar({ pane }: { pane: Pane }) {
   return (
     <div
       data-pane-tabbar={pane.id}
-      className="relative flex h-9 shrink-0 items-stretch border-b border-border bg-surface-1 transition-colors data-[drop-alvo=true]:bg-cyan/20"
+      className="relative flex h-12 shrink-0 items-stretch gap-1 bg-base pr-2 transition-colors data-[drop-alvo=true]:bg-cyan/20"
     >
-      <div role="tablist" className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none]">
+      <div role="tablist" className="flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
         {pane.tabs.map((tab) => {
           const ativa = tab.id === pane.activeTabId;
           const Icone = moduloDaRota(tab.path).icone;
@@ -78,11 +78,11 @@ export function TabBar({ pane }: { pane: Pane }) {
                 }
               }}
               onClick={() => dispatch({ type: "activate-tab", paneId: pane.id, tabId: tab.id })}
-              className={`group relative flex max-w-[200px] cursor-pointer touch-none select-none items-center gap-2 border-r border-border px-3 text-xs transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
-                ativa ? "bg-base text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-secondary"
+              className={`group relative flex max-w-[200px] cursor-pointer touch-none select-none items-center gap-2 rounded-xl border px-3 text-xs transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
+                ativa ? "border-border bg-surface-2 text-text-primary shadow-sm" : "border-transparent bg-surface-1 text-text-muted hover:bg-surface-2 hover:text-text-secondary"
               } ${arrastando?.tabId === tab.id ? "opacity-40" : ""}`}
             >
-              {marcadorAntes && <span className="absolute inset-y-0 left-0 w-0.5 bg-cyan" />}
+              {marcadorAntes && <span className="absolute -left-1 inset-y-1 w-0.5 rounded-full bg-cyan" />}
               <Icone size={13} strokeWidth={1.75} className="shrink-0" />
               <span className="truncate">{titulo}</span>
               <button
@@ -126,7 +126,7 @@ export function TabBar({ pane }: { pane: Pane }) {
           aria-label="Abrir módulo neste painel"
           title="Abrir módulo neste painel"
           onClick={() => setMenuAberto((v) => !v)}
-          className="flex h-full w-9 items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary"
+          className="mt-2 flex h-8 w-8 items-center justify-center rounded-xl text-text-muted hover:bg-surface-2 hover:text-text-primary"
         >
           <Plus size={15} strokeWidth={1.75} />
         </button>
@@ -166,7 +166,7 @@ function MenuModulos({ aoEscolher, aoFechar }: { aoEscolher: (path: string) => v
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-10 z-40 w-48 rounded-xl border border-border bg-surface-2 p-1 shadow-nav ecos-fade-in"
+      className="absolute right-0 top-full z-40 w-48 rounded-xl border border-border bg-surface-2 p-1 shadow-nav ecos-fade-in"
     >
       {[...RAIL_PRINCIPAL, ...RAIL_UTILITARIOS].map((id) => {
         const modulo = moduloPorId(id);

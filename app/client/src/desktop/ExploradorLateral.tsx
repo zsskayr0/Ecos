@@ -44,7 +44,7 @@ export function ExploradorLateral() {
   const focada = workspace?.state.panes.find((p) => p.id === workspace.state.focusedPaneId);
   const caminhoAtivo = focada?.tabs.find((t) => t.id === focada.activeTabId)?.path ?? null;
   const pedindo = useRef(new Set<string>());
-  const { marca, icones: iconesExtensao } = useMarcasArquivo();
+  const { marca, icones: iconesExtensao, colorirPrioridade } = useMarcasArquivo();
   const [alvo, setAlvo] = useState<string | null>(null);
   const esperaAbrir = useRef<{ caminho: string; timer: number } | null>(null);
   const limparEspera = () => { if (esperaAbrir.current) { window.clearTimeout(esperaAbrir.current.timer); esperaAbrir.current = null; } };
@@ -475,7 +475,8 @@ export function ExploradorLateral() {
                 style={{ paddingLeft: 6 + nivel * 14 + 20 }}>
                 {ativo && <span className="absolute -left-1 bottom-1.5 top-1.5 w-0.5 rounded-full bg-cyan" />}
                 {/* +20px = seta da pasta (14px + 6px de vão): o ícone do arquivo alinha com o da pasta */}
-                {mostrarIcone ? <IconeArquivo a={a} personalizados={iconesExtensao} className={`text-text-muted ${feita ? "opacity-50" : ""}`} /> : <span aria-hidden className="h-3.5 w-3.5 shrink-0" />}
+                {mostrarIcone ? <IconeArquivo a={a} personalizados={iconesExtensao} colorirPrioridade={colorirPrioridade}
+                  className={`text-text-muted ${feita ? "opacity-50" : ""}`} /> : <span aria-hidden className="h-3.5 w-3.5 shrink-0" />}
                 <span className={`min-w-0 flex-1 truncate ${feita ? "line-through opacity-50" : ""}`}>{rotulo(a)}</span>
                 {s && <span className="shrink-0 text-[10px] font-medium tracking-wide text-text-muted">{s}</span>}
               </button>

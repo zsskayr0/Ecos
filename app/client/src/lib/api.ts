@@ -1165,6 +1165,12 @@ export interface ArquivoExplorador {
   titulo?: string;
   /** Só em tarefas. */
   status?: "pendente" | "concluida" | "arquivada";
+  prioridade?: "baixa" | "media" | "alta";
+  scheduled_at?: string | null;
+  due_date?: string | null;
+  tags?: string[];
+  criado_por?: string | null;
+  criado_por_nome?: string | null;
   fora_do_padrao?: boolean;
   /** Só em nota e tarefa: mídias que o texto referencia. */
   anexos?: AnexoExplorador[];
@@ -1179,8 +1185,38 @@ export const revisaoMidias = {
 };
 
 export const arquivos = {
-  listar: (params: { espaco?: string; pasta?: string }) =>
-    get<{ pasta: string; pastas: PastaExplorador[]; arquivos: ArquivoExplorador[] }>(`/arquivos${qs(params)}`),
+  listar: async (params: { espaco?: string; pasta?: string }) => {
+    const conteudo = await get<{ pasta: string; pastas: PastaExplorador[]; arquivos: ArquivoExplorador[] }>(`/arquivos${qs(params)}`);
+    // Servidores que ainda não incluem prioridade no Explorador já a retornam na listagem de tarefas.
+    const faltantes = new Set(conteudo.arquivos.flatMap((arquivo) =>
+      arquivo.tipo === "tarefa" && arquivo.id && !arquivo.prioridade ? [arquivo.id] : []));
+    if (!faltantes.size) return conteudo;
+    const prioridades = new Map<string, PrioridadeTarefa>();
+    try {
+      let cursor: string | undefined;
+      do {
+        const pagina = await tarefas.listar({ espaco: params.espaco ?? "pessoal", pasta: params.pasta ?? "", cursor, limit: 100 });
+        for (const tarefa of pagina.items) {
+          if (faltantes.has(tarefa.id) && tarefa.prioridade) {
+            prioridades.set(tarefa.id, tarefa.prioridade);
+            faltantes.delete(tarefa.id);
+          }
+        }
+        if (!pagina.next_cursor || pagina.next_cursor === cursor) break;
+        cursor = pagina.next_cursor;
+      } while (faltantes.size);
+    } catch {
+      // Uma falha ao complementar os dados das tarefas não deve impedir a abertura da pasta.
+    }
+    if (!prioridades.size) return conteudo;
+    return {
+      ...conteudo,
+      arquivos: conteudo.arquivos.map((arquivo) => {
+        const prioridade = arquivo.tipo === "tarefa" && arquivo.id && !arquivo.prioridade ? prioridades.get(arquivo.id) : undefined;
+        return prioridade ? { ...arquivo, prioridade } : arquivo;
+      }),
+    };
+  },
   resumo: (params: { espaco?: string; pasta?: string }) =>
     get<{ pastas: number; arquivos: number; notas: number; tarefas: number; midias: number; bytes: number }>(`/arquivos/resumo${qs(params)}`),
   urlConteudo: (espaco: string, caminho: string) => `${BASE()}/arquivos/conteudo${qs({ espaco, caminho })}`,

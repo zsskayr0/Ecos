@@ -1,12 +1,12 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { AlarmClock, Archive, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, ListChecks, ListFilter, PencilLine, Search, Sparkles, Tag, Tags, User, Users, X } from "lucide-react";
+import { AlarmClock, Archive, ArrowDownAZ, ArrowUpDown, CalendarClock, CalendarPlus, ChevronDown, Circle, CircleCheck, CircleDot, Flag, Folder, FolderOpen, Layers, ListChecks, ListFilter, PencilLine, Search, Sparkles, Tag, Tags, User, Users, X } from "lucide-react";
 import { useIsMobile } from "@/lib/use-viewport";
 import { Dialog } from "@/components/common/Dialog";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { MenuMultiplo, type OpcaoMultipla } from "@/components/common/MenuMultiplo";
 import { corDaEquipe } from "@/lib/team-color";
 import { BuscaExpansivel } from "./BuscaExpansivel";
-import { ESTADO_VAZIO, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
+import { ESTADO_VAZIO, PASTAS_INDEXADAS, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
   { valor: "todos", rotulo: "Todos os status", icone: ListChecks }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck },
@@ -38,6 +38,8 @@ interface Props {
   placeholderBusca?: string;
   /** Controle alinhado à direita, na mesma linha dos filtros (ex.: seletor de visualização). */
   acaoDireita?: ReactNode;
+  /** Controles de filtro para o popup de Arquivos, onde busca e ordenação têm controles próprios. */
+  noExplorador?: boolean;
 }
 
 const chip = (ativo: boolean) =>
@@ -62,18 +64,22 @@ function useAreaVisivel(ativo: boolean): CSSProperties | undefined {
   return area;
 }
 
-const Seta = ({ aberto }: { aberto: boolean }) => <ChevronDown size={13} className={`transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} />;
+const Seta = ({ aberto, lateral }: { aberto: boolean; lateral?: boolean }) => (
+  <ChevronDown size={13} className={`transition-transform duration-150 ${lateral ? "-rotate-90" : aberto ? "rotate-180" : ""}`} />
+);
 
 /** Filtrar por status, prioridade e equipe, e ordenar — chips que abrem menus do próprio app. */
-export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas, pesquisavel = false, placeholderBusca, acaoDireita }: Props) {
+export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temTarefas, pesquisavel = false, placeholderBusca, acaoDireita, noExplorador = false }: Props) {
   const padrao = estadoInicial(temTarefas);
   const equipes: OpcaoMenu<string>[] = [
     { valor: "todas", rotulo: "Todas as equipes", icone: Users }, { valor: "pessoal", rotulo: "Pessoal", cor: TOM.violeta, icone: User },
     ...contexto.equipes.map((e) => ({ valor: `equipe:${e.id}`, rotulo: e.nome, cor: corDaEquipe(e.id), icone: Users })),
   ];
   const opcoesPasta: OpcaoMultipla[] = [
-    { valor: "", rotulo: "Sem pasta", icone: Folder, cor: TOM.alerta },
-    ...contexto.pastas.map((p) => ({ valor: p.caminho, pasta: true, rotulo: p.caminho.replace(/\//g, " / "), icone: FolderOpen, cor: TOM.aco })),
+    noExplorador
+      ? { valor: PASTAS_INDEXADAS, rotulo: "Indexadas", icone: Layers, cor: TOM.aco }
+      : { valor: "", rotulo: "Sem pasta", icone: Folder, cor: TOM.alerta },
+    ...contexto.pastas.map((p) => ({ valor: p.caminho, pasta: true, rotulo: noExplorador ? p.nome : p.caminho.replace(/\//g, " / "), icone: FolderOpen, cor: TOM.aco })),
   ];
   const opcoesTag: OpcaoMultipla[] = contexto.tags.map((tag) => ({ valor: tag, rotulo: tag, icone: Tag, cor: TOM.violeta }));
   const opcoesDono: OpcaoMultipla[] = contexto.donos.map((dono) => ({ valor: dono.valor, rotulo: dono.nome, icone: User, cor: TOM.ciano }));
@@ -85,42 +91,51 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
   const [painelAberto, setPainelAberto] = useState(false);
   const areaVisivel = useAreaVisivel(painelAberto);
   const set = (patch: Partial<EstadoFiltros>) => onChange({ ...estado, ...patch });
+  function escolherPastas(pastas: string[]) {
+    if (noExplorador && pastas.includes(PASTAS_INDEXADAS)) {
+      pastas = estado.pastas.includes(PASTAS_INDEXADAS)
+        ? pastas.filter((pasta) => pasta !== PASTAS_INDEXADAS)
+        : [PASTAS_INDEXADAS];
+    }
+    set({ pastas });
+  }
 
   const chipsFiltro = (
     <>
       {temTarefas && (
-        <MenuSuspenso fixo ariaLabel="Filtrar por status" valor={estado.status} opcoes={STATUS} onChange={(status) => set({ status })}
+        <MenuSuspenso fixo lateral={noExplorador} ariaLabel="Filtrar por status" valor={estado.status} opcoes={STATUS} onChange={(status) => set({ status })}
           classeGatilho={chip(estado.status !== padrao.status)} corAtiva={corDo(STATUS, estado.status, estado.status !== padrao.status)}
-          gatilho={({ aberto, atual }) => <><CircleDot size={14} /><span>{atual?.rotulo}</span><Seta aberto={aberto} /></>} />
+          gatilho={({ aberto, atual }) => <><CircleDot size={14} /><span>{noExplorador && estado.status === "todos" ? "Status" : atual?.rotulo}</span><Seta aberto={aberto} lateral={noExplorador} /></>} />
       )}
       {temTarefas && (
-        <MenuSuspenso fixo ariaLabel="Filtrar por prioridade" valor={estado.prioridade} opcoes={PRIORIDADES} onChange={(prioridade) => set({ prioridade })}
+        <MenuSuspenso fixo lateral={noExplorador} ariaLabel="Filtrar por prioridade" valor={estado.prioridade} opcoes={PRIORIDADES} onChange={(prioridade) => set({ prioridade })}
           classeGatilho={chip(estado.prioridade !== "todas")} corAtiva={corDo(PRIORIDADES, estado.prioridade, estado.prioridade !== "todas")}
-          gatilho={({ aberto, atual }) => <><Flag size={14} /><span>{estado.prioridade === "todas" ? "Prioridade" : atual?.rotulo}</span><Seta aberto={aberto} /></>} />
+          gatilho={({ aberto, atual }) => <><Flag size={14} /><span>{estado.prioridade === "todas" ? "Prioridade" : atual?.rotulo}</span><Seta aberto={aberto} lateral={noExplorador} /></>} />
       )}
-      {contexto.equipes.length > 0 && (
+      {!noExplorador && contexto.equipes.length > 0 && (
         <MenuSuspenso fixo ariaLabel="Filtrar por equipe" valor={estado.equipe} opcoes={equipes} onChange={(equipe) => set({ equipe })}
           classeGatilho={chip(estado.equipe !== "todas")} corAtiva={corDo(equipes, estado.equipe, estado.equipe !== "todas")}
           gatilho={({ aberto, atual }) => <><Users size={14} /><span className="max-w-[9rem] truncate">{estado.equipe === "todas" ? "Equipe" : atual?.rotulo ?? "Equipe"}</span><Seta aberto={aberto} /></>} />
       )}
       {contexto.donos.length > 0 && (
-        <MenuMultiplo fixo ariaLabel="Filtrar por proprietário" valores={estado.donos} opcoes={opcoesDono} onChange={(donos) => set({ donos })}
+        <MenuMultiplo fixo lateral={noExplorador} ariaLabel="Filtrar por proprietário" valores={estado.donos} opcoes={opcoesDono} onChange={(donos) => set({ donos })}
           todas={{ rotulo: "Todos os proprietários", icone: Users }}
           pesquisavel placeholderBusca="Pesquisar proprietários…"
           classeGatilho={chip(estado.donos.length > 0)} corAtiva={estado.donos.length ? TOM.ciano : null}
-          gatilho={({ aberto }) => <><User size={14} /><span className="max-w-[10rem] truncate">{estado.donos.length ? rotuloDonos : "Proprietário"}</span><Seta aberto={aberto} /></>} />
+          gatilho={({ aberto }) => <><User size={14} /><span className="max-w-[10rem] truncate">{estado.donos.length ? rotuloDonos : "Proprietário"}</span><Seta aberto={aberto} lateral={noExplorador} /></>} />
       )}
-      <MenuMultiplo fixo arvore ariaLabel="Filtrar por pasta" valores={estado.pastas} opcoes={opcoesPasta} onChange={(pastas) => set({ pastas })}
-        todas={{ rotulo: "Todas as pastas", icone: ListChecks }}
+      <MenuMultiplo fixo lateral={noExplorador} arvore={!noExplorador} ariaLabel="Filtrar por pasta" valores={estado.pastas} opcoes={opcoesPasta} onChange={escolherPastas}
+        todas={{ rotulo: noExplorador ? "Padrão" : "Todas as pastas", icone: ListChecks }}
         pesquisavel placeholderBusca="Pesquisar pastas…"
         classeGatilho={chip(estado.pastas.length > 0)} corAtiva={estado.pastas.length ? TOM.aco : null}
-        gatilho={({ aberto }) => <><FolderOpen size={14} /><span className="max-w-[10rem] truncate">{estado.pastas.length ? rotuloPastas : "Pasta"}</span><Seta aberto={aberto} /></>} />
-      {contexto.tags.length > 0 && (
-        <MenuMultiplo fixo ariaLabel="Filtrar por tags" valores={estado.tags} opcoes={opcoesTag} onChange={(tags) => set({ tags })}
+        gatilho={({ aberto }) => <><FolderOpen size={14} /><span className="max-w-[10rem] truncate">{estado.pastas.length ? rotuloPastas : "Pasta"}</span><Seta aberto={aberto} lateral={noExplorador} /></>} />
+      {(noExplorador || contexto.tags.length > 0) && (
+        <MenuMultiplo fixo lateral={noExplorador} ariaLabel="Filtrar por tags" valores={estado.tags} opcoes={opcoesTag} onChange={(tags) => set({ tags })}
           todas={{ rotulo: "Todas as tags", icone: Tags }}
-          pesquisavel placeholderBusca="Pesquisar tags…"
+          pesquisavel={contexto.tags.length > 0} placeholderBusca="Pesquisar tags…"
+          mensagemSemOpcoes={noExplorador ? "Nenhuma tag nesta pasta." : undefined}
           classeGatilho={chip(estado.tags.length > 0)} corAtiva={estado.tags.length ? TOM.violeta : null}
-          gatilho={({ aberto }) => <><Tags size={14} /><span className="max-w-[10rem] truncate">{estado.tags.length ? rotuloTags : "Tags"}</span><Seta aberto={aberto} /></>} />
+          gatilho={({ aberto }) => <><Tags size={14} /><span className="max-w-[10rem] truncate">{estado.tags.length ? rotuloTags : "Tags"}</span><Seta aberto={aberto} lateral={noExplorador} /></>} />
       )}
     </>
   );
@@ -141,6 +156,21 @@ export function BarraFiltros({ estado, onChange, contexto, visiveis, total, temT
     ...estado.tags.map((t) => ({ chave: `tag:${t}`, rotulo: `#${t}`, limpar: () => set({ tags: estado.tags.filter((x) => x !== t) }) })),
   ];
   const nFiltros = ativos.length;
+
+  if (noExplorador) {
+    return (
+      <>
+        <div className="flex flex-col gap-1 [&>div>button]:w-full [&>div>button>span]:min-w-0 [&>div>button>span]:max-w-none [&>div>button>span]:flex-1 [&>div>button>span]:truncate [&>div>button>span]:text-left [&>div>button>svg]:shrink-0">
+          {chipsFiltro}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2 text-xs">
+          <span className="text-text-muted" aria-live="polite">{visiveis} de {total}</span>
+          <button type="button" disabled={nFiltros === 0} onClick={() => onChange(padrao)}
+            className="rounded-lg px-2 py-1 text-text-secondary hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">Limpar filtros</button>
+        </div>
+      </>
+    );
+  }
 
   if (mobile) {
     return (

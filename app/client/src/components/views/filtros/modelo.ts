@@ -1,4 +1,4 @@
-import type { FeedItem } from "@/lib/types";
+import type { Dono, FeedItem, Tarefa } from "@/lib/types";
 import { canonicaTag } from "@/lib/tags";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
@@ -28,6 +28,21 @@ export interface EstadoFiltros {
 
 export const ESTADO_VAZIO: EstadoFiltros = { status: "todos", prioridade: "todas", equipe: "todas", pastas: [], tags: [], donos: [], ordem: "relevancia", ordemDirecao: 1, busca: "" };
 
+/** Modo exclusivo do Explorador. O NUL impede colisão com um caminho real. */
+export const PASTAS_INDEXADAS = "\u0000indexadas";
+
+export type ItemFiltravel = {
+  titulo: string;
+  espaco: string;
+  tags?: string[];
+  dono?: Dono;
+  origemEquipe?: { nome: string };
+} & (
+  | ({ tipo: "tarefa"; pasta?: string | null } & Partial<Pick<Tarefa, "status" | "prioridade" | "scheduledAt" | "dueDate">>)
+  | { tipo: "nota"; pastaId?: string | null; preview?: string; corpo?: string }
+  | { tipo: "arquivo" | "pasta"; pasta: string }
+);
+
 /** Onde há tarefas, as concluídas ficam a um clique de distância em vez de poluir a lista. */
 export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas && !lerPreferenciasAplicativo().mostrarConcluidas ? { ...ESTADO_VAZIO, status: "pendente" } : ESTADO_VAZIO);
 
@@ -35,7 +50,7 @@ export const filtrosAtivos = (e: EstadoFiltros, temTarefas: boolean) =>
   (e.status !== estadoInicial(temTarefas).status ? 1 : 0) + (e.prioridade !== "todas" ? 1 : 0) + (e.equipe !== "todas" ? 1 : 0) + (e.pastas.length ? 1 : 0) + (e.tags.length ? 1 : 0) + (e.donos.length ? 1 : 0) + (e.busca?.trim() ? 1 : 0);
 
 /** Pendente e já vencida: horário agendado no passado ou prazo (`dueDate`) antes de hoje. */
-export function tarefaAtrasada(item: FeedItem, agora = new Date()): boolean {
+export function tarefaAtrasada(item: ItemFiltravel, agora = new Date()): boolean {
   if (item.tipo !== "tarefa" || item.status !== "pendente") return false;
   if (item.scheduledAt) return new Date(item.scheduledAt).getTime() < agora.getTime();
   if (item.dueDate) {
@@ -45,20 +60,20 @@ export function tarefaAtrasada(item: FeedItem, agora = new Date()): boolean {
   return false;
 }
 
-export const pastaDoItem = (item: FeedItem): string => (item.tipo === "nota" ? item.pastaId : item.pasta) ?? "";
-export const chaveDoDono = (item: FeedItem): string => item.dono.id ? `id:${item.dono.id}` : `nome:${item.dono.nome.trim().toLocaleLowerCase("pt-BR")}`;
+export const pastaDoItem = (item: ItemFiltravel): string => (item.tipo === "nota" ? item.pastaId : item.pasta) ?? "";
+export const chaveDoDono = ({ dono }: { dono: Dono }): string => dono.id ? `id:${dono.id}` : `nome:${dono.nome.trim().toLocaleLowerCase("pt-BR")}`;
 
 /** Sem acento, sem diferença de maiúscula e sem espaço nas pontas: "Relatório" casa com "relatorio". */
 export const normalizarBusca = (texto: string): string => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
 
 /** Todos os termos digitados precisam aparecer, cada um em qualquer campo: título, tags, pasta, dono, equipe e, em notas, o texto. */
-function correspondeBusca(item: FeedItem, termos: string[]): boolean {
-  const campos = [item.titulo, ...(item.tags ?? []), ...(item.tags ?? []).map((t) => canonicaTag(t) ?? t), pastaDoItem(item), item.dono.nome, item.origemEquipe?.nome ?? "", item.tipo === "nota" ? `${item.preview} ${item.corpo ?? ""}` : ""];
+function correspondeBusca(item: ItemFiltravel, termos: string[]): boolean {
+  const campos = [item.titulo, ...(item.tags ?? []), ...(item.tags ?? []).map((t) => canonicaTag(t) ?? t), pastaDoItem(item), item.dono?.nome ?? "", item.origemEquipe?.nome ?? "", item.tipo === "nota" ? `${item.preview ?? ""} ${item.corpo ?? ""}` : ""];
   const palheiro = normalizarBusca(campos.join("\n"));
   return termos.every((termo) => palheiro.includes(termo));
 }
 
-export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
+export function filtrar<T extends ItemFiltravel>(itens: T[], e: EstadoFiltros): T[] {
   const agora = new Date();
   const termos = normalizarBusca(e.busca ?? "").split(/\s+/).filter(Boolean);
   return itens.filter((item) => {
@@ -66,7 +81,7 @@ export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
     if (e.equipe !== "todas" && item.espaco !== e.equipe) return false;
     if (e.pastas.length && !e.pastas.includes(pastaDoItem(item))) return false;
     if (e.tags.length && !e.tags.some((tag) => (item.tags ?? []).some((tagDoItem) => (canonicaTag(tagDoItem) ?? tagDoItem) === (canonicaTag(tag) ?? tag)))) return false;
-    if (e.donos.length && !e.donos.includes(chaveDoDono(item))) return false;
+    if (e.donos.length && (!item.dono || !e.donos.includes(chaveDoDono({ dono: item.dono })))) return false;
     // Notas não têm prioridade nem conclusão: escolher uma delas mostra só tarefas. "Pendentes" mantém as notas.
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;
     if (e.status === "atrasada" && !tarefaAtrasada(item, agora)) return false;
@@ -77,7 +92,7 @@ export function filtrar(itens: FeedItem[], e: EstadoFiltros): FeedItem[] {
   });
 }
 
-const PESO_PRIORIDADE = { alta: 0, media: 1, baixa: 2 } as const;
+export const PESO_PRIORIDADE = { alta: 0, media: 1, baixa: 2 } as const;
 const data = (s?: string | null) => (s ? new Date(s).getTime() || 0 : 0);
 
 /** `relevancia` mantém a ordem que veio (a do ranking do Feed ou a do servidor). Item sem valor vai sempre para o fim. */
