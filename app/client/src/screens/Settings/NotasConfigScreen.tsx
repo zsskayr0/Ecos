@@ -1,4 +1,4 @@
-import { Maximize2, Pencil } from "lucide-react";
+import { Maximize2, Pencil, PanelRight } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { Cabecalho, Linha, Secao, usePreferencias } from "./campos-config";
@@ -29,9 +29,14 @@ export function NotasConfigScreen() {
           tagsModo={prefs.notaNovaTagsModo} aoMudarTagsModo={(notaNovaTagsModo) => alterar({ notaNovaTagsModo })}
           tags={prefs.notaNovaTags} aoMudarTags={(notaNovaTags) => alterar({ notaNovaTags })} />
         {desktop && (
-          <Linha Icone={Maximize2} titulo="Criar maximizada" descricao="A janela de criação já abre no modo Focus. Sair do Focus fecha a criação, salvando o que foi escrito.">
-            <Toggle checked={prefs.notaNovaMaximizada} onChange={(notaNovaMaximizada) => alterar({ notaNovaMaximizada })} label="Criar notas maximizadas" />
-          </Linha>
+          <>
+            <Linha Icone={Maximize2} titulo="Criar maximizada" descricao="A janela de criação já abre no modo Focus. Sair do Focus fecha a criação, salvando o que foi escrito.">
+              <Toggle checked={prefs.notaNovaMaximizada} onChange={(notaNovaMaximizada) => alterar({ notaNovaMaximizada })} label="Criar notas maximizadas" />
+            </Linha>
+            <Linha Icone={PanelRight} titulo="Barra lateral aberta na criação" descricao="Na criação maximizada, o painel de opções (equipe, pasta, tags e anexos) já começa aberto.">
+              <Toggle checked={prefs.notaNovaPainelAberto} onChange={(notaNovaPainelAberto) => alterar({ notaNovaPainelAberto })} label="Barra lateral aberta na criação" />
+            </Linha>
+          </>
         )}
       </Secao>
     </div>

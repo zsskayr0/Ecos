@@ -62,6 +62,8 @@ export interface CapturaDraft {
   /** Pasta e tags escolhidas na Nota (as `#hashtags` do texto são somadas ao salvar). */
   pastaNota: string | null;
   tagsNota: string[];
+  /** null = espaço ativo do app. */
+  espacoNota: string | null;
 }
 
 export type SetDraft = Dispatch<SetStateAction<CapturaDraft>>;
@@ -89,6 +91,7 @@ export const DRAFT_VAZIO: CapturaDraft = {
   subtarefasTarefa: [],
   pastaNota: null,
   tagsNota: [],
+  espacoNota: null,
 };
 
 let cacheVazio: { chave: string; draft: CapturaDraft } | null = null;
@@ -231,7 +234,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   // prioridade e duração. Acompanham a pasta enquanto a pessoa troca de pasta; o que ela mesma mexeu fica. Cada captura recomeça do zero.
   const padroesAuto = useRef<{ id: number; tarefa: string[]; nota: string[]; prio: string; dur: number; chave: string }>({ id: -1, tarefa: [], nota: [], prio: "", dur: 0, chave: "" });
   const pastaAtual = capturaAberta === "tarefa" ? draft.pastaTarefa : capturaAberta === "nota" ? draft.pastaNota : null;
-  const espacoDaCaptura = capturaAberta === "tarefa" ? draft.espacoTarefa ?? espacoAtivo : espacoAtivo;
+  const espacoDaCaptura = (capturaAberta === "tarefa" ? draft.espacoTarefa : capturaAberta === "nota" ? draft.espacoNota : null) ?? espacoAtivo;
   useEffect(() => {
     if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
     const tipo = capturaAberta;
@@ -360,7 +363,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
           if (falhas.length) avisar(`Lançamento salvo, mas ${falhas.length === 1 ? "1 anexo não foi enviado" : `${falhas.length} anexos não foram enviados`}: ${falhas[0]} Anexe de novo pelo lançamento.`);
         }
       } else if (tipo === "nota") {
-        const dados = payloadReal("nota", draft, espacoAtivo);
+        const dados = payloadReal("nota", draft, draft.espacoNota ?? espacoAtivo);
         if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
         else {
           const criado = await notas.criar(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] });

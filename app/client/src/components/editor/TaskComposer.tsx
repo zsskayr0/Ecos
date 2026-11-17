@@ -41,7 +41,7 @@ function lerLarguraSidebar(): number {
 }
 const ACTION = "flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-2 text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
 
-export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false, organizacaoCompacta = false }: {
+export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false, organizacaoCompacta = false, estadoSalvamento }: {
   value: TaskFields; onChange: (patch: Partial<TaskFields>) => void; onSave: () => void;
   saving?: boolean; itemId?: string; editing?: boolean; dirty?: boolean;
   /** false quando quem hospeda o compositor já oferece o próprio botão Salvar fixo (desktop). */
@@ -56,6 +56,8 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   /** Modo Focus: controles que vão no topo do painel lateral (prioridade, duplicar…). */
   painelExtra?: ReactNode;
   organizacaoCompacta?: boolean;
+  /** Modo Focus: texto de gravação mostrado em "Informações", no painel lateral. */
+  estadoSalvamento?: string;
 }) {
   const id = useId();
   const painelFocus = useContext(PainelFocusTarefaContext);
@@ -175,6 +177,14 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   const abrirAoArrastarArquivo = (e: DragEvent<HTMLDivElement>) => { if (simples && Array.from(e.dataTransfer.types).includes("Files")) setMaisOpcoes(true); };
   const anexosNoPainel = focusMode && !!painelFocus;
   const anexosCampo = <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} escopoRef={raizComposer} estilo={anexosNoPainel ? "grade" : "lista"} compact />;
+  const secaoSubtarefas = (classe: string) => (
+    <section id={`${id}-subtasks`} aria-label="Subtarefas" className={classe}>
+      <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={`${id}-subtask`} className="text-sm font-semibold text-text-primary">Subtarefas</label><span className="text-sm text-text-secondary" aria-live="polite">{value.subtarefas.length ? `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length} concluídas` : "Opcional"}</span></div>
+      <ul className="mb-3 space-y-1">{value.subtarefas.map((sub, index) => <li key={sub.id ?? index} className="flex min-w-0 items-center gap-2 border-b border-border py-1"><label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={sub.concluida} onChange={(e) => onChange({ subtarefas: value.subtarefas.map((s, i) => i === index ? { ...s, concluida: e.target.checked } : s) })} className="h-5 w-5 shrink-0 accent-steel-500" /><span className={`min-w-0 break-words ${sub.concluida ? "text-text-secondary line-through" : "text-text-primary"}`}>{sub.titulo}</span></label><button type="button" className={ACTION} onClick={() => onChange({ subtarefas: value.subtarefas.filter((_, i) => i !== index) })} aria-label={`Remover subtarefa ${sub.titulo}`}><Trash2 size={16} /></button></li>)}</ul>
+      <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
+    </section>
+  );
+  const informacoes = <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>;
   const camposOrganizacao = (
     <div className={organizacaoCompacta ? "grid min-w-0 grid-cols-2 gap-2" : "space-y-4"} role={organizacaoCompacta ? "group" : undefined} aria-label={organizacaoCompacta ? "Pasta e tags" : undefined}>
       <div ref={folderMenuRef} className="relative flex min-w-0 flex-col gap-2 text-sm text-text-secondary">
@@ -226,11 +236,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           <CorpoEditor tipo="tarefa" itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })}
             rows={focusMode ? 18 : 10} layout="document" semBorda={focusMode} initialPreview={!!itemId && !lerPreferenciasAplicativo().tarefaAbreEditando} placeholder="Contexto, decisões, links ou um projeto inteiro… Use #tags para organizar." />
         </section>
-        <section id={`${id}-subtasks`} aria-label="Subtarefas" className="border-t border-border pt-6">
-          <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={`${id}-subtask`} className="text-sm font-semibold text-text-primary">Subtarefas</label><span className="text-sm text-text-secondary" aria-live="polite">{value.subtarefas.length ? `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length} concluídas` : "Opcional"}</span></div>
-          <ul className="mb-3 space-y-1">{value.subtarefas.map((sub, index) => <li key={sub.id ?? index} className="flex min-w-0 items-center gap-2 border-b border-border py-1"><label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={sub.concluida} onChange={(e) => onChange({ subtarefas: value.subtarefas.map((s, i) => i === index ? { ...s, concluida: e.target.checked } : s) })} className="h-5 w-5 shrink-0 accent-steel-500" /><span className={`min-w-0 break-words ${sub.concluida ? "text-text-secondary line-through" : "text-text-primary"}`}>{sub.titulo}</span></label><button type="button" className={ACTION} onClick={() => onChange({ subtarefas: value.subtarefas.filter((_, i) => i !== index) })} aria-label={`Remover subtarefa ${sub.titulo}`}><Trash2 size={16} /></button></li>)}</ul>
-          <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
-        </section>
+        {!anexosNoPainel && secaoSubtarefas("border-t border-border pt-6")}
         {editing && itemId && !focusMode && <Conexoes tipo="tarefa" id={itemId} versao={editedAt} />}
         <button type="button" aria-expanded={expanded} aria-controls={`${id}-planning`} onClick={() => setExpanded(!expanded)}
           className="flex min-h-12 w-full flex-col gap-2 border-t border-border pt-5 text-left md:hidden">
@@ -269,6 +275,12 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           <div className="flex flex-wrap gap-2" aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}</div>
         </section>
         {!simples && <section className="border-t border-border pt-6" aria-label="Anexos">{anexosCampo}</section>}
+        {secaoSubtarefas("space-y-3 border-t border-border pt-6")}
+        <section className="space-y-2 border-t border-border pt-6" aria-label="Informações">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
+          {informacoes}
+          {estadoSalvamento && <p aria-live="polite" className="text-sm text-text-muted">{estadoSalvamento}</p>}
+        </section>
       </aside>, painelFocus) : <aside id={`${id}-planning`} className={`${expanded ? "block" : "hidden"} min-w-0 border-t border-border pt-6 md:block md:border-t-0 md:pl-4 md:pt-0`} aria-label="Planejamento e organização">
         <section className="space-y-4">
           <h2 className="font-semibold text-text-primary">Planejamento</h2>
@@ -285,9 +297,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         </section>
       </aside>}
     </div>}
-    <footer className="flex flex-col gap-3 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">
-      <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>
-    </footer>
+    {!anexosNoPainel && <footer className="flex flex-col gap-3 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">{informacoes}</footer>}
     {editing && floatingSave && (dirty || saving) && <FloatingSaveButton onSave={onSave} disabled={!value.titulo.trim() || uploading} saving={saving} />}
   </div>;
 }

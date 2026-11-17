@@ -181,8 +181,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const janelaFocusRef = useRef<HTMLDivElement>(null);
   const [painelFocusAberto, setPainelFocusAberto] = useState(() => {
     const prefs = lerPreferenciasAplicativo();
-    // Nota nova não tem painel de opções: só a tarefa nova usa a preferência própria.
-    return captura ? path === "/tarefas" && prefs.tarefaNovaPainelAberto : !prefs.focusPainelRecolhido;
+    // Criação maximizada: cada tipo tem a própria preferência de painel aberto.
+    return captura ? (path === "/tarefas" ? prefs.tarefaNovaPainelAberto : prefs.notaNovaPainelAberto) : !prefs.focusPainelRecolhido;
   });
   const painelFocusAbertoRef = useRef(painelFocusAberto);
   const saindoDoFocus = useRef(false);

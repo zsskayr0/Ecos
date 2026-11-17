@@ -1,8 +1,8 @@
 import { useContext, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, PanelRightClose, PanelRightOpen, X } from "lucide-react";
 import { SegmentedSlide, type OpcaoSlide } from "@/components/common/SegmentedSlide";
-import { AcoesFocusContext, ModoFocusDocumentoContext } from "@/lib/documento-popup";
+import { AcoesFocusContext, ModoFocusDocumentoContext, PainelFocusControleContext } from "@/lib/documento-popup";
 import type { TipoCaptura } from "@/lib/ui-context";
 
 /** Verde = notas, azul = tarefas, roxo = transações. */
@@ -34,6 +34,8 @@ export function FormShell({
   const focoDocumento = useContext(ModoFocusDocumentoContext);
   const acoesFocus = useContext(AcoesFocusContext);
   const noCabecalho = embedded && focoDocumento && !!acoesFocus;
+  const painelFocus = useContext(PainelFocusControleContext);
+  const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   const tipos = TIPOS.filter((tipo) => tiposPermitidos.includes(tipo.value));
   const titulo = !embedded && tipoAtivo !== "transacao" ? (tipoAtivo === "nota" ? "Nova nota" : "Nova tarefa") : null;
   const largura = tipoAtivo === "transacao"
@@ -42,7 +44,12 @@ export function FormShell({
   return (
     <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`} data-capture-type={tipoAtivo}>
       <div className={`flex h-full min-w-0 w-full flex-col ${largura}`}>
-        {noCabecalho && tipos.length > 1 && createPortal(<SegmentedSlide className="ecos-capture-slide" ariaLabel="Tipo de captura" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />, acoesFocus!)}
+        {noCabecalho && createPortal(<>
+          {tipoAtivo !== "transacao" && <>
+            <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
+            <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+          </>}
+        </>, acoesFocus!)}
         {!noCabecalho && (!embedded || tipos.length > 1) && <div className={`ecos-capture-header flex items-center gap-2 ${embedded ? "justify-center" : ""} ${titulo ? "!pb-2" : ""}`}>
           {titulo && <h1 className="min-w-0 flex-1 font-display text-xl font-semibold text-text-primary">{titulo}</h1>}
           {embedded ? (

@@ -1,5 +1,7 @@
 import { useContext } from "react";
-import { ModoFocusDocumentoContext } from "@/lib/documento-popup";
+import { createPortal } from "react-dom";
+import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
+import { AcoesFocusContext, ModoFocusDocumentoContext } from "@/lib/documento-popup";
 import { TaskComposer } from "@/components/editor/TaskComposer";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { Cloud } from "lucide-react";
@@ -22,9 +24,17 @@ export function TaskForm({ draft, setDraft, onSalvar, salvando, embedded = false
   const { espacoAtivo } = useAppUI();
   // Criação maximizada (preferência "Nova tarefa"): as opções vão para o painel lateral do Focus.
   const focoDocumento = useContext(ModoFocusDocumentoContext);
+  const prioridade = <TaskPriority compact value={draft.prioridadeTarefa} onChange={(p) => setDraft((previous) => ({ ...previous, prioridadeTarefa: p }))} disabled={salvando} />;
+  const acoesFocus = useContext(AcoesFocusContext);
   return <div className={`min-w-0 pb-5 ${embedded ? "pt-5 md:pt-4" : "pt-1"}`}>
+    {embedded && focoDocumento && acoesFocus && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="tarefa" espaco={draft.espacoTarefa ?? espacoAtivo} pasta={draft.pastaTarefa} titulo={draft.texto} />, acoesFocus)}
     <TaskComposer value={fieldsFromDraft(draft, espacoAtivo)} saving={salvando} onSave={onSalvar} showPriority={!embedded} organizacaoCompacta={!embedded} focusMode={embedded && focoDocumento}
-      titleActions={embedded && <TaskPriority compact value={draft.prioridadeTarefa} onChange={(prioridade) => setDraft((previous) => ({ ...previous, prioridadeTarefa: prioridade }))} disabled={salvando} />}
+      estadoSalvamento={salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}
+      titleActions={embedded && !focoDocumento && prioridade}
+      painelExtra={embedded && focoDocumento ? <section aria-label="Prioridade" className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Prioridade</h2>
+        {prioridade}
+      </section> : undefined}
       onChange={(patch) => setDraft((previous) => {
         const value = { ...fieldsFromDraft(previous, espacoAtivo), ...patch };
         return {
@@ -34,6 +44,6 @@ export function TaskForm({ draft, setDraft, onSalvar, salvando, embedded = false
           pastaTarefa: value.pasta, espacoTarefa: value.espaco, subtarefasTarefa: value.subtarefas,
         };
       })} />
-    <p className="mt-3 flex items-center gap-2 text-sm text-text-secondary"><Cloud size={16} className="text-steel-300" />{salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}</p>
+    {!(embedded && focoDocumento) && <p className="mt-3 flex items-center gap-2 text-sm text-text-secondary"><Cloud size={16} className="text-steel-300" />{salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}</p>}
   </div>;
 }

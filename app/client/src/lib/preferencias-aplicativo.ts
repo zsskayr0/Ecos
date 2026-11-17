@@ -108,6 +108,8 @@ export interface PreferenciasAplicativo {
   notaNovaMaximizada: boolean;
   /** Na criação maximizada de tarefa, o painel de opções já começa aberto. */
   tarefaNovaPainelAberto: boolean;
+  /** Na criação maximizada de nota, o painel de opções (organização e anexos) já começa aberto. */
+  notaNovaPainelAberto: boolean;
   /** De onde vêm as tags de um item novo: `hierarquia` (pasta e as de cima), `pasta` (só a própria) ou `manual` (a lista abaixo). */
   tarefaNovaTagsModo: ModoTagsPadrao;
   tarefaNovaTags: string[];
@@ -173,6 +175,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   tarefaNovaMaximizada: false,
   notaNovaMaximizada: false,
   tarefaNovaPainelAberto: true,
+  notaNovaPainelAberto: true,
   tarefaNovaTagsModo: "hierarquia",
   tarefaNovaTags: [],
   notaNovaTagsModo: "hierarquia",
