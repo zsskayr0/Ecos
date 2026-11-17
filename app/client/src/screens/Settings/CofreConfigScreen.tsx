@@ -164,7 +164,7 @@ export function CofreConfigScreen({ aba }: { aba: Aba }) {
                   <SeletorEcos valor={String(autoBloqueio)} ariaLabel="Bloquear por inatividade" classe="cofre-config-btn !w-[160px] !justify-between" alinhar="dir" larguraMin={160} onChange={(v) => { const n = Number(v); setAutoBloqueio(n); salvarAutoBloqueioMin(n); }} opcoes={OPCOES_AUTO_BLOQUEIO} />
                 </Linha>
                 <SenhaLembrada />
-                <Linha titulo="Resetar o Cofre" descricao="Apagar tudo fica em Privacidade e cofre, com confirmação e backup de segurança." />
+                <Linha titulo="Resetar o Cofre" descricao="Apagar tudo fica em Cofre › Privacidade e redefinição, com confirmação e backup de segurança." />
               </>}
               {aba === "csv" && <BackupsCofre />}
               {aba === "csv" && (valido ? <VaultCsv periodo={periodo} atualizar={notificar} /> : <p role="alert">Selecione um período válido.</p>)}

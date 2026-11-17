@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { UserPen, ChevronLeft, ChevronRight, FileText, ListChecks, Type, AlignLeft, CalendarDays, Camera, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { Avatar } from "@/components/common/Avatar";
+import { NumeroAnimado } from "@/components/common/NumeroAnimado";
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { useAuth, nomeExibicao } from "@/lib/auth-context";
 import { corDaEquipe } from "@/lib/team-color";
@@ -34,12 +36,14 @@ export function ProfileScreen() {
   const [metricas, setMetricas] = useState<{ notas: number; tarefas: number; palavras: number; caracteres: number; primeiraNota: string | null; entrouEm: string | null }>({ notas: 0, tarefas: 0, palavras: 0, caracteres: 0, primeiraNota: null, entrouEm: null });
   const [escopoEstatisticas, setEscopoEstatisticas] = useState<"geral" | "pessoal" | `equipe:${string}`>("geral");
   const [carregandoMetricas, setCarregandoMetricas] = useState(true);
+  // Depois da primeira carga o resumo continua na tela ao trocar de escopo: os números rolam até o valor novo, sem piscar.
+  const [metricasJaCarregadas, setMetricasJaCarregadas] = useState(false);
   const [erroMetricas, setErroMetricas] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const { url: urlFoto } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
-  useEffect(() => { let vivo = true; setCarregandoMetricas(true); setErroMetricas(null); auth.metricas(escopoEstatisticas).then((m) => { if (!vivo) return; setMetricas({ notas: m.notas, tarefas: m.tarefas, palavras: m.palavras, caracteres: m.caracteres, primeiraNota: m.primeira_nota_em, entrouEm: m.entrou_em }); }).catch(() => { if (vivo) setErroMetricas("Não foi possível carregar o resumo do seu espaço."); }).finally(() => { if (vivo) setCarregandoMetricas(false); }); return () => { vivo = false; }; }, [tentativa, escopoEstatisticas]);
+  useEffect(() => { let vivo = true; setCarregandoMetricas(true); setErroMetricas(null); auth.metricas(escopoEstatisticas).then((m) => { if (!vivo) return; setMetricasJaCarregadas(true); setMetricas({ notas: m.notas, tarefas: m.tarefas, palavras: m.palavras, caracteres: m.caracteres, primeiraNota: m.primeira_nota_em, entrouEm: m.entrou_em }); }).catch(() => { if (vivo) setErroMetricas("Não foi possível carregar o resumo do seu espaço."); }).finally(() => { if (vivo) setCarregandoMetricas(false); }); return () => { vivo = false; }; }, [tentativa, escopoEstatisticas]);
   async function criarEquipe() { if (!novaEquipe.trim()) return; setOcupado(true); try { await equipesApi.criar(novaEquipe.trim()); setNovaEquipe(""); notificar(); avisar("Equipe criada.", "sucesso"); } catch (e) { avisar(mensagemDeErro(e, "Não foi possível criar a equipe."), "erro"); } finally { setOcupado(false); } }
   async function salvarDialogo(nome: string) { if (!dialogoEquipe) return; setOcupado(true); try { if (dialogoEquipe.tipo === "editar") await equipesApi.atualizar(dialogoEquipe.id, nome); else await equipesApi.excluir(dialogoEquipe.id); notificar(); setDialogoEquipe(null); avisar(dialogoEquipe.tipo === "editar" ? "Equipe renomeada." : "Equipe excluída.", "sucesso"); } catch (e) { avisar(mensagemDeErro(e, "Não foi possível concluir a ação."), "erro"); } finally { setOcupado(false); } }
   async function escolherFoto(arquivo?: File) {
@@ -97,9 +101,9 @@ export function ProfileScreen() {
         <ChevronRight size={18} className="shrink-0 text-text-muted" />
       </button>
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Seu espaço</p><select aria-label="Escopo das estatísticas" value={escopoEstatisticas} onChange={(e) => setEscopoEstatisticas(e.target.value as typeof escopoEstatisticas)} className="rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-text-primary"><option value="geral">Geral · pessoal e equipes</option><option value="pessoal">Pessoal</option>{equipes.map((equipe) => <option key={equipe.id} value={`equipe:${equipe.id}`}>{equipe.nome}</option>)}</select></div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Seu espaço</p><SeletorEcos ariaLabel="Escopo das estatísticas" alinhar="dir" valor={escopoEstatisticas} onChange={(v) => setEscopoEstatisticas(v as typeof escopoEstatisticas)} classe="rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-text-primary hover:bg-surface-2" opcoes={[{ valor: "geral", rotulo: "Geral · pessoal e equipes" }, { valor: "pessoal", rotulo: "Pessoal" }, ...equipes.map((equipe) => ({ valor: `equipe:${equipe.id}`, rotulo: equipe.nome }))]} /></div>
       {erroMetricas && <EstadoErro mensagem={erroMetricas} onTentarDeNovo={() => setTentativa((n) => n + 1)} />}
-      {carregandoMetricas ? <SkeletonMetricasPerfil rotulo="Carregando seu espaço…" /> : !erroMetricas && <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas.toLocaleString("pt-BR")} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas.toLocaleString("pt-BR")} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras.toLocaleString("pt-BR")} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres.toLocaleString("pt-BR")} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">{metricas.entrouEm ? `No Ecos desde ${new Date(metricas.entrouEm).toLocaleDateString("pt-BR", { dateStyle: "long" })} · primeira nota` : "Primeira nota"}</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>}
+      {carregandoMetricas && !metricasJaCarregadas ? <SkeletonMetricasPerfil rotulo="Carregando seu espaço…" /> : !erroMetricas && <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface-1"><Metrica Icon={FileText} rotulo="Notas" valor={metricas.notas} /><Metrica Icon={ListChecks} rotulo="Tarefas" valor={metricas.tarefas} /><Metrica Icon={Type} rotulo="Palavras escritas" valor={metricas.palavras} /><Metrica Icon={AlignLeft} rotulo="Caracteres" valor={metricas.caracteres} /><div className="col-span-2 flex items-center gap-3 border-t border-border px-4 py-3"><CalendarDays size={19} className="text-steel-300" /><span className="min-w-0"><span className="block text-xs text-text-muted">{metricas.entrouEm ? `No Ecos desde ${new Date(metricas.entrouEm).toLocaleDateString("pt-BR", { dateStyle: "long" })} · primeira nota` : "Primeira nota"}</span><span className="text-sm font-medium text-text-primary">{metricas.primeiraNota ? new Date(metricas.primeiraNota).toLocaleDateString("pt-BR", { dateStyle: "long" }) : "Ainda não há notas"}</span></span></div></div>}
 
       <EstatisticasPerfil escopo={escopoEstatisticas} />
 
@@ -107,7 +111,7 @@ export function ProfileScreen() {
   );
 }
 
-function Metrica({ Icon, rotulo, valor }: { Icon: typeof FileText; rotulo: string; valor: string }) { return <div className="flex min-w-0 items-center gap-3 border-b border-r border-border p-4 even:border-r-0"><Icon size={19} className="shrink-0 text-steel-300" /><span className="min-w-0"><span className="block truncate text-lg font-semibold text-text-primary">{valor}</span><span className="block truncate text-xs text-text-muted">{rotulo}</span></span></div>; }
+function Metrica({ Icon, rotulo, valor }: { Icon: typeof FileText; rotulo: string; valor: number }) { return <div className="flex min-w-0 items-center gap-3 border-b border-r border-border p-4 even:border-r-0"><Icon size={19} className="shrink-0 text-steel-300" /><span className="min-w-0"><span className="block truncate text-lg font-semibold text-text-primary"><NumeroAnimado valor={valor} /></span><span className="block truncate text-xs text-text-muted">{rotulo}</span></span></div>; }
 
 function DialogoEquipe({ dialogo, ocupado, onFechar, onConfirmar }: { dialogo: { tipo: "editar" | "excluir"; id: string; nome: string }; ocupado: boolean; onFechar: () => void; onConfirmar: (nome: string) => Promise<void> }) {
   const [nome, setNome] = useState(dialogo.nome);

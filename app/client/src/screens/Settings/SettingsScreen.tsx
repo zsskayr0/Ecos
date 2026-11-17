@@ -1,20 +1,23 @@
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Users } from "lucide-react";
-import { useGrupos } from "./ConfiguracoesLayout";
+import { useBuscaConfiguracoes, useGrupos } from "./ConfiguracoesLayout";
+import { CampoBusca, ResultadosBusca } from "./BuscaConfiguracoes";
 
 /**
  * Índice das configurações, só nas telas pequenas (no desktop a barra lateral faz este papel).
- * Segue os mesmos grupos e itens da barra lateral.
+ * Segue os mesmos grupos e itens da barra lateral, com a mesma busca no topo.
  */
 export function SettingsScreen() {
   const navigate = useNavigate();
   const grupos = useGrupos();
+  const busca = useBuscaConfiguracoes(grupos);
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-      <h1 className="mb-5 font-display text-xl text-text-primary">Configurações</h1>
+      <h1 className="mb-4 font-display text-xl text-text-primary">Configurações</h1>
+      <CampoBusca valor={busca.consulta} onChange={busca.setConsulta} aoConfirmar={busca.abrirPrimeiro} className="mb-5" />
 
-      {grupos.map((grupo) => (
+      {busca.consulta.trim() ? <ResultadosBusca resultados={busca.resultados} aoAbrir={busca.abrir} espacoso /> : grupos.map((grupo) => (
         <div key={grupo.titulo} className="mb-6">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{grupo.titulo}</p>
           <div className="flex flex-col overflow-hidden rounded-2xl bg-surface-1">

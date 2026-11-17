@@ -1,10 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, type LucideIcon } from "lucide-react";
+import { TimePicker } from "@/components/common/TimePicker";
 import { MenuSuspenso, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 /** Peças comuns das telas de configuração: cabeçalho, seção, linha com ícone, seletor e segmentado. */
+
+/** Texto sem acento e em minúsculas: base da busca das configurações e das âncoras das linhas. */
+export const semAcento = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/** Âncora de uma opção (`#abrir-notas-em-edicao`): é para onde a busca das configurações leva. */
+export const ancoraDe = (titulo: string) => semAcento(titulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export function Cabecalho({ titulo }: { titulo: string }) {
   const navigate = useNavigate();
@@ -27,7 +33,7 @@ export function Secao({ titulo, children }: { titulo: string; children: ReactNod
 
 export function Linha({ Icone, titulo, descricao, children }: { Icone: LucideIcon; titulo: string; descricao: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-20 items-center gap-3 border-b border-border/60 px-4 py-3 text-sm last:border-0">
+    <div data-config={ancoraDe(titulo)} className="flex min-h-20 scroll-mt-4 items-center gap-3 border-b border-border/60 px-4 py-3 text-sm last:border-0">
       <Icone size={18} className="shrink-0 text-steel-300" />
       <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-text-primary">{titulo}</span><span className="block text-xs leading-relaxed text-text-muted">{descricao}</span></span>
       {children}
@@ -56,9 +62,11 @@ export function Segmentado<T extends string>({ valor, opcoes, onChange, label }:
   );
 }
 
-/** Campo de hora (HH:MM) no estilo dos campos do Ecos. */
+export { SegmentadoDeslizante } from "@/components/common/SegmentadoDeslizante";
+
+/** Campo de hora (HH:MM): o seletor de horário do Ecos (duas colunas), no lugar do `<input type="time">` nativo. */
 export function CampoHora({ valor, onChange, label, desabilitado = false }: { valor: string; onChange: (v: string) => void; label: string; desabilitado?: boolean }) {
-  return <input type="time" aria-label={label} value={valor} disabled={desabilitado} onChange={(e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) onChange(e.target.value); }} className="ecos-input !w-auto min-h-10 !rounded-xl border border-border font-mono-value text-sm disabled:opacity-40" />;
+  return <TimePicker value={valor} onChange={onChange} ariaLabel={label} passo={5} alinhar="dir" disabled={desabilitado} className="w-28 shrink-0" />;
 }
 
 /** Preferências do aplicativo com gravação imediata (e aviso às telas que as usam). */

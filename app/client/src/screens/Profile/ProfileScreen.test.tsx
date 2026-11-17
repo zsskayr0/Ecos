@@ -49,7 +49,8 @@ describe("ProfileScreen: métricas vindas do servidor", () => {
     metricas.mockResolvedValue({ escopo: "geral", entrou_em: "2026-01-02T10:00:00Z", primeira_nota_em: null, notas: 3, tarefas: 4, palavras: 5, caracteres: 6 });
     abrir();
     await waitFor(() => expect(metricas).toHaveBeenCalledWith("geral"));
-    fireEvent.change(screen.getByRole("combobox", { name: "Escopo das estatísticas" }), { target: { value: "equipe:eq1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Escopo das estatísticas" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Casa" }));
     await waitFor(() => expect(metricas).toHaveBeenCalledWith("equipe:eq1"));
     await waitFor(() => expect(atividade).toHaveBeenCalledWith(30, "equipe:eq1"));
   });

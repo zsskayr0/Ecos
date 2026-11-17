@@ -1,7 +1,7 @@
 import { Dialog } from "@/components/common/Dialog";
 import { SkeletonOrganizacao } from "@/components/common/SkeletonTelas";
 import { useEffect, useState, type MouseEvent } from "react";
-import { ChevronDown, FileWarning, Folder, FolderPlus, Layers, Link2, ListChecks, Paperclip, StickyNote, Trash2, User, Users, X } from "lucide-react";
+import { ChevronDown, FileWarning, Folder, FolderPlus, Layers, ListChecks, StickyNote, User, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { pastas, problemasArquivos } from "@/lib/api";
 import { PastasGrade, type ItemExplorador, type PastaResumo } from "@/components/views/PastasGrade";
@@ -10,8 +10,6 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { MenuSuspenso, TOM } from "@/components/common/MenuSuspenso";
 import { corDaEquipe } from "@/lib/team-color";
 import { useAbrirDocumento } from "@/lib/documento-popup";
-import { Toggle } from "@/components/common/Toggle";
-import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { avisar } from "@/lib/toast";
 import { TagsOrganizacao } from "./TagsOrganizacao";
 
@@ -38,8 +36,6 @@ export function OrganizationScreen() {
   const [novaAberta, setNovaAberta] = useState(false);
   const [nome, setNome] = useState("");
   const [criando, setCriando] = useState(false);
-  const [preferencias, setPreferencias] = useState(lerPreferenciasAplicativo);
-  const alterarPreferencia = (patch: Partial<PreferenciasAplicativo>) => setPreferencias((atual) => { const proxima = { ...atual, ...patch }; salvarPreferenciasAplicativo(proxima); return proxima; });
 
   useEffect(() => {
     let ativa = true;
@@ -84,7 +80,7 @@ export function OrganizationScreen() {
 
   return <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
     <header className="mb-5">
-      <h1 className="font-display text-xl text-text-primary">Organização</h1><p className="text-sm text-text-secondary">Gerencie pastas e tags sem sair do espaço certo.</p>
+      <h1 className="font-display text-xl text-text-primary">Gerenciar pastas e tags</h1><p className="text-sm text-text-secondary">Crie, renomeie e organize pastas e tags de cada espaço. As preferências de exibição ficam em Exibição e lixeira.</p>
     </header>
 
     <section className="mb-5 rounded-2xl bg-surface-1 p-3" aria-label="Escopo das pastas e tags">
@@ -128,40 +124,8 @@ export function OrganizationScreen() {
 
     <TagsOrganizacao espaco={espaco} />
 
-    <section className="mt-8">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Links</p>
-      <div className="overflow-visible rounded-2xl border border-border bg-surface-1">
-        <LinhaPreferencia Icone={Link2} titulo="Formato para links novos" descricao="Define como os links internos serão gerados.">
-          <MenuSuspenso valor={preferencias.formatoLink} onChange={(formatoLink) => alterarPreferencia({ formatoLink })} ariaLabel="Formato para links novos" alinhar="dir" opcoes={[{ valor: "curto", rotulo: "Menor caminho possível" }, { valor: "relativo", rotulo: "Caminho relativo" }, { valor: "absoluto", rotulo: "Caminho completo" }]}
-            classeGatilho={CLASSE_SELETOR} gatilho={({ aberto, atual }) => <><span className="truncate">{atual?.rotulo}</span><ChevronDown size={15} className={`transition-transform ${aberto ? "rotate-180" : ""}`} /></>} />
-        </LinhaPreferencia>
-        <LinhaPreferencia Icone={Link2} titulo="Atualizar links internos" descricao="Ao renomear ou mover um item, atualiza os links que apontam para ele."><Toggle checked={preferencias.atualizarLinks} onChange={(atualizarLinks) => alterarPreferencia({ atualizarLinks })} label="Atualizar links internos" /></LinhaPreferencia>
-        <LinhaPreferencia Icone={Link2} titulo="Usar wikilinks" descricao="Cria [[links internos]] em vez de links Markdown."><Toggle checked={preferencias.usarWikilinks} onChange={(usarWikilinks) => alterarPreferencia({ usarWikilinks })} label="Usar wikilinks" /></LinhaPreferencia>
-      </div>
-    </section>
-
-    <section className="mt-6">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Lixeira</p>
-      <div className="overflow-visible rounded-2xl border border-border bg-surface-1">
-        <LinhaPreferencia Icone={Trash2} titulo="Confirmar antes de excluir" descricao="Evita exclusões acidentais de notas, tarefas e arquivos."><Toggle checked={preferencias.confirmarExclusao} onChange={(confirmarExclusao) => alterarPreferencia({ confirmarExclusao })} label="Confirmar antes de excluir" /></LinhaPreferencia>
-        <LinhaPreferencia Icone={Paperclip} titulo="Anexos ao excluir" descricao="O que fazer com anexos que não são usados em outro lugar.">
-          <MenuSuspenso valor={preferencias.excluirAnexos} onChange={(excluirAnexos) => alterarPreferencia({ excluirAnexos })} ariaLabel="Anexos ao excluir" alinhar="dir" opcoes={[{ valor: "perguntar", rotulo: "Perguntar sempre" }, { valor: "automatico", rotulo: "Excluir automaticamente" }, { valor: "manter", rotulo: "Manter anexos" }]}
-            classeGatilho={CLASSE_SELETOR} gatilho={({ aberto, atual }) => <><span className="truncate">{atual?.rotulo}</span><ChevronDown size={15} className={`transition-transform ${aberto ? "rotate-180" : ""}`} /></>} />
-        </LinhaPreferencia>
-        <LinhaPreferencia Icone={Trash2} titulo="Itens excluídos" descricao="Escolha o destino padrão ao apagar um item.">
-          <MenuSuspenso valor={preferencias.destinoExclusao} onChange={(destinoExclusao) => alterarPreferencia({ destinoExclusao })} ariaLabel="Destino dos itens excluídos" alinhar="dir" opcoes={[{ valor: "sistema", rotulo: "Lixeira do sistema" }, { valor: "ecos", rotulo: "Lixeira do Ecos" }, { valor: "permanente", rotulo: "Excluir permanentemente" }]}
-            classeGatilho={CLASSE_SELETOR} gatilho={({ aberto, atual }) => <><span className="truncate">{atual?.rotulo}</span><ChevronDown size={15} className={`transition-transform ${aberto ? "rotate-180" : ""}`} /></>} />
-        </LinhaPreferencia>
-      </div>
-    </section>
-
     {novaAberta && <Dialog rotuloId="nova-pasta-titulo" onFechar={() => setNovaAberta(false)}><div className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-nav"><div className="mb-4 flex items-center justify-between"><h2 id="nova-pasta-titulo" className="font-semibold text-text-primary">{pastaAtual ? "Nova subpasta" : `Nova pasta${tipo === "todos" ? "" : ` de ${tipo === "nota" ? "notas" : "tarefas"}`}`}</h2><button type="button" onClick={() => setNovaAberta(false)} aria-label="Fechar" className="text-text-muted"><X size={18} /></button></div><p className="mb-3 break-words text-sm text-text-secondary">{pastaAtual ? <>Dentro de <span className="font-medium text-text-primary">{pastaAtual.split("/").join(" / ")}</span></> : <>Ela será criada em {rotuloEspaco}.</>}</p><input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void criar()} placeholder={pastaAtual ? "Nome da subpasta" : "Nome da pasta"} className="ecos-input w-full !rounded-lg" /><button type="button" disabled={!nome.trim() || criando} onClick={() => void criar()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-steel-700 px-3 text-sm font-medium text-on-steel disabled:opacity-40"><FolderPlus size={16} />{pastaAtual ? "Criar subpasta" : "Criar pasta"}</button></div></Dialog>}
   </div>;
-}
-
-const CLASSE_SELETOR = "flex min-h-10 min-w-44 items-center justify-between gap-2 rounded-xl border border-border bg-surface-2 px-3 text-left text-sm text-text-primary hover:bg-surface-3";
-function LinhaPreferencia({ Icone, titulo, descricao, children }: { Icone: typeof Link2; titulo: string; descricao: string; children: React.ReactNode }) {
-  return <div className="flex min-h-20 items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0"><Icone size={18} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-text-primary">{titulo}</span><span className="block text-xs leading-relaxed text-text-muted">{descricao}</span></span>{children}</div>;
 }
 
 function EscopoBotao({ ativo, onClick, Icone, texto }: { ativo: boolean; onClick: () => void; Icone: typeof StickyNote; texto: string }) {

@@ -64,7 +64,8 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   // Divulgação progressiva: tarefa nova mostra só título, prioridade e data; o resto fica em "Mais opções".
   // Abre completo ao editar ou quando o rascunho já traz algo do bloco avançado.
   const [maisOpcoes, setMaisOpcoes] = useState(() => editing || Boolean(value.corpo.trim() || value.subtarefas.length || value.pasta || value.tags.length));
-  const simples = !maisOpcoes;
+  // Na janela Focus (maximizada) há espaço e o painel lateral recebe as opções: não usa a versão enxuta, senão o painel ficaria vazio.
+  const simples = !maisOpcoes && !(focusMode && !!painelFocus);
   const [uploading, setUploading] = useState(false);
   const [folders, setFolders] = useState<{ caminho: string; nome: string }[]>([]);
   const [newTag, setNewTag] = useState("");

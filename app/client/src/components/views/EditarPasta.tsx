@@ -229,7 +229,7 @@ export function EditarPasta({ pasta, tipo, espaco, aoFechar, aoSalvar }: {
 
         <Secao id={`${idBase}-tg`} icone={Tags} titulo="Tags padrão" aberta={abertas.has("tags")} onAlternar={() => alternar("tags")} resumo={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : "Nenhuma"}>
           <EditorTagsPadrao valor={tags} onChange={setTags} label="Tags padrão da pasta" />
-          <p className="mt-2 text-xs leading-relaxed text-text-muted">Notas e tarefas criadas aqui já nascem com elas (de acordo com Configurações &gt; Uso diário).</p>
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">Notas e tarefas criadas aqui já nascem com elas (de acordo com Configurações &gt; Tarefas e Configurações &gt; Notas).</p>
         </Secao>
 
         {tipo === "tarefa" && (

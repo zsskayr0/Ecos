@@ -614,14 +614,21 @@ describe("menu (alternativa a arrastar)", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  /** O horário usa o seletor do Ecos (duas colunas), não o campo nativo: abre e escolhe hora e minuto. */
+  const escolherHorario = (rotulo: string, hora: number, minuto: number) => {
+    fireEvent.click(screen.getByLabelText(rotulo));
+    fireEvent.click(screen.getByLabelText(`Hora ${String(hora).padStart(2, "0")}`));
+    fireEvent.click(screen.getByLabelText(`Minuto ${String(minuto).padStart(2, "0")}`));
+  };
+
   it("muda data, horário e duração de uma vez", () => {
     const { onMover } = montar([item({ id: "A", dia: D1, inicioMin: 600, duracaoMin: 60 })]);
     fireEvent.keyDown(bloco("A"), { key: "m" });
     fireEvent.change(screen.getByLabelText("Data"), { target: { value: D3 } });
-    fireEvent.change(screen.getByLabelText("Início"), { target: { value: "14:20" } });
+    escolherHorario("Início", 14, 30);
     fireEvent.change(screen.getByLabelText("Duração (min)"), { target: { value: "95" } });
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    expect(destinoDe(onMover.mock.calls[0])).toEqual({ dia: D3, inicioMin: 14 * 60 + 20, duracaoMin: 95 });
+    expect(destinoDe(onMover.mock.calls[0])).toEqual({ dia: D3, inicioMin: 14 * 60 + 30, duracaoMin: 95 });
     expect(onMover.mock.calls[0][2]).toBe("menu");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -637,7 +644,7 @@ describe("menu (alternativa a arrastar)", () => {
     const { onMover } = montar([item({ id: "A", tipo: "evento", dia: D1, inicioMin: 600, duracaoMin: 60 })]);
     fireEvent.keyDown(bloco("A"), { key: "m" });
     fireEvent.click(screen.getByLabelText("Dia inteiro"));
-    expect((screen.getByLabelText("Início") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Início") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     expect(destinoDe(onMover.mock.calls[0])).toEqual({ dia: D1, inicioMin: null, duracaoMin: 60 });
   });
@@ -646,7 +653,7 @@ describe("menu (alternativa a arrastar)", () => {
     const { onMover } = montar([item({ id: "C", tipo: "evento", dia: D2, inicioMin: null, duracaoMin: 45 })]);
     fireEvent.keyDown(bloco("C"), { key: "m" });
     fireEvent.click(screen.getByLabelText("Dia inteiro"));
-    fireEvent.change(screen.getByLabelText("Início"), { target: { value: "08:30" } });
+    escolherHorario("Início", 8, 30);
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     expect(destinoDe(onMover.mock.calls[0])).toEqual({ dia: D2, inicioMin: 510, duracaoMin: 45 });
   });

@@ -9,6 +9,9 @@ interface Props {
   passo?: number;
   ariaLabel?: string;
   className?: string;
+  /** Lado do gatilho em que a lista se alinha: `dir` abre para a esquerda (gatilhos junto da borda direita). */
+  alinhar?: "esq" | "dir";
+  disabled?: boolean;
 }
 
 const dois = (n: number) => String(n).padStart(2, "0");
@@ -17,8 +20,9 @@ const dois = (n: number) => String(n).padStart(2, "0");
  * Seletor de horário do Ecos: no lugar do `<input type="time">` nativo (que traz o visual do sistema), abre duas colunas
  * — horas e minutos no passo do encaixe — no mesmo estilo do `DatePicker`. Acento ciano (Agenda/Tarefa).
  */
-export function TimePicker({ value, onChange, passo = 5, ariaLabel = "Horário", className }: Props) {
+export function TimePicker({ value, onChange, passo = 5, ariaLabel = "Horário", className, alinhar = "esq", disabled = false }: Props) {
   const [aberto, setAberto] = useState(false);
+  const [paraCima, setParaCima] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
   const colunaHora = useRef<HTMLDivElement>(null);
   const colunaMinuto = useRef<HTMLDivElement>(null);
@@ -31,6 +35,9 @@ export function TimePicker({ value, onChange, passo = 5, ariaLabel = "Horário",
 
   useEffect(() => {
     if (!aberto) return;
+    // Sem espaço embaixo (gatilho no pé da janela), a lista abre para cima.
+    const caixa = raiz.current?.getBoundingClientRect();
+    if (caixa) setParaCima(window.innerHeight - caixa.bottom < 300 && caixa.top > window.innerHeight - caixa.bottom);
     const fora = (e: MouseEvent) => { if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false); };
     document.addEventListener("mousedown", fora);
     // Leva a hora e o minuto atuais para o meio da coluna.
@@ -51,13 +58,13 @@ export function TimePicker({ value, onChange, passo = 5, ariaLabel = "Horário",
 
   return (
     <div ref={raiz} className={`relative ${className ?? ""}`} onKeyDown={(e) => { if (e.key === "Escape" && aberto) { e.stopPropagation(); setAberto(false); } }}>
-      <button type="button" aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 font-mono-value text-sm text-text-primary transition-colors hover:bg-surface-2/80">
+      <button type="button" aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={aberto} disabled={disabled} onClick={() => setAberto((v) => !v)}
+        className="flex w-full items-center disabled:cursor-not-allowed disabled:opacity-40 gap-2 rounded-xl bg-surface-2 px-3 py-2 font-mono-value text-sm text-text-primary transition-colors hover:bg-surface-2/80">
         <Clock size={14} className="text-cyan" strokeWidth={1.75} />
         {m ? `${dois(hora)}:${dois(minuto)}` : "--:--"}
       </button>
       {aberto && (
-        <div role="dialog" aria-label={`${ariaLabel}: escolher`} className="ecos-fade-in absolute left-0 top-full z-20 mt-2 w-48 rounded-2xl border border-cyan/25 bg-surface-1 p-2 shadow-xl">
+        <div role="dialog" aria-label={`${ariaLabel}: escolher`} className={`ecos-fade-in absolute z-20 w-48 ${alinhar === "dir" ? "right-0" : "left-0"} ${paraCima ? "bottom-full mb-2" : "top-full mt-2"} rounded-2xl border border-cyan/25 bg-surface-1 p-2 shadow-xl`}>
           <div className="grid grid-cols-2 gap-2">
             <div ref={colunaHora} role="group" aria-label="Horas" className="relative max-h-44 space-y-1 overflow-y-auto scroll-smooth pr-1">
               {Array.from({ length: 24 }, (_, h) => <button key={h} type="button" aria-label={`Hora ${dois(h)}`} aria-pressed={h === hora} onClick={() => onChange(`${dois(h)}:${dois(minuto)}`)} className={item(h === hora)}>{dois(h)}</button>)}

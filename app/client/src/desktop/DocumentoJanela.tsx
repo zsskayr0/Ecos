@@ -33,13 +33,14 @@ interface Retangulo {
 
 type Direcao = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-/** Abre em 16:9 (até 1120px de largura), centralizada e levemente escalonada para não cobrir outra janela igual. */
-function retanguloInicial(ordem: number, retrato = false): Retangulo {
+/** Abre em 16:9 (até 1120px de largura; as Configurações ocupam 75% da largura e 85% da altura da tela), centralizada e levemente escalonada para não cobrir outra janela igual. */
+function retanguloInicial(ordem: number, retrato = false, proporcional = false): Retangulo {
   const folgaW = window.innerWidth - MARGEM * 4;
   const folgaH = window.innerHeight - MARGEM * 4;
   // Formulários altos (lançamento) nascem em retrato; dá para redimensionar e o conteúdo se reparte em colunas.
-  const w = retrato ? Math.min(448, folgaW) : Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
-  const h = retrato ? Math.min(695, folgaH) : (w * 9) / 16 + ALTURA_TITULO;
+  // Proporcional (Configurações): ocupa uma fatia da tela em vez de 16:9, então em monitores ultrawide fica larga de verdade.
+  const w = proporcional ? Math.min(folgaW, Math.max(1120, Math.round(window.innerWidth * 0.75))) : retrato ? Math.min(448, folgaW) : Math.min(1120, folgaW, ((folgaH - ALTURA_TITULO) * 16) / 9);
+  const h = proporcional ? Math.min(folgaH, Math.max(560, Math.round(window.innerHeight * 0.85))) : retrato ? Math.min(695, folgaH) : (w * 9) / 16 + ALTURA_TITULO;
   const deslocamento = (ordem % 6) * 28;
   return {
     x: Math.min((window.innerWidth - w) / 2 + deslocamento, window.innerWidth - MARGEM - w),
@@ -155,7 +156,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     window.setTimeout(aoFecharDeVez, janelaDeConfiguracoes ? 240 : DURACAO_SAIDA_JANELA_MS);
   }, [aoFecharDeVez, janelaDeConfiguracoes]);
 
-  const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao")));
+  const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao"), path.startsWith("/configuracoes")));
   const tarefa = path.startsWith("/tarefa/");
   const podeFocus = tarefa || path.startsWith("/notas/nota/");
   // Janela de criação (Nova nota/Nova tarefa): o formulário guarda o rascunho em si mesmo, então só pode existir uma cópia dele.

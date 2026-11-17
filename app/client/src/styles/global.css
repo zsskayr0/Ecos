@@ -1148,3 +1148,33 @@ body::-webkit-scrollbar {
 .ecos-detail-page[data-escrevendo] .ecos-detail-content {
   padding: 0 !important;
 }
+
+
+/* Troca de tema com View Transitions: o tema novo entra com um fade curto (a animação é feita em SeletorTema). */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+
+/* Durante a troca de tema nenhuma transição de cor roda: senão a aba e outros elementos "piscam" ao passar do tom antigo para o novo depois do fade. */
+html[data-trocando-tema] *:not([data-config="tema"] *, [data-config="tema"]),
+html[data-trocando-tema] *:not([data-config="tema"] *, [data-config="tema"])::before,
+html[data-trocando-tema] *:not([data-config="tema"] *, [data-config="tema"])::after { transition: none !important; }
+/* (o próprio seletor de tema fica de fora, para o realce continuar deslizando) */
+
+/* Balão de dica (substitui o tooltip nativo; ver lib/dica-ecos.ts) */
+.ecos-dica {
+  position: fixed;
+  z-index: 400;
+  max-width: 260px;
+  pointer-events: none;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--ecos-border-rgb, 128 128 128) / 1);
+  background: rgb(var(--ecos-surface-1-rgb));
+  color: rgb(var(--ecos-text-primary-rgb, 20 20 20));
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  animation: ecos-fade-in 140ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .ecos-dica { animation: none; } }

@@ -1,4 +1,5 @@
 import { SeletorEcos } from "@/components/common/SeletorEcos";
+import { TimePicker } from "@/components/common/TimePicker";
 import { Dialog } from "@/components/common/Dialog";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { CheckCircle2, Expand, Flag, Inbox, ListChecks, MoreHorizontal, Trash2, X } from "lucide-react";
@@ -842,7 +843,7 @@ function MenuDeMovimento({ item, encaixe, podeRemover, onFechar, onAplicar, onRe
           )}
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm font-medium text-text-secondary">Início
-              <input type="time" step={encaixe * 60} value={inicio} disabled={diaInteiro && cap.diaInteiro} onChange={(e) => setInicio(e.target.value)} className="ecos-input mt-1 w-full disabled:opacity-40" />
+              <TimePicker value={inicio} onChange={setInicio} passo={encaixe} ariaLabel="Início" disabled={diaInteiro && cap.diaInteiro} className="mt-1 w-full" />
             </label>
             <label className="block text-sm font-medium text-text-secondary">Duração (min)
               <input type="number" min={1} max={MINUTOS_DIA} step={encaixe} value={duracao} onChange={(e) => setDuracao(e.target.value)} className="ecos-input mt-1 w-full" />

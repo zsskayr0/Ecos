@@ -49,7 +49,7 @@ export function ServerConfigScreen() {
         <button aria-label="Voltar" data-voltar onClick={() => navigate(-1)} className="text-text-muted">
           <ChevronLeft size={22} />
         </button>
-        <h1 className="font-display text-xl text-text-primary">Servidor</h1>
+        <h1 className="font-display text-xl text-text-primary">Servidor e backup</h1>
       </div>
 
       <p className="mb-6 text-sm leading-snug text-text-muted">

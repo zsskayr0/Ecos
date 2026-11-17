@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { SegmentedSlide, type OpcaoSlide } from "@/components/common/SegmentedSlide";
+import { AcoesFocusContext, ModoFocusDocumentoContext } from "@/lib/documento-popup";
 import type { TipoCaptura } from "@/lib/ui-context";
 
 /** Verde = notas, azul = tarefas, roxo = transações. */
@@ -28,15 +30,20 @@ export function FormShell({
   embedded?: boolean;
   tiposPermitidos?: TipoCaptura[];
 }) {
+  // Maximizada (Focus), o seletor de tipo vai para a barra da janela, como as ações da tarefa existente.
+  const focoDocumento = useContext(ModoFocusDocumentoContext);
+  const acoesFocus = useContext(AcoesFocusContext);
+  const noCabecalho = embedded && focoDocumento && !!acoesFocus;
   const tipos = TIPOS.filter((tipo) => tiposPermitidos.includes(tipo.value));
   const titulo = !embedded && tipoAtivo !== "transacao" ? (tipoAtivo === "nota" ? "Nova nota" : "Nova tarefa") : null;
   const largura = tipoAtivo === "transacao"
     ? (embedded ? "max-w-none" : "max-w-md")
-    : (embedded ? "max-w-6xl px-6" : "max-w-6xl [--ecos-margem-captura:16px]");
+    : (embedded ? (noCabecalho ? "max-w-none px-8" : "max-w-6xl px-6") : "max-w-6xl [--ecos-margem-captura:16px]");
   return (
     <div className={`${embedded ? "flex h-full justify-center bg-base" : "fixed inset-0 z-50 flex justify-center bg-base"}`} data-capture-type={tipoAtivo}>
       <div className={`flex h-full min-w-0 w-full flex-col ${largura}`}>
-        {(!embedded || tipos.length > 1) && <div className={`ecos-capture-header flex items-center gap-2 ${embedded ? "justify-center" : ""} ${titulo ? "!pb-2" : ""}`}>
+        {noCabecalho && tipos.length > 1 && createPortal(<SegmentedSlide className="ecos-capture-slide" ariaLabel="Tipo de captura" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />, acoesFocus!)}
+        {!noCabecalho && (!embedded || tipos.length > 1) && <div className={`ecos-capture-header flex items-center gap-2 ${embedded ? "justify-center" : ""} ${titulo ? "!pb-2" : ""}`}>
           {titulo && <h1 className="min-w-0 flex-1 font-display text-xl font-semibold text-text-primary">{titulo}</h1>}
           {embedded ? (
             <SegmentedSlide className="ecos-capture-slide" ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />
