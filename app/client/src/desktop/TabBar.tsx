@@ -1,12 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Plus, X } from "lucide-react";
 import { MoverAbaMenu } from "./MoverAbaMenu";
 import { RAIL_PRINCIPAL, RAIL_UTILITARIOS, moduloDaRota, moduloPorId, tituloDaRota } from "./modules";
 import { useTabDrag } from "./tab-drag";
 import { useWorkspace, type Pane } from "./workspace-store";
 
+/** Lugar, na barra do topo, onde as guias moram enquanto há um painel só (com painéis divididos, cada um mantém a sua faixa). */
+export const GuiasSlotContext = createContext<HTMLElement | null>(null);
+
 export function TabBar({ pane }: { pane: Pane }) {
   const { state, dispatch, fechando } = useWorkspace();
+  const slot = useContext(GuiasSlotContext);
+  const naBarra = !!slot && state.panes.length === 1;
   const [anuncio, setAnuncio] = useState("");
   const [menuAba, setMenuAba] = useState<{ tabId: string; x: number; y: number } | null>(null);
   const { arrastando, alvo, aoPressionarAba } = useTabDrag();
@@ -16,12 +22,14 @@ export function TabBar({ pane }: { pane: Pane }) {
   const indiceAlvo = arrastando && alvo?.tipo === "aba" && alvo.paneId === pane.id ? alvo.indice : null;
   const semArrastada = pane.tabs.filter((t) => t.id !== arrastando?.tabId);
 
-  return (
+  const barra = (
     <div
       data-pane-tabbar={pane.id}
-      className="relative flex h-12 shrink-0 items-stretch gap-1 bg-base pr-2 transition-colors data-[drop-alvo=true]:bg-cyan/20"
+      className={naBarra
+        ? "relative flex h-full min-w-0 items-center gap-1 rounded-lg transition-colors data-[drop-alvo=true]:bg-cyan/20"
+        : "relative flex h-12 shrink-0 items-stretch gap-1 bg-base pr-2 transition-colors data-[drop-alvo=true]:bg-cyan/20"}
     >
-      <div role="tablist" className="flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]">
+      <div role="tablist" className={naBarra ? "flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]" : "flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto px-2 py-2 [scrollbar-width:none]"}>
         {pane.tabs.map((tab) => {
           const ativa = tab.id === pane.activeTabId;
           const Icone = moduloDaRota(tab.path).icone;
@@ -78,8 +86,11 @@ export function TabBar({ pane }: { pane: Pane }) {
                 }
               }}
               onClick={() => dispatch({ type: "activate-tab", paneId: pane.id, tabId: tab.id })}
-              className={`group relative flex max-w-[200px] cursor-pointer touch-none select-none items-center gap-2 rounded-xl border px-3 text-xs transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
-                ativa ? "border-border bg-surface-2 text-text-primary shadow-sm" : "border-transparent bg-surface-1 text-text-muted hover:bg-surface-2 hover:text-text-secondary"
+              className={`group relative flex max-w-[200px] cursor-pointer touch-none select-none items-center gap-2 border px-3 transition-colors ${fechando.includes(tab.id) ? "ecos-aba-saindo" : ""} ${
+                naBarra
+                  // Na barra do topo a guia ativa repete o realce do item ativo do menu lateral (bg-surface-2); as outras só ganham fundo ao passar o mouse.
+                  ? `h-8 rounded-lg border-transparent text-[13px] ${ativa ? "bg-surface-3 font-medium text-text-primary" : "text-text-muted hover:bg-surface-2 hover:text-text-secondary"}`
+                  : `rounded-xl text-xs ${ativa ? "border-border bg-surface-2 text-text-primary shadow-sm" : "border-transparent bg-surface-1 text-text-muted hover:bg-surface-2 hover:text-text-secondary"}`
               } ${arrastando?.tabId === tab.id ? "opacity-40" : ""}`}
             >
               {marcadorAntes && <span className="absolute -left-1 inset-y-1 w-0.5 rounded-full bg-cyan" />}
@@ -120,13 +131,13 @@ export function TabBar({ pane }: { pane: Pane }) {
         />
       )}
 
-      <div className="relative shrink-0">
+      <div className={`relative shrink-0 ${naBarra ? "ml-1" : ""}`}>
         <button
           type="button"
           aria-label="Abrir módulo neste painel"
           title="Abrir módulo neste painel"
           onClick={() => setMenuAberto((v) => !v)}
-          className="mt-2 flex h-8 w-8 items-center justify-center rounded-xl text-text-muted hover:bg-surface-2 hover:text-text-primary"
+          className={`${naBarra ? "rounded-lg" : "mt-2 rounded-xl"} flex h-8 w-8 items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary`}
         >
           <Plus size={15} strokeWidth={1.75} />
         </button>
@@ -143,6 +154,7 @@ export function TabBar({ pane }: { pane: Pane }) {
       </div>
     </div>
   );
+  return naBarra ? createPortal(barra, slot) : barra;
 }
 
 function MenuModulos({ aoEscolher, aoFechar }: { aoEscolher: (path: string) => void; aoFechar: () => void }) {

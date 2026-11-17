@@ -8,7 +8,7 @@ import { CreateFlow } from "@/screens/Create/CreateFlow";
 import { nomeExibicao, useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
-import { DocumentoPopupContext } from "@/lib/documento-popup";
+import { DocumentoPopupContext, type ModoAbrirDocumento } from "@/lib/documento-popup";
 import { useComprovantesEsperando } from "@/lib/fila-comprovantes";
 import { pastaDoCaminho } from "@/lib/pasta-contexto";
 import { useFotoPerfil } from "@/lib/profile-avatar";
@@ -18,9 +18,12 @@ import { MenuCriar } from "./MenuCriar";
 import { Rail } from "./Rail";
 import { SoltarNoCofre } from "./SoltarNoCofre";
 import { TabDragProvider } from "./tab-drag";
+import { LARGURA_MENU_RECOLHIDO, useLarguraMenu } from "./arvore-lateral";
+import { GuiasSlotContext } from "./TabBar";
 import { Workspace } from "./Workspace";
 import { WorkspaceProvider, useWorkspace } from "./workspace-store";
 import { PathReporter } from "./TabContent";
+import { useCliqueDoMeio } from "./clique-do-meio";
 import { definirTopoNavegacao, navegacaoDaAba, topoNavegacao } from "./navegacao-abas";
 import { screenRoutes } from "@/routes/screen-routes";
 import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
@@ -109,10 +112,11 @@ function useNavegacaoGlobal() {
   }, []);
 }
 
-function Barra({ abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal = false, setBuscaGlobal }: { abrirPaleta: () => void; abrirOrganizacao: () => void; cofre?: boolean; voltarAoEcos?: () => void; buscaGlobal?: boolean; setBuscaGlobal?: (valor:boolean)=>void }) {
+function Barra({ refGuias, abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal = false, setBuscaGlobal }: { refGuias: (el: HTMLDivElement | null) => void; abrirPaleta: () => void; abrirOrganizacao: () => void; cofre?: boolean; voltarAoEcos?: () => void; buscaGlobal?: boolean; setBuscaGlobal?: (valor:boolean)=>void }) {
   const { perfil, logout } = useAuth();
   const { espacoAtivo, setEspacoAtivo } = useAppUI();
   const { equipes } = useMinhasEquipes();
+  const larguraMenu = useLarguraMenu();
   const nome = perfil ? nomeExibicao(perfil) : "?";
   const { url: urlFotoPerfil } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false);
@@ -134,20 +138,25 @@ function Barra({ abrirPaleta, abrirOrganizacao, cofre, voltarAoEcos, buscaGlobal
   const abrirOrganizacaoNoMenu = () => { abrirOrganizacao(); setMenuPerfilAberto(false); setSeletorEquipesAberto(false); };
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-surface-1 px-4">
-      <span className="flex items-center gap-2 font-display text-base font-bold text-text-primary">
-        <img src={logoIcone} alt="" width={24} height={24} className="h-6 w-6" />
-        {cofre ? "Cofre" : "Ecos"}
+    <header className="flex h-14 shrink-0 items-center gap-2 bg-base pr-3">
+      {/* O logo ocupa a coluna do menu lateral (mesma largura, mesmo eixo dos ícones); as guias começam onde o conteúdo começa. */}
+      <span style={{ width: larguraMenu }} className="flex h-full shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-r border-border bg-surface-1 pl-4 font-display text-base font-bold text-text-primary">
+        <img src={logoIcone} alt="" width={24} height={24} className="h-6 w-6 shrink-0" />
+        {(cofre || larguraMenu > LARGURA_MENU_RECOLHIDO + 40) && (cofre ? "Cofre" : "Ecos")}
       </span>
 
-      <div className="mx-auto flex w-full max-w-xl items-center rounded-lg border border-border bg-surface-2 transition-colors hover:border-cyan/40">
+      {/* Guias (um painel só) ocupam o espaço do meio; com painéis divididos, cada painel mantém a sua faixa. */}
+      <div ref={refGuias} className="flex h-full min-w-0 flex-1 items-center pl-1" />
+
+      <div className="flex w-48 shrink-0 items-center rounded-lg border border-border bg-surface-2 transition-colors hover:border-cyan/40 xl:w-60">
       <button
         type="button"
         onClick={abrirPaleta}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 px-3 text-left text-sm text-text-muted"
+        title="Buscar ou executar um comando"
+        className="flex h-8 min-w-0 flex-1 items-center gap-2 px-3 text-left text-[13px] text-text-muted"
       >
         <Search size={14} strokeWidth={1.75} />
-        <span className="flex-1">{cofre&&!buscaGlobal?"Buscar no Cofre":"Buscar ou executar um comando"}</span>
+        <span className="flex-1 truncate">{cofre&&!buscaGlobal?"Buscar no Cofre":"Buscar…"}</span>
         <kbd className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
           {ehMac ? "⌘" : "Ctrl"} K
         </kbd>
@@ -214,6 +223,7 @@ function Conteudo() {
   const paneFocada = state.panes.find((p) => p.id === state.focusedPaneId);
   const abaFocada = paneFocada?.tabs.find((t) => t.id === paneFocada.activeTabId);
   const pastaContexto = abaFocada ? pastaDoCaminho(abaFocada.path) : null;
+  const [slotGuias, setSlotGuias] = useState<HTMLDivElement | null>(null);
   const [paletaAberta, setPaletaAberta] = useState(false);
   const [buscaGlobal, setBuscaGlobal] = useState(false);
   const [cofreAberto, setCofreAbertoState] = useState(() => { try { return localStorage.getItem(COFRE_ABERTO_KEY) === "1"; } catch { return false; } });
@@ -226,6 +236,7 @@ function Conteudo() {
   useAtalhosGlobais(alternarPaleta);
   useEffect(() => { prefetchRotasProvaveis(); }, []);
   useNavegacaoGlobal();
+  useCliqueDoMeio();
   // Comprovante solto na janela: abre o Cofre (a aba Comprovantes recolhe a fila sozinha).
   const comprovantesEsperando = useComprovantesEsperando();
   useEffect(() => { if (comprovantesEsperando > 0) setCofreAberto(true); }, [comprovantesEsperando]);
@@ -243,7 +254,7 @@ function Conteudo() {
 
   // Clique simples: janela flutuante (a mesma tarefa/nota não abre duas vezes — só vem para a frente). Ctrl/Cmd+clique: só uma aba.
   const abrirDocumento = useCallback(
-    (path: string, emAba: boolean) => {
+    (path: string, emAba: ModoAbrirDocumento) => {
       if (cofreAberto && path.startsWith("/cofre")) {
         setJanelas((js) => {
           const existente = js.find((j) => j.path === path);
@@ -253,7 +264,7 @@ function Conteudo() {
         return;
       }
       if (emAba) {
-        dispatch({ type: "open", path, where: "focused", reuse: "path" });
+        dispatch({ type: "open", path, where: "focused", reuse: "path", background: emAba === "segundo-plano" });
         return;
       }
       setJanelas((js) => {
@@ -282,10 +293,10 @@ function Conteudo() {
       </div>
     ) : (
     <div className="flex h-dvh flex-col bg-base">
-      <Barra abrirPaleta={() => setPaletaAberta(true)} abrirOrganizacao={() => abrirDocumento("/configuracoes/organizacao", false)} />
+      <Barra refGuias={setSlotGuias} abrirPaleta={() => setPaletaAberta(true)} abrirOrganizacao={() => abrirDocumento("/configuracoes/organizacao", false)} />
       <div className="flex min-h-0 flex-1">
         <Rail abrirCofre={() => setCofreAberto(true)} />
-        <Workspace />
+        <GuiasSlotContext.Provider value={slotGuias}><Workspace /></GuiasSlotContext.Provider>
       </div>
       {janelas.map((j) => (
         <DocumentoJanela

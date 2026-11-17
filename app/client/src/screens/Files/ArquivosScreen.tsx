@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as PointerReact } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ChevronsDownUp, CircleDot, FileText, Flag, FolderInput, FolderOpen, FolderPlus, HardDrive, LayoutGrid, List, MoreHorizontal, Paperclip, Pencil, PencilLine, RotateCw, Search, Tags, Trash2, Upload, X } from "lucide-react";
+import { Archive, ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, CalendarDays, Check, CheckCheck, ChevronDown, ChevronRight, ChevronsDownUp, CircleDot, Download, ExternalLink, FileDown, FileText, Flag, FolderInput, FolderOpen, FolderPlus, HardDrive, LayoutGrid, List, MoreHorizontal, Paperclip, Pencil, PencilLine, RotateCcw, RotateCw, Search, SlidersHorizontal, Tag, Tags, Trash2, Upload, Users, X } from "lucide-react";
+import { EditarPasta } from "@/components/views/EditarPasta";
 import { arquivos, pastas as pastasApi, type ArquivoExplorador, type PastaExplorador } from "@/lib/api";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
@@ -17,7 +18,10 @@ import { useAbrirDocumento } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { BarraSelecaoArquivos, type PainelBarra } from "./BarraSelecaoArquivos";
+import { useAcoesEmLote } from "./acoes-em-lote";
 import { useModoExplorador } from "@/lib/use-modo-explorador";
+import { useArvoreLateralVisivel } from "@/desktop/arvore-lateral";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { mensagemDeErro } from "@/lib/erros";
 import { avisar } from "@/lib/toast";
@@ -189,6 +193,43 @@ function RenomearDialog({ linha, onFechar, onSalvar }: { linha: Linha; onFechar:
   );
 }
 
+/** Renomear no próprio lugar, como no explorador do Windows: Enter confirma, Esc cancela e clicar fora confirma. */
+function NomeEmLinha({ linha, centralizado, onFechar, onSalvar }: { linha: Linha; centralizado: boolean; onFechar: () => void; onSalvar: (novo: string) => Promise<string | null> }) {
+  const titulo = pelo_titulo(linha);
+  const inicial = titulo ? linha.arquivo!.titulo ?? linha.nome : linha.nome;
+  const campo = useRef<HTMLInputElement>(null);
+  const [valor, setValor] = useState(inicial);
+  const encerrado = useRef(false);
+  useEffect(() => {
+    const el = campo.current;
+    if (!el) return;
+    el.focus();
+    // Seleciona o nome sem a extensão, como no explorador do sistema.
+    const ponto = !titulo && !linha.pasta ? inicial.lastIndexOf(".") : -1;
+    el.setSelectionRange(0, ponto > 0 ? ponto : inicial.length);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function confirmar() {
+    if (encerrado.current) return;
+    encerrado.current = true;
+    const novo = valor.trim();
+    if (!novo || novo === inicial) { onFechar(); return; }
+    const erro = await onSalvar(novo);
+    if (erro) { encerrado.current = false; avisar(erro, "erro"); campo.current?.focus(); }
+  }
+
+  return (
+    <input ref={campo} value={valor} aria-label={titulo ? "Título" : "Nome"} onChange={(e) => setValor(e.target.value)} onBlur={() => void confirmar()}
+      onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); void confirmar(); }
+        else if (e.key === "Escape") { e.preventDefault(); encerrado.current = true; onFechar(); }
+      }}
+      className={`w-full min-w-0 rounded-md border border-steel-400 bg-surface-1 px-1.5 py-0.5 text-sm text-text-primary outline-none ${centralizado ? "text-center" : ""}`} />
+  );
+}
+
 /**
  * Explorador de arquivos: a árvore única do espaço (notas, tarefas e qualquer outro arquivo nas mesmas pastas).
  * Desktop: barra de caminho e ferramentas no topo, conteúdo em lista ou grade, seleção com Ctrl/Shift e mover
@@ -198,6 +239,7 @@ function RenomearDialog({ linha, onFechar, onSalvar }: { linha: Linha; onFechar:
 export function ArquivosScreen() {
   const desktop = useIsDesktop();
   const modoExplorador = useModoExplorador();
+  const arvoreLateral = useArvoreLateralVisivel();
   /** Com o Modo explorador a árvore mora no menu lateral: aqui não repete. */
   const comArvore = desktop && !modoExplorador;
   const abrirDocumento = useAbrirDocumento();
@@ -221,12 +263,14 @@ export function ArquivosScreen() {
   const [alvo, setAlvo] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [renomeando, setRenomeando] = useState<Linha | null>(null);
+  const [pastaEmEdicao, setPastaEmEdicao] = useState<PastaExplorador | null>(null);
   const [excluindo, setExcluindo] = useState<string[] | null>(null);
   const [apagando, setApagando] = useState(false);
   const [criandoPasta, setCriandoPasta] = useState(false);
   const [movendo, setMovendo] = useState<string[] | null>(null);
   const [enviando, setEnviando] = useState<{ feitos: number; total: number } | null>(null);
   const [menuCtx, setMenuCtx] = useState<{ x: number; y: number; linha: Linha } | null>(null);
+  const [painelBarra, setPainelBarra] = useState<PainelBarra>(null);
   const seletorArquivos = useRef<HTMLInputElement>(null);
   const cartao = useRef<HTMLDivElement>(null);
   const [alturaLista, setAlturaLista] = useState<number | null>(null);
@@ -383,6 +427,33 @@ export function ArquivosScreen() {
     ...conteudoVisivel.pastas.map((p) => ({ caminho: p.caminho, nome: p.nome, pasta: true, info: p })),
     ...conteudoVisivel.arquivos.map((a) => ({ caminho: a.caminho, nome: a.nome, pasta: false, arquivo: a })),
   ] : [], [conteudoVisivel]);
+  const arquivosMarcados = useMemo(() => linhas.filter((l) => !l.pasta && l.arquivo && selecao.has(l.caminho)).map((l) => l.arquivo!), [linhas, selecao]);
+  const emLote = useAcoesEmLote({
+    arquivosMarcados, espaco,
+    aoAplicar: (limpar) => { if (limpar) setSelecao(new Set()); notificar(); },
+    aoTerminar: () => setPainelBarra(null),
+  });
+
+  // Com itens marcados: Esc (sem menu ou janela abertos) ou um clique fora da lista, da barra e dos menus encerra a seleção.
+  const temSelecao = selecao.size > 0;
+  useEffect(() => {
+    if (!desktop || !temSelecao) return;
+    const COBERTURA = '[role=menu],[role=dialog],[role=listbox],.ecos-documento-camada > *';
+    // Menus não seguram o Esc: ele fecha o menu e encerra a seleção de uma vez.
+    const JANELAS = '[role=dialog],[role=listbox],.ecos-documento-camada > *';
+    const tecla = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector(JANELAS) || (e.target as HTMLElement | null)?.closest?.("input,textarea")) return;
+      setSelecao(new Set());
+    };
+    const clique = (e: globalThis.MouseEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (!alvo?.closest || alvo.closest(`[role=grid],[aria-label="Ações para itens selecionados"],${COBERTURA}`)) return;
+      setSelecao(new Set());
+    };
+    document.addEventListener("keydown", tecla, true);
+    document.addEventListener("mousedown", clique);
+    return () => { document.removeEventListener("keydown", tecla, true); document.removeEventListener("mousedown", clique); };
+  }, [desktop, temSelecao]);
 
   const opcoesDePastas = useMemo(() => {
     const prefixo = pastaAtual ? `${pastaAtual}/` : "";
@@ -443,16 +514,20 @@ export function ArquivosScreen() {
     return [...base.filter((l) => l.pasta).sort(por), ...base.filter((l) => !l.pasta).sort(por)];
   }, [linhas, filtroPasta, filtrosPasta, itensFiltraveis, nFiltros, vista.chave, vista.dir]);
 
-  const abrir = useCallback((linha: Linha, evento?: MouseEvent) => {
+  const abrir = useCallback((linha: Linha, evento?: Pick<MouseEvent, "ctrlKey" | "metaKey" | "button">) => {
     if (linha.pasta) { setPastaAtual(linha.caminho); return; }
     const a = linha.arquivo!;
+    // Abrir o único item marcado encerra a seleção (a barra some); com vários marcados ela continua.
+    if (evento?.button !== 1 && selecao.size <= 1 && selecao.has(linha.caminho)) setSelecao(new Set());
     const destino = a.tipo === "nota" && a.id ? `/notas/nota/${a.id}`
       : a.tipo === "tarefa" && a.id ? `/tarefa/${a.id}`
       : `/media/ver?a=${encodeURIComponent(a.caminho)}&e=${encodeURIComponent(espaco)}`;
     abrirDocumento(destino, evento);
-  }, [abrirDocumento, espaco, setPastaAtual]);
+  }, [abrirDocumento, espaco, setPastaAtual, selecao]);
 
   function clicar(linha: Linha, evento: MouseEvent) {
+    // Clique do meio: arquivo abre em guia (pasta não muda nada).
+    if (evento.button === 1) { if (!linha.pasta) abrir(linha, evento); return; }
     if (!desktop) { abrir(linha, evento); return; }
     if (evento.shiftKey && ancora) {
       const ordem = visiveis.map((l) => l.caminho);
@@ -500,6 +575,12 @@ export function ArquivosScreen() {
     if (pastaAtual !== de && !pastaAtual.startsWith(`${de}/`)) return;
     setPastaAtual(para === null ? pai(de) : para + pastaAtual.slice(de.length));
   }
+
+  /** No desktop o nome vira um campo na própria linha; no celular segue o diálogo. */
+  function campoDeNome(linha: Linha, centralizado = false) {
+    return <NomeEmLinha linha={linha} centralizado={centralizado} onFechar={() => setRenomeando(null)} onSalvar={(novo) => renomear(linha, novo)} />;
+  }
+  const editandoNome = (linha: Linha) => desktop && renomeando?.caminho === linha.caminho;
 
   async function renomear(linha: Linha, novo: string): Promise<string | null> {
     try {
@@ -643,20 +724,8 @@ export function ArquivosScreen() {
   function acoes(linha: Linha) {
     return (
       <span data-sem-arraste="" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} className="flex justify-end">
-        <MenuSuspenso
-          valor=""
-          ariaLabel={`Ações de ${nomeExibido(linha)}`}
-          alinhar="dir"
-          fixo
-          opcoes={[{ valor: "renomear", rotulo: "Renomear", icone: Pencil }, { valor: "mover", rotulo: "Mover para…", icone: FolderInput }, { valor: "excluir", rotulo: "Excluir", icone: Trash2 }]}
-          onChange={(v) => {
-            if (v === "renomear") setRenomeando(linha);
-            else if (v === "mover") setMovendo(alvosDe(linha));
-            else setExcluindo(alvosDe(linha));
-          }}
-          classeGatilho="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"
-          gatilho={() => <MoreHorizontal size={16} />}
-        />
+        <button type="button" aria-label={`Ações de ${nomeExibido(linha)}`} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (!selecao.has(linha.caminho)) { setSelecao(new Set([linha.caminho])); setAncora(linha.caminho); } setMenuCtx({ x: r.right, y: r.bottom + 4, linha }); }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-surface-3 hover:text-text-primary"><MoreHorizontal size={16} /></button>
       </span>
     );
   }
@@ -669,17 +738,46 @@ export function ArquivosScreen() {
     setMenuCtx({ x: e.clientX, y: e.clientY, linha });
   }
 
+  function abrirMarcadosEmGuias() { linhas.filter((l) => !l.pasta && selecao.has(l.caminho)).forEach((l) => abrir(l, { ctrlKey: false, metaKey: false, button: 1 })); }
+
+  /** As mesmas ações da barra flutuante, para o botão direito. As que pedem escolha (tags, prazo) abrem o painel da barra. */
+  function acoesDeDocumento(): ItemMenuExplorador[] {
+    const itens: ItemMenuExplorador[] = [];
+    if (emLote.tarefasSel.length) {
+      itens.push(
+        { rotulo: emLote.todasConcluidas ? "Reabrir tarefa" : "Concluir tarefa", icone: emLote.todasConcluidas ? RotateCcw : Check, acao: () => void emLote.concluirOuReabrir() },
+        { rotulo: "Prioridade alta", icone: Flag, acao: () => void emLote.prioridade("alta") },
+        { rotulo: "Prioridade média", icone: Flag, acao: () => void emLote.prioridade("media") },
+        { rotulo: "Prioridade baixa", icone: Flag, acao: () => void emLote.prioridade("baixa") },
+        { rotulo: "Prazo…", icone: CalendarDays, acao: () => setPainelBarra("prazo") },
+        { rotulo: "Arquivar", icone: Archive, acao: () => void emLote.arquivar() },
+      );
+    }
+    if (emLote.notasSel.length) itens.push({ rotulo: "Marcar como revisada", icone: CheckCheck, acao: () => void emLote.revisar() });
+    if (emLote.documentos.length) itens.push({ rotulo: "Tags…", icone: Tag, acao: () => setPainelBarra("tags") }, { rotulo: "Equipe…", icone: Users, acao: () => setPainelBarra("equipe") });
+    if (emLote.documentos.length) itens.push({ rotulo: "Exportar PDF", icone: FileDown, acao: () => void emLote.exportarPdf() });
+    if (arquivosMarcados.length) itens.push({ rotulo: arquivosMarcados.length > 1 ? "Baixar (.zip)" : "Baixar", icone: Download, acao: () => void emLote.baixar() });
+    return itens;
+  }
+
   function itensDoMenuCtx(linha: Linha): ItemMenuExplorador[] {
     const lote = alvosDe(linha);
     if (lote.length > 1) {
+      const comArquivos = lote.some((cam) => linhas.find((l) => l.caminho === cam && !l.pasta));
       return [
+        ...(comArquivos ? [{ rotulo: "Abrir em guias", icone: ExternalLink, acao: abrirMarcadosEmGuias } as ItemMenuExplorador] : []),
+        ...acoesDeDocumento(),
         { rotulo: `Mover ${lote.length} itens para…`, icone: FolderInput, acao: () => setMovendo(lote) },
         { rotulo: `Excluir ${lote.length} itens`, icone: Trash2, perigo: true, acao: () => setExcluindo(lote) },
       ];
     }
+    const doc = (linha.pasta ? [] : acoesDeDocumento()) as ItemMenuExplorador[];
     return [
       { rotulo: linha.pasta ? "Abrir pasta" : "Abrir", icone: linha.pasta ? FolderOpen : Pencil, acao: () => abrir(linha) },
+      ...(linha.pasta ? [] : [{ rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrir(linha, { ctrlKey: false, metaKey: false, button: 1 }) }]),
+      ...doc,
       { rotulo: "Renomear", icone: Pencil, acao: () => setRenomeando(linha) },
+      ...(linha.pasta && linha.info ? [{ rotulo: "Editar", icone: SlidersHorizontal, acao: () => setPastaEmEdicao(linha.info!) }] : []),
       { rotulo: "Mover para…", icone: FolderInput, acao: () => setMovendo([linha.caminho]) },
       { rotulo: "Excluir", icone: Trash2, perigo: true, acao: () => setExcluindo([linha.caminho]) },
     ];
@@ -815,7 +913,6 @@ export function ArquivosScreen() {
 
   const corDoIcone = (l: Linha) => l.arquivo?.fora_do_padrao ? "text-error" : l.arquivo?.tipo === "tarefa" ? "text-cyan" : l.arquivo?.tipo === "nota" ? "text-steel-300" : "text-text-secondary";
   const concluida = (l: Linha) => l.arquivo?.tipo === "tarefa" && l.arquivo.status === "concluida";
-  const dicaDe = (l: Linha) => l.arquivo?.fora_do_padrao ? "Nome de arquivo fora do padrão: corrija em Configurações › Problemas de arquivos" : l.arquivo && nomeExibido(l) !== l.nome ? l.nome : undefined;
 
   function iconeDaLinha(l: Linha, tamanhoIcone: number) {
     return l.pasta
@@ -908,6 +1005,13 @@ export function ArquivosScreen() {
             </div>
           )}
         </>
+      ) : desktop && arvoreLateral ? (
+        /* A árvore do menu lateral já mostra onde a pasta está: aqui fica só o nome dela (clique para digitar o caminho). */
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch">
+          <FolderOpen size={14} aria-hidden className="shrink-0 text-steel-300" />
+          <button type="button" onClick={iniciarEdicao} title={pastaAtual ? `${pastaAtual} — clique para digitar o caminho` : "Clique para digitar o caminho"} className="min-w-0 truncate rounded-md px-1 py-0.5 text-left text-sm font-medium text-text-primary hover:bg-surface-2">{pastaAtual ? trechos[trechos.length - 1] : "Raiz"}</button>
+          <span aria-hidden onClick={iniciarEdicao} className="min-w-6 flex-1 cursor-text self-stretch" />
+        </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto no-scrollbar">
           <button type="button" onClick={() => setPastaAtual("")} className={`shrink-0 rounded-md px-1.5 py-0.5 text-sm ${trechos.length ? "text-text-secondary hover:bg-surface-2 hover:text-text-primary" : "font-medium text-text-primary"} ${realce("")}`} {...soltarEm("")}>Raiz</button>
@@ -1076,13 +1180,12 @@ export function ArquivosScreen() {
                         onContextMenu={(e) => abrirMenuCtx(linha, e)}
                         onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
                         tabIndex={0}
-                        title={dicaDe(linha)}
-                        className={`group relative flex min-h-[112px] cursor-default select-none flex-col items-center gap-2 rounded-xl px-2 pb-2 pt-4 text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${selecionada ? "bg-steel-700/25 ring-1 ring-steel-400/60" : "hover:bg-surface-2"} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                        className={`group relative flex min-h-[112px] cursor-default select-none flex-col items-center gap-2 rounded-xl px-2 pb-2 pt-4 text-center focus-visible:outline-none ${selecionada ? "bg-steel-500/20 ring-2 ring-steel-400" : ""} ${linha.pasta ? realce(linha.caminho) : ""}`}
                         {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                       >
                         <span className={`absolute right-1 top-1 ${selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}`}>{acoes(linha)}</span>
                         {iconeDaLinha(linha, 38)}
-                        <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>
+                        {editandoNome(linha) ? campoDeNome(linha, true) : <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>}
                         <span className="text-[10px] uppercase tracking-wide text-text-muted">{s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>
                         {visaoCombinada && <span className="w-full truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                         {!!linha.arquivo?.anexos?.length && <span className="absolute left-1 top-1"><BadgeAnexos quantidade={linha.arquivo.anexos.length} aberto={false} aoAlternar={() => abrir(linha)} /></span>}
@@ -1108,15 +1211,14 @@ export function ArquivosScreen() {
                     onContextMenu={(e) => abrirMenuCtx(linha, e)}
                     onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
                     tabIndex={0}
-                    title={dicaDe(linha)}
                     data-fora-do-padrao={vermelho || undefined}
-                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto_32px]"} ${selecionada ? "bg-steel-700/25" : "hover:bg-surface-2"} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline-none ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto_32px]"} border-l-[3px] ${selecionada ? "border-l-steel-400 bg-steel-500/20" : `border-l-transparent`} ${linha.pasta ? realce(linha.caminho) : ""}`}
                     {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                   >
                     <span role="gridcell" className="flex min-w-0 items-center gap-2.5">
                       {iconeDaLinha(linha, 18)}
                       <span className="flex min-w-0 flex-col">
-                        <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>
+                        {editandoNome(linha) ? campoDeNome(linha) : <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>}
                         {visaoCombinada && <span className="truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                       </span>
                       {anexos.length > 0 && <BadgeAnexos quantidade={anexos.length} aberto={aberto} aoAlternar={() => alternarAnexos(linha.caminho)} />}
@@ -1137,7 +1239,7 @@ export function ArquivosScreen() {
                       className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${aberto ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
                       <div role="presentation" className="min-h-0 overflow-hidden">
                         {anexos.map((m) => (
-                          <div key={m.caminho} role="row" tabIndex={aberto ? 0 : -1} title={m.nome}
+                          <div key={m.caminho} role="row" tabIndex={aberto ? 0 : -1}
                             onDoubleClick={(e) => desktop && abrirDocumento(rotaDoAnexo(m), e)}
                             onKeyDown={(e) => { if (e.key === "Enter") abrirDocumento(rotaDoAnexo(m)); }}
                             className={`grid min-h-9 cursor-default select-none items-center gap-3 border-b border-border/70 bg-surface-2/40 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-steel-400 ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto]"}`}>
@@ -1185,7 +1287,11 @@ export function ArquivosScreen() {
       {revisandoMidias && <RevisarMidias espaco={espaco} aoFechar={() => setRevisandoMidias(false)} aoConcluir={(m) => { setRevisandoMidias(false); avisar(m, "sucesso"); notificar(); }} />}
       {criandoPasta && <NomeDialog titulo="Nova pasta" rotulo="Nome" inicial="" botao="Criar" ocupadoTexto="Criando…" dica={pastaAtual ? `Dentro de ${pastaAtual}.` : "Na raiz."} onFechar={() => setCriandoPasta(false)} onSalvar={criarPasta} />}
       {movendo && <MoverExplorador itens={detalhesParaMover(movendo)} espaco={espaco} aoFechar={() => setMovendo(null)} aoConcluir={(r) => { r.mudancas.forEach((m) => acompanhar(m.de, m.para)); avisar(r.mensagem, "sucesso"); setMovendo(null); setSelecao(new Set()); notificar(); }} />}
-      {renomeando && <RenomearDialog linha={renomeando} onFechar={() => setRenomeando(null)} onSalvar={(novo) => renomear(renomeando, novo)} />}
+      {pastaEmEdicao && (
+        <EditarPasta pasta={{ ...pastaEmEdicao, contagem_itens: 0 }} tipo="nota" espaco={espaco} aoFechar={() => setPastaEmEdicao(null)}
+          aoSalvar={(novo) => { if (novo !== pastaEmEdicao.caminho) acompanhar(pastaEmEdicao.caminho, novo); notificar(); }} />
+      )}
+      {renomeando && !desktop && <RenomearDialog linha={renomeando} onFechar={() => setRenomeando(null)} onSalvar={(novo) => renomear(renomeando, novo)} />}
       {retangulo && <div aria-hidden className="pointer-events-none fixed z-50 rounded-sm border border-steel-400 bg-steel-500/20" style={{ left: retangulo.l, top: retangulo.t, width: retangulo.w, height: retangulo.h }} />}
       {menuVazio && <MenuExplorador x={menuVazio.x} y={menuVazio.y} rotulo={pastaAtual ? pastaAtual.split("/").pop()! : "Raiz"} aoFechar={() => setMenuVazio(null)} itens={[
         { rotulo: "Nova pasta", icone: FolderPlus, acao: () => setCriandoPasta(true) },
@@ -1196,6 +1302,18 @@ export function ArquivosScreen() {
         ...(pastaAtual ? [{ rotulo: "Subir uma pasta", icone: ArrowUp, acao: () => setPastaAtual(pai(pastaAtual)) }] : []),
         { rotulo: "Atualizar", icone: RotateCw, acao: () => notificar() },
       ]} />}
+      {desktop && <BarraSelecaoArquivos
+        total={selecao.size}
+        espaco={espaco}
+        acoes={emLote}
+        painel={painelBarra}
+        aoMudarPainel={setPainelBarra}
+        temArquivos={arquivosMarcados.length > 0}
+        aoAbrirEmGuias={abrirMarcadosEmGuias}
+        aoMover={() => setMovendo([...selecao])}
+        aoExcluir={() => setExcluindo([...selecao])}
+        aoLimpar={() => setSelecao(new Set())}
+      />}
       {menuCtx && <MenuExplorador x={menuCtx.x} y={menuCtx.y} rotulo={nomeExibido(menuCtx.linha)} itens={itensDoMenuCtx(menuCtx.linha)} aoFechar={() => setMenuCtx(null)} />}
       <ConfirmDeleteDialog
         open={!!excluindo}

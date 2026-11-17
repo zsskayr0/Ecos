@@ -1,12 +1,13 @@
 import { pastaDoArquivo } from "@/lib/caminho-item";
 import { avisar } from "@/lib/toast";
+import { exportarDocumentosEmPdf } from "@/lib/exportar-pdf";
 import { avisarExcluido } from "@/lib/desfazer";
 import { SkeletonNotaDetalhe } from "@/components/common/SkeletonTelas";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
-import { AlertTriangle, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2, FileDown } from "lucide-react";
 import { AcoesFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
 import { MiniGrafo } from "@/screens/Grafico/MiniGrafo";
 import { ApiError, notas } from "@/lib/api";
@@ -222,7 +223,8 @@ export function NoteEditorDesktop() {
   const estado = erro ? "Erro ao sincronizar" : salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo";
 
   const noPainel = modoFocus && !!montagemPainel;
-  const opcoesNota = (classeBotao: string) => <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} classeBotao={classeBotao}
+  const exportarPdfDaNota = () => { if (id) void exportarDocumentosEmPdf([{ tipo: "nota", id }]).catch((e) => avisar(mensagemDeErro(e, "Não foi possível exportar o PDF."), "erro")); };
+  const opcoesNota = (classeBotao: string) => <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onExportarPdf={exportarPdfDaNota} classeBotao={classeBotao}
     anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />} />;
   const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (
@@ -231,6 +233,7 @@ export function NoteEditorDesktop() {
       {modoFocus && acoesFocus && createPortal(
         <>
           <BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
+          <button type="button" onClick={exportarPdfDaNota} aria-label="Exportar PDF" title="Exportar PDF" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary"><FileDown size={15} /></button>
           {opcoesNota("flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary")}
           <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
           <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
@@ -249,6 +252,12 @@ export function NoteEditorDesktop() {
           </section>
           <section className="border-t border-border pt-6" aria-label="Anexos">
             <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} escopoRef={raizNota} estilo="grade" compact />
+          </section>
+          <section aria-label="Informações" className="space-y-2 border-t border-border pt-6 text-sm text-text-secondary">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
+            <p>Criada em {formatDataHoraCompleta(nota.criado_em)}</p>
+            <p>Editada <TempoEdicao iso={nota.atualizado_em} /></p>
+            <p aria-live="polite" className={erro ? "text-error" : "text-text-muted"}>{enviandoAnexo ? "Enviando anexo…" : estado}</p>
           </section>
           <section className="space-y-3 border-t border-border pt-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Ações</h2>

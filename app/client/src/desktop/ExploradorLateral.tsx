@@ -11,8 +11,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
 import { mensagemDeErro } from "@/lib/erros";
 import { useWorkspaceOpcional } from "./workspace-store";
-import { moduloDaRota } from "./modules";
-import { navegacaoDaAba } from "./navegacao-abas";
+import { abrirPastaNosArquivos } from "./navegacao-abas";
 import { MenuExplorador, type ItemMenuExplorador } from "./MenuExplorador";
 import type { ItemParaMover } from "./MoverExplorador";
 import { EditarPasta } from "@/components/views/EditarPasta";
@@ -202,20 +201,8 @@ export function ExploradorLateral() {
   })();
 
   /** Como o Explorador do Windows: clicar no nome da pasta mostra o conteúdo dela na tela de Arquivos. */
-  function abrirPastaNaTela(caminho: string, emAba = false) {
-    if (!workspace) return;
-    const path = `/arquivos${caminho ? `?pasta=${encodeURIComponent(caminho)}` : ""}`;
-    if (!emAba) {
-      const paineis = [...workspace.state.panes].sort((a, b) => Number(b.id === workspace.state.focusedPaneId) - Number(a.id === workspace.state.focusedPaneId));
-      for (const painel of paineis) {
-        const aba = painel.tabs.find((t) => moduloDaRota(t.path).id === "arquivos");
-        if (!aba) continue;
-        workspace.dispatch({ type: "activate-tab", paneId: painel.id, tabId: aba.id });
-        navegacaoDaAba(`aba:${aba.id}`)?.navegar?.(path);
-        return;
-      }
-    }
-    workspace.dispatch({ type: "open", path, where: "focused", reuse: "path" });
+  function abrirPastaNaTela(caminho: string, emAba: boolean | "segundo-plano" = false) {
+    if (workspace) abrirPastaNosArquivos(workspace, caminho, emAba);
   }
 
   const alternar = useCallback((caminho: string) => setAbertas((a) => {
@@ -229,7 +216,7 @@ export function ExploradorLateral() {
     : `/media/ver?a=${encodeURIComponent(a.caminho)}&e=${encodeURIComponent(espaco)}`;
   const [anexosAbertos, setAnexosAbertos] = useState<Set<string>>(new Set());
   const alternarAnexos = (c: string) => setAnexosAbertos((x) => { const n = new Set(x); if (n.has(c)) n.delete(c); else n.add(c); return n; });
-  const abrir = (a: ArquivoExplorador, emAba: boolean) => abrirDocumento?.(destinoDe(a), emAba);
+  const abrir = (a: ArquivoExplorador, emAba: boolean | "segundo-plano") => abrirDocumento?.(destinoDe(a), emAba);
 
   /** Mostra o movimento na hora (otimista); se o servidor discordar, o recarregamento que segue corrige. */
   function moverNoCache(itens: string[], destino: string) {
@@ -356,6 +343,7 @@ export function ExploradorLateral() {
     if (item.tipo === "pasta") {
       return [
         { rotulo: "Abrir em nova aba", icone: ExternalLink, acao: () => abrirPastaNaTela(item.pasta.caminho, true) },
+        { rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrirPastaNaTela(item.pasta.caminho, "segundo-plano") },
         ...comuns,
       ];
     }
@@ -363,6 +351,7 @@ export function ExploradorLateral() {
     return [
       { rotulo: "Abrir", icone: File, acao: () => abrir(a, false) },
       { rotulo: "Abrir em aba", icone: ExternalLink, acao: () => abrir(a, true) },
+      { rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrir(a, "segundo-plano") },
       ...(a.tipo === "tarefa" && a.id ? [a.status === "concluida"
         ? { rotulo: "Reabrir tarefa", icone: RotateCcw, acao: () => void alternarConclusao(a) }
         : { rotulo: "Concluir tarefa", icone: CircleCheck, acao: () => void alternarConclusao(a) }] : []),
@@ -442,7 +431,7 @@ export function ExploradorLateral() {
                     abrirPastaNaTela(p.caminho);
                   }}
                   onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                  onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirPastaNaTela(p.caminho, true); } }}>
+                  onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirPastaNaTela(p.caminho, "segundo-plano"); } }}>
                   <IconePasta pasta={p} aberta={aberta} className="mr-2" />
                   <span className="truncate">{p.nome}</span>
                 </button>
@@ -468,7 +457,7 @@ export function ExploradorLateral() {
               <button type="button" title={a.nome} data-caminho={a.caminho}
                 onClick={(e) => { if (!selecionar(a.caminho, e)) abrir(a, false); }}
                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrir(a, true); } }}
+                onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrir(a, "segundo-plano"); } }}
                 onPointerDown={(e) => arrastar(e, a.caminho, destinoDe(a), a.titulo ?? a.nome, a.tipo ?? "arquivo")}
                 {...soltarEm(paiDe(a.caminho))}
                 className={`relative flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-[13px] ${marcado ? "bg-surface-3 text-text-primary" : ativo ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}
@@ -489,7 +478,7 @@ export function ExploradorLateral() {
                     <li key={m.caminho} role="treeitem" aria-selected={false}>
                       <button type="button" title={m.nome}
                         onClick={(e) => abrirDocumento?.(rotaDoAnexo(m), e.ctrlKey || e.metaKey)}
-                        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirDocumento?.(rotaDoAnexo(m), true); } }}
+                        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirDocumento?.(rotaDoAnexo(m), "segundo-plano"); } }}
                         className="flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-[12px] text-text-muted hover:bg-surface-2 hover:text-text-primary"
                         style={{ paddingLeft: 6 + (nivel + 1) * 14 + 20 }}>
                         <IconeArquivo a={anexoComoArquivo(m)} personalizados={iconesExtensao} className="text-text-muted" />

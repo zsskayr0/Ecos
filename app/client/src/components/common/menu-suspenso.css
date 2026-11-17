@@ -21,7 +21,15 @@
 @keyframes ecos-menu-item-entra { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
 @keyframes ecos-menu-entra { from { opacity: 0; transform: translateY(-6px) scale(0.96); clip-path: inset(0 0 40% 0 round 12px); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round 12px); } }
 @keyframes ecos-menu-sai { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+/* Popovers de data e horário: mesma entrada dos menus, com origem no lado do gatilho (embaixo ou em cima). */
+.ecos-popover { transform-origin: top left; animation: ecos-menu-entra 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ecos-popover[data-sobe="true"] { transform-origin: bottom left; animation-name: ecos-popover-sobe-entra; }
+.ecos-popover[data-saindo="true"] { animation: ecos-menu-sai 110ms ease-in both; pointer-events: none; }
+.ecos-popover[data-sobe="true"][data-saindo="true"] { animation-name: ecos-popover-sobe-sai; }
+@keyframes ecos-popover-sobe-entra { from { opacity: 0; transform: translateY(6px) scale(0.96); clip-path: inset(40% 0 0 0 round 12px); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round 12px); } }
+@keyframes ecos-popover-sobe-sai { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(0.97); } }
 @media (prefers-reduced-motion: reduce) {
+  .ecos-popover, .ecos-popover[data-saindo="true"] { animation: none !important; }
   .ecos-menu, .ecos-menu[data-saindo="true"], .ecos-menu .ecos-menu-item { animation: none !important; }
   .ecos-menu-item:hover, .ecos-menu-item:focus-visible { transform: none; }
   .ecos-menu-icone, .ecos-menu-item:hover .ecos-menu-icone, .ecos-menu-item:focus-visible .ecos-menu-icone, .ecos-menu-item:active .ecos-menu-icone { transform: none; transition: none; }

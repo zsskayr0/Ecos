@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { CheckCircle2, Ellipsis, X } from "lucide-react";
+import { CheckCircle2, Ellipsis, X, FileDown } from "lucide-react";
 import { useEscFecha } from "@/components/common/Dialog";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { formatDataHoraCompleta } from "@/lib/format";
@@ -13,6 +13,8 @@ interface Props {
   erro?: boolean;
   revisada: boolean;
   onRevisar: () => void;
+  /** Gera o PDF da nota (abre a impressão do sistema). */
+  onExportarPdf?: () => void;
   /** Anexos da nota. Fica montado mesmo com o painel fechado, para um envio em andamento não ser cancelado. */
   anexos?: ReactNode;
   /** Ações da nota (copiar caminho, apagar…) listadas no fim do menu. Quem as passa fecha o menu se precisar: elas recebem `fechar`. */
@@ -22,7 +24,7 @@ interface Props {
 }
 
 /** Menu "⋯" da nota: anexos e informações (criação, edição, estado), que antes ficavam soltos abaixo do editor. */
-export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revisada, onRevisar, anexos, acoes, classeBotao }: Props) {
+export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revisada, onRevisar, onExportarPdf, anexos, acoes, classeBotao }: Props) {
   const [aberto, setAberto] = useState(false);
   const titulo = useId();
   useEscFecha(aberto, () => setAberto(false));
@@ -48,6 +50,7 @@ export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revis
           <p>Criada em {formatDataHoraCompleta(criadoEm)}</p>
           <p>Editada <TempoEdicao iso={atualizadoEm} /></p>
           <p aria-live="polite" className={erro ? "text-error" : "text-text-muted"}>{estado}</p>
+          {onExportarPdf && <button type="button" onClick={() => { setAberto(false); onExportarPdf(); }} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><FileDown size={16} />Exportar PDF</button>}
           {!revisada && <button type="button" onClick={() => { onRevisar(); setAberto(false); }} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-steel-300 transition-colors hover:bg-surface-2 hover:text-text-primary"><CheckCircle2 size={16} />Marcar revisada</button>}
         </section>
         <section aria-label="Escrita e folha" data-slot-opcoes-escrita className="space-y-4 border-t border-border pt-4 empty:hidden" />

@@ -48,7 +48,7 @@ export function Workspace() {
   const { state } = useWorkspace();
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-x-auto bg-base">
       {state.panes.map((pane, i) => (
         <Fragment key={pane.id}>
           {i > 0 && <Divisor esquerda={state.panes[i - 1]} direita={pane} />}

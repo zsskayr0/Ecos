@@ -324,7 +324,7 @@ describe("ArquivosScreen", () => {
     const campo = await screen.findByLabelText("Nome");
     expect((campo as HTMLInputElement).value).toBe("lista.txt");
     fireEvent.change(campo, { target: { value: "compras.txt" } });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Renomear" }));
+    fireEvent.keyDown(campo, { key: "Enter" });
     await waitFor(() => expect(arquivos.renomear).toHaveBeenCalledWith({ espaco: "pessoal", caminho: "lista.txt", novo_nome: "compras.txt" }));
 
     fireEvent.click(linha("note-Plano.md"));
@@ -392,7 +392,7 @@ describe("ArquivosScreen", () => {
     render(<MemoryRouter><ArquivosScreen /></MemoryRouter>);
     await within(await screen.findByRole("grid")).findByText("Plano");
     fireEvent.click(screen.getByRole("button", { name: "Ações de lista.txt" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: /Mover para/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Mover para/ }));
     const dialogo = screen.getByRole("dialog");
     expect((within(dialogo).getByRole("button", { name: "Mover" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(await within(dialogo).findByText("Projetos"));

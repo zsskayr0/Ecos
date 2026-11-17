@@ -64,13 +64,11 @@ function LayoutAbaTarefa({ children }: { children: ReactNode }) {
       <PainelFocusTarefaContext.Provider value={montagem}>
         <PainelFocusControleContext.Provider value={controle}>
           <AcoesFocusContext.Provider value={acoes}>
-            <div className="flex h-full min-h-0 flex-col" data-aba-tarefa>
-              <header className="flex h-10 shrink-0 items-center justify-end border-b border-border bg-surface-1 px-3">
-                {/* O divisor que antecede o X do Focus não faz sentido aqui. */}
-                <div ref={setAcoes} className="flex items-center gap-0.5 [&>span:last-child]:hidden" />
-              </header>
+            <div className="relative flex h-full min-h-0 flex-col" data-aba-tarefa>
+              {/* Sem faixa própria: as ações moram no topo do painel de opções (e flutuam no canto quando ele está recolhido), e o documento sobe. O divisor que antecede o X do Focus não faz sentido aqui. */}
+              <div ref={setAcoes} className="absolute right-3 top-2.5 z-20 flex items-center gap-0.5 [&>span:last-child]:hidden" />
               <div className="flex min-h-0 flex-1">
-                <div className="min-w-0 flex-1 overflow-y-auto px-8 py-6">
+                <div className={`min-w-0 flex-1 overflow-y-auto py-6 pl-8 ${painelAberto ? "pr-8" : "pr-16"}`}>
                   <div className="mx-auto w-full max-w-[1380px]">{children}</div>
                 </div>
                 {painelAberto && (
@@ -84,7 +82,7 @@ function LayoutAbaTarefa({ children }: { children: ReactNode }) {
                 <aside
                   aria-hidden={!painelAberto || undefined}
                   {...(painelAberto ? {} : ({ inert: "" } as object))}
-                  className={`shrink-0 overflow-y-auto bg-surface-1 ease-out motion-reduce:transition-none ${arrastando ? "" : "transition-[width,opacity,padding] duration-300"} ${painelAberto ? "p-5 opacity-100" : "w-0 p-0 opacity-0"}`}
+                  className={`shrink-0 overflow-y-auto bg-surface-1 ease-out motion-reduce:transition-none ${arrastando ? "" : "transition-[width,opacity,padding] duration-300"} ${painelAberto ? "px-5 pb-5 pt-14 opacity-100" : "w-0 p-0 opacity-0"}`}
                   style={painelAberto ? { width: largura } : undefined}
                 >
                   <div ref={setMontagem} className="min-w-[260px]" />

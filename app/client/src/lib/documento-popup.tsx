@@ -2,7 +2,9 @@ import { createContext, useCallback, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 
 /** Fornecido pelo shell desktop: abre Tarefa/Nota numa janela flutuante (ou, com `emAba`, direto numa aba nova). */
-export const DocumentoPopupContext = createContext<((path: string, emAba: boolean) => void) | null>(null);
+/** Como abrir: `false` janela flutuante; `true` guia nova em foco; `"segundo-plano"` guia nova sem sair do que está aberto. */
+export type ModoAbrirDocumento = boolean | "segundo-plano";
+export const DocumentoPopupContext = createContext<((path: string, emAba: ModoAbrirDocumento) => void) | null>(null);
 
 /** Permite que um documento aberto atualize o título da sua própria janela. */
 export const TituloJanelaContext = createContext<((titulo: string) => void) | null>(null);
@@ -22,6 +24,8 @@ export const PainelFocusControleContext = createContext<{ aberto: boolean; alter
 interface ModificadoresDeClique {
   ctrlKey: boolean;
   metaKey: boolean;
+  /** 1 = botão do meio: abre em guia, como o Ctrl+clique. */
+  button?: number;
 }
 
 /** No mobile (sem shell desktop) cai na navegação normal para a tela de detalhe. Passe o evento do clique: Ctrl/Cmd+clique abre em aba. */
@@ -30,7 +34,7 @@ export function useAbrirDocumento() {
   const navigate = useNavigate();
   return useCallback(
     (path: string, clique?: ModificadoresDeClique) =>
-      abrir ? abrir(path, !!clique && (clique.ctrlKey || clique.metaKey)) : navigate(path),
+      abrir ? abrir(path, clique?.button === 1 ? "segundo-plano" : !!clique && (clique.ctrlKey || clique.metaKey)) : navigate(path),
     [abrir, navigate],
   );
 }

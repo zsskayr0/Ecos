@@ -7,7 +7,7 @@ import { useRefreshBus } from "@/lib/refresh-bus";
 /** Cartão inteiro clicável (como no Reddit/X): abre o item, exceto se o clique foi num controle, link, menu ou texto selecionado. */
 export function aoClicarCartao(abrir: (e: React.MouseEvent) => void) {
   return (e: React.MouseEvent) => {
-    if (e.defaultPrevented || e.button !== 0) return;
+    if (e.defaultPrevented || e.button > 1) return; // 0 = clique; 1 = meio (abre em guia)
     if ((e.target as HTMLElement).closest("button, a, input, textarea, select, label, summary, [role=menu], [role=menuitem], [role=checkbox], [data-sem-abrir]")) return;
     if (window.getSelection()?.toString()) return;
     abrir(e);

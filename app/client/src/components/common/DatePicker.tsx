@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { cabecalhoDaSemana, deslocamentoDoMes, formatarData, useFormatoData } from "@/lib/formato-data";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { formatarData, useFormatoData } from "@/lib/formato-data";
+import { CalendarDays } from "lucide-react";
+import { GradeMes, dataParaISO as paraISO, isoParaData as paraData } from "./GradeMes";
 
 interface Props {
   /** `YYYY-MM-DD`, matching `TransacaoApi.data`'s wire format. */
@@ -36,24 +37,6 @@ const CORES = {
   },
 } as const;
 
-function paraISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function paraData(iso: string): Date {
-  const [ano, mes, dia] = iso.split("-").map(Number);
-  return new Date(ano, mes - 1, dia);
-}
-
-function gerarDiasDoMes(referencia: Date) {
-  const ano = referencia.getFullYear();
-  const mes = referencia.getMonth();
-  const primeiroDia = new Date(ano, mes, 1);
-  const totalDias = new Date(ano, mes + 1, 0).getDate();
-  const offset = deslocamentoDoMes(primeiroDia);
-  return { offset, totalDias, ano, mes };
-}
-
 /**
  * Custom calendar dropdown for picking a Transacao's date — replaces the
  * browser's native `<input type="date">` popup, which carries the OS's own
@@ -66,12 +49,10 @@ export function DatePicker({ value, onChange, className, accent = "violet", limp
   const cor = CORES[accent];
   useFormatoData(); // re-renderiza quando o formato de data muda
   const [aberto, setAberto] = useState(false);
-  const [mesReferencia, setMesReferencia] = useState(() => (value ? paraData(value) : new Date()));
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!aberto) return;
-    setMesReferencia(value ? paraData(value) : new Date());
     function aoClicarFora(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setAberto(false);
     }
@@ -80,14 +61,7 @@ export function DatePicker({ value, onChange, className, accent = "violet", limp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto]);
 
-  const { offset, totalDias, ano, mes } = gerarDiasDoMes(mesReferencia);
   const hoje = new Date();
-  const nomeMes = mesReferencia.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-
-  function selecionar(dia: number) {
-    onChange(paraISO(new Date(ano, mes, dia)));
-    setAberto(false);
-  }
 
   function irParaHoje() {
     onChange(paraISO(hoje));
@@ -109,52 +83,7 @@ export function DatePicker({ value, onChange, className, accent = "violet", limp
 
       {aberto && (
         <div className={`absolute left-1/2 top-full z-20 mt-2 w-64 max-w-[85vw] -translate-x-1/2 rounded-2xl border ${cor.borda} bg-surface-1 p-3 shadow-xl`}>
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setMesReferencia((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-              className="rounded-full p-1 text-text-muted hover:bg-surface-2"
-              aria-label="Mês anterior"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <p className="text-sm font-medium capitalize text-text-primary">{nomeMes}</p>
-            <button
-              type="button"
-              onClick={() => setMesReferencia((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-              className="rounded-full p-1 text-text-muted hover:bg-surface-2"
-              aria-label="Próximo mês"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-y-1">
-            {cabecalhoDaSemana().map((d, i) => (
-              <div key={i} className="text-center text-[10px] font-medium text-text-muted">
-                {d}
-              </div>
-            ))}
-            {Array.from({ length: offset }).map((_, i) => (
-              <div key={`vazio-${i}`} />
-            ))}
-            {Array.from({ length: totalDias }, (_, i) => i + 1).map((dia) => {
-              const ehSelecionado = value === paraISO(new Date(ano, mes, dia));
-              const ehHoje = ano === hoje.getFullYear() && mes === hoje.getMonth() && dia === hoje.getDate();
-              return (
-                <button
-                  key={dia}
-                  type="button"
-                  onClick={() => selecionar(dia)}
-                  className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-xs ${
-                    ehSelecionado ? cor.selecionado : ehHoje ? cor.hoje : "text-text-secondary hover:bg-surface-2"
-                  }`}
-                >
-                  {dia}
-                </button>
-              );
-            })}
-          </div>
+          <GradeMes valor={value} onSelecionar={(iso) => { onChange(iso); setAberto(false); }} classeSelecionado={cor.selecionado} classeHoje={cor.hoje} />
 
           <div className="mt-2 flex items-center justify-between gap-2">
             {limpavel && <button type="button" onClick={() => { onChange(""); setAberto(false); }} className="flex-1 rounded-xl py-1.5 text-center text-xs font-medium text-text-muted hover:bg-surface-2">Limpar</button>}

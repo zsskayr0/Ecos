@@ -116,6 +116,10 @@ export function tituloDaRota(path: string): string {
   if (primeiro === "notas" && segundo === "nota") return "Nota";
   if (primeiro === "notas" && segundo === "pasta") return terceiro === "nova" ? "Nova pasta" : "Pasta de notas";
   if (primeiro === "tarefas" && segundo === "pasta") return terceiro === "nova" ? "Nova pasta" : "Pasta de tarefas";
+  if (primeiro === "arquivos") {
+    const pasta = new URLSearchParams(query).get("pasta");
+    if (pasta) return pasta.split("/").filter(Boolean).pop() ?? "Arquivos";
+  }
   if (primeiro === "tarefa") return "Tarefa";
   if (primeiro === "cofre" && segundo === "transacao") return "Transação";
   if (primeiro === "equipe") return segundo === "nova" ? "Nova equipe" : "Equipe";

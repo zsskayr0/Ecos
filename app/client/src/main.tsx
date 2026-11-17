@@ -4,11 +4,13 @@ import App from "./App";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { acompanharTemaDoSistema, aplicarTemaInicial } from "./lib/theme";
 import { aplicarPreferenciasAplicativo } from "./lib/preferencias-aplicativo";
+import { iniciarDicasEcos } from "./lib/dica-ecos";
 import "./styles/global.css";
 
 aplicarTemaInicial();
 acompanharTemaDoSistema();
 aplicarPreferenciasAplicativo();
+iniciarDicasEcos();
 
 // No navegador, mantém o shell e os arquivos já usados disponíveis quando a rede some.
 // O Tauri já empacota esses arquivos no aplicativo e não precisa de Service Worker.

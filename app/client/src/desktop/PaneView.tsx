@@ -1,11 +1,12 @@
-import { TabBar } from "./TabBar";
+import { useContext } from "react";
+import { GuiasSlotContext, TabBar } from "./TabBar";
 import { TabContent } from "./TabContent";
 import { useTabDrag } from "./tab-drag";
 import { useZonaArraste } from "@/lib/arraste-itens";
 import { useWorkspace, type Pane } from "./workspace-store";
 
 /** Só existe durante um arraste de aba, e só desenha: bordas laterais dividem o painel, o centro move a aba para dentro dele. Quem decide o alvo é `tab-drag.tsx`. */
-function DropZones({ pane }: { pane: Pane }) {
+function DropZones({ pane, semFaixa }: { pane: Pane; semFaixa: boolean }) {
   const { arrastando, alvo } = useTabDrag();
   if (!arrastando) return null;
 
@@ -15,7 +16,7 @@ function DropZones({ pane }: { pane: Pane }) {
 
   const destaque = "absolute inset-y-2 rounded-lg border border-cyan/60 bg-cyan/10 transition-all";
   return (
-    <div className="pointer-events-none absolute inset-0 top-9 z-30">
+    <div className={`pointer-events-none absolute inset-0 ${semFaixa ? "top-0" : "top-9"} z-30`}>
       {zona === "left" && !unicaAbaDaPane && <div className={`${destaque} left-2 w-1/2`} />}
       {zona === "right" && !unicaAbaDaPane && <div className={`${destaque} right-2 w-1/2`} />}
       {zona === "center" && !propria && <div className={`${destaque} inset-x-2`} />}
@@ -28,6 +29,7 @@ export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
   /** Arraste de item da sidebar: a faixa da borda onde soltar abre o item ao lado (quem decide é `arraste-itens`). */
   const zonaArraste = useZonaArraste();
   const zonaExterna = zonaArraste?.paneId === pane.id ? zonaArraste.lado : null;
+  const guiasNoTopo = !!useContext(GuiasSlotContext) && state.panes.length === 1;
   const recolhendo = state.panes.length > 1 && pane.tabs.length > 0 && pane.tabs.every((t) => fechando.includes(t.id));
 
   return (
@@ -48,7 +50,7 @@ export function PaneView({ pane, focada }: { pane: Pane; focada: boolean }) {
           <TabContent key={tab.id} tabId={tab.id} path={tab.path} visible={tab.id === pane.activeTabId} fechando={fechando.includes(tab.id)} />
         ))}
       </div>
-      <DropZones pane={pane} />
+      <DropZones pane={pane} semFaixa={guiasNoTopo} />
     </section>
   );
 }

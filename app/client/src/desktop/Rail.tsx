@@ -3,6 +3,8 @@ import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide
 import { useModoExplorador } from "@/lib/use-modo-explorador";
 import { ExploradorLateral } from "./ExploradorLateral";
 import { RAIL_EXPLORADOR, RAIL_PRINCIPAL, RAIL_UTILITARIOS, moduloDaRota, moduloPorId, type ModuloId } from "./modules";
+import { definirArvoreLateralVisivel, definirLarguraMenu } from "./arvore-lateral";
+import { abrirPastaNosArquivos } from "./navegacao-abas";
 import { useWorkspace } from "./workspace-store";
 
 const CHAVE_EXPANDIDA = "ecos.desktop.rail.expandida";
@@ -94,6 +96,18 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
   const focada = state.panes.find((p) => p.id === state.focusedPaneId);
   const abaAtiva = focada?.tabs.find((t) => t.id === focada.activeTabId);
   const moduloAtivo = abaAtiva ? moduloDaRota(abaAtiva.path).id : null;
+  const arquivosAbertos = !recolhidas.has("arquivos");
+  const arvoreVisivel = explorador && expandida && arquivosAbertos;
+  useEffect(() => { definirArvoreLateralVisivel(arvoreVisivel); return () => definirArvoreLateralVisivel(false); }, [arvoreVisivel]);
+  // A barra do topo acompanha a largura do menu (inclusive durante a animação) para alinhar logo e guias.
+  useEffect(() => {
+    const el = nav.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => definirLarguraMenu(Math.round(el.getBoundingClientRect().width)));
+    ro.observe(el);
+    definirLarguraMenu(Math.round(el.getBoundingClientRect().width));
+    return () => ro.disconnect();
+  }, [explorador]);
 
   function botao(id: ModuloId) {
     const modulo = moduloPorId(id);
@@ -162,8 +176,23 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
                 {secao("modulos", "Módulos")}
                 {!recolhidas.has("modulos") && <div className="flex flex-col gap-1">{RAIL_EXPLORADOR.map(botao)}</div>}
                 <div className="my-2 border-t border-border" />
-                {secao("arquivos", "Arquivos")}
-                {!recolhidas.has("arquivos") && <ExploradorLateral />}
+                <div className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:bg-surface-2">
+                  <button type="button" aria-expanded={arquivosAbertos}
+                    aria-label={arquivosAbertos ? "Recolher Arquivos" : "Expandir Arquivos"}
+                    onClick={() => alternarSecao("arquivos")}
+                    className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:bg-surface-3 hover:text-text-primary">
+                    {arquivosAbertos ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  </button>
+                  <button type="button" aria-current={abaAtiva?.path === "/arquivos" ? "page" : undefined}
+                    onClick={() => {
+                      if (!arquivosAbertos) alternarSecao("arquivos");
+                      abrirPastaNosArquivos({ state, dispatch }, "");
+                    }}
+                    className="h-full min-w-0 flex-1 rounded text-left uppercase hover:text-text-primary">
+                    Arquivos
+                  </button>
+                </div>
+                {arquivosAbertos && <ExploradorLateral />}
               </div>
               {/* Esmaece a última linha: deixa claro que a lista continua, em vez de parecer cortada. */}
               <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-surface-1 to-transparent" />

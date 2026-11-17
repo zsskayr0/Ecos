@@ -27,7 +27,7 @@ export interface WorkspaceState {
 export type Side = "left" | "right";
 
 export type WorkspaceAction =
-  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path"; side?: Side }
+  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path"; side?: Side; /** Abre a guia sem trocar a ativa nem o foco. */ background?: boolean }
   | { type: "close-tab"; paneId: string; tabId: string }
   | { type: "activate-tab"; paneId: string; tabId: string }
   | { type: "focus-pane"; paneId: string }
@@ -113,6 +113,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
             action.reuse === "path" ? t.path === action.path : moduloDaRota(t.path).id === alvoModulo,
           );
           if (existente) {
+            if (action.background) return state;
             return {
               focusedPaneId: pane.id,
               panes: state.panes.map((p) => (p.id === pane.id ? { ...p, activeTabId: existente.id } : p)),
@@ -123,7 +124,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
         return normalizar({
           ...state,
           panes: state.panes.map((p) =>
-            p.id === state.focusedPaneId ? { ...p, tabs: [...p.tabs, tab], activeTabId: tab.id } : p,
+            p.id === state.focusedPaneId ? { ...p, tabs: [...p.tabs, tab], activeTabId: action.background ? p.activeTabId : tab.id } : p,
           ),
         });
       }
