@@ -284,6 +284,9 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<TransacaoPayload>) -> AppResult<Json<serde_json::Value>> {
     validar_transacao(&payload)?;
     checar_referencias(&state, &payload.categoria_id, &payload.conta_id, &payload.forma_pagamento).await?;
+    if payload.status == "efetivada" {
+        super::mensalidades::exigir_lancamentos_liberados(&state, vec![id.clone()]).await?;
+    }
 
     let afetadas = state
         .db
@@ -334,6 +337,9 @@ pub struct StatusPayload {
 pub async fn atualizar_status(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<StatusPayload>) -> AppResult<Json<serde_json::Value>> {
     if !["efetivada", "pendente"].contains(&payload.status.as_str()) {
         return Err(AppError::new(ErrorCode::ValidationError).with_message("status deve ser 'efetivada' ou 'pendente'"));
+    }
+    if payload.status == "efetivada" {
+        super::mensalidades::exigir_lancamentos_liberados(&state, vec![id.clone()]).await?;
     }
     let afetadas = state
         .db
@@ -430,6 +436,11 @@ pub async fn upload_anexo(State(state): State<AppState>, Path(id): Path<String>,
     }).await?;
     if existe.is_none() {
         return Err(AppError::new(ErrorCode::NotFound));
+    }
+
+    // Anexar um comprovante efetiva o lançamento pendente; vale o mesmo bloqueio de efetivar.
+    if tipo_anexo == "comprovante" {
+        super::mensalidades::exigir_lancamentos_liberados(&state, vec![id.clone()]).await?;
     }
 
     let arquivo = crate::arquivo::ler_multipart(&mut multipart, "arquivo").await?;

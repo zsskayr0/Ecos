@@ -15,6 +15,38 @@ fn env_u16(key: &str, default: u16) -> u16 {
     std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
+/// `ECOS_VAULT_MIGRAR_ATE=<n>`: no próximo desbloqueio o esquema de cada Cofre vai para a versão `n` em vez da
+/// última (descida controlada, para voltar ao binário anterior). Ausente ou vazia: comportamento normal.
+/// Valor inválido é erro, nunca ignorado.
+pub fn migrar_ate() -> anyhow::Result<Option<usize>> {
+    migrar_ate_de(std::env::var("ECOS_VAULT_MIGRAR_ATE").ok().as_deref())
+}
+
+fn migrar_ate_de(valor: Option<&str>) -> anyhow::Result<Option<usize>> {
+    let Some(valor) = valor.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
+    let ultima = crate::db::ultima_versao();
+    match valor.parse::<usize>() {
+        Ok(n) if (1..=ultima).contains(&n) => Ok(Some(n)),
+        _ => anyhow::bail!("ECOS_VAULT_MIGRAR_ATE inválida: {valor:?} (esperado um número de 1 a {ultima})"),
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::migrar_ate_de;
+
+    #[test]
+    fn migrar_ate_aceita_so_versao_conhecida() {
+        assert_eq!(migrar_ate_de(None).unwrap(), None);
+        assert_eq!(migrar_ate_de(Some("  ")).unwrap(), None);
+        assert_eq!(migrar_ate_de(Some("13")).unwrap(), Some(13));
+        assert_eq!(migrar_ate_de(Some(&crate::db::ultima_versao().to_string())).unwrap(), Some(crate::db::ultima_versao()));
+        for ruim in ["0", "-1", "treze", "999"] {
+            assert!(migrar_ate_de(Some(ruim)).is_err(), "{ruim} deveria ser recusado");
+        }
+    }
+}
+
 impl Config {
     /// Pasta do cofre de um usuário: `<pasta do banco legado>/usuarios/<id>/`.
     pub fn dir_do_usuario(&self, usuario_id: &str) -> PathBuf {
@@ -71,6 +103,11 @@ impl Config {
             std::fs::create_dir_all(pai)?;
         }
         std::fs::create_dir_all(&backups_dir)?;
+
+        // Valor inválido derruba a subida do processo, em vez de aparecer só no primeiro desbloqueio.
+        if let Some(versao) = migrar_ate()? {
+            tracing::warn!(versao, "ECOS_VAULT_MIGRAR_ATE definida: cada Cofre desbloqueado terá o esquema levado para essa versão");
+        }
 
         Ok(Self {
             porta: env_u16("ECOS_PORT", 8090),

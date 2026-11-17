@@ -46,7 +46,7 @@ pub async fn ativar(State(state): State<AppState>, Json(payload): Json<SenhaPayl
 
     let salt = crypto::gerar_salt();
     let chave = crypto::derivar_chave(&payload.senha, &salt);
-    state.db.destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave))?;
+    state.db.destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave), &state.config.backups_de(&uid), crate::config::migrar_ate()?)?;
 
     // Cofre de equipe nasce sem as categorias pessoais herdadas do Nexus (a migração 0003 as semeia em todo arquivo novo).
     // A equipe começa sem categorias (cria as suas; até lá os lançamentos ficam "sem categoria"). Roda só na ativação:
@@ -73,8 +73,15 @@ pub async fn desbloquear(State(state): State<AppState>, Json(payload): Json<Senh
 
     state
         .db
-        .destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave))
-        .map_err(|_| AppError::new(ErrorCode::InvalidCredentials).with_message("Senha do Cofre incorreta."))?;
+        .destrancar(&state.config.db_de(&uid), &crypto::para_hex(&chave), &state.config.backups_de(&uid), crate::config::migrar_ate()?)
+        .map_err(|erro| {
+            if erro.downcast_ref::<crate::db::ChaveIncorreta>().is_some() {
+                return AppError::new(ErrorCode::InvalidCredentials).with_message("Senha do Cofre incorreta.");
+            }
+            // A senha estava certa: o que falhou foi o snapshot ou a migração do esquema. O motivo fica no log.
+            tracing::error!(error = %erro, usuario = %uid, "Cofre abriu com a chave certa, mas não pôde ser preparado");
+            AppError::new(ErrorCode::InternalError).with_message("Não foi possível preparar o Cofre para esta versão. Nenhum dado foi alterado.")
+        })?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }

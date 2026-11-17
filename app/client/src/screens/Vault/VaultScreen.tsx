@@ -1,8 +1,8 @@
 import { useMoeda } from "@/lib/exibicao-valores";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Lock, Moon, PanelLeftClose, PanelLeftOpen, Sun, ShieldHalf, Crown, LayoutDashboard, ArrowLeftRight, CalendarDays, Settings2, CloudOff, RefreshCw, Repeat2, Landmark, Tags, Users, ClipboardList, ChevronUp, Plus, Ellipsis, Paperclip } from "lucide-react";
-import { vault, auth, financeiro, ApiError, type CategoriaApi } from "@/lib/api";
+import { ArrowLeft, ArrowRight, Lock, Moon, PanelLeftClose, PanelLeftOpen, Sun, ShieldHalf, Crown, LayoutDashboard, ArrowLeftRight, CalendarDays, Settings2, CloudOff, RefreshCw, Repeat2, Landmark, Tags, Users, ClipboardList, ChevronUp, Plus, Ellipsis, Paperclip, HandCoins } from "lucide-react";
+import { vault, auth, financeiro, ApiError, type CategoriaApi, type MensalidadeApi } from "@/lib/api";
 import { VaultLockScreen } from "./VaultLockScreen";
 import { TransactionDetailScreen } from "./TransactionDetailScreen";
 import { VaultDashboard, type Filtro } from "./VaultDashboard";
@@ -10,6 +10,10 @@ import { VaultTransactions } from "./VaultTransactions";
 import { VaultWorkflow } from "./VaultWorkflow";
 import { VaultComprovantes } from "./VaultComprovantes";
 import { VaultRecorrencias } from "./VaultRecorrencias";
+import { VaultMensalidades } from "./VaultMensalidades";
+import { BloqueioGlobal } from "./mensalidades/BloqueioReajuste";
+import { FaixaPendencias } from "./mensalidades/FaixaPendencias";
+import { resumoDePendencias } from "./mensalidades/formato";
 import { VaultCategories } from "./VaultCategories";
 import { VaultAccounts } from "./VaultAccounts";
 import { VaultSacados } from "./VaultSacados";
@@ -226,6 +230,7 @@ const menus = [
     {id:"lancamentos",nome:"Transações",curto:"Extrato",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
     {id:"comprovantes",nome:"Comprovantes",curto:"Comprov.",icone:Paperclip,descricao:"Comprovantes e notas fiscais guardados, ligados aos seus lançamentos."},
     {id:"recorrencias",nome:"Recorrências",curto:"Recorr.",icone:Repeat2,descricao:"Compromissos recorrentes e parcelamentos."},
+    {id:"mensalidades",nome:"Mensalidades",curto:"Mensal.",icone:HandCoins,descricao:"Mensalidades dos residentes e o reajuste anual."},
     {id:"fluxo",nome:"Fluxo de Trabalho",curto:"Fluxo",icone:CalendarDays,descricao:"Organize o que entra e o que sai."},
     {id:"contas",nome:"Contas",curto:"Contas",icone:Landmark,descricao:"Contas e saldos financeiros.",oculto:true},
     {id:"categorias",nome:"Categorias",curto:"Categorias",icone:Tags,descricao:"Organize receitas e despesas."},
@@ -235,7 +240,7 @@ const menus = [
 /** Contas e Sacados não aparecem no menu: são abertos por Cadastros ("Ver análise"), mas as rotas continuam existindo. */
 const menusVisiveis = menus.filter((m) => !("oculto" in m));
 /** No mobile, estas seções saem da barra inferior e vão para o menu "Mais". */
-const MAIS_MOBILE = ["comprovantes", "fluxo", "categorias", "cadastros"];
+const MAIS_MOBILE = ["comprovantes", "mensalidades", "fluxo", "categorias", "cadastros"];
 /** Endereços antigos do Cofre que agora são abas da categoria Cofre nas Configurações do Ecos. */
 const ABA_DA_ROTA_ANTIGA: Record<string, string> = { csv: "csv", ajuda: "ajuda", configuracoes: "seguranca" };
 /** Cor escolhida para o espaço Pessoal (Equipes › Pessoal); sem escolha, o azul padrão. */
@@ -269,6 +274,13 @@ export function VaultWorkspace() {
     const [filtro,setFiltro]=useState<Filtro>({});const [versao,setVersao]=useState(0);
     const valido=!!periodo.data_de&&!!periodo.data_ate&&periodo.data_de<=periodo.data_ate;
     useEffect(()=>{let vivo=true;vault.categorias.listar().then(c=>{if(vivo)setCategorias(c);}).catch(()=>{/* A tela de cada recurso apresenta sua falha. */});return()=>{vivo=false;};},[versao,externa]);
+    // Reajustes de mensalidade esperando decisão: consultado quando o Cofre abre e quando algo é gravado, não a cada troca de
+    // seção. Alimenta o selo do menu e a faixa do Painel. Falha (ou Cofre numa versão sem Mensalidades) = nada aparece.
+    const [mensalidades,setMensalidades]=useState<MensalidadeApi[]>([]);
+    useEffect(()=>{let vivo=true;vault.mensalidades.listar().then(l=>{if(vivo)setMensalidades(Array.isArray(l)?l:[]);}).catch(()=>{if(vivo)setMensalidades([]);});return()=>{vivo=false;};},[versao,externa]);
+    const pendMensalidades=useMemo(()=>resumoDePendencias(mensalidades),[mensalidades]);
+    const seloMens=pendMensalidades.ciclos>0?<b className="cofre-nav-selo" data-tom={pendMensalidades.atrasados>0?"atrasado":"avisar"} aria-hidden>{pendMensalidades.ciclos}</b>:null;
+    const rotuloMens=pendMensalidades.ciclos>0?`Mensalidades, ${pendMensalidades.ciclos} ${pendMensalidades.ciclos===1?"reajuste esperando":"reajustes esperando"} decisão`:"Mensalidades";
     // Mudar período/seção esvazia o painel (aparece o esqueleto); recarregar depois de mexer num lançamento troca os
     // números no lugar. Esvaziar a cada recarga encolhia a página e a rolagem voltava para o topo.
     const painelDe=useRef("");
@@ -295,21 +307,24 @@ export function VaultWorkspace() {
     return <div className="cofre-workspace" data-recolhido={recolhido||undefined}>
         <aside aria-label="Navegação do Cofre" className="cofre-nav" data-recolhido={recolhido||undefined}>
           <div className="cofre-sidebar-brand"><ShieldHalf size={18}/><span>COFRE</span><button type="button" className="cofre-nav-recolher" aria-label={recolhido?"Expandir menu lateral":"Recolher menu lateral"} aria-expanded={!recolhido} title={recolhido?"Expandir menu":"Recolher menu"} onClick={alternarMenu}>{recolhido?<PanelLeftOpen size={17}/>:<PanelLeftClose size={17}/>}</button></div>
-          <nav>{menusVisiveis.map(({id,nome,curto,icone:Icon})=><button key={id} aria-label={nome} title={nome} data-mais={MAIS_MOBILE.includes(id)||undefined} aria-current={secao===id?"page":undefined} onClick={()=>navegar(id)}><Icon size={16}/><span className="cofre-nav-desktop">{nome}</span><span className="cofre-nav-mobile">{curto}</span></button>)}<button type="button" className="cofre-more-btn" aria-label="Mais opções" aria-haspopup="menu" aria-expanded={maisAberto} aria-current={MAIS_MOBILE.includes(secao)?"page":undefined} onClick={()=>setMaisAberto(v=>!v)}><Ellipsis size={16}/><span>Mais</span></button></nav>
+          <nav>{menusVisiveis.map(({id,nome,curto,icone:Icon})=><button key={id} aria-label={id==="mensalidades"?rotuloMens:nome} title={nome} data-mais={MAIS_MOBILE.includes(id)||undefined} aria-current={secao===id?"page":undefined} onClick={()=>navegar(id)}><Icon size={16}/><span className="cofre-nav-desktop">{nome}</span><span className="cofre-nav-mobile">{curto}</span>{id==="mensalidades"&&seloMens}</button>)}<button type="button" className="cofre-more-btn" aria-label="Mais opções" aria-haspopup="menu" aria-expanded={maisAberto} aria-current={MAIS_MOBILE.includes(secao)?"page":undefined} onClick={()=>setMaisAberto(v=>!v)}><Ellipsis size={16}/><span>Mais</span>{seloMens}</button></nav>
           
           <div className="cofre-user-wrap"><button className="cofre-user" title={recolhido?`${nomeUsuario} · ${equipeAtual?.nome??"Pessoal"}`:undefined} aria-label={`Conta e equipe: ${nomeUsuario}`} onClick={()=>setMenuUsuario(v=>!v)}><Avatar nome={nomeUsuario} tamanho={32} url={urlFoto}/><span><b>{nomeUsuario}</b><small>{equipeAtual?.nome??"Pessoal"}</small></span><ChevronUp size={15}/>{perfil?.papel==="admin"&&<i className="cofre-user-admin" style={{background:corDoEspaco}} title="Administrador" aria-label="Administrador"><Crown size={10} strokeWidth={2.4}/></i>}</button>{menuUsuario&&<div className="cofre-user-menu"><p>Trocar equipe</p><button className="cofre-team-option" onClick={()=>{setEspacoAtivo("pessoal");setMenuUsuario(false);}}><Avatar nome={nomeUsuario} tamanho={26} url={urlFoto}/><span>Pessoal</span></button>{equipes.map(e=><EquipeMenuItem key={e.id} equipe={e} onClick={()=>{setEspacoAtivo(`equipe:${e.id}`);setMenuUsuario(false);}}/>)}<hr/><button className="cofre-action-lock" onClick={()=>void vault.bloquear()}><Lock size={15}/>Bloquear Cofre</button><button className="cofre-action-config" onClick={()=>abrirConfig()}><Settings2 size={15}/>Configurações</button><button className="cofre-action-back" onClick={()=>window.dispatchEvent(new Event("ecos:voltar-do-cofre"))}><ArrowLeft size={15}/>Voltar ao Ecos</button></div>}</div>
         </aside>
-        {maisAberto&&<><div className="cofre-more-backdrop" onClick={()=>setMaisAberto(false)}/><div className="cofre-more-sheet" role="menu" aria-label="Mais opções do Cofre">{menusVisiveis.filter(m=>MAIS_MOBILE.includes(m.id)).map(({id,nome,icone:Icon})=><button key={id} role="menuitem" aria-current={secao===id?"page":undefined} onClick={()=>{setMaisAberto(false);navegar(id);}}><Icon size={18}/><span>{nome}</span></button>)}<button role="menuitem" onClick={()=>{setMaisAberto(false);void vault.bloquear();}}><Lock size={18}/><span>Bloquear Cofre</span></button><button role="menuitem" onClick={()=>abrirConfig()}><Settings2 size={18}/><span>Configurações</span></button></div></>}
+        {maisAberto&&<><div className="cofre-more-backdrop" onClick={()=>setMaisAberto(false)}/><div className="cofre-more-sheet" role="menu" aria-label="Mais opções do Cofre">{menusVisiveis.filter(m=>MAIS_MOBILE.includes(m.id)).map(({id,nome,icone:Icon})=><button key={id} role="menuitem" aria-current={secao===id?"page":undefined} onClick={()=>{setMaisAberto(false);navegar(id);}}><Icon size={18}/><span>{nome}</span>{id==="mensalidades"&&seloMens}</button>)}<button role="menuitem" onClick={()=>{setMaisAberto(false);void vault.bloquear();}}><Lock size={18}/><span>Bloquear Cofre</span></button><button role="menuitem" onClick={()=>abrirConfig()}><Settings2 size={18}/><span>Configurações</span></button></div></>}
         <main className="cofre-main"><div className="cofre-content">
-            {menu&&secao!=="lancamentos"&&secao!=="categorias"&&secao!=="sacados"&&secao!=="contas"&&secao!=="recorrencias"&&secao!=="cadastros"&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">{secao==="painel"?"PAINEL FINANCEIRO":"COFRE"}</p><h1>{secao==="painel"?<>{greeting.titulo}{greeting.noite?<Moon size={19}/>:<Sun size={20}/>}</>:menu.nome}</h1><p className="cofre-subtitle">{secao==="painel"?greeting.frase:menu.descricao}</p></div><div className="cofre-page-actions">{["painel","csv","comprovantes"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}{secao==="painel"&&<button className="cofre-new-button" onClick={()=>abrirCaptura("transacao")}><Plus size={14}/>Novo lançamento</button>}</div></div>}
+            {menu&&secao!=="lancamentos"&&secao!=="categorias"&&secao!=="sacados"&&secao!=="contas"&&secao!=="recorrencias"&&secao!=="mensalidades"&&secao!=="cadastros"&&<div className="cofre-page-heading"><div><p className="cofre-eyebrow">{secao==="painel"?"PAINEL FINANCEIRO":"COFRE"}</p><h1>{secao==="painel"?<>{greeting.titulo}{greeting.noite?<Moon size={19}/>:<Sun size={20}/>}</>:menu.nome}</h1><p className="cofre-subtitle">{secao==="painel"?greeting.frase:menu.descricao}</p></div><div className="cofre-page-actions">{["painel","csv","comprovantes"].includes(secao)&&<PeriodPicker value={period} onChange={p=>{setPeriod(p);setFiltro({});}}/>}{secao==="painel"&&<button className="cofre-new-button" onClick={()=>abrirCaptura("transacao")}><Plus size={14}/>Novo lançamento</button>}</div></div>}
             {erro&&<div role="alert" className="cofre-error-card"><span className="cofre-error-icon"><CloudOff size={25}/></span><h2>{erro.incompativel?"O painel precisa de uma atualização":"Não foi possível carregar o painel"}</h2><p>{erro.incompativel?"O serviço do Cofre em execução ainda não oferece este painel. Seus lançamentos continuam disponíveis; atualize o Cofre no servidor para habilitar os gráficos.":erro.texto}</p><div><button className="cofre-solid" onClick={()=>setVersao(v=>v+1)}><RefreshCw size={15}/>Tentar novamente</button><button className="cofre-secondary" onClick={()=>navigate("/cofre/lancamentos")}>Abrir lançamentos <ArrowRight size={15}/></button></div></div>}
             {!valido&&<p role="alert">Selecione um período válido.</p>}
+            {secao==="painel"&&<FaixaPendencias resumo={pendMensalidades} onAbrir={()=>navegar("mensalidades")}/>}
+            <BloqueioGlobal aoResolver={atualizar}/>
             {secao==="painel"&&(painel?<VaultDashboard painel={painel} categorias={categorias} periodo={periodo} abrir={abrir} onFluxo={()=>navigate("/cofre/fluxo")} drill={f=>{setFiltro(f);navigate("/cofre/lancamentos");}}/>:!erro&&<div className="cofre-loading" role="status"><RefreshCw size={20}/><span>Preparando seu painel…</span><div className="cofre-skeletons">{[1,2,3,4].map(i=><div key={i}/>)}</div></div>)}
             <div className="cofre-panel">
             {secao==="lancamentos"&&valido&&<>{Object.keys(filtro).length>0&&<button className="cofre-secondary" onClick={()=>setFiltro({})}>Limpar filtro do gráfico</button>}<VaultTransactions recarregar={externa} periodo={periodo} period={period} onPeriodChange={p=>{setPeriod(p);setFiltro({});}} filtro={filtro} categorias={categorias} abrir={abrir} atualizar={atualizar}/></>}
             {secao==="comprovantes"&&valido&&<VaultComprovantes recarregar={externa} periodo={periodo} categorias={categorias} abrir={abrir} atualizar={atualizar} irParaData={iso=>{const[y,m]=iso.split("-").map(Number);if(y&&m){setPeriod({kind:"month",year:y,month:m});setFiltro({});}}}/>}
             {secao==="fluxo"&&<VaultWorkflow recarregar={externa} atualizar={atualizar}/>}
-            {secao==="recorrencias"&&valido&&<VaultRecorrencias period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} recarregar={externa}/>}
+            {secao==="recorrencias"&&valido&&<VaultRecorrencias period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} recarregar={externa} irParaMensalidades={()=>navigate("/cofre/mensalidades")}/>}
+            {secao==="mensalidades"&&valido&&<VaultMensalidades period={period} onPeriodChange={setPeriod} atualizar={atualizar} recarregar={externa} irParaRecorrencias={()=>navigate("/cofre/recorrencias")}/>}
             {secao==="contas"&&valido&&<VaultAccounts period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} irParaCadastros={()=>navigate("/cofre/cadastros?aba=contas")}/>}
             {secao==="categorias"&&valido&&<VaultCategories period={period} onPeriodChange={setPeriod} categorias={categorias} atualizar={atualizar} aoVerLancamentos={(id,comSubs)=>{setFiltro({categoria:id,comSubcategorias:comSubs});navigate("/cofre/lancamentos");}}/>}
             {secao==="sacados"&&valido&&<VaultSacados period={period} onPeriodChange={setPeriod} atualizar={atualizar} irParaCadastros={()=>navigate("/cofre/cadastros?aba=sacados")}/>}

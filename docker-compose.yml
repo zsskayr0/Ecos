@@ -48,6 +48,8 @@ services:
     image: ${ECOS_REGISTRY:-docker.io}/ecos/vault-db:${ECOS_VERSION:-local}
     restart: unless-stopped
     networks: [internal]
+    environment:
+      - ECOS_VAULT_MIGRAR_ATE=${ECOS_VAULT_MIGRAR_ATE:-}
     volumes:
       - ecos-vault:/data/vault
       - ecos-vault-backups:/data/backups

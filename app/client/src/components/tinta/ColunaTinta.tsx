@@ -329,7 +329,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
     if (gesto.current) return;
     const toque = e.pointerType === "touch";
     if (toque && (penAtiva.current || e.width * e.height > 1600)) return; // palma
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 2) return;
     ev.preventDefault();
     ev.currentTarget.setPointerCapture(e.pointerId);
     if (toque && !dedoDesenha) {
@@ -339,7 +339,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
     }
     if (e.pointerType === "pen") penAtiva.current = true;
     botaoLateral.current = { apertado: false, quando: 0 }; // tocar a tela cancela um duplo clique em andamento
-    const borrachaDaCaneta = e.pointerType === "pen" && (e.button === 5 || (e.buttons & 34) !== 0 || e.button === 2); // 2 = botão lateral (S Pen no Android/WebView), 32 = ponta de borracha
+    const borrachaDaCaneta = (e.pointerType === "pen" || e.pointerType === "mouse") && (e.button === 5 || (e.buttons & 34) !== 0 || e.button === 2); // 2 = botão lateral (S Pen no Android/WebView), 32 = ponta de borracha
     if (!borrachaDaCaneta && estado.current.pincel.ferramenta === "laco") {
       const p = ponto(e);
       const cx = caixaDoConjunto(estado.current.tracos.filter((t) => estado.current.selecao.includes(t.id)));
@@ -371,6 +371,16 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
     if (!g && escrevendo && e.pointerType === "pen" && !e.pressure) vigiarBotaoLateral(e);
     if (!g || g.id !== e.pointerId) return;
     ev.preventDefault();
+    // Alguns WebViews (S Pen no Android) só informam o botão lateral depois do toque: vira borracha no meio do traço.
+    if (g.tipo === "desenho" && e.pointerType !== "touch" && (e.buttons & 34) !== 0) {
+      window.clearTimeout(espera.current.timer);
+      espera.current.timer = 0;
+      const b: Extract<Gesto, { tipo: "borracha" }> = { tipo: "borracha", id: e.pointerId, ids: new Set(), parcial: estado.current.pincel.modoBorracha === "trecho", caminho: [] };
+      gesto.current = b;
+      apagarEm(b, e);
+      agendar();
+      return;
+    }
     if (g.tipo === "rolagem") {
       g.lateral?.scrollBy({ left: g.x - e.clientX });
       g.alvo.scrollBy({ top: g.y - e.clientY });

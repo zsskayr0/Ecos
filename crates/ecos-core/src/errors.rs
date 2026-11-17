@@ -26,6 +26,9 @@ pub enum ErrorCode {
     RecurringInstallmentsRequired,
     AttachmentTooLarge,
     VaultBackupFailed,
+    /// Efetivar uma mensalidade com ciclo de reajuste sem decisão (o corpo do erro traz `details` com a
+    /// recorrência e o ciclo).
+    MensalidadeReajustePendente,
 
     // --- Gerais (seção 7.1 e regras de segurança da seção 5.4) ---
     ValidationError,
@@ -59,6 +62,9 @@ impl ErrorCode {
             }
             ErrorCode::AttachmentTooLarge => "O comprovante excede o tamanho máximo permitido (8MB).",
             ErrorCode::VaultBackupFailed => "Falha ao gerar backup do Cofre. Nenhum dado foi alterado.",
+            ErrorCode::MensalidadeReajustePendente => {
+                "Esta mensalidade tem um reajuste sem decisão. Registre o reajuste ou mantenha o valor antes de efetivar."
+            }
 
             ErrorCode::ValidationError => "Um ou mais campos são inválidos.",
             ErrorCode::NotFound => "Recurso não encontrado.",
@@ -86,7 +92,7 @@ impl ErrorCode {
             | ErrorCode::RecurringTransactionNotFound => 404,
             ErrorCode::VaultLocked | ErrorCode::Unauthorized | ErrorCode::InvalidCredentials => 401,
             ErrorCode::Forbidden | ErrorCode::PasswordChangeRequired => 403,
-            ErrorCode::Conflict => 409,
+            ErrorCode::Conflict | ErrorCode::MensalidadeReajustePendente => 409,
             ErrorCode::RateLimited => 429,
             ErrorCode::ValidationError
             | ErrorCode::TransactionInvalidAmount
@@ -124,6 +130,12 @@ mod tests {
     fn serializa_como_screaming_snake_case() {
         let json = serde_json::to_string(&ErrorCode::VaultLocked).unwrap();
         assert_eq!(json, "\"VAULT_LOCKED\"");
+    }
+
+    #[test]
+    fn reajuste_pendente_e_conflito_com_codigo_proprio() {
+        assert_eq!(serde_json::to_string(&ErrorCode::MensalidadeReajustePendente).unwrap(), "\"MENSALIDADE_REAJUSTE_PENDENTE\"");
+        assert_eq!(ErrorCode::MensalidadeReajustePendente.http_status(), 409);
     }
 
     #[test]

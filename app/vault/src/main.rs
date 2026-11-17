@@ -11,6 +11,7 @@ mod crypto;
 mod db;
 mod error;
 mod jobs;
+mod mensalidade;
 mod ocr;
 mod pagination;
 mod routes;

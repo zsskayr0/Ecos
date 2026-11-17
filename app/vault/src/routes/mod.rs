@@ -9,6 +9,9 @@ pub mod categorias;
 pub mod comprovantes;
 pub mod contas;
 pub mod health;
+pub mod mensalidades;
+#[cfg(test)]
+mod mensalidades_testes;
 #[cfg(test)]
 mod isolamento_testes;
 pub mod pendencias;
@@ -114,6 +117,14 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/recorrencias/:id/duplicar", post(recorrencias::duplicar))
         .route("/vault/recorrencias/:id/exclusoes", post(recorrencias::adicionar_exclusao))
         .route("/vault/recorrencias/:id/encerrar-a-partir", post(recorrencias::encerrar_a_partir))
+        // As rotas fixas (`candidatas`, `previsto-recebido`, `reajustes/:id`) convivem com `/:recorrencia_id`: o
+        // roteador dá prioridade ao trecho literal.
+        .route("/vault/mensalidades", get(mensalidades::listar))
+        .route("/vault/mensalidades/candidatas", get(mensalidades::listar_candidatas))
+        .route("/vault/mensalidades/previsto-recebido", get(mensalidades::listar_previsto_recebido))
+        .route("/vault/mensalidades/reajustes/:id", delete(mensalidades::excluir_reajuste))
+        .route("/vault/mensalidades/:recorrencia_id", get(mensalidades::obter).put(mensalidades::salvar).delete(mensalidades::excluir))
+        .route("/vault/mensalidades/:recorrencia_id/reajustes", post(mensalidades::criar_reajuste))
         .route("/vault/pendencias", get(pendencias::listar).post(pendencias::criar))
         .route("/vault/pendencias/:id", delete(pendencias::excluir))
         .route("/vault/pendencias/:id/converter", post(pendencias::converter))

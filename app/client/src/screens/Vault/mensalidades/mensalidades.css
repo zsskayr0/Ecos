@@ -1,0 +1,166 @@
+/* Mensalidades. Só o que as telas do Cofre ainda não tinham: cartões de ação, selo de estado, linha do tempo e a
+   tabela previsto × recebido. O resto vem de cofre.css e recorrencias.css. */
+.mens { --mens-alerta:var(--ecos-warning); }
+
+/* Selo de estado do ciclo */
+.mens-selo { display:inline-flex; flex:none; align-items:center; padding:4px 10px; border:1px solid var(--border-strong); border-radius:999px; color:var(--text-faint); font-size:10.5px; font-weight:700; white-space:nowrap; }
+.mens-selo[data-estado="atrasado"] { border-color:transparent; background:color-mix(in srgb,var(--cofre-expense) 18%,transparent); color:var(--cofre-expense); }
+.mens-selo[data-estado="avisar"] { border-color:transparent; background:color-mix(in srgb,var(--ecos-warning) 18%,transparent); color:var(--ecos-warning); }
+.mens-selo[data-estado="agendado"] { border-color:transparent; background:color-mix(in srgb,rgb(var(--cofre-blue-rgb)) 16%,transparent); color:rgb(var(--cofre-blue-rgb)); }
+.mens-selo[data-estado="aplicado"] { border-color:transparent; background:color-mix(in srgb,var(--cofre-income) 16%,transparent); color:var(--cofre-income); }
+.mens-selo[data-estado="mantido"] { border-color:transparent; background:color-mix(in srgb,var(--text) 10%,transparent); color:var(--text-muted); }
+
+/* Topo: o que exige ação */
+.mens-acao { display:flex; flex-direction:column; gap:18px; }
+.mens-tudo-certo { display:flex; align-items:center; gap:12px; padding:14px 18px; border-radius:14px; color:var(--cofre-income); }
+.mens-tudo-certo p { margin:0; color:var(--text-muted); font-size:12.5px; line-height:1.5; }
+.mens-tudo-certo p b { color:var(--text); }
+.mens-grupo > header { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:6px 16px; margin-bottom:10px; }
+.mens-grupo h2 { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:14px; font-weight:700; }
+.mens-grupo[data-tom="atrasado"] h2 { color:var(--cofre-expense); }
+.mens-grupo[data-tom="avisar"] h2 { color:var(--ecos-warning); }
+.mens-grupo > header p { margin:0; color:var(--text-muted); font-size:12.5px; }
+.mens-grupo > header p b { color:var(--cofre-expense); font-size:15px; }
+.mens-cartoes { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:12px; }
+.mens-cartao { display:flex; min-width:0; flex-direction:column; gap:10px; padding:16px 18px; border-radius:16px; }
+.mens-cartao[data-tom="atrasado"] { border-color:color-mix(in srgb,var(--cofre-expense) 45%,var(--border)); background:radial-gradient(circle at 15% 0%,color-mix(in srgb,var(--cofre-expense) 12%,transparent),transparent 65%),var(--panel); }
+.mens-cartao[data-tom="avisar"] { border-color:color-mix(in srgb,var(--ecos-warning) 45%,var(--border)); background:radial-gradient(circle at 15% 0%,color-mix(in srgb,var(--ecos-warning) 10%,transparent),transparent 65%),var(--panel); }
+.mens-cartao .cofre-rec-titulo { font-size:14px; }
+.mens-cartao-perda,.mens-cartao-prazo { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; margin:0; }
+.mens-cartao-perda small,.mens-cartao-prazo small { width:100%; color:var(--text-faint); font-size:9px; font-weight:700; letter-spacing:.065em; text-transform:uppercase; }
+.mens-cartao-perda b { color:var(--cofre-expense); font-size:24px; font-weight:700; letter-spacing:-.02em; }
+.mens-cartao-prazo b { font-size:20px; font-weight:700; }
+.mens-cartao-prazo em { color:var(--ecos-warning); font-size:12px; font-style:normal; font-weight:700; }
+.mens-cartao-texto { margin:0; color:var(--text-muted); font-size:12px; line-height:1.55; }
+.mens-cartao-texto b { color:var(--text); }
+.mens-cartao-acoes { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:2px; }
+.mens-cartao-acoes button { min-height:38px; flex:1 1 auto; }
+
+/* Lista de residentes */
+.mens-residentes { display:flex; flex-direction:column; gap:10px; }
+.mens-residentes .cofre-cats-list-head { margin-bottom:0; }
+.mens-linha { cursor:pointer; }
+.mens-linha-valor { flex:none; min-width:104px; text-align:right; font-size:13px; }
+
+/* Detalhe do residente */
+.mens-detalhe { display:flex; flex-direction:column; gap:14px; }
+.mens-voltar { align-self:flex-start; display:inline-flex; align-items:center; gap:6px; min-height:36px; }
+.mens-contrato { display:flex; flex-direction:column; gap:14px; }
+.mens-contrato-topo { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:10px 20px; }
+.mens-contrato-topo h2 { margin:0; font-size:20px; font-weight:700; letter-spacing:-.02em; }
+.mens-contrato-topo small { color:var(--text-faint); font-size:12px; }
+.mens-contrato-valor { display:flex; flex-direction:column; align-items:flex-end; font-size:22px; font-weight:700; }
+.mens-contrato-valor small { font-family:inherit; font-size:10.5px; font-weight:500; }
+.mens-contrato-dados { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 28px; }
+.mens-contrato-acoes { display:flex; flex-wrap:wrap; gap:8px; }
+.mens-contrato-acoes button { display:inline-flex; align-items:center; gap:6px; min-height:36px; }
+.mens-titulo-secao { margin:0 0 14px; font-size:14px; font-weight:700; }
+.mens-linha-tempo { display:flex; flex-direction:column; margin:0; padding:0; list-style:none; }
+.mens-linha-tempo li { position:relative; display:flex; flex-direction:column; gap:6px; padding:0 0 20px 24px; border-left:2px solid var(--border); margin-left:6px; }
+.mens-linha-tempo li:last-child { padding-bottom:2px; border-left-color:transparent; }
+.mens-linha-tempo li::before { content:""; position:absolute; left:-7px; top:3px; width:12px; height:12px; border:2px solid var(--panel); border-radius:50%; background:var(--text-faint); }
+.mens-linha-tempo li[data-estado="atrasado"]::before { background:var(--cofre-expense); }
+.mens-linha-tempo li[data-estado="avisar"]::before { background:var(--ecos-warning); }
+.mens-linha-tempo li[data-estado="agendado"]::before { background:rgb(var(--cofre-blue-rgb)); }
+.mens-linha-tempo li[data-estado="aplicado"]::before { background:var(--cofre-income); }
+.mens-ciclo-topo { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.mens-ciclo-topo b { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.mens-ciclo-valores { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0; color:var(--text-muted); font-size:13px; }
+.mens-ciclo-valores b { color:var(--text); font-size:15px; }
+.mens-ciclo-texto { margin:0; color:var(--text-muted); font-size:12px; line-height:1.55; }
+.mens-ciclo-texto b { color:var(--text); }
+.mens-ciclo-perda { margin:0; color:var(--cofre-expense); font-size:12px; }
+.mens-ciclo-motivo { margin:0; color:var(--text-faint); font-size:12px; font-style:italic; }
+.mens-ciclo-acoes { display:flex; flex-wrap:wrap; gap:8px; margin-top:2px; }
+.mens-ciclo-acoes button { min-height:36px; }
+
+/* Diálogos */
+.mens-modos { width:100%; }
+/* O diálogo é uma coluna com rolagem: sem isto, em tela baixa os blocos encolhem e se sobrepõem em vez de rolar. */
+.cofre-rec-dialogo:has(.mens-previa) > *,.cofre-rec-dialogo:has(.mens-par) > * { flex-shrink:0; }
+.mens-negociar { align-self:flex-start; }
+.mens-datas { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; }
+.mens-datas > small { grid-column:1 / -1; }
+.mens-par { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.mens-previa { display:flex; min-height:132px; flex-direction:column; justify-content:center; gap:10px; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--panel-elevated); }
+.mens-previa-valores { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--text-faint); }
+.mens-previa-valores span { display:flex; flex-direction:column; gap:2px; }
+.mens-previa-valores span:last-child { align-items:flex-end; }
+.mens-previa-valores small { font-size:9px; font-weight:700; letter-spacing:.065em; text-transform:uppercase; }
+.mens-previa-valores b { color:var(--text); font-size:18px; font-weight:700; }
+.mens-previa-valores b[data-tom="pos"] { color:var(--cofre-income); }
+.mens-previa-lista { display:flex; flex-direction:column; gap:5px; margin:0; }
+.mens-previa-lista > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; font-size:12px; }
+.mens-previa-lista dt { color:var(--text-faint); }
+.mens-previa-lista dd { margin:0; color:var(--text); font-weight:600; text-align:right; }
+.mens-previa-lista > div[data-perda] dd { color:var(--cofre-expense); }
+.mens-vazio-modal { display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 4px; color:var(--text-faint); text-align:center; }
+.mens-vazio-modal p { margin:0; color:var(--text); font-size:14px; font-weight:600; }
+.mens-vazio-modal small { font-size:12px; line-height:1.6; }
+.mens-bloqueio-resumo { flex-direction:column; align-items:stretch; gap:6px; }
+.mens-bloqueio-resumo span { display:flex; width:100%; align-items:baseline; justify-content:space-between; gap:12px; }
+.mens-bloqueio-resumo b { color:var(--text); }
+.cofre-rec-restante.mens-bloqueio-resumo b[data-ativo] { color:var(--cofre-income); }
+.cofre-cats-dialog footer.mens-bloqueio-acoes { flex-wrap:wrap; }
+
+/* Previsto × recebido */
+.mens-resumo { display:flex; flex-direction:column; gap:4px; }
+.mens-resumo span { color:var(--text-faint); font-size:11.5px; }
+.mens-resumo b { font-size:20px; font-weight:700; }
+.mens-resumo b[data-tom="pos"] { color:var(--cofre-income); }
+.mens-resumo b[data-tom="neg"] { color:var(--cofre-expense); }
+.mens-tabela th[scope="row"] { position:sticky; left:0; z-index:1; max-width:220px; padding:10px 16px; background:var(--panel); text-align:left; font-weight:600; }
+.mens-tabela thead th:first-child { position:sticky; left:0; z-index:2; }
+.mens-tabela tbody tr { border-top:1px solid var(--border); }
+.mens-tabela tfoot tr { border-top:2px solid var(--border-strong); }
+.mens-tabela tfoot th[scope="row"],.mens-tabela tfoot td { background:var(--panel-elevated); font-weight:700; }
+.mens-celula { min-width:112px; vertical-align:top; }
+.mens-celula b,.mens-celula small,.mens-celula em { display:block; }
+.mens-celula b { font-size:12.5px; }
+.mens-celula small { color:var(--text-faint); font-size:10.5px; font-weight:500; }
+.mens-celula em { color:var(--cofre-expense); font-size:10.5px; font-style:normal; font-weight:700; }
+.mens-celula[data-aberto] { background:color-mix(in srgb,var(--cofre-expense) 9%,transparent); }
+.mens-celula[data-vazia] { color:var(--text-faint); font-weight:500; }
+.mens-aberto { color:var(--text-faint); }
+.mens-aberto[data-ativo] { color:var(--cofre-expense); }
+.mens-legenda { padding:0 4px; }
+
+@media (max-width:700px) {
+  .mens-cartoes { grid-template-columns:minmax(0,1fr); }
+  /* Cabeçalho: a troca de visão ocupa a linha inteira; período e "Adicionar" dividem a de baixo. */
+  .mens .cofre-cats-actions { display:flex; flex-wrap:wrap; }
+  .mens .cofre-cats-actions > .cofre-slide { flex:1 1 100%; }
+  .mens .cofre-cats-actions > .cofre-new-button,.mens .cofre-cats-actions > .relative { flex:1 1 auto; }
+  /* Linha do residente em dois andares: nome em cima; estado e valor embaixo. */
+  .mens-linha { flex-wrap:wrap; row-gap:8px; }
+  .mens-linha .cofre-cats-row-main { flex:1 1 calc(100% - 60px); }
+  .mens-linha .mens-selo { margin-left:48px; }
+  .mens-linha-valor { min-width:0; margin-left:auto; }
+  .mens-contrato-dados,.mens-datas,.mens-par { grid-template-columns:minmax(0,1fr); }
+  .mens-contrato-valor { align-items:flex-start; }
+  .mens-tabela th[scope="row"] { max-width:132px; padding:10px 12px; }
+  .mens-celula { min-width:98px; }
+  .cofre-cats-dialog footer.mens-bloqueio-acoes > button { flex:1 1 auto; }
+}
+
+/* Fora da seção: selo no menu do Cofre e faixa no Painel */
+.cofre-nav-selo { display:inline-grid; min-width:18px; height:18px; flex:none; place-items:center; margin-left:auto; padding:0 5px; border-radius:999px; background:var(--ecos-warning); color:#14100a; font-size:10px; font-weight:700; line-height:1; }
+.cofre-nav-selo[data-tom="atrasado"] { background:var(--cofre-expense); color:#1a0d10; }
+.cofre-nav button { position:relative; }
+/* O selo do botão "Mais" só vale no celular, onde Mensalidades fica dentro dele. */
+.cofre-more-btn .cofre-nav-selo { display:none; }
+.cofre-nav[data-recolhido] .cofre-nav-selo { position:absolute; top:3px; right:3px; margin:0; }
+.cofre-more-sheet .cofre-nav-selo { margin-left:auto; }
+.mens-faixa { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin-bottom:16px; padding:14px 18px; border:1px solid color-mix(in srgb,var(--ecos-warning) 45%,var(--border)); border-radius:14px; background:color-mix(in srgb,var(--ecos-warning) 8%,var(--panel)); color:var(--ecos-warning); }
+.mens-faixa[data-tom="atrasado"] { border-color:color-mix(in srgb,var(--cofre-expense) 45%,var(--border)); background:color-mix(in srgb,var(--cofre-expense) 9%,var(--panel)); color:var(--cofre-expense); }
+.mens-faixa p { display:flex; min-width:0; flex:1 1 260px; flex-direction:column; gap:2px; margin:0; }
+.mens-faixa p b { color:var(--text); font-size:13.5px; font-weight:700; }
+.mens-faixa p span { color:var(--text-muted); font-size:12px; line-height:1.5; }
+.mens-faixa p strong { color:var(--cofre-expense); font-weight:700; }
+.mens-faixa button { display:inline-flex; align-items:center; gap:6px; min-height:38px; }
+@media (max-width:700px) {
+  .cofre-nav-selo { position:absolute; top:4px; right:calc(50% - 26px); margin:0; }
+  .cofre-more-sheet .cofre-nav-selo { position:static; }
+  .cofre-more-btn .cofre-nav-selo { display:inline-grid; }
+  .mens-faixa button { width:100%; justify-content:center; }
+}

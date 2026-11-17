@@ -37,6 +37,62 @@ async fn chamar(app: &Router, usuario: Option<&str>, legado: bool, metodo: &str,
 
 fn senha(s: &str) -> Option<serde_json::Value> { Some(serde_json::json!({ "senha": s })) }
 
+/// Cofre deixado na versão 13 por um binário antigo: se o snapshot antes da migração não pode ser gravado, o
+/// desbloqueio com a senha certa devolve erro de servidor (não "senha incorreta") e o arquivo fica como estava.
+/// Resolvido o problema, a mesma senha abre e migra.
+#[tokio::test]
+async fn falha_ao_preparar_o_cofre_nao_aparece_como_senha_incorreta() {
+    let (app, config, raiz) = app_de_teste();
+    assert_eq!(chamar(&app, Some("ana"), false, "POST", "/vault/ativar", senha("senha-da-ana-123")).await.0, StatusCode::OK);
+    chamar(&app, Some("ana"), false, "POST", "/vault/bloquear", None).await;
+
+    let abrir = || {
+        let conn = rusqlite::Connection::open(config.db_de("ana")).unwrap();
+        #[cfg(feature = "real-sqlcipher")]
+        {
+            let meta = crate::db::meta::VaultMeta::carregar(&config.meta_de("ana")).unwrap().unwrap();
+            let chave = crate::crypto::derivar_chave("senha-da-ana-123", &crate::crypto::de_hex(&meta.salt_hex).unwrap());
+            conn.pragma_update(None, "key", format!("x'{}'", crate::crypto::para_hex(&chave))).unwrap();
+        }
+        conn
+    };
+    let versao = |c: &rusqlite::Connection| c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap();
+    let mut conn = abrir();
+    crate::db::rebaixar_para_teste(&mut conn, 13);
+    drop(conn);
+
+    // A pasta de backups da Ana vira um arquivo: o snapshot não tem onde ser gravado.
+    let backups = config.backups_de("ana");
+    let _ = std::fs::remove_dir_all(&backups);
+    std::fs::write(&backups, b"x").unwrap();
+
+    let (status, corpo) = chamar(&app, Some("ana"), false, "POST", "/vault/desbloquear", senha("senha-da-ana-123")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(corpo["error"], "INTERNAL_ERROR");
+    assert_eq!(corpo["message"], "Não foi possível preparar o Cofre para esta versão. Nenhum dado foi alterado.");
+    assert_eq!(chamar(&app, Some("ana"), false, "GET", "/vault/config", None).await.1["destrancado"], false);
+    assert_eq!(versao(&abrir()), 13, "o arquivo não foi migrado");
+
+    // Senha errada continua sendo senha errada.
+    let (status, corpo) = chamar(&app, Some("ana"), false, "POST", "/vault/desbloquear", senha("outra-senha-qualquer")).await;
+    #[cfg(feature = "real-sqlcipher")]
+    {
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(corpo["message"], "Senha do Cofre incorreta.");
+    }
+    // Sem cifra a chave não é conferida: a "senha errada" abre o arquivo e esbarra na mesma falha de preparo.
+    #[cfg(not(feature = "real-sqlcipher"))]
+    assert_eq!((status, corpo["error"].as_str()), (StatusCode::INTERNAL_SERVER_ERROR, Some("INTERNAL_ERROR")));
+
+    std::fs::remove_file(&backups).unwrap();
+    assert_eq!(chamar(&app, Some("ana"), false, "POST", "/vault/desbloquear", senha("senha-da-ana-123")).await.0, StatusCode::OK);
+    assert_eq!(std::fs::read_dir(&backups).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("pre-migracao-v13-")).count(), 1);
+    chamar(&app, Some("ana"), false, "POST", "/vault/bloquear", None).await;
+    assert_eq!(versao(&abrir()), 14);
+    drop(app);
+    let _ = std::fs::remove_dir_all(raiz);
+}
+
 #[tokio::test]
 async fn financeiro_importacao_dry_run_dedup_totais_e_lote_atomico() {
     use serde_json::json;

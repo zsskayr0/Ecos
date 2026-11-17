@@ -55,7 +55,32 @@ fn lista_de_migracoes() -> Vec<M<'static>> {
         M::up_with_hook(include_str!("../../migrations/0010_formas_pagamento.sql"), soltar_lista_fixa_de_formas),
         M::up(include_str!("../../migrations/0011_subcategorias.sql")),
         M::up(include_str!("../../migrations/0012_categoria_arquivada.sql")),
-        M::up(include_str!("../../migrations/0013_migracao_origem.sql"))]
+        M::up(include_str!("../../migrations/0013_migracao_origem.sql")),
+        M::up(include_str!("../../migrations/0014_mensalidades.sql"))
+            .down(include_str!("../../migrations/0014_mensalidades_down.sql"))]
+}
+
+/// Última versão de esquema que este binário conhece.
+pub fn ultima_versao() -> usize {
+    lista_de_migracoes().len()
+}
+
+/// Nome do snapshot tirado antes de mexer no esquema. Não casa com `vault-AAAA-MM-DD.enc`, então a poda do
+/// backup diário nunca o apaga.
+fn nome_do_snapshot_pre_migracao(versao: usize, quando: chrono::DateTime<chrono::Utc>) -> String {
+    format!("pre-migracao-v{versao}-{}.enc", quando.format("%Y%m%dT%H%M%SZ"))
+}
+
+/// Leva um banco de teste para uma versão anterior do esquema, como se tivesse sido deixado por um binário antigo.
+#[cfg(test)]
+pub(crate) fn rebaixar_para_teste(conn: &mut Connection, versao: usize) {
+    migrations().to_version(conn, versao).unwrap();
+}
+
+/// Esquema completo num banco de teste em memória.
+#[cfg(test)]
+pub(crate) fn migrar_para_teste(conn: &mut Connection) {
+    migrations().to_latest(conn).unwrap();
 }
 
 /// Tira de `transacao` e `transacao_recorrente` o `CHECK (forma_pagamento IN (...))` com as sete formas fixas: a lista
@@ -114,6 +139,12 @@ pub enum VaultDbError {
     Sql(#[from] rusqlite::Error),
 }
 
+/// A chave derivada da senha não abre o arquivo. É o único erro de `destrancar` que significa "senha errada";
+/// qualquer outro (snapshot, migração, disco) é falha de preparo e não pode ser mostrado como senha incorreta.
+#[derive(Debug, thiserror::Error)]
+#[error("chave incorreta ou arquivo do Vault corrompido")]
+pub struct ChaveIncorreta;
+
 #[derive(Clone)]
 pub struct VaultDb(Arc<Mutex<HashMap<String, Connection>>>);
 
@@ -142,7 +173,14 @@ impl VaultDb {
 
     /// Abre (ou cria) o arquivo do Vault do usuário atual com a chave derivada e aplica
     /// migrations. Chamado tanto na ativação quanto em todo desbloqueio.
-    pub fn destrancar(&self, caminho: &Path, chave_hex: &str) -> anyhow::Result<()> {
+    ///
+    /// Antes de mexer no esquema de um banco que já tem dados, grava um snapshot
+    /// `pre-migracao-v<versão atual>-<data-hora UTC>.enc` em `backups` (a pasta de backups do dono). Se o snapshot
+    /// falhar, o desbloqueio falha e o banco não é tocado. `migrar_ate` (`ECOS_VAULT_MIGRAR_ATE`) leva o esquema
+    /// para uma versão anterior em vez da última, para o binário antigo voltar a abrir o arquivo.
+    ///
+    /// Chave errada devolve [`ChaveIncorreta`] (via `downcast_ref`); todo outro erro é falha de preparo.
+    pub fn destrancar(&self, caminho: &Path, chave_hex: &str, backups: &Path, migrar_ate: Option<usize>) -> anyhow::Result<()> {
         let usuario = usuario_atual().ok_or_else(|| anyhow::anyhow!("sem usuário no escopo"))?;
         if let Some(pai) = caminho.parent() {
             std::fs::create_dir_all(pai)?;
@@ -162,9 +200,29 @@ impl VaultDb {
         // primeira leitura de verdade (o arquivo parece "corrompido") — get
         // isso agora, não na primeira query de um handler.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
-            .map_err(|_| anyhow::anyhow!("chave incorreta ou arquivo do Vault corrompido"))?;
+            .map_err(|_| ChaveIncorreta)?;
 
-        migrations().to_latest(&mut conn)?;
+        let ultima = ultima_versao();
+        let alvo = migrar_ate.unwrap_or(ultima);
+        if alvo == 0 || alvo > ultima {
+            anyhow::bail!("versão de esquema pedida ({alvo}) fora do que este binário conhece (1 a {ultima})");
+        }
+        let atual: usize = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?.try_into()?;
+        // Banco recém-criado (versão 0) não tem o que copiar; banco mais novo que o binário é recusado logo abaixo
+        // pela própria biblioteca, sem ser tocado.
+        if atual != 0 && atual != alvo && atual <= ultima {
+            std::fs::create_dir_all(backups)?;
+            let destino = backups.join(nome_do_snapshot_pre_migracao(atual, chrono::Utc::now()));
+            conn.execute("VACUUM INTO ?1", [destino.to_string_lossy().as_ref()])
+                .map_err(|e| anyhow::anyhow!("snapshot antes da migração falhou; o banco não foi alterado: {e}"))?;
+            tracing::info!(de = atual, para = alvo, arquivo = %destino.display(), "snapshot do Cofre antes de migrar o esquema");
+        }
+        if alvo == ultima {
+            migrations().to_latest(&mut conn)?;
+        } else {
+            tracing::warn!(de = atual, para = alvo, "ECOS_VAULT_MIGRAR_ATE: levando o esquema do Cofre para uma versão anterior");
+            migrations().to_version(&mut conn, alvo)?;
+        }
         self.0.lock().expect("mutex do vault nunca deve ser envenenado").insert(usuario, conn);
         Ok(())
     }
@@ -214,7 +272,7 @@ mod testes_cifra {
             let db = VaultDb::trancado();
             USUARIO
                 .scope("ana".into(), async {
-                    db.destrancar(&caminho, &chave).unwrap();
+                    db.destrancar(&caminho, &chave, &raiz.join("backups"), None).unwrap();
                     let s = segredo.clone();
                     db.with(move |c| {
                         c.execute("INSERT INTO comprovante_rascunho (id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES ('1','a.pdf','application/pdf',1,'x',?1)", [&s])
@@ -230,7 +288,7 @@ mod testes_cifra {
             let db = VaultDb::trancado();
             USUARIO
                 .scope("ana".into(), async {
-                    db.destrancar(&caminho, &chave).unwrap();
+                    db.destrancar(&caminho, &chave, &raiz.join("backups"), None).unwrap();
                     db.snapshot_para(&backup).await.unwrap();
                 })
                 .await;
@@ -259,7 +317,7 @@ mod testes_cifra {
 mod testes_de_migracao {
     use super::*;
 
-    /// Cofre real na versão 10 (a da imagem de 09/10) sobe para 13: as três migrations são só aditivas, nada se
+    /// Cofre real na versão 10 (a da imagem de 09/10) sobe para a última: as migrations são só aditivas, nada se
     /// perde, as categorias antigas viram principais e não arquivadas, e repetir a subida não muda nada.
     #[test]
     fn subcategorias_arquivadas_e_rastro_de_migracao_sao_aditivos() {
@@ -272,7 +330,7 @@ mod testes_de_migracao {
         assert_eq!(antes, 10);
 
         migrations().to_latest(&mut conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 13);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), ultima_versao() as i64);
         let (pai, arquivada, lancamentos): (Option<String>, i64, i64) = conn
             .query_row("SELECT pai_id, arquivada, (SELECT COUNT(*) FROM transacao WHERE categoria_id = 'c1') FROM categoria WHERE id = 'c1'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap();
@@ -308,5 +366,244 @@ mod testes_de_migracao {
         assert!(conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, espaco, criado_por) VALUES ('t3','invalido',1,'2026-10-01','X','pessoal','ana')", []).is_err());
         let integridade: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
         assert_eq!(integridade, "ok");
+    }
+
+    const TABELAS_ANTIGAS: [&str; 8] = ["transacao", "anexo", "transacao_recorrente", "beneficiario", "categoria", "conta", "ocorrencia_processada", "pendencia_avulsa"];
+
+    fn versao(conn: &Connection) -> i64 {
+        conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap()
+    }
+
+    fn contagens(conn: &Connection) -> Vec<i64> {
+        TABELAS_ANTIGAS.iter().map(|t| conn.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0)).unwrap()).collect()
+    }
+
+    fn tem_tabela(conn: &Connection, nome: &str) -> bool {
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)", [nome], |r| r.get(0)).unwrap()
+    }
+
+    /// Conteúdo de um Cofre em uso na versão 13: beneficiário, recorrência, lançamento gerado por ela e um anexo.
+    fn semear_v13(conn: &Connection) {
+        conn.execute("INSERT INTO beneficiario (id, nome) VALUES ('b1','Residente Um')", []).unwrap();
+        conn.execute("INSERT INTO transacao_recorrente (id, tipo, descricao, valor_centavos, beneficiario_id, forma_pagamento, tipo_recorrencia, data_inicio, espaco) VALUES ('r1','entrada','Mensalidade',350000,'b1','pix','fixa','2024-11-20','pessoal')", []).unwrap();
+        conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, beneficiario_id, transacao_recorrente_id, espaco, criado_por) VALUES ('t1','entrada',350000,'2026-10-20','Mensalidade','b1','r1','pessoal','ana')", []).unwrap();
+        conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES ('a1','t1','recibo.png','image/png',3,'abc',x'010203')", []).unwrap();
+    }
+
+    fn banco_v13() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        Migrations::new(lista_de_migracoes()[..13].to_vec()).to_latest(&mut conn).unwrap();
+        semear_v13(&conn);
+        assert_eq!(versao(&conn), 13);
+        conn
+    }
+
+    /// Banco na versão 13 com dados e anexo sobe para 14: a 0014 só cria tabelas, nada antigo muda, e repetir a
+    /// subida não faz nada.
+    #[test]
+    fn mensalidades_sobe_de_13_para_14_sem_tocar_no_que_existe() {
+        let mut conn = banco_v13();
+        let antes = contagens(&conn);
+        let esquema_antes: Vec<String> = conn.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!(versao(&conn), 14);
+        assert_eq!(contagens(&conn), antes);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        let anexo: Vec<u8> = conn.query_row("SELECT conteudo FROM anexo WHERE id = 'a1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(anexo, [1, 2, 3]);
+        assert_eq!(conn.query_row("SELECT valor_centavos FROM transacao_recorrente WHERE id = 'r1'", [], |r| r.get::<_, i64>(0)).unwrap(), 350000);
+        // Tabelas novas nascem vazias (nenhum backfill) e as antigas mantêm o mesmo texto de esquema.
+        assert_eq!(conn.query_row("SELECT (SELECT COUNT(*) FROM mensalidade) + (SELECT COUNT(*) FROM mensalidade_reajuste)", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        let esquema_depois: Vec<String> = conn
+            .prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name NOT IN ('mensalidade', 'mensalidade_reajuste') ORDER BY name")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(esquema_depois, esquema_antes);
+        assert!(conn.execute("INSERT INTO mensalidade_reajuste (id, recorrencia_id, ciclo, valor_anterior_centavos, valor_novo_centavos, regra) VALUES ('x','r1','2026-11-20',1,2,'inventada')", []).is_err(), "regra fora da lista é recusada");
+
+        conn.execute("INSERT INTO mensalidade (recorrencia_id, data_base, ciclos_desde) VALUES ('r1','2024-11-20','2026-11-20')", []).unwrap();
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!(versao(&conn), 14);
+        assert_eq!(contagens(&conn), antes);
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM mensalidade", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+    }
+
+    /// 14 desce para 13 perdendo só as duas tabelas novas, e um binário que só conhece as 13 primeiras abre o
+    /// resultado (antes da descida ele recusa o arquivo).
+    #[test]
+    fn mensalidades_desce_de_14_para_13_sem_perda_nas_tabelas_antigas() {
+        let mut conn = banco_v13();
+        migrations().to_latest(&mut conn).unwrap();
+        // Lançamento feito depois da migração: tem de sobreviver à descida.
+        conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, espaco, criado_por) VALUES ('t2','saida',900,'2026-11-16','Depois','pessoal','ana')", []).unwrap();
+        conn.execute("INSERT INTO mensalidade (recorrencia_id, data_base, ciclos_desde) VALUES ('r1','2024-11-20','2026-11-20')", []).unwrap();
+        conn.execute("INSERT INTO mensalidade_reajuste (id, recorrencia_id, ciclo, valor_anterior_centavos, valor_novo_centavos, regra, vigente_desde) VALUES ('j1','r1','2026-11-20',350000,385000,'minimo','2026-12-20')", []).unwrap();
+        let antes = contagens(&conn);
+
+        let binario_antigo = Migrations::new(lista_de_migracoes()[..13].to_vec());
+        assert!(binario_antigo.to_latest(&mut conn).is_err(), "o binário antigo recusa um banco na versão 14");
+        assert_eq!(versao(&conn), 14);
+
+        migrations().to_version(&mut conn, 13).unwrap();
+        assert_eq!(versao(&conn), 13);
+        assert_eq!(contagens(&conn), antes);
+        assert!(!tem_tabela(&conn, "mensalidade") && !tem_tabela(&conn, "mensalidade_reajuste"));
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_reajuste_vigencia'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        let anexo: Vec<u8> = conn.query_row("SELECT conteudo FROM anexo WHERE id = 'a1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(anexo, [1, 2, 3]);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+
+        binario_antigo.to_latest(&mut conn).expect("o binário antigo abre o banco depois da descida");
+        assert_eq!(versao(&conn), 13);
+        assert_eq!(contagens(&conn), antes);
+
+        // E o binário novo volta a subir o mesmo arquivo, com as tabelas vazias.
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!((versao(&conn), contagens(&conn)), (14, antes));
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM mensalidade_reajuste", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    const CHAVE: &str = "abababababababababababababababababababababababababababababababab";
+
+    /// Arquivo de Cofre na versão 13, com dados, cifrado com `CHAVE` quando a build tem SQLCipher.
+    fn arquivo_v13(raiz: &Path) -> std::path::PathBuf {
+        std::fs::create_dir_all(raiz).unwrap();
+        let caminho = raiz.join("ecos-vault.db");
+        let mut conn = Connection::open(&caminho).unwrap();
+        #[cfg(feature = "real-sqlcipher")]
+        conn.pragma_update(None, "key", format!("x'{CHAVE}'")).unwrap();
+        Migrations::new(lista_de_migracoes()[..13].to_vec()).to_latest(&mut conn).unwrap();
+        semear_v13(&conn);
+        caminho
+    }
+
+    fn abrir(caminho: &Path) -> Connection {
+        let conn = Connection::open(caminho).unwrap();
+        #[cfg(feature = "real-sqlcipher")]
+        conn.pragma_update(None, "key", format!("x'{CHAVE}'")).unwrap();
+        conn
+    }
+
+    fn snapshots(pasta: &Path) -> Vec<String> {
+        let mut nomes: Vec<String> = std::fs::read_dir(pasta).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+        nomes.sort();
+        nomes
+    }
+
+    fn destrancar_como(usuario: &str, caminho: &Path, backups: &Path, migrar_ate: Option<usize>) -> anyhow::Result<()> {
+        let db = VaultDb::trancado();
+        USUARIO.sync_scope(usuario.to_string(), || db.destrancar(caminho, CHAVE, backups, migrar_ate))
+    }
+
+    /// Destrancar um Cofre na versão 13 grava o snapshot antes de migrar; destrancar de novo (já na última) não
+    /// grava outro; Cofre recém-criado não grava nenhum.
+    #[test]
+    fn snapshot_pre_migracao_so_quando_o_esquema_vai_mudar() {
+        let raiz = std::env::temp_dir().join(format!("ecos-pre-migracao-{}", ecos_core::new_id()));
+        let caminho = arquivo_v13(&raiz);
+        let backups = raiz.join("backups").join("ana");
+
+        destrancar_como("ana", &caminho, &backups, None).unwrap();
+        let nomes = snapshots(&backups);
+        assert_eq!(nomes.len(), 1, "um snapshot: {nomes:?}");
+        assert!(nomes[0].starts_with("pre-migracao-v13-") && nomes[0].ends_with(".enc"), "nome inesperado: {}", nomes[0]);
+        assert_eq!(versao(&abrir(&caminho)), 14);
+
+        // O snapshot é o banco de antes: versão 13, com os dados e sem as tabelas novas.
+        let copia = abrir(&backups.join(&nomes[0]));
+        assert_eq!(versao(&copia), 13);
+        assert_eq!(contagens(&copia), contagens(&abrir(&caminho)));
+        assert!(!tem_tabela(&copia, "mensalidade"));
+        assert_eq!(copia.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        #[cfg(feature = "real-sqlcipher")]
+        assert!(!std::fs::read(backups.join(&nomes[0])).unwrap().starts_with(b"SQLite format 3"), "snapshot sai cifrado");
+        drop(copia);
+
+        destrancar_como("ana", &caminho, &backups, None).unwrap();
+        assert_eq!(snapshots(&backups), nomes, "já na última versão: nenhum snapshot novo");
+
+        let novo = raiz.join("novo").join("ecos-vault.db");
+        let backups_novo = raiz.join("backups").join("bia");
+        destrancar_como("bia", &novo, &backups_novo, None).unwrap();
+        assert!(snapshots(&backups_novo).is_empty(), "Cofre recém-criado não tem o que copiar");
+        assert_eq!(versao(&abrir(&novo)), 14);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// Falha fechada: se o snapshot não pode ser gravado, o desbloqueio falha e o banco continua na versão 13.
+    #[test]
+    fn snapshot_que_falha_impede_o_desbloqueio_e_nao_toca_no_banco() {
+        let raiz = std::env::temp_dir().join(format!("ecos-pre-migracao-{}", ecos_core::new_id()));
+        let caminho = arquivo_v13(&raiz);
+        // A "pasta" de backups é um arquivo: nada pode ser criado dentro dela.
+        let backups = raiz.join("backups-nao-e-pasta");
+        std::fs::write(&backups, b"x").unwrap();
+        let antes = contagens(&abrir(&caminho));
+
+        let db = VaultDb::trancado();
+        let resultado = USUARIO.sync_scope("ana".to_string(), || {
+            let r = db.destrancar(&caminho, CHAVE, &backups, None);
+            assert!(!db.esta_destrancado());
+            r
+        });
+        let erro = resultado.unwrap_err();
+        assert!(erro.downcast_ref::<ChaveIncorreta>().is_none(), "falha de snapshot não é chave errada: {erro}");
+        let conn = abrir(&caminho);
+        assert_eq!((versao(&conn), contagens(&conn)), (13, antes));
+        assert!(!tem_tabela(&conn, "mensalidade"));
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// Com a cifra de verdade, a chave errada é reconhecida como tal, não grava snapshot e não mexe no arquivo.
+    #[cfg(feature = "real-sqlcipher")]
+    #[test]
+    fn chave_errada_e_erro_proprio_e_nao_gera_snapshot() {
+        let raiz = std::env::temp_dir().join(format!("ecos-pre-migracao-{}", ecos_core::new_id()));
+        let caminho = arquivo_v13(&raiz);
+        let backups = raiz.join("backups").join("ana");
+        let db = VaultDb::trancado();
+        let erro = USUARIO.sync_scope("ana".to_string(), || db.destrancar(&caminho, &"00".repeat(32), &backups, None)).unwrap_err();
+        assert!(erro.downcast_ref::<ChaveIncorreta>().is_some(), "{erro}");
+        assert!(snapshots(&backups).is_empty());
+        assert_eq!(versao(&abrir(&caminho)), 13);
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// `ECOS_VAULT_MIGRAR_ATE=13`: o desbloqueio desce o esquema (com snapshot da versão 14 antes) e o binário
+    /// antigo abre o arquivo. Repetir com o banco já na 13 não faz nada.
+    #[test]
+    fn migrar_ate_desce_o_esquema_com_snapshot_antes() {
+        let raiz = std::env::temp_dir().join(format!("ecos-pre-migracao-{}", ecos_core::new_id()));
+        let caminho = arquivo_v13(&raiz);
+        let backups = raiz.join("backups").join("ana");
+        destrancar_como("ana", &caminho, &backups, None).unwrap();
+        abrir(&caminho).execute("INSERT INTO mensalidade (recorrencia_id, data_base, ciclos_desde) VALUES ('r1','2024-11-20','2026-11-20')", []).unwrap();
+        let antes = contagens(&abrir(&caminho));
+
+        destrancar_como("ana", &caminho, &backups, Some(13)).unwrap();
+        let nomes = snapshots(&backups);
+        assert_eq!(nomes.iter().filter(|n| n.starts_with("pre-migracao-v14-")).count(), 1, "{nomes:?}");
+        assert_eq!(nomes.len(), 2);
+        let mut conn = abrir(&caminho);
+        assert_eq!((versao(&conn), contagens(&conn)), (13, antes));
+        assert!(!tem_tabela(&conn, "mensalidade"));
+        Migrations::new(lista_de_migracoes()[..13].to_vec()).to_latest(&mut conn).expect("binário antigo abre");
+        drop(conn);
+        // O que estava nas tabelas novas fica guardado no snapshot da versão 14.
+        let v14 = abrir(&backups.join(nomes.iter().find(|n| n.starts_with("pre-migracao-v14-")).unwrap()));
+        assert_eq!(v14.query_row("SELECT COUNT(*) FROM mensalidade", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        drop(v14);
+
+        destrancar_como("ana", &caminho, &backups, Some(13)).unwrap();
+        assert_eq!(snapshots(&backups).len(), 2, "já na versão pedida: nada a fazer");
+        assert!(destrancar_como("ana", &caminho, &backups, Some(15)).is_err(), "versão que o binário não conhece é recusada");
+        assert!(destrancar_como("ana", &caminho, &backups, Some(0)).is_err());
+        assert_eq!(versao(&abrir(&caminho)), 13);
+        let _ = std::fs::remove_dir_all(raiz);
     }
 }

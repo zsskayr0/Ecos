@@ -13,11 +13,18 @@ use crate::db::VaultDbError;
 pub struct AppError {
     code: ErrorCode,
     message: Option<String>,
+    details: Option<serde_json::Value>,
 }
 
 impl AppError {
     pub fn new(code: ErrorCode) -> Self {
-        Self { code, message: None }
+        Self { code, message: None, details: None }
+    }
+
+    /// Dados estruturados do erro, para a tela agir sem interpretar a mensagem. Só aparece no corpo quando definido.
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 
     pub fn with_message(mut self, message: impl Into<String>) -> Self {
@@ -62,6 +69,8 @@ impl From<std::io::Error> for AppError {
 struct ErrorBody {
     error: ErrorCode,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<serde_json::Value>,
 }
 
 impl IntoResponse for AppError {
@@ -70,6 +79,7 @@ impl IntoResponse for AppError {
         let body = ErrorBody {
             error: self.code,
             message: self.message.unwrap_or_else(|| self.code.message().to_string()),
+            details: self.details,
         };
         (status, Json(body)).into_response()
     }

@@ -32,6 +32,8 @@ pub(crate) async fn executar(state: &AppState) -> Result<(), crate::db::VaultDbE
         .db
         .with(move |c| {
             let tx = c.unchecked_transaction()?;
+            // Reajustes de mensalidade cuja vigência chegou: a regra passa a guardar o valor em vigor hoje.
+            crate::mensalidade::aplicar_vigencias(&tx, &hoje.to_string())?;
             let pendentes = crate::routes::fluxo::ocorrencias(
                 &tx,
                 NaiveDate::from_ymd_opt(1, 1, 1).unwrap(),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { encaminharBloqueio } from "../mensalidades/BloqueioReajuste";
 import { Paperclip, Receipt, X } from "lucide-react";
 import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi, type TipoAnexo } from "@/lib/api";
 import { ROTULOS_ANEXO } from "./rotulos";
@@ -54,7 +55,8 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprova
       await carregar();
       aoMudar?.();
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível anexar o arquivo.");
+      // Anexar comprovante efetiva o recebimento: com reajuste de mensalidade sem decisão, abre o diálogo que resolve.
+      if (!encaminharBloqueio(e)) setErro(e instanceof ApiError ? e.message : "Não foi possível anexar o arquivo.");
     } finally {
       setEnviando(false);
     }

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { encaminharBloqueio } from "../mensalidades/BloqueioReajuste";
 import { createPortal } from "react-dom";
 import { Paperclip, Receipt } from "lucide-react";
 import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi, type TipoAnexo } from "@/lib/api";
@@ -56,7 +57,7 @@ export function BotaoAnexos({ transacaoId, quantidade, descricao, aoMudar, tipo 
       for (const arquivo of lista) await vault.anexos.enviar(transacaoId, arquivo, tipo);
       aoMudar();
     } catch (e) {
-      avisar(e instanceof ApiError ? e.message : "Não foi possível anexar o arquivo.");
+      if (!encaminharBloqueio(e)) avisar(e instanceof ApiError ? e.message : "Não foi possível anexar o arquivo.");
       setOcupado(false);
       return;
     }

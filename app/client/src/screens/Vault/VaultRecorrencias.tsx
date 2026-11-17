@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { ArrowDown, ArrowUp, Check, CloudOff, LayoutGrid, List, PanelRight, Pause, Play, Plus, Repeat2, Table2, Trash2 } from "lucide-react";
-import { financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type OcorrenciaRecorrente, type RecorrenciaApi } from "@/lib/api";
+import { bloqueioDeMensalidade, financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type OcorrenciaRecorrente, type RecorrenciaApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { maiorValor, useModoValor } from "@/lib/exibicao-valores";
 import { ValorComIndicador } from "./nexus/IndicadorValor";
@@ -12,6 +12,7 @@ import { BarrasPorPeriodo, MapaDeIntensidade } from "./recorrencias/GraficosReco
 import { ConclusaoParcialModal, ConfirmarModal, ReagendarModal } from "./recorrencias/Dialogos";
 import { MenuOcorrencia, type AcoesDaOcorrencia } from "./recorrencias/MenuOcorrencia";
 import { RecorrenciaModal } from "./recorrencias/RecorrenciaModal";
+import { BloqueioReajuste, type BloqueioPendente } from "./mensalidades/BloqueioReajuste";
 import {
   baldesDoPeriodo, dataExibida, filtrarPorTipo, hojeLocalISO, montarLinhas, payloadDaRegra, rotuloDaRegra, rotuloFrequencia, totaisPorBalde,
   type FiltroTipo, type LinhaRecorrencia,
@@ -32,12 +33,13 @@ function gravarPref(chave: string, valor: string) {
 type Painel = { tipo: "nova"; modelo?: RecorrenciaApi } | { tipo: "editar"; regraId: string; linha?: LinhaRecorrencia };
 type Confirmacao = { titulo: string; mensagem: React.ReactNode; rotulo: string; acao: () => Promise<void> };
 
-export function VaultRecorrencias({ period, onPeriodChange, categorias, atualizar, recarregar }: {
+export function VaultRecorrencias({ period, onPeriodChange, categorias, atualizar, recarregar, irParaMensalidades }: {
   period: Period;
   onPeriodChange: (p: Period) => void;
   categorias: CategoriaApi[];
   atualizar: () => void;
   recarregar: number;
+  irParaMensalidades?: () => void;
 }) {
   const { from: de, to: ate } = periodRange(period);
   const [regras, setRegras] = useState<RecorrenciaApi[] | null>(null);
@@ -55,6 +57,7 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   const [parcial, setParcial] = useState<LinhaRecorrencia | null>(null);
   const [reagendando, setReagendando] = useState<LinhaRecorrencia | null>(null);
   const [confirmacao, setConfirmacao] = useState<Confirmacao | null>(null);
+  const [bloqueio, setBloqueio] = useState<BloqueioPendente | null>(null);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const ancora = useRef<string | null>(null);
   const avisoTimer = useRef<number | undefined>(undefined);
@@ -106,7 +109,13 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
   async function executar(fn: () => Promise<unknown>, sucesso?: string): Promise<boolean> {
     setErro(null);
     try { await fn(); recarregarTudo(); if (sucesso) avisar(sucesso); return true; }
-    catch (e) { setErro((e as Error).message); return false; }
+    catch (e) {
+      // Mensalidade com reajuste sem decisão: em vez de só mostrar a recusa, abre o diálogo que resolve e repete a ação.
+      const b = bloqueioDeMensalidade(e);
+      if (b) setBloqueio({ ...b, repetir: () => executar(fn, sucesso) });
+      else setErro((e as Error).message);
+      return false;
+    }
   }
 
   // --- Ações por ocorrência --------------------------------------------------------------------------
@@ -222,6 +231,7 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
       linha={painel?.tipo === "editar" ? painel.linha : undefined}
       contexto={painel?.tipo === "editar" && painel.linha ? `${rotuloDaRegra(painel.linha)} · vence em ${dataBR(painel.linha.data)} · ${painel.linha.efetivada ? "efetivada" : "pendente"}` : undefined}
       onClose={() => setPainel(null)} onSalvo={() => { recarregarTudo(); if (painel?.tipo === "nova") setPainel(null); }}
+      irParaMensalidades={irParaMensalidades}
     />
   ) : null;
 
@@ -376,8 +386,19 @@ export function VaultRecorrencias({ period, onPeriodChange, categorias, atualiza
 
       {!modoFixo && modalRegra}
 
-      {parcial && <ConclusaoParcialModal linha={parcial} onClose={() => setParcial(null)} onConfirmar={async (pago) => { await concluirParcial(parcial, pago); setParcial(null); setPainel(null); recarregarTudo(); avisar("Conclusão parcial registrada; o restante virou pendência."); }} />}
+      {parcial && <ConclusaoParcialModal linha={parcial} onClose={() => setParcial(null)} onConfirmar={async (pago) => {
+        const linha = parcial;
+        const concluirEAvisar = async () => { await concluirParcial(linha, pago); setParcial(null); setPainel(null); recarregarTudo(); avisar("Conclusão parcial registrada; o restante virou pendência."); };
+        try { await concluirEAvisar(); }
+        catch (e) {
+          const b = bloqueioDeMensalidade(e);
+          if (!b) throw e;
+          setParcial(null);
+          setBloqueio({ ...b, repetir: () => concluirEAvisar().catch((err: Error) => setErro(err.message)) });
+        }
+      }} />}
       {reagendando && <ReagendarModal linha={reagendando} atual={dataExibida(reagendando)} onClose={() => setReagendando(null)} onConfirmar={async (data) => { await reagendar(reagendando, data); setReagendando(null); recarregarTudo(); avisar("Ocorrência reagendada."); }} />}
+      {bloqueio && <BloqueioReajuste bloqueio={bloqueio} onClose={() => setBloqueio(null)} aoResolver={recarregarTudo} />}
       {confirmacao && <ConfirmarModal titulo={confirmacao.titulo} mensagem={confirmacao.mensagem} rotuloConfirmar={confirmacao.rotulo} onClose={() => setConfirmacao(null)} onConfirmar={confirmacao.acao} />}
     </section>
   );

@@ -7,7 +7,7 @@ import { centavosDoCampo, centavosParaCampo, type LinhaRecorrencia } from "./oco
 const dataBR = (iso: string) => iso.split("-").reverse().join("/");
 
 /** Casca comum: fundo escurecido, Esc e clique fora fecham (a menos que esteja ocupado). */
-function Casca({ titulo, sobre, onClose, ocupado, children, onSubmit }: {
+export function Casca({ titulo, sobre, onClose, ocupado, children, onSubmit }: {
   titulo: string; sobre?: string; onClose: () => void; ocupado?: boolean; children: ReactNode; onSubmit: (e: FormEvent) => void;
 }) {
   useEffect(() => {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Receipt } from "lucide-react";
-import { vault, ApiError, enviarLancamentoParaEspaco, type TransacaoApi, type FormaPagamento } from "@/lib/api";
+import { vault, ApiError, bloqueioDeMensalidade, enviarLancamentoParaEspaco, type TransacaoApi, type FormaPagamento } from "@/lib/api";
 import { SeletorDestino } from "./SeletorDestino";
+import { BloqueioGlobal, BloqueioReajuste, type BloqueioPendente } from "./mensalidades/BloqueioReajuste";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useRefreshBus } from "@/lib/refresh-bus";
@@ -61,6 +62,7 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
   const [draft, setDraft] = useState<CapturaDraft>(DRAFT_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [bloqueio, setBloqueio] = useState<BloqueioPendente | null>(null);
 
   useEffect(() => {
     if (!id) { setNaoEncontrada(true); return; }
@@ -167,7 +169,10 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
       } else aoSalvar();
       return true;
     } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Não foi possível salvar.");
+      // Recebimento de mensalidade com reajuste sem decisão: o diálogo resolve o ciclo e salva de novo.
+      const b = bloqueioDeMensalidade(e);
+      if (b) setBloqueio({ ...b, repetir: () => salvar(avancar) });
+      else setErro(e instanceof ApiError ? e.message : "Não foi possível salvar.");
       return false;
     } finally {
       setSalvando(false);
@@ -229,6 +234,8 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
 
   return (
     <div ref={raiz} data-modo-slide={slide || undefined} className={aninhado ? "cofre-capture-scope" : "cofre-app cofre-capture-scope"}>
+      {bloqueio && <BloqueioReajuste bloqueio={bloqueio} onClose={() => setBloqueio(null)} />}
+      <BloqueioGlobal aoResolver={notificar} />
       {enviando && <div className="cofre-envio-backdrop" role="dialog" aria-modal="true" aria-label="Enviar para outra equipe" onMouseDown={(e) => { if (e.target === e.currentTarget && !enviando.ocupado) setEnviando(null); }}>
         <div className="cofre-envio-card">
           <h2>Enviar para outra equipe</h2>

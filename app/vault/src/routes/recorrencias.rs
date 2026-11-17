@@ -163,7 +163,8 @@ pub async fn obter(State(state): State<AppState>, Path(id): Path<String>) -> App
 pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<RecorrenciaPayload>) -> AppResult<Json<serde_json::Value>> {
     validar(&payload)?;
     super::formas_pagamento::checar(&state, &payload.forma_pagamento).await?;
-    // 0 = não existe, 1 = ok, 2 = tentou mexer na âncora de uma série que já gerou lançamentos.
+    // 0 = não existe, 1 = ok, 2 = tentou mexer na âncora de uma série que já gerou lançamentos,
+    // 3 = tentou mudar à mão um valor controlado pelas Mensalidades.
     let resultado = state
         .db
         .with({
@@ -175,6 +176,10 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
                 let Some((inicio, tipo_rec, geradas)) = atual else { return Ok(0u8) };
                 if geradas > 0 && (inicio != payload.data_inicio.to_string() || tipo_rec != payload.tipo_recorrencia) {
                     return Ok(2);
+                }
+                let valor_atual: i64 = conn.query_row("SELECT valor_centavos FROM transacao_recorrente WHERE id = ?1", [&id], |r| r.get(0))?;
+                if payload.valor_centavos != valor_atual && crate::mensalidade::valor_controlado(conn, &id)? {
+                    return Ok(3);
                 }
                 conn.execute(
                     "UPDATE transacao_recorrente SET tipo=?1, descricao=?2, valor_centavos=?3, categoria_id=?4, conta_id=?5,                      beneficiario_id=?6, forma_pagamento=?7, frequencia=?8, intervalo=?9, dia_vencimento=?10, data_fim=?11,                      total_parcelas=?12, observacoes=?13, data_inicio=?14, tipo_recorrencia=?15, ativa=COALESCE(?16, ativa),                      atualizado_em=datetime('now') WHERE id=?17",
@@ -205,6 +210,7 @@ pub async fn atualizar(State(state): State<AppState>, Path(id): Path<String>, Js
     match resultado {
         0 => return Err(AppError::new(ErrorCode::RecurringTransactionNotFound)),
         2 => return Err(AppError::new(ErrorCode::ValidationError).with_message("Início e tipo não podem mudar depois que a recorrência já gerou lançamentos")),
+        3 => return Err(AppError::new(ErrorCode::Conflict).with_message("O valor desta recorrência é controlado pelas Mensalidades. Registre um reajuste para alterá-lo.")),
         _ => {}
     }
     obter(State(state), Path(id)).await
@@ -219,6 +225,7 @@ pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>) -> A
             tx.execute("UPDATE transacao SET transacao_recorrente_id = NULL, data_ocorrencia = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
             tx.execute("UPDATE pendencia_avulsa SET transacao_recorrente_id = NULL WHERE transacao_recorrente_id = ?1", [&id])?;
             tx.execute("DELETE FROM ocorrencia_processada WHERE recorrencia_id = ?1", [&id])?;
+            crate::mensalidade::apagar_da_recorrencia(&tx, &id)?;
             let n = tx.execute("DELETE FROM transacao_recorrente WHERE id = ?1", [&id])?;
             tx.commit()?;
             Ok(n)

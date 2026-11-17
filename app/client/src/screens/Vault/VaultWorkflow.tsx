@@ -1,7 +1,8 @@
 import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { useEffect, useRef, useState } from "react";
 import { useAppUI } from "@/lib/ui-context";
-import { financeiro, vault, type TransacaoApi } from "@/lib/api";
+import { bloqueioDeMensalidade, financeiro, vault, type TransacaoApi } from "@/lib/api";
+import { BloqueioReajuste, type BloqueioPendente } from "./mensalidades/BloqueioReajuste";
 import { formatMoeda, hojeISO } from "@/lib/format";
 import { valorBR } from "./csv";
 import { buildMonthGrid, WEEKDAY_ABBR } from "./nexus/period";
@@ -33,6 +34,7 @@ export function VaultWorkflow({ atualizar, recarregar }: {
     const [descricao, setDescricao] = useState("");
     const [valor, setValor] = useState("");
     const [tipo, setTipo] = useState<"entrada" | "saida">("saida");
+    const [bloqueio, setBloqueio] = useState<BloqueioPendente | null>(null);
     const operando = useRef(false);
     const { setDiaCofre } = useAppUI();
     useEffect(() => { setDiaCofre(diaAberto); }, [diaAberto, setDiaCofre]);
@@ -105,6 +107,9 @@ export function VaultWorkflow({ atualizar, recarregar }: {
         }
         catch (e) {
             setItems(antes);
+            // Mensalidade com reajuste sem decisão: o diálogo resolve o ciclo e repete a conclusão.
+            const b = bloqueioDeMensalidade(e);
+            if (b) { setBloqueio({ ...b, repetir: () => mover(item, date) }); return; }
             setErro(`${(e as Error).message} A visualização foi restaurada. Atualize para confirmar o estado no servidor; repetir a operação não duplica pendências ou recorrências.`);
         }
         finally {
@@ -136,7 +141,7 @@ export function VaultWorkflow({ atualizar, recarregar }: {
             const r=await financeiro.lote([item.id],"efetivar");
             if (r.erros.length) throw new Error(r.erros[0].erro);
             setVersao(v=>v+1);atualizar();
-        } catch(e) {setItems(antes);setErro((e as Error).message);}
+        } catch(e) {setItems(antes);const b=bloqueioDeMensalidade(e);if(b)setBloqueio({...b,repetir:()=>concluirLancamento(item)});else setErro((e as Error).message);}
         finally {operando.current=false;setOcupado(false);}
     }
     async function excluir(item: Item) { setOcupado(true); try {
@@ -160,6 +165,7 @@ export function VaultWorkflow({ atualizar, recarregar }: {
     <h2 className="font-display text-xl">Fluxo financeiro</h2>
     <fieldset disabled={ocupado} className="cofre-flow-toolbar"><label className="sr-only" htmlFor="fluxo-visao">Visão</label><SeletorEcos ariaLabel="Visão do fluxo" classe="ecos-input" valor={modo} onChange={setModo} opcoes={[{ valor: "timeline", rotulo: "Timeline" }, { valor: "month", rotulo: "Mês" }, { valor: "week", rotulo: "Semana" }, { valor: "fortnight", rotulo: "Quinzena" }]} /><button className="ecos-input" aria-label="Período anterior" onClick={() => avancar(-1)}>‹</button><label className="sr-only" htmlFor="fluxo-data">Data de referência</label><input id="fluxo-data" className="ecos-input" type="date" value={ancora} onChange={e => {if(e.target.value){setAncora(e.target.value);setDiaAberto(e.target.value);}}}/><button className="ecos-input" aria-label="Próximo período" onClick={() => avancar(1)}>›</button><button className="ecos-input" onClick={() => {setAncora(hojeISO());setDiaAberto(hojeISO());}}>Hoje</button><button className="ecos-input" onClick={() => setVersao(v => v + 1)}>Atualizar</button></fieldset>
     {erro && <p role="alert" className="text-error">{erro}</p>}
+    {bloqueio && <BloqueioReajuste bloqueio={bloqueio} onClose={() => setBloqueio(null)} aoResolver={() => { setVersao(v => v + 1); atualizar(); }} />}
     <p role="status" className="sr-only">{ocupado ? "Salvando alteração…" : ""}</p>
     {escolhido && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet p-3"><p>Agendar: {escolhido.descricao}</p><label>Data <input className="ecos-input" type="date" value={destino} onChange={e => setDestino(e.target.value)}/></label><button disabled={ocupado || !destino} className="ecos-input" onClick={() => void mover(escolhido, destino)}>{escolhido.kind === "transacao" ? "Reagendar" : "Concluir na data"}</button><button onClick={() => setEscolhido(null)}>Cancelar</button></div>}
     <div className="cofre-flow-layout">

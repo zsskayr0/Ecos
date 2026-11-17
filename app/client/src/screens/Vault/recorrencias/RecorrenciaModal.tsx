@@ -7,7 +7,7 @@ import { MenuSelecao } from "@/screens/Create/TransactionForm";
 import { CampoCategoria } from "../CampoCategoria";
 import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { opcoesDoSeletor } from "@/lib/formas-pagamento";
-import { financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type RecorrenciaApi, type RecorrenciaPayload } from "@/lib/api";
+import { ApiError, financeiro, vault, type BeneficiarioApi, type CategoriaApi, type ContaApi, type RecorrenciaApi, type RecorrenciaPayload } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { EscopoEdicaoModal, type EscopoEdicao } from "./Dialogos";
 import { MenuOcorrencia, type AcoesDaOcorrencia } from "./MenuOcorrencia";
@@ -35,9 +35,11 @@ interface Props {
   contexto?: string;
   onClose: () => void;
   onSalvo: () => void;
+  /** Atalho mostrado quando o servidor recusa mudar o valor de uma recorrência controlada por Mensalidades. */
+  irParaMensalidades?: () => void;
 }
 
-export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiarios, inicioPadrao, fixo = false, acoes, linha, contexto, onClose, onSalvo }: Props) {
+export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiarios, inicioPadrao, fixo = false, acoes, linha, contexto, onClose, onSalvo, irParaMensalidades }: Props) {
   const editando = !!regra;
   const base = regra ?? modelo;
   const [tipo, setTipo] = useState<"entrada" | "saida">(base?.tipo ?? "saida");
@@ -58,6 +60,7 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
   const [ativa, setAtiva] = useState(base?.ativa ?? true);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [erroDeMensalidade, setErroDeMensalidade] = useState(false);
   const [escolhendo, setEscolhendo] = useState<{ payload: RecorrenciaPayload; beneficiarioId: string | null } | null>(null);
 
   useEffect(() => {
@@ -113,6 +116,8 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
       else setOcupado(false);
     } catch (err) {
       setErro((err as Error).message);
+      // Valor de recorrência controlada por Mensalidades: o servidor recusa (409) e manda registrar um reajuste.
+      setErroDeMensalidade(err instanceof ApiError && err.status === 409 && /mensalidades/i.test(err.message));
       setOcupado(false);
     }
   }
@@ -121,7 +126,17 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
   async function aplicar(escopo: EscopoEdicao) {
     if (!regra || !linha || !escolhendo) return;
     const { payload, beneficiarioId } = escolhendo;
-    if (escopo === "todas") await financeiro.atualizarRecorrencia(regra.id, { ...payload, ativa });
+    if (escopo === "todas") {
+      try { await financeiro.atualizarRecorrencia(regra.id, { ...payload, ativa }); }
+      catch (err) {
+        // Valor controlado por Mensalidades: volta para a janela principal, onde a recusa aparece com o atalho.
+        if (!(err instanceof ApiError && err.status === 409 && /mensalidades/i.test(err.message))) throw err;
+        setEscolhendo(null);
+        setErro(err.message);
+        setErroDeMensalidade(true);
+        return;
+      }
+    }
     else if (escopo === "proximas") {
       await financeiro.encerrarAPartir(regra.id, linha.data);
       await financeiro.criarRecorrencia({ ...payload, data_inicio: linha.data });
@@ -202,6 +217,7 @@ export function RecorrenciaModal({ regra, modelo, categorias, contas, beneficiar
       )}
 
       {erro && <p role="alert" className="cofre-rec-erro">{erro}</p>}
+      {erro && erroDeMensalidade && irParaMensalidades && <button type="button" className="cofre-secondary" onClick={irParaMensalidades}>Abrir Mensalidades</button>}
       <footer>
         <button type="button" className="cofre-secondary" onClick={onClose} disabled={ocupado}>Cancelar</button>
         <button className="cofre-solid" disabled={ocupado}>{ocupado ? "Salvando…" : editando ? "Salvar alterações" : "Criar recorrência"}</button>

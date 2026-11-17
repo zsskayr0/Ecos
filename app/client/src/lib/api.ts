@@ -97,6 +97,8 @@ export class ApiError extends Error {
     public campos?: { campo: string; motivo: string }[],
     /** Só em 429 (`RateLimited`) — segundos até poder tentar de novo. */
     public retryAfterSegundos?: number,
+    /** Dados extras do erro (`details` da resposta), quando o servidor manda. Ex.: o ciclo que bloqueia uma conclusão. */
+    public dados?: Record<string, unknown>,
   ) {
     const detalhes = campos?.length ? mensagemDeCampos(campos) : "";
     const limite = status === 429 || code === "RATE_LIMITED" ? mensagemLimiteDeTentativas(retryAfterSegundos) : "";
@@ -286,7 +288,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
     if (path.startsWith("/vault/") && resp.status === 423) window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
     const code = body?.error ?? "UNKNOWN";
     const message = body?.message ?? mensagemHttp(resp.status);
-    throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos);
+    throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos, body?.details && typeof body.details === "object" ? body.details : undefined);
   }
   // Real bug found on Android: a misconfigured server address (missing
   // `http://`, see `server-config.ts`) made `fetch()` land back on the
@@ -1619,6 +1621,85 @@ export interface PreferenciasCofreApi {
   ocultar_valores_feed: boolean;
 }
 
+/** Estado de um ciclo de reajuste, calculado pelo servidor na leitura. */
+export type EstadoCiclo = "futuro" | "avisar" | "atrasado" | "agendado" | "aplicado" | "mantido";
+export type RegraReajuste = "minimo" | "igpm" | "negociado" | "mantido";
+
+/** Decisão de um ciclo. Na prévia (`simular: true`) vem com `id: null`. Percentuais em pontos-base (1000 = 10,00%). */
+export interface ReajusteApi {
+  id: string | null;
+  ciclo: string;
+  regra: RegraReajuste;
+  valor_anterior_centavos: number;
+  valor_novo_centavos: number;
+  percentual_bp: number;
+  igpm_bp: number | null;
+  aviso_em: string;
+  vigente_desde: string;
+  vigencia_minima: string;
+  perda_centavos: number;
+  motivo: string | null;
+  criado_por: string | null;
+  criado_em: string | null;
+}
+
+/** Um aniversário da data de entrada. */
+export interface CicloApi {
+  ciclo: string;
+  estado: EstadoCiclo;
+  limite_aviso: string;
+  valor_minimo_centavos?: number | null;
+  perda_estimada_centavos?: number | null;
+  reajuste: ReajusteApi | null;
+}
+
+/** Contrato de mensalidade sobre uma recorrência de entrada. */
+export interface MensalidadeApi {
+  recorrencia_id: string;
+  descricao: string;
+  ativa: boolean;
+  beneficiario_id: string | null;
+  beneficiario_nome: string | null;
+  valor_atual_centavos: number;
+  data_base: string;
+  ciclos_desde: string;
+  percentual_minimo_bp: number;
+  aviso_dias: number;
+  /** O ciclo mais antigo sem decisão; sem pendência, o agendado ou o próximo futuro. */
+  ciclo_em_foco: CicloApi | null;
+  ciclos_sem_decisao: number;
+}
+export interface MensalidadeDetalheApi extends MensalidadeApi { ciclos: CicloApi[] }
+
+export interface MensalidadeCandidataApi { recorrencia_id: string; descricao: string; beneficiario_nome: string | null; valor_centavos: number; data_inicio: string }
+export interface MensalidadePayload { data_base: string; ciclos_desde?: string; percentual_minimo_bp?: number; aviso_dias?: number }
+
+export interface ReajustePayload {
+  ciclo: string;
+  modo: "automatico" | "negociado" | "mantido";
+  igpm_bp?: number;
+  percentual_bp?: number;
+  valor_novo_centavos?: number;
+  aviso_em?: string;
+  vigente_desde?: string;
+  motivo?: string;
+  simular?: boolean;
+}
+
+export interface MesPrevistoRecebido { mes: string; previsto_centavos: number; recebido_centavos: number; em_aberto_centavos: number }
+export interface PrevistoRecebidoApi {
+  meses: string[];
+  linhas: { recorrencia_id: string; descricao: string; beneficiario_nome: string | null; meses: MesPrevistoRecebido[] }[];
+  totais: MesPrevistoRecebido[];
+}
+
+/** Recusa de efetivar uma ocorrência porque há ciclo de reajuste sem decisão (409 `MENSALIDADE_REAJUSTE_PENDENTE`). */
+export function bloqueioDeMensalidade(e: unknown): { recorrencia_id: string; ciclo: string } | null {
+  if (!(e instanceof ApiError) || e.code !== "MENSALIDADE_REAJUSTE_PENDENTE") return null;
+  const d = e.dados ?? {};
+  return typeof d.recorrencia_id === "string" && typeof d.ciclo === "string" ? { recorrencia_id: d.recorrencia_id, ciclo: d.ciclo } : null;
+}
+
 /** Frase digitada para confirmar o reset do Cofre; o servidor exige exatamente esta (`FRASE_CONFIRMACAO` em app/vault/src/routes/reset.rs). */
 export const FRASE_RESET_COFRE = "APAGAR TUDO";
 /** Frase que o Cofre exige para aplicar a migração do Nexus (`FRASE_CONFIRMACAO` em app/vault/src/routes/migracao_nexus.rs). */
@@ -1726,6 +1807,22 @@ export const vault = {
     conteudo: (id: string) => reqBlob(`/vault/anexos/${id}/conteudo`),
     /** JPEG pequeno gerado no servidor; `null` para PDF/HEIC ou enquanto a leitura não terminou. */
     miniatura: (id: string) => reqBlob(`/vault/anexos/${id}/miniatura`),
+  },
+  /** Mensalidades dos residentes: contrato sobre uma recorrência de entrada, com reajuste anual. */
+  mensalidades: {
+    /** Já vem ordenada por urgência (atrasadas, a avisar, agendadas, depois pela data do próximo ciclo). */
+    listar: () => get<MensalidadeApi[]>("/vault/mensalidades"),
+    /** Recorrências de entrada, fixas e ativas, que ainda não têm mensalidade. */
+    candidatas: () => get<MensalidadeCandidataApi[]>("/vault/mensalidades/candidatas"),
+    obter: (recorrenciaId: string) => get<MensalidadeDetalheApi>(`/vault/mensalidades/${recorrenciaId}`),
+    /** Cria ou atualiza o contrato. */
+    salvar: (recorrenciaId: string, payload: MensalidadePayload) => put<MensalidadeApi>(`/vault/mensalidades/${recorrenciaId}`, payload),
+    /** Com `simular: true` só calcula (a prévia da tela); nada é gravado. */
+    reajustar: (recorrenciaId: string, payload: ReajustePayload) => post<ReajusteApi>(`/vault/mensalidades/${recorrenciaId}/reajustes`, payload),
+    removerReajuste: (id: string) => del<{ ok: true }>(`/vault/mensalidades/reajustes/${id}`),
+    /** Remove só o contrato; o histórico de reajustes fica. */
+    remover: (recorrenciaId: string) => del<{ ok: true }>(`/vault/mensalidades/${recorrenciaId}`),
+    previstoRecebido: (p: { data_de: string; data_ate: string }) => get<PrevistoRecebidoApi>(`/vault/mensalidades/previsto-recebido${qs(p)}`),
   },
   comprovantes: {
     listar: (params: { data_de?: string; data_ate?: string; categoria_id?: string; beneficiario_id?: string; conta_id?: string; q?: string; tipo?: TipoAnexo; limit?: number; offset?: number } = {}) =>

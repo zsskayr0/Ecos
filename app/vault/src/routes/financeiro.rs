@@ -70,6 +70,10 @@ pub async fn lote(State(state): State<AppState>, Json(p): Json<Lote>) -> AppResu
         return Err(AppError::new(ErrorCode::ValidationError)
             .with_message("Escolha de 1 a 1000 lançamentos e uma ação válida"));
     }
+    // Efetivar em lote passa pelo mesmo bloqueio de mensalidade com reajuste sem decisão: nada do lote é aplicado.
+    if p.acao == "efetivar" {
+        super::mensalidades::exigir_lancamentos_liberados(&state, p.ids.clone()).await?;
+    }
     let result=state.db.with(move |c| {
         let tx=c.unchecked_transaction()?;
         let mut errors=Vec::new();
@@ -238,7 +242,7 @@ mod testes {
             config,
         };
         crate::db::USUARIO.scope("volume".into(),async {
-            state.db.destrancar(&raiz.join("vault.db"),&"ab".repeat(32)).unwrap();
+            state.db.destrancar(&raiz.join("vault.db"),&"ab".repeat(32),&raiz.join("backups"),None).unwrap();
             state.db.with(|c| {
                 let tx=c.unchecked_transaction()?;
                 {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Columns3, Grid2X2, List, Plus, RefreshCw, Repeat, Search, Table2, Tag, Trash2, X } from "lucide-react";
-import { financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
+import { bloqueioDeMensalidade, financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
+import { BloqueioReajuste, type BloqueioPendente } from "./mensalidades/BloqueioReajuste";
 import { formatMoeda } from "@/lib/format";
 import { sequenciaExportacao } from "@/lib/sequencia-exportacao";
 import { publicarListaDeLancamentos } from "@/lib/lista-lancamentos";
@@ -11,6 +12,7 @@ import { useFormasPagamento } from "@/lib/formas-pagamento-store";
 import { definirMaxLancamentos, maiorValor, useModoValor, usePreferenciasCofre, type ModoValor } from "@/lib/exibicao-valores";
 import { ValorComIndicador } from "./nexus/IndicadorValor";
 import { VaultEmptyState } from "./VaultEmptyState";
+import { SeletorEcos } from "@/components/common/SeletorEcos";
 import { FiltroCategoriasMenu } from "./FiltroCategoriasMenu";
 import type { Periodo } from "./types";
 import type { Filtro } from "./VaultDashboard";
@@ -98,6 +100,7 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   const [erro, setErro] = useState("");
   const [feedback, setFeedback] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [bloqueio, setBloqueio] = useState<BloqueioPendente | null>(null);
   const [editando, setEditando] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [versao, setVersao] = useState(0);
@@ -329,7 +332,12 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
       sairDaSelecao();
       setVersao((v) => v + 1);
       atualizar();
-    } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
+    } catch (e) {
+      // Recebimento de mensalidade com reajuste sem decisão: o diálogo resolve o ciclo e repete a ação.
+      const b = acao === "efetivar" ? bloqueioDeMensalidade(e) : null;
+      if (b) setBloqueio({ ...b, repetir: () => lote(acao) });
+      else setErro((e as Error).message);
+    } finally { setOcupado(false); }
   }
 
   const saldoSelecionado = useMemo(() => exibidas.reduce((s, t) => marcados.has(t.id) ? s + (t.tipo === "entrada" ? t.valor_centavos : -t.valor_centavos) : s, 0), [exibidas, marcados]);
@@ -436,6 +444,7 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
         {view === "tabela" && <MenuColunas visiveis={colunasVisiveis} autor={!!contexto.autor} aoMudar={(v) => { setColunasVisiveis(v); salvarColunasVisiveis(v); }} />}
       </div>
     </div>
+    {bloqueio && <BloqueioReajuste bloqueio={bloqueio} onClose={() => setBloqueio(null)} />}
     {erro && <p role="alert" className="cofre-transactions-error">{erro}</p>}{feedback && <p role="status" className="cofre-transactions-feedback">{feedback}</p>}
     {selecionados.length > 0 && <div className="cofre-selection-bar">
       <b>{selecionados.length} selecionado{selecionados.length > 1 ? "s" : ""}</b><ContadorSaldo centavos={saldoSelecionado} /><span className="cofre-selection-dica">Esc para sair</span>
@@ -495,13 +504,14 @@ function EdicaoEmBloco({ total, pagadores, contas, categorias, formas, ocupado, 
     ...(m.categoria_id ? { categoria_id: m.categoria_id } : {}), ...(m.forma_pagamento ? { forma_pagamento: m.forma_pagamento } : {}),
     ...(centavos !== undefined ? { valor_centavos: centavos } : {}), ...(m.data ? { data: m.data } : {}),
   });
-  const opcoes = (itens: [string, string][]) => <><option value="">Manter</option>{itens.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</>;
+  const opcoes = (itens: [string, string][]) => [{ valor: "", rotulo: "Manter" }, ...itens.map(([id, nome]) => ({ valor: id, rotulo: nome }))];
+  const seletor = (campo: "beneficiario_id" | "conta_id" | "categoria_id" | "forma_pagamento", rotulo: string, itens: [string, string][]) => <SeletorEcos ariaLabel={rotulo} valor={m[campo]} onChange={(valor) => setM((o) => ({ ...o, [campo]: valor }))} opcoes={opcoes(itens)} classe="rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-text-primary hover:bg-surface-2 min-w-28 max-w-48" />;
   return <div className="cofre-selection-bar" role="group" aria-label={`Editar ${total} lançamentos em bloco`} style={{ flexWrap: "wrap", gap: 8 }}>
     <b>Editar {total} em bloco</b>
-    <label>Pagador <select value={m.beneficiario_id} onChange={mudar("beneficiario_id")}>{opcoes([...pagadores])}</select></label>
-    <label>Conta <select value={m.conta_id} onChange={mudar("conta_id")}>{opcoes([...contas.values()].map((c) => [c.id, c.nome]))}</select></label>
-    <label>Categoria <select value={m.categoria_id} onChange={mudar("categoria_id")}>{opcoes(categorias.filter((c) => !c.arquivada).map((c) => [c.id, c.nome]))}</select></label>
-    <label>Pagamento <select value={m.forma_pagamento} onChange={mudar("forma_pagamento")}>{opcoes(formas.map((f) => [f.codigo, f.nome]))}</select></label>
+    <label>Pagador {seletor("beneficiario_id", "Pagador", [...pagadores])}</label>
+    <label>Conta {seletor("conta_id", "Conta", [...contas.values()].map((c) => [c.id, c.nome]))}</label>
+    <label>Categoria {seletor("categoria_id", "Categoria", categorias.filter((c) => !c.arquivada).map((c) => [c.id, c.nome]))}</label>
+    <label>Pagamento {seletor("forma_pagamento", "Pagamento", formas.map((f) => [f.codigo, f.nome]))}</label>
     <label>Valor <input value={m.valor} onChange={mudar("valor")} placeholder="Manter" inputMode="decimal" size={8} aria-invalid={valorInvalido || undefined} /></label>
     <label>Data <input type="date" value={m.data} onChange={mudar("data")} /></label>
     <button disabled={ocupado || vazio || valorInvalido} onClick={salvar}>Aplicar</button><button onClick={aoCancelar}>Cancelar</button>
