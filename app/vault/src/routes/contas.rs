@@ -218,6 +218,8 @@ pub async fn excluir(State(state): State<AppState>, Path(id): Path<String>, corp
                 }
             }
             tx.execute("DELETE FROM conta WHERE id = ?1", [&id])?;
+            tx.execute("DELETE FROM fechamento_conferencia WHERE conta_id = ?1", [&id])?;
+            tx.execute("DELETE FROM fechamento_abertura WHERE conta_id = ?1", [&id])?;
             tx.commit()?;
             Ok(Resultado::Apagada(usos))
         })

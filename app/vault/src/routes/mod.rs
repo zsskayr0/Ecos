@@ -21,6 +21,9 @@ pub mod recorrencias;
 pub mod reset;
 pub mod transacoes;
 mod valores_padrao;
+pub mod fechamento;
+pub mod pacote;
+pub mod resumo_pdf;
 pub mod financeiro;
 pub mod fluxo;
 pub mod formas_pagamento;
@@ -89,6 +92,14 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/preferencias/:chave", put(preferencias::salvar))
         .route("/vault/busca", get(busca::buscar))
         .route("/vault/painel", get(financeiro::painel))
+        .route("/vault/fechamento", get(fechamento::obter))
+        .route("/vault/fechamento/conferencia", put(fechamento::conferir))
+        .route("/vault/fechamento/lucros", put(fechamento::definir_lucros))
+        .route("/vault/fechamento/abertura", put(fechamento::definir_abertura))
+        .route("/vault/fechamento/transferencias", put(fechamento::definir_transferencias))
+        .route("/vault/fechamento/pacote", get(pacote::obter))
+        .route("/vault/fechamento/resumo.pdf", get(resumo_pdf::obter))
+        .route("/vault/fechamento/config", get(fechamento::configuracao))
         .route("/vault/financeiro/importar", post(financeiro::importar))
         .route("/vault/financeiro/exportar", get(financeiro::exportar))
         .route("/vault/financeiro/lote", post(financeiro::lote))

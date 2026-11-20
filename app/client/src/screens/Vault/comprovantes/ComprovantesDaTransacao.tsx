@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { encaminharBloqueio } from "../mensalidades/BloqueioReajuste";
-import { Paperclip, Receipt, X } from "lucide-react";
+import { X } from "lucide-react";
 import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi, type TipoAnexo } from "@/lib/api";
-import { ROTULOS_ANEXO } from "./rotulos";
+import { ICONE_ANEXO, ROTULOS_ANEXO } from "./rotulos";
 import { MiniaturaDoAnexo } from "./Miniatura";
 import { VisualizadorDaTransacao } from "./VisualizadorDaTransacao";
 
@@ -15,7 +15,7 @@ const ACEITOS = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
  */
 export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprovante" }: { transacaoId: string; aoMudar?: () => void; tipo?: TipoAnexo }) {
   const r = ROTULOS_ANEXO[tipo];
-  const Icone = tipo === "nota_fiscal" ? Receipt : Paperclip;
+  const Icone = ICONE_ANEXO[tipo];
   const [anexos, setAnexos] = useState<AnexoApi[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);

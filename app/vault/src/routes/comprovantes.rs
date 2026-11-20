@@ -12,7 +12,7 @@ use ecos_core::{new_id, ErrorCode};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 
-use super::transacoes::{inserir_transacao, obter, validar, validar_referencias, validar_tipo_anexo, TipoQuery, TransacaoPayload};
+use super::transacoes::{inserir_transacao, obter, validar, validar_referencias, validar_tipo_anexo, validar_tipo_rascunho, TipoQuery, TransacaoPayload, TIPOS_DA_LISTA_DE_COMPROVANTES};
 use crate::arquivo;
 use crate::db::{usuario_atual, USUARIO};
 use crate::ocr;
@@ -111,7 +111,7 @@ pub(crate) fn ler_anexo_em_segundo_plano(state: AppState, id: String, bytes: Vec
 /// Recebe o arquivo, guarda como rascunho e começa a leitura em segundo plano. O mesmo arquivo enviado de novo
 /// devolve o rascunho que já está lá, para que um reenvio por rede ruim não duplique.
 pub async fn receber(State(state): State<AppState>, Query(tq): Query<TipoQuery>, mut multipart: Multipart) -> AppResult<Json<serde_json::Value>> {
-    let tipo_anexo = validar_tipo_anexo(tq.tipo.as_deref())?;
+    let tipo_anexo = validar_tipo_rascunho(tq.tipo.as_deref())?;
     let arq = arquivo::ler_multipart(&mut multipart, "arquivo").await?;
     let autor = crate::db::autor_atual().unwrap_or_default();
     let (nome, mime, tamanho) = (arq.nome.clone(), arq.tipo.mime, arq.bytes.len() as i64);
@@ -313,7 +313,7 @@ pub struct ListarQuery {
     pub beneficiario_id: Option<String>,
     pub conta_id: Option<String>,
     pub q: Option<String>,
-    /// `comprovante` ou `nota_fiscal`; sem isso, os dois.
+    /// `comprovante`, `nota_fiscal` ou `recibo_lucros`; sem isso, comprovantes e notas fiscais.
     pub tipo: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -335,6 +335,8 @@ pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>)
         .db
         .with(move |conn| {
             let mut onde = vec!["1=1".to_string()];
+            // Sem filtro de tipo, a lista geral não mistura os recibos de lucros (eles vivem no Fechamento).
+            if tipo.is_none() { onde.push(format!("a.tipo IN ({TIPOS_DA_LISTA_DE_COMPROVANTES})")); }
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
             let mut filtro = |condicao: &str, valor: Box<dyn rusqlite::ToSql>| {
                 params.push(valor);

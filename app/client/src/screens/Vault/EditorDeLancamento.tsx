@@ -11,6 +11,7 @@ import { TransactionForm } from "@/screens/Create/TransactionForm";
 import { useAutoriaDoCofre } from "@/lib/use-autoria-cofre";
 import { DRAFT_VAZIO, type CapturaDraft } from "@/screens/Create/CreateFlow";
 import { ComprovantesDaTransacao } from "./comprovantes/ComprovantesDaTransacao";
+import { useCategoriasDeLucros } from "./fechamento/useCategoriasDeLucros";
 import { useListaDeLancamentos, useResumoDaLista } from "@/lib/lista-lancamentos";
 import { BarraSlide } from "./BarraSlide";
 
@@ -38,6 +39,7 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
   const [enviando, setEnviando] = useState<{ destino: string; mover: boolean; ocupado: boolean } | null>(null);
   const destinos = [...(espacoAtivo !== "pessoal" ? [{ espaco: "pessoal", nome: "Pessoal" }] : []), ...equipes.filter((e) => `equipe:${e.id}` !== espacoAtivo).map((e) => ({ espaco: `equipe:${e.id}`, nome: e.nome }))];
   const autoria = useAutoriaDoCofre();
+  const categoriasDeLucros = useCategoriasDeLucros();
   const raiz = useRef<HTMLDivElement>(null);
   const lista = useListaDeLancamentos();
   const resumo = useResumoDaLista();
@@ -265,7 +267,7 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
         onDuplicar={duplicar}
         onEnviar={destinos.length ? () => setEnviando({ destino: destinos[0].espaco, mover: false, ocupado: false }) : undefined}
         criadoPor={autoria.nomeDe(tx.criado_por)}
-        anexos={comComprovantes ? <div className="cofre-anexos-par"><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="nota_fiscal" /></div> : undefined}
+        anexos={comComprovantes ? <div className="cofre-anexos-par"><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="nota_fiscal" />{(categoriasDeLucros.includes(tx.categoria_id ?? "") || (tx.recibos ?? 0) > 0) && <ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="recibo_lucros" />}</div> : undefined}
       />
     </div>
   );

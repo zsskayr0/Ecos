@@ -120,6 +120,10 @@ pub async fn encaminhar(State(state): State<AppState>, Extension(usuario): Exten
     if let Some(content_type) = headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
         requisicao = requisicao.header("content-type", content_type);
     }
+    // O cliente HTTP compartilhado desiste em 10 s; montar o pacote da contabilidade (com todos os comprovantes) leva mais.
+    if rota == "/vault/fechamento/pacote" {
+        requisicao = requisicao.timeout(std::time::Duration::from_secs(300));
+    }
     requisicao = requisicao.body(body.to_vec());
 
     match requisicao.send().await {

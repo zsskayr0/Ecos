@@ -88,7 +88,7 @@ async fn falha_ao_preparar_o_cofre_nao_aparece_como_senha_incorreta() {
     assert_eq!(chamar(&app, Some("ana"), false, "POST", "/vault/desbloquear", senha("senha-da-ana-123")).await.0, StatusCode::OK);
     assert_eq!(std::fs::read_dir(&backups).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("pre-migracao-v13-")).count(), 1);
     chamar(&app, Some("ana"), false, "POST", "/vault/bloquear", None).await;
-    assert_eq!(versao(&abrir()), 14);
+    assert_eq!(versao(&abrir()), crate::db::ultima_versao() as i64);
     drop(app);
     let _ = std::fs::remove_dir_all(raiz);
 }

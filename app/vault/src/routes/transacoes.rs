@@ -53,13 +53,14 @@ fn linha_para_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
         // Quantos comprovantes e quantas notas fiscais o lançamento tem (a lista mostra um ícone para cada).
         "anexos": r.get::<_, i64>(20)?,
         "notas_fiscais": r.get::<_, i64>(21)?,
+        "recibos": r.get::<_, i64>(22)?,
     }))
 }
 
 const COLUNAS: &str = "id, tipo, valor_centavos, moeda, data, descricao, categoria_id, conta_id, beneficiario_id, \
      forma_pagamento, status, observacoes, origem, transacao_recorrente_id, espaco, criado_por, criado_em, atualizado_em, conciliada, data_ocorrencia, \
      (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'comprovante'), \
-     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'nota_fiscal')";
+     (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'nota_fiscal'),      (SELECT COUNT(*) FROM anexo WHERE anexo.transacao_id = transacao.id AND anexo.tipo = 'recibo_lucros')";
 
 pub async fn listar(State(state): State<AppState>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let limite = q.limit.unwrap_or(30).clamp(1, 200);
@@ -393,13 +394,24 @@ pub async fn captura_foto(mut multipart: Multipart) -> AppResult<Json<serde_json
     })))
 }
 
-/// Tipos de anexo: o comprovante de pagamento e a nota fiscal da compra. Os dois seguem o mesmo caminho.
-pub(crate) const TIPOS_ANEXO: [&str; 2] = ["comprovante", "nota_fiscal"];
+/// Tipos de anexo: o comprovante de pagamento, a nota fiscal da compra e o recibo de distribuição de lucros (pedido pela
+/// contabilidade). Os três seguem o mesmo caminho; só o comprovante efetiva o lançamento ao ser anexado.
+pub(crate) const TIPOS_ANEXO: [&str; 3] = ["comprovante", "nota_fiscal", "recibo_lucros"];
+/// Tipos que a lista geral de Comprovantes mostra. O recibo de lucros é lido no Fechamento (ou pedido pelo filtro).
+pub(crate) const TIPOS_DA_LISTA_DE_COMPROVANTES: &str = "'comprovante', 'nota_fiscal'";
 
 pub(crate) fn validar_tipo_anexo(tipo: Option<&str>) -> AppResult<&'static str> {
     match tipo {
         None => Ok("comprovante"),
-        Some(t) => TIPOS_ANEXO.iter().find(|x| **x == t).copied().ok_or_else(|| AppError::new(ErrorCode::ValidationError).with_message("tipo de anexo deve ser 'comprovante' ou 'nota_fiscal'")),
+        Some(t) => TIPOS_ANEXO.iter().find(|x| **x == t).copied().ok_or_else(|| AppError::new(ErrorCode::ValidationError).with_message("tipo de anexo deve ser 'comprovante', 'nota_fiscal' ou 'recibo_lucros'")),
+    }
+}
+
+/// Rascunho (envio por OCR) só existe para comprovante e nota fiscal: o recibo de lucros é anexado direto ao lançamento.
+pub(crate) fn validar_tipo_rascunho(tipo: Option<&str>) -> AppResult<&'static str> {
+    match validar_tipo_anexo(tipo)? {
+        "recibo_lucros" => Err(AppError::new(ErrorCode::ValidationError).with_message("recibo de lucros é anexado direto ao lançamento, sem passar pela leitura de comprovantes")),
+        t => Ok(t),
     }
 }
 

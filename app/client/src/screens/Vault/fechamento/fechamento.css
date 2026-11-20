@@ -1,0 +1,143 @@
+/* Fechamento do período. Só o que as telas do Cofre ainda não tinham: faixa de situação, extrato com conferência,
+   cartões de pendência e as listas por categoria. O resto vem de cofre.css e recorrencias.css. */
+.fech { display:flex; flex-direction:column; gap:18px; }
+
+/* Faixa de situação */
+.fech-situacao { display:flex; align-items:flex-start; gap:12px; padding:14px 18px; border-radius:14px; }
+.fech-situacao p { margin:0; color:var(--text-muted); font-size:12.5px; line-height:1.5; }
+.fech-situacao p b { color:var(--text); }
+.fech-situacao svg { flex:none; margin-top:1px; }
+.fech-situacao[data-tom="ok"] { color:var(--cofre-income); border-color:color-mix(in srgb,var(--cofre-income) 40%,var(--border)); }
+.fech-situacao[data-tom="alerta"] { color:var(--ecos-warning); border-color:color-mix(in srgb,var(--ecos-warning) 45%,var(--border)); background:radial-gradient(circle at 10% 0%,color-mix(in srgb,var(--ecos-warning) 10%,transparent),transparent 65%),var(--panel); }
+.fech-situacao[data-tom="info"] { color:var(--text-faint); }
+
+/* Resumo */
+.fech-resumo { display:flex; flex-direction:column; gap:4px; }
+.fech-resumo span { color:var(--text-faint); font-size:11.5px; }
+.fech-resumo b { font-size:20px; font-weight:700; }
+.fech-resumo b[data-tom="pos"] { color:var(--cofre-income); }
+.fech-resumo b[data-tom="neg"] { color:var(--cofre-expense); }
+
+/* Blocos */
+.fech-bloco > header { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 16px; margin-bottom:10px; }
+.fech-bloco h2 { margin:0; font-size:14px; font-weight:700; }
+.fech-bloco > header p { margin:0; color:var(--text-muted); font-size:12px; }
+
+/* Extrato por conta */
+.fech-tabela th[scope="row"] { min-width:190px; padding:10px 16px; text-align:left; font-weight:600; }
+.fech-tabela thead th:first-child { text-align:left; }
+.fech-tabela tbody tr { cursor:default; }
+.fech-tabela tbody tr:hover { background:none; }
+.fech-tabela tbody tr { border-top:1px solid var(--border); }
+.fech-tabela tfoot tr { border-top:2px solid var(--border-strong); }
+.fech-tabela tfoot th[scope="row"],.fech-tabela tfoot td { background:var(--panel-elevated); font-weight:700; }
+.fech-conta { display:flex; align-items:center; gap:10px; min-width:0; }
+.fech-conta > span { display:flex; min-width:0; flex-direction:column; }
+.fech-conta b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.fech-conta small { color:var(--text-faint); font-size:11px; font-weight:400; }
+.fech-linha[data-sem-conta] .fech-conta b { color:var(--ecos-warning); }
+.fech-pos { color:var(--cofre-income); }
+.fech-neg { color:var(--cofre-expense); }
+.fech-banco { min-width:150px; }
+.fech-campo { width:130px; padding:7px 10px; border:1px solid var(--border-strong); border-radius:10px; background:var(--panel-elevated); color:var(--text); font-size:12.5px; font-weight:600; text-align:right; }
+.fech-campo:focus { outline:2px solid color-mix(in srgb,rgb(var(--cofre-blue-rgb)) 60%,transparent); outline-offset:1px; }
+.fech-campo[aria-invalid="true"] { border-color:var(--cofre-expense); }
+.fech-banco small { display:block; margin-top:3px; font-size:10.5px; font-weight:400; }
+.fech-nada { color:var(--text-faint); }
+.fech-erro { color:var(--cofre-expense); }
+.fech-diferenca { min-width:110px; }
+.fech-diferenca[data-estado="ok"] { color:var(--cofre-income); }
+.fech-diferenca[data-estado="ok"] svg { margin-right:3px; vertical-align:-2px; }
+.fech-diferenca[data-estado="erro"] { color:var(--cofre-expense); }
+
+/* Pendências */
+.fech-tudo-certo { display:flex; align-items:center; gap:12px; padding:14px 18px; border-radius:14px; color:var(--cofre-income); }
+.fech-tudo-certo p { margin:0; color:var(--text-muted); font-size:12.5px; line-height:1.5; }
+.fech-tudo-certo p b { color:var(--text); }
+.fech-pendencias { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:12px; }
+.fech-pendencia { display:flex; min-width:0; flex-direction:column; gap:8px; padding:16px 18px; border-radius:16px; }
+.fech-pendencia[data-tom="bloqueia"] { border-color:color-mix(in srgb,var(--cofre-expense) 45%,var(--border)); background:radial-gradient(circle at 15% 0%,color-mix(in srgb,var(--cofre-expense) 10%,transparent),transparent 65%),var(--panel); }
+.fech-pendencia[data-tom="atencao"] { border-color:color-mix(in srgb,var(--ecos-warning) 40%,var(--border)); }
+.fech-pendencia > header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.fech-pendencia h3 { margin:0; font-size:14px; font-weight:700; }
+.fech-contagem { flex:none; padding:2px 10px; border-radius:999px; background:color-mix(in srgb,var(--text) 10%,transparent); font-size:12px; font-weight:700; }
+.fech-pendencia[data-tom="bloqueia"] .fech-contagem { background:color-mix(in srgb,var(--cofre-expense) 18%,transparent); color:var(--cofre-expense); }
+.fech-pendencia[data-tom="atencao"] .fech-contagem { background:color-mix(in srgb,var(--ecos-warning) 18%,transparent); color:var(--ecos-warning); }
+.fech-pendencia > p { margin:0; color:var(--text-muted); font-size:12px; line-height:1.55; }
+.fech-pendencia ul { display:flex; flex-direction:column; margin:0; padding:0; list-style:none; }
+.fech-pendencia li + li { border-top:1px solid var(--border); }
+.fech-pendencia li button { display:flex; width:100%; min-height:38px; align-items:center; gap:10px; padding:6px 4px; border:0; border-radius:8px; background:none; color:var(--text); font-size:12.5px; text-align:left; cursor:pointer; }
+.fech-pendencia li button:hover { background:color-mix(in srgb,var(--text) 6%,transparent); }
+.fech-item-data { flex:none; color:var(--text-faint); font-size:11.5px; }
+.fech-item-desc { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fech-item-valor { flex:none; font-weight:700; }
+.fech-item-valor[data-tipo="entrada"] { color:var(--cofre-income); }
+.fech-item-valor[data-tipo="saida"] { color:var(--cofre-expense); }
+.fech-mais { color:var(--text-faint); font-size:11px; }
+.fech-pendencia > button { align-self:flex-start; min-height:38px; }
+
+/* Por categoria */
+.fech-categorias { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.fech-lista { padding:6px 18px 12px; border-radius:16px; }
+.fech-lista ul { margin:0; padding:0; list-style:none; }
+.fech-lista > ul > li { border-top:1px solid var(--border); }
+.fech-lista > ul > li:first-child { border-top:0; }
+.fech-cat { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0; font-size:13px; }
+.fech-cat > span { display:flex; min-width:0; flex-direction:column; }
+.fech-cat small { color:var(--text-faint); font-size:11px; }
+.fech-cat b { flex:none; font-weight:700; }
+.fech-cat b[data-tom="pos"] { color:var(--cofre-income); }
+.fech-cat b[data-tom="neg"] { color:var(--cofre-expense); }
+.fech-subs { margin:-4px 0 6px !important; padding-left:14px !important; border-left:2px solid var(--border); }
+.fech-subs .fech-cat { padding:4px 0; color:var(--text-muted); font-size:12px; }
+.fech-subs .fech-cat b { font-weight:600; }
+.fech-total { margin-top:4px; padding-top:12px; border-top:2px solid var(--border-strong); font-weight:700; }
+.fech-vazio { margin:0; padding:14px 0; color:var(--text-faint); font-size:12.5px; }
+
+/* Lucros do mês */
+.fech-link { padding:0; border:0; background:none; color:rgb(var(--cofre-blue-rgb)); font:inherit; text-decoration:underline; cursor:pointer; }
+.fech-lucros-vazio { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:18px 20px; border-radius:16px; color:var(--text-faint); }
+.fech-lucros-vazio p { margin:0; color:var(--text); font-size:13.5px; }
+.fech-lucros-vazio small { color:var(--text-muted); font-size:12px; line-height:1.55; }
+.fech-lucros-acoes { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:4px; }
+.fech-lucros-acoes .cofre-solid { min-height:40px; }
+.fech-lucros-seletor { min-width:240px; }
+.fech-lucros-troca { margin-bottom:10px; max-width:360px; }
+.fech-lucros-msg { margin:0 0 10px; font-size:12.5px; }
+.fech-lucros-resumo { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-bottom:10px; color:var(--text-muted); font-size:12.5px; }
+.fech-lucros-resumo b { color:var(--text); }
+.fech-selo { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border:1px solid var(--border-strong); border-radius:999px; color:var(--text-faint); font-size:11px; font-weight:700; }
+.fech-selo[data-tom="alerta"] { border-color:transparent; background:color-mix(in srgb,var(--cofre-expense) 16%,transparent); color:var(--cofre-expense); }
+.fech-selo[data-tom="ok"] { border-color:transparent; background:color-mix(in srgb,var(--cofre-income) 16%,transparent); color:var(--cofre-income); }
+.fech-desc { max-width:280px; overflow:hidden; padding:0; border:0; background:none; color:var(--text); font:inherit; text-align:left; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+.fech-desc:hover { text-decoration:underline; }
+.fech-linha[data-pendente] td { opacity:.6; }
+.fech-recibo { display:inline-flex; align-items:center; gap:5px; min-height:32px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:999px; background:none; color:var(--text-muted); font-size:11.5px; font-weight:600; cursor:pointer; }
+.fech-recibo:hover:not(:disabled) { color:var(--text); background:color-mix(in srgb,var(--text) 6%,transparent); }
+.fech-recibo[data-ok] { border-color:transparent; background:color-mix(in srgb,var(--cofre-income) 14%,transparent); color:var(--cofre-income); }
+.fech-recibo:disabled { opacity:.5; cursor:default; }
+.fech-tabela td small { display:block; margin-top:2px; font-size:10.5px; }
+
+/* Transferências entre contas */
+.fech-transf { display:flex; flex-direction:column; gap:12px; padding:16px 18px; border-radius:16px; }
+.fech-transf .fech-lucros-resumo { margin-bottom:0; }
+.fech-chips { display:flex; flex-wrap:wrap; gap:8px; margin:0; padding:0; list-style:none; }
+.fech-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 4px 3px 12px; border:1px solid var(--border-strong); border-radius:999px; font-size:12.5px; font-weight:600; }
+.fech-chip button { display:grid; width:28px; height:28px; place-items:center; border:0; border-radius:999px; background:none; color:var(--text-faint); cursor:pointer; }
+.fech-chip button:hover:not(:disabled) { background:color-mix(in srgb,var(--text) 10%,transparent); color:var(--text); }
+.fech-chip button:disabled { opacity:.5; cursor:default; }
+.fech-pacote { min-height:40px; }
+
+@media (max-width:760px) {
+  .fech-categorias { grid-template-columns:minmax(0,1fr); }
+  .fech-tabela th[scope="row"] { min-width:150px; padding:10px 12px; }
+  .fech-pendencias { grid-template-columns:minmax(0,1fr); }
+}
+
+/* Saldo inicial ajustável por conta (abertura) */
+.fech-inicial { min-width:150px; }
+.fech-inicial small { display:block; margin-top:2px; font-size:10.5px; font-weight:400; }
+.fech-inicial-vista,.fech-inicial-edicao { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.fech-inicial-acoes { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 10px; margin-top:3px; }
+.fech-inicial-acoes .fech-link { font-size:10.5px; white-space:nowrap; }
+.fech-pdf { white-space:nowrap; }

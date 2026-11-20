@@ -14,8 +14,11 @@ mod jobs;
 mod mensalidade;
 mod ocr;
 mod pagination;
+mod pdf;
+mod pdf_fontes;
 mod routes;
 mod state;
+mod zip;
 
 use config::Config;
 use db::VaultDb;

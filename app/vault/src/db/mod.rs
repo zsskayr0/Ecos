@@ -57,7 +57,11 @@ fn lista_de_migracoes() -> Vec<M<'static>> {
         M::up(include_str!("../../migrations/0012_categoria_arquivada.sql")),
         M::up(include_str!("../../migrations/0013_migracao_origem.sql")),
         M::up(include_str!("../../migrations/0014_mensalidades.sql"))
-            .down(include_str!("../../migrations/0014_mensalidades_down.sql"))]
+            .down(include_str!("../../migrations/0014_mensalidades_down.sql")),
+        M::up_with_hook(include_str!("../../migrations/0015_fechamento.sql"), ampliar_tipos_de_anexo)
+            .down(include_str!("../../migrations/0015_fechamento_down.sql")),
+        M::up(include_str!("../../migrations/0016_fechamento_abertura.sql"))
+            .down(include_str!("../../migrations/0016_fechamento_abertura_down.sql"))]
 }
 
 /// Última versão de esquema que este binário conhece.
@@ -102,6 +106,24 @@ fn soltar_lista_fixa_de_formas(tx: &rusqlite::Transaction) -> HookResult {
         tx.execute_batch(&format!("PRAGMA schema_version = {}", versao + 1))?;
     }
     tx.execute_batch("PRAGMA writable_schema = OFF")?;
+    Ok(())
+}
+
+/// Faz `anexo.tipo` aceitar 'recibo_lucros' (recibo de distribuição de lucros, pedido pela contabilidade). O `CHECK` nasceu
+/// por `ALTER TABLE ... ADD COLUMN` (0008); recriar `anexo` arriscaria os BLOBs, então se edita o texto do schema pelo mesmo
+/// procedimento oficial de `soltar_lista_fixa_de_formas`. Idempotente: se o texto antigo não está lá, não faz nada.
+/// Só `anexo`: `comprovante_rascunho` não recebe recibos (não há leitura por OCR para eles).
+fn ampliar_tipos_de_anexo(tx: &rusqlite::Transaction) -> HookResult {
+    const ANTIGO: &str = "CHECK (tipo IN ('comprovante', 'nota_fiscal'))";
+    const NOVO: &str = "CHECK (tipo IN ('comprovante', 'nota_fiscal', 'recibo_lucros'))";
+    let sql: String = tx.query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'anexo'", [], |r| r.get(0))?;
+    if sql.contains(ANTIGO) {
+        tx.execute_batch("PRAGMA writable_schema = ON")?;
+        tx.execute("UPDATE sqlite_master SET sql = ?1 WHERE type = 'table' AND name = 'anexo'", [sql.replace(ANTIGO, NOVO)])?;
+        let versao: i64 = tx.query_row("PRAGMA schema_version", [], |r| r.get(0))?;
+        tx.execute_batch(&format!("PRAGMA schema_version = {}", versao + 1))?;
+        tx.execute_batch("PRAGMA writable_schema = OFF")?;
+    }
     Ok(())
 }
 
@@ -390,6 +412,11 @@ mod testes_de_migracao {
         conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo) VALUES ('a1','t1','recibo.png','image/png',3,'abc',x'010203')", []).unwrap();
     }
 
+    /// Migrações como eram na versão 14, antes do Fechamento (0015).
+    fn migracoes_ate_14() -> Migrations<'static> {
+        Migrations::new(lista_de_migracoes()[..14].to_vec())
+    }
+
     fn banco_v13() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
         Migrations::new(lista_de_migracoes()[..13].to_vec()).to_latest(&mut conn).unwrap();
@@ -406,7 +433,7 @@ mod testes_de_migracao {
         let antes = contagens(&conn);
         let esquema_antes: Vec<String> = conn.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
 
-        migrations().to_latest(&mut conn).unwrap();
+        migracoes_ate_14().to_latest(&mut conn).unwrap();
         assert_eq!(versao(&conn), 14);
         assert_eq!(contagens(&conn), antes);
         assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
@@ -426,7 +453,7 @@ mod testes_de_migracao {
         assert!(conn.execute("INSERT INTO mensalidade_reajuste (id, recorrencia_id, ciclo, valor_anterior_centavos, valor_novo_centavos, regra) VALUES ('x','r1','2026-11-20',1,2,'inventada')", []).is_err(), "regra fora da lista é recusada");
 
         conn.execute("INSERT INTO mensalidade (recorrencia_id, data_base, ciclos_desde) VALUES ('r1','2024-11-20','2026-11-20')", []).unwrap();
-        migrations().to_latest(&mut conn).unwrap();
+        migracoes_ate_14().to_latest(&mut conn).unwrap();
         assert_eq!(versao(&conn), 14);
         assert_eq!(contagens(&conn), antes);
         assert_eq!(conn.query_row("SELECT COUNT(*) FROM mensalidade", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
@@ -438,7 +465,7 @@ mod testes_de_migracao {
     #[test]
     fn mensalidades_desce_de_14_para_13_sem_perda_nas_tabelas_antigas() {
         let mut conn = banco_v13();
-        migrations().to_latest(&mut conn).unwrap();
+        migracoes_ate_14().to_latest(&mut conn).unwrap();
         // Lançamento feito depois da migração: tem de sobreviver à descida.
         conn.execute("INSERT INTO transacao (id, tipo, valor_centavos, data, descricao, espaco, criado_por) VALUES ('t2','saida',900,'2026-11-16','Depois','pessoal','ana')", []).unwrap();
         conn.execute("INSERT INTO mensalidade (recorrencia_id, data_base, ciclos_desde) VALUES ('r1','2024-11-20','2026-11-20')", []).unwrap();
@@ -449,7 +476,7 @@ mod testes_de_migracao {
         assert!(binario_antigo.to_latest(&mut conn).is_err(), "o binário antigo recusa um banco na versão 14");
         assert_eq!(versao(&conn), 14);
 
-        migrations().to_version(&mut conn, 13).unwrap();
+        migracoes_ate_14().to_version(&mut conn, 13).unwrap();
         assert_eq!(versao(&conn), 13);
         assert_eq!(contagens(&conn), antes);
         assert!(!tem_tabela(&conn, "mensalidade") && !tem_tabela(&conn, "mensalidade_reajuste"));
@@ -463,9 +490,93 @@ mod testes_de_migracao {
         assert_eq!(contagens(&conn), antes);
 
         // E o binário novo volta a subir o mesmo arquivo, com as tabelas vazias.
-        migrations().to_latest(&mut conn).unwrap();
+        migracoes_ate_14().to_latest(&mut conn).unwrap();
         assert_eq!((versao(&conn), contagens(&conn)), (14, antes));
         assert_eq!(conn.query_row("SELECT COUNT(*) FROM mensalidade_reajuste", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    fn banco_v14() -> Connection {
+        let mut conn = banco_v13();
+        migracoes_ate_14().to_latest(&mut conn).unwrap();
+        assert_eq!(versao(&conn), 14);
+        conn
+    }
+
+    /// Banco na versão 14 sobe para a 15: criam-se as duas tabelas do Fechamento, o anexo existente (BLOB) fica intacto e
+    /// `anexo.tipo` passa a aceitar 'recibo_lucros' sem aceitar qualquer coisa. Repetir a subida não muda nada.
+    #[test]
+    fn fechamento_sobe_de_14_para_15_e_amplia_o_tipo_do_anexo_sem_tocar_nos_dados() {
+        let mut conn = banco_v14();
+        let antes = contagens(&conn);
+        assert!(conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('x','t1','r.pdf','application/pdf',1,'z',x'00','recibo_lucros')", []).is_err(), "antes da 15 o tipo não existe");
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!(versao(&conn), ultima_versao() as i64);
+        assert_eq!(contagens(&conn), antes);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        let anexo: Vec<u8> = conn.query_row("SELECT conteudo FROM anexo WHERE id = 'a1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(anexo, [1, 2, 3]);
+        assert!(tem_tabela(&conn, "fechamento_conferencia") && tem_tabela(&conn, "fechamento_config") && tem_tabela(&conn, "fechamento_abertura"));
+        assert_eq!(conn.query_row("SELECT (SELECT COUNT(*) FROM fechamento_conferencia) + (SELECT COUNT(*) FROM fechamento_config)", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+
+        conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('r1x','t1','recibo.pdf','application/pdf',1,'z',x'00','recibo_lucros')", []).expect("recibo de lucros é aceito");
+        conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('nf','t1','nf.pdf','application/pdf',1,'y',x'00','nota_fiscal')", []).expect("os tipos antigos continuam valendo");
+        assert!(conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('ruim','t1','x.pdf','application/pdf',1,'w',x'00','inventado')", []).is_err(), "tipo fora da lista segue recusado");
+        // O rascunho de comprovante não ganha o tipo novo.
+        assert!(conn.execute("INSERT INTO comprovante_rascunho (id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('rs','x.pdf','application/pdf',1,'v',x'00','recibo_lucros')", []).is_err());
+
+        let depois = contagens(&conn);
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!((versao(&conn), contagens(&conn)), (ultima_versao() as i64, depois));
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+    }
+
+    /// 16 acrescenta só a tabela do saldo de abertura; 15 e 16 convivem sem perder nada, e descer remove só ela.
+    #[test]
+    fn abertura_sobe_de_15_para_16_e_desce_sem_tocar_nos_dados() {
+        let mut conn = banco_v14();
+        Migrations::new(lista_de_migracoes()[..15].to_vec()).to_latest(&mut conn).unwrap();
+        assert_eq!(versao(&conn), 15);
+        assert!(!tem_tabela(&conn, "fechamento_abertura"));
+        conn.execute("INSERT INTO fechamento_conferencia (mes, conta_id, saldo_banco_centavos) VALUES ('2026-10','c1',500)", []).unwrap();
+        let antes = contagens(&conn);
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!((versao(&conn), contagens(&conn)), (ultima_versao() as i64, antes));
+        conn.execute("INSERT INTO fechamento_abertura (conta_id, data, saldo_centavos) VALUES ('c1','2026-10-01',12345)", []).unwrap();
+        assert!(conn.execute("INSERT INTO fechamento_abertura (conta_id, data, saldo_centavos) VALUES ('c1','2026-10-01',1)", []).is_err(), "uma abertura por conta e dia");
+
+        migrations().to_version(&mut conn, 15).unwrap();
+        assert_eq!(versao(&conn), 15);
+        assert!(!tem_tabela(&conn, "fechamento_abertura"));
+        assert_eq!(conn.query_row("SELECT saldo_banco_centavos FROM fechamento_conferencia", [], |r| r.get::<_, i64>(0)).unwrap(), 500);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+    }
+
+    /// 15 desce para 14 perdendo só as tabelas do Fechamento; os anexos (inclusive o recibo) ficam, e um binário que só
+    /// conhece as 14 primeiras abre o arquivo depois da descida.
+    #[test]
+    fn fechamento_desce_de_15_para_14_sem_perda_nos_anexos() {
+        let mut conn = banco_v14();
+        migrations().to_latest(&mut conn).unwrap();
+        conn.execute("INSERT INTO anexo (id, transacao_id, nome_arquivo, mime_type, tamanho_bytes, checksum_sha256, conteudo, tipo) VALUES ('r1x','t1','recibo.pdf','application/pdf',1,'z',x'0a','recibo_lucros')", []).unwrap();
+        conn.execute("INSERT INTO fechamento_conferencia (mes, conta_id, saldo_banco_centavos) VALUES ('2026-10','c1',12345)", []).unwrap();
+        let antes = contagens(&conn);
+
+        assert!(migracoes_ate_14().to_latest(&mut conn).is_err(), "o binário antigo recusa um banco na versão 15");
+        migrations().to_version(&mut conn, 14).unwrap();
+        assert_eq!(versao(&conn), 14);
+        assert_eq!(contagens(&conn), antes);
+        assert!(!tem_tabela(&conn, "fechamento_conferencia") && !tem_tabela(&conn, "fechamento_config") && !tem_tabela(&conn, "fechamento_abertura"));
+        let recibo: Vec<u8> = conn.query_row("SELECT conteudo FROM anexo WHERE id = 'r1x'", [], |r| r.get(0)).unwrap();
+        assert_eq!(recibo, [0x0a]);
+        assert_eq!(conn.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        migracoes_ate_14().to_latest(&mut conn).expect("o binário antigo abre o banco depois da descida");
+
+        migrations().to_latest(&mut conn).unwrap();
+        assert_eq!((versao(&conn), contagens(&conn)), (ultima_versao() as i64, antes));
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM fechamento_conferencia", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     }
 
     const CHAVE: &str = "abababababababababababababababababababababababababababababababab";
@@ -512,7 +623,7 @@ mod testes_de_migracao {
         let nomes = snapshots(&backups);
         assert_eq!(nomes.len(), 1, "um snapshot: {nomes:?}");
         assert!(nomes[0].starts_with("pre-migracao-v13-") && nomes[0].ends_with(".enc"), "nome inesperado: {}", nomes[0]);
-        assert_eq!(versao(&abrir(&caminho)), 14);
+        assert_eq!(versao(&abrir(&caminho)), ultima_versao() as i64);
 
         // O snapshot é o banco de antes: versão 13, com os dados e sem as tabelas novas.
         let copia = abrir(&backups.join(&nomes[0]));
@@ -531,7 +642,7 @@ mod testes_de_migracao {
         let backups_novo = raiz.join("backups").join("bia");
         destrancar_como("bia", &novo, &backups_novo, None).unwrap();
         assert!(snapshots(&backups_novo).is_empty(), "Cofre recém-criado não tem o que copiar");
-        assert_eq!(versao(&abrir(&novo)), 14);
+        assert_eq!(versao(&abrir(&novo)), ultima_versao() as i64);
         let _ = std::fs::remove_dir_all(raiz);
     }
 
@@ -574,7 +685,7 @@ mod testes_de_migracao {
         let _ = std::fs::remove_dir_all(raiz);
     }
 
-    /// `ECOS_VAULT_MIGRAR_ATE=13`: o desbloqueio desce o esquema (com snapshot da versão 14 antes) e o binário
+    /// `ECOS_VAULT_MIGRAR_ATE=13`: o desbloqueio desce o esquema (com snapshot da versão 16 antes) e o binário
     /// antigo abre o arquivo. Repetir com o banco já na 13 não faz nada.
     #[test]
     fn migrar_ate_desce_o_esquema_com_snapshot_antes() {
@@ -587,21 +698,21 @@ mod testes_de_migracao {
 
         destrancar_como("ana", &caminho, &backups, Some(13)).unwrap();
         let nomes = snapshots(&backups);
-        assert_eq!(nomes.iter().filter(|n| n.starts_with("pre-migracao-v14-")).count(), 1, "{nomes:?}");
+        assert_eq!(nomes.iter().filter(|n| n.starts_with("pre-migracao-v16-")).count(), 1, "{nomes:?}");
         assert_eq!(nomes.len(), 2);
         let mut conn = abrir(&caminho);
         assert_eq!((versao(&conn), contagens(&conn)), (13, antes));
         assert!(!tem_tabela(&conn, "mensalidade"));
         Migrations::new(lista_de_migracoes()[..13].to_vec()).to_latest(&mut conn).expect("binário antigo abre");
         drop(conn);
-        // O que estava nas tabelas novas fica guardado no snapshot da versão 14.
-        let v14 = abrir(&backups.join(nomes.iter().find(|n| n.starts_with("pre-migracao-v14-")).unwrap()));
+        // O que estava nas tabelas novas fica guardado no snapshot da versão 16.
+        let v14 = abrir(&backups.join(nomes.iter().find(|n| n.starts_with("pre-migracao-v16-")).unwrap()));
         assert_eq!(v14.query_row("SELECT COUNT(*) FROM mensalidade", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
         drop(v14);
 
         destrancar_como("ana", &caminho, &backups, Some(13)).unwrap();
         assert_eq!(snapshots(&backups).len(), 2, "já na versão pedida: nada a fazer");
-        assert!(destrancar_como("ana", &caminho, &backups, Some(15)).is_err(), "versão que o binário não conhece é recusada");
+        assert!(destrancar_como("ana", &caminho, &backups, Some(16)).is_err(), "versão que o binário não conhece é recusada");
         assert!(destrancar_como("ana", &caminho, &backups, Some(0)).is_err());
         assert_eq!(versao(&abrir(&caminho)), 13);
         let _ = std::fs::remove_dir_all(raiz);

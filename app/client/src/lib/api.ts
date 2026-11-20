@@ -1428,6 +1428,8 @@ export interface TransacaoApi {
   anexos?: number;
   /** Quantas notas fiscais o lançamento tem. */
   notas_fiscais?: number;
+  /** Recibos de distribuição de lucros anexados. */
+  recibos?: number;
   conciliada?: boolean;
   data_ocorrencia?: string | null;
   transacao_recorrente_id?: string | null;
@@ -1550,7 +1552,8 @@ export interface CategoriaUsoApi {
 }
 
 /** O que o arquivo anexado é: o comprovante do pagamento ou a nota fiscal da compra. */
-export type TipoAnexo = "comprovante" | "nota_fiscal";
+/** `recibo_lucros`: recibo de distribuição de lucros, pedido pela contabilidade; vive no Fechamento, fora da lista de Comprovantes. */
+export type TipoAnexo = "comprovante" | "nota_fiscal" | "recibo_lucros";
 
 /** Arquivo anexado a uma transação (o conteúdo vem de `vault.anexos.conteudo`). */
 export interface AnexoApi {
@@ -1693,6 +1696,90 @@ export interface PrevistoRecebidoApi {
   totais: MesPrevistoRecebido[];
 }
 
+/** Uma conta (ou "Sem conta", com `conta_id` nulo) no extrato do período: só lançamentos efetivados entram nos números. */
+export interface FechamentoContaApi {
+  conta_id: string | null;
+  nome: string;
+  banco: string | null;
+  tipo: TipoConta;
+  cor: string;
+  codigo_banco: string | null;
+  sigla: string | null;
+  saldo_inicial: number;
+  entradas: number;
+  saidas: number;
+  /** Líquido das transferências entre contas próprias (entrou − saiu); fora de entradas e saídas, dentro do saldo final. */
+  transferencias: number;
+  saldo_final: number;
+  lancamentos: number;
+  /** Saldo que o extrato do banco mostra no fim do mês, digitado por alguém; só existe quando o período é um mês inteiro. */
+  saldo_banco: number | null;
+  /** Banco − Cofre; zero = bate. */
+  diferenca: number | null;
+  conferido_por: string | null;
+  conferido_em: string | null;
+  /** Saldo inicial que está cadastrado na conta; o Fechamento só parte dele quando ninguém informou uma abertura. */
+  saldo_inicial_cadastrado: number;
+  /** A abertura mais recente até o começo do período: "no começo de `data` a conta tinha `saldo`". */
+  abertura: { data: string; saldo: number; por: string | null } | null;
+  /** A abertura é do primeiro dia deste período (pode ser trocada ou desfeita aqui). */
+  abertura_neste_periodo: boolean;
+  /** Saldo do banco que foi conferido no mês anterior (só quando o período começa no dia 1): vira sugestão de abertura. */
+  saldo_banco_anterior: number | null;
+  /** "AAAA-MM" do mês anterior, quando `saldo_banco_anterior` pode existir. */
+  mes_anterior: string | null;
+}
+export interface FechamentoCategoriaApi { tipo: "entrada" | "saida"; categoria_id: string | null; nome: string | null; pai_id: string | null; valor: number; lancamentos: number }
+export interface FechamentoPendenciaItemApi { id: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number; data: string }
+export interface FechamentoPendenciaApi { quantidade: number; valor_centavos: number; itens: FechamentoPendenciaItemApi[] }
+export type ChavePendenciaFechamento = "pendentes" | "sem_categoria" | "sem_conta" | "sem_comprovante" | "nao_conciliadas";
+export interface FechamentoLucroItemApi {
+  id: string;
+  descricao: string;
+  data: string;
+  valor_centavos: number;
+  status: "efetivada" | "pendente";
+  recibos: number;
+  /** Comprovantes e notas fiscais: não valem como recibo. */
+  outros_anexos: number;
+}
+export interface FechamentoLucrosApi {
+  configurada: boolean;
+  categoria_id: string | null;
+  categoria_nome: string | null;
+  /** Efetivados do período (categoria e subcategorias). */
+  quantidade: number;
+  valor_centavos: number;
+  /** Efetivados ainda sem recibo anexado. */
+  sem_recibo: number;
+  pendentes: number;
+  itens: FechamentoLucroItemApi[];
+}
+export interface FechamentoTransferenciasApi {
+  /** Há categoria(s) escolhida(s) como transferência entre contas próprias. */
+  configurada: boolean;
+  categorias: { id: string; nome: string }[];
+  /** Efetivados do período (categorias escolhidas e subcategorias). */
+  quantidade: number;
+  entradas: number;
+  saidas: number;
+  /** Entradas − saídas; diferente de zero = falta lançar o outro lado. */
+  liquido: number;
+  equilibrada: boolean;
+}
+export interface FechamentoApi {
+  data_de: string;
+  data_ate: string;
+  /** "AAAA-MM" quando o período é exatamente um mês do calendário. */
+  mes: string | null;
+  contas: FechamentoContaApi[];
+  totais: { saldo_inicial: number; entradas: number; saidas: number; transferencias: number; resultado: number; saldo_final: number };
+  transferencias: FechamentoTransferenciasApi;
+  categorias: FechamentoCategoriaApi[];
+  lucros: FechamentoLucrosApi;
+  pendencias: Record<ChavePendenciaFechamento, FechamentoPendenciaApi> & { rascunhos: number };
+}
+
 /** Recusa de efetivar uma ocorrência porque há ciclo de reajuste sem decisão (409 `MENSALIDADE_REAJUSTE_PENDENTE`). */
 export function bloqueioDeMensalidade(e: unknown): { recorrencia_id: string; ciclo: string } | null {
   if (!(e instanceof ApiError) || e.code !== "MENSALIDADE_REAJUSTE_PENDENTE") return null;
@@ -1823,6 +1910,31 @@ export const vault = {
     /** Remove só o contrato; o histórico de reajustes fica. */
     remover: (recorrenciaId: string) => del<{ ok: true }>(`/vault/mensalidades/${recorrenciaId}`),
     previstoRecebido: (p: { data_de: string; data_ate: string }) => get<PrevistoRecebidoApi>(`/vault/mensalidades/previsto-recebido${qs(p)}`),
+  },
+  fechamento: {
+    obter: (p: { data_de: string; data_ate: string }) => get<FechamentoApi>(`/vault/fechamento${qs(p)}`),
+    /** Guarda o saldo que o extrato do banco mostra no fim do mês (`null` apaga). Vale para o Cofre inteiro. */
+    conferir: (p: { mes: string; conta_id: string; saldo_banco_centavos: number | null }) => put<{ ok: true }>("/vault/fechamento/conferencia", p),
+    /** Escolhe a categoria que representa a distribuição de lucros (`null` desfaz). Precisa aceitar saídas. */
+    definirLucros: (categoriaId: string | null) => put<{ ok: true }>("/vault/fechamento/lucros", { categoria_id: categoriaId }),
+    /** `categorias_lucros`: a escolhida e as subcategorias dela (as que valem como distribuição de lucros). */
+    configuracao: () => get<{ categoria_lucros_id: string | null; categorias_lucros: string[]; categorias_transferencia: string[] }>("/vault/fechamento/config"),
+    /** "No começo de `data` a conta tinha `saldo_centavos`": o extrato parte dali em vez do saldo inicial do cadastro (`null` desfaz). */
+    definirAbertura: (p: { conta_id: string; data: string; saldo_centavos: number | null }) => put<{ ok: true }>("/vault/fechamento/abertura", p),
+    /** Escolhe as categorias que são transferência entre contas próprias (lista vazia desfaz). Não podem ser a de lucros. */
+    definirTransferencias: (categoriaIds: string[]) => put<{ ok: true }>("/vault/fechamento/transferencias", { categoria_ids: categoriaIds }),
+    /** O `.zip` para a contabilidade: planilhas do período e os arquivos (comprovantes, notas fiscais, recibos de lucros). */
+    pacote: async (p: { data_de: string; data_ate: string }) => {
+      const zip = await reqBlob(`/vault/fechamento/pacote${qs(p)}`);
+      if (!zip) throw new ApiError("NOT_FOUND", "O servidor não tem o pacote de fechamento. Atualize o servidor Ecos e tente novamente.", 404);
+      return zip;
+    },
+    /** Só o resumo do período em PDF, o mesmo que vai dentro do pacote. */
+    resumoPdf: async (p: { data_de: string; data_ate: string }) => {
+      const pdf = await reqBlob(`/vault/fechamento/resumo.pdf${qs(p)}`);
+      if (!pdf) throw new ApiError("NOT_FOUND", "O servidor não tem o resumo em PDF. Atualize o servidor Ecos e tente novamente.", 404);
+      return pdf;
+    },
   },
   comprovantes: {
     listar: (params: { data_de?: string; data_ate?: string; categoria_id?: string; beneficiario_id?: string; conta_id?: string; q?: string; tipo?: TipoAnexo; limit?: number; offset?: number } = {}) =>
