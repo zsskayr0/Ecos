@@ -1,3 +1,9 @@
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import { toString } from "mdast-util-to-string";
+import type { Nodes, Root } from "mdast";
+
 const ITEM_CHECKLIST = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/;
 
 /** Marca/desmarca o `indice`-ésimo item `- [ ]` do Markdown, ignorando blocos de código. */
@@ -14,18 +20,27 @@ export function alternarChecklist(corpo: string, indice: number): string {
   }).join("\n");
 }
 
-/** Primeiro link http(s) que não seja imagem nem anexo, com o domínio já extraído. */
+const PARSER_LINKS = unified().use(remarkParse).use(remarkGfm);
+
+/** Primeiro link http(s) do corpo, fora de tabelas e código, que não seja imagem nem anexo, com o domínio já extraído. */
 export function primeiroLink(corpo: string): { url: string; dominio: string; rotulo: string } | null {
-  for (const m of corpo.matchAll(/(!?)(?:\[([^\]]*)\]\((<?https?:\/\/[^)\s>]+>?)[^)]*\)|(https?:\/\/[^\s)<>]+))/g)) {
-    if (m[1]) continue;
-    const url = (m[3] ?? m[4]).replace(/^<|>$/g, "");
-    if (/\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i.test(url)) continue;
-    try {
-      const dominio = new URL(url).hostname.replace(/^www\./, "");
-      return { url, dominio, rotulo: m[2]?.trim() || url.replace(/^https?:\/\/(www\.)?/, "") };
-    } catch { /* URL inválida */ }
-  }
-  return null;
+  let achado: { url: string; dominio: string; rotulo: string } | null = null;
+  const visitar = (no: Nodes): void => {
+    if (achado || no.type === "table" || no.type === "code" || no.type === "inlineCode" || no.type === "html") return;
+    if (no.type === "link") {
+      const url = no.url;
+      if (!/^https?:\/\//i.test(url) || /\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i.test(url)) return;
+      try {
+        const dominio = new URL(url).hostname.replace(/^www\./, "");
+        const texto = toString(no).trim();
+        achado = { url, dominio, rotulo: texto && texto !== url ? texto : url.replace(/^https?:\/\/(www\.)?/, "") };
+      } catch { /* URL inválida */ }
+      return;
+    }
+    if ("children" in no) for (const filho of no.children) visitar(filho as Nodes);
+  };
+  visitar(PARSER_LINKS.parse(corpo) as Root);
+  return achado;
 }
 
 export const LIMITE_EXPANDIDO_CARACTERES = 2500;
