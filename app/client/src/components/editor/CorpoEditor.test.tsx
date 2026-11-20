@@ -12,7 +12,7 @@ it("abre os comandos extras no menu e separa o modo de escrita da formatação (
   const barra = within(screen.getByRole("toolbar", { name: "Formatação da descrição" }));
   const modos = within(screen.getByRole("group", { name: "Modo do editor" }));
   expect(modos.queryByRole("button", { name: "Pré-visualizar descrição" })).toBeNull();
-  expect(modos.getByRole("button", { name: "Modo de escrita" })).toBeTruthy();
+  expect(modos.getByRole("button", { name: "Escrever à mão" })).toBeTruthy();
   expect(barra.queryByRole("button", { name: "Pré-visualizar descrição" })).toBeNull();
   expect(barra.getByRole("button", { name: /Negrito/ })).toBeTruthy();
   expect(barra.queryByRole("button", { name: "Checklist" })).toBeNull();

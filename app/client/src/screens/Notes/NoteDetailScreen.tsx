@@ -5,7 +5,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChipTag } from "@/components/common/ChipTag";
-import { Hash, Pencil, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
+import { Hash, Type, Trash2, CheckCircle2, AlertTriangle, FileX } from "lucide-react";
 import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
@@ -213,7 +213,7 @@ function NoteDetailMobile() {
         titulo={editando ? <input aria-label="Título da nota" value={tituloEdit} onChange={(e) => setTituloEdit(e.target.value)} placeholder="Título da nota" enterKeyHint="done"
           className="block w-full min-w-0 truncate border-0 border-b border-transparent bg-transparent py-1 font-display text-xl text-text-primary caret-steel-300 transition-colors [outline:none!important] [box-shadow:none!important] placeholder:text-text-muted focus:border-steel-400" /> : <h1 className="truncate border-b border-transparent py-1 font-display text-xl text-text-primary">{nota.titulo}</h1>}
         actions={<>
-        {!editando && <button type="button" onClick={entrarEdicao} aria-label="Editar nota" title="Editar" className={`${DETAIL_ACTION} text-steel-300`}><Pencil size={18} /></button>}
+        {!editando && <button type="button" onClick={entrarEdicao} aria-label="Editar texto da nota" title="Editar texto" className={`${DETAIL_ACTION} text-steel-300`}><Type size={18} aria-hidden /><span>Editar</span></button>}
         <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : salvando ? "Salvando…" : editando ? "Editando" : "Salvo"} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} classeBotao={`${DETAIL_ACTION} text-text-secondary`}
           anexos={editando ? <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact /> : undefined}
           acoes={(fechar) => <>

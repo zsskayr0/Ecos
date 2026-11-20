@@ -354,7 +354,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     const seletorEmoji = emojiAberto && <SeletorEmoji alinharDireita={barraCompacta} aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />;
 
     const controlesModo = <>
-      {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Modo de escrita"} title={escrevendo ? "Voltar ao modo texto" : "Modo de escrita (escrever à mão sobre a Nota)"}
+      {tintaNotaId && <button type="button" aria-pressed={escrevendo} onClick={alternarEscrita} disabled={!tinta.carregado} aria-label={escrevendo ? "Voltar ao modo texto" : "Escrever à mão"} title={escrevendo ? "Voltar ao modo texto" : "Escrever à mão"}
         className={`ml-auto flex ${tam} items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:opacity-40 ${escrevendo ? "text-text-secondary hover:bg-surface-3 hover:text-text-primary" : "text-steel-300 hover:bg-surface-3"}`}>
         {escrevendo ? <Keyboard size={16} strokeWidth={1.75} /> : <PenLine size={16} strokeWidth={1.75} />}
       </button>}
