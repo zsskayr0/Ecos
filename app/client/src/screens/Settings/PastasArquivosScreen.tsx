@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, FileType2, Flag, Folder, FolderCog, FolderTree, LayoutGrid, Paperclip, Rows3, Shapes, Trash2 } from "lucide-react";
+import { ChevronRight, Columns3, FileType2, Flag, Folder, FolderCog, FolderTree, LayoutGrid, Paperclip, Rows3, Shapes, SquareCheck, Trash2 } from "lucide-react";
+import { COLUNAS_ARQUIVOS, colunasValidas } from "@/lib/colunas-arquivos";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import { limparEscolhaDePastas } from "@/components/views/PastasGrade";
@@ -43,6 +44,7 @@ export function PastasArquivosScreen() {
   const [prefs, alterar] = usePreferencias();
   const [iconesAbertos, setIconesAbertos] = useState(false);
   const totalIcones = Object.keys(prefs.exploradorIconesExtensao).length;
+  const colunasAtivas = colunasValidas(prefs.exploradorColunas);
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -85,6 +87,23 @@ export function PastasArquivosScreen() {
             </Linha>
           </>
         )}
+        <Linha Icone={Columns3} titulo="Colunas da lista" descricao="O que aparece ao lado do nome na lista da tela de Arquivos. Clique no título da coluna na lista para ordenar por ela.">
+          <div className="flex max-w-md flex-wrap justify-end gap-1.5" role="group" aria-label="Colunas da lista">
+            {COLUNAS_ARQUIVOS.map((c) => {
+              const ativa = colunasAtivas.includes(c.id);
+              return (
+                <button key={c.id} type="button" aria-pressed={ativa}
+                  onClick={() => alterar({ exploradorColunas: COLUNAS_ARQUIVOS.map((x) => x.id).filter((id) => (id === c.id ? !ativa : colunasAtivas.includes(id))) })}
+                  className={`min-h-9 rounded-full border px-3 text-sm transition-colors ${ativa ? "border-steel-400 bg-steel-500/20 text-text-primary" : "border-border bg-surface-2 text-text-muted hover:bg-surface-3"}`}>
+                  {c.rotulo}
+                </button>
+              );
+            })}
+          </div>
+        </Linha>
+        <Linha Icone={SquareCheck} titulo="Checkbox nas tarefas" descricao="Na lista de Arquivos, ao passar o mouse sobre o ícone da tarefa, ele vira uma caixa para concluir ou reabrir direto na linha.">
+          <Toggle checked={prefs.exploradorCheckboxTarefa} onChange={(exploradorCheckboxTarefa) => alterar({ exploradorCheckboxTarefa })} label="Checkbox nas tarefas" />
+        </Linha>
         <Linha Icone={FolderTree} titulo="Sugestões na barra de endereço" descricao="Na tela de Arquivos, ao clicar no caminho para digitar, mostra uma lista de pastas que combinam com o que você escreve.">
           <Toggle checked={prefs.arquivosSugestoesCaminho} onChange={(arquivosSugestoesCaminho) => alterar({ arquivosSugestoesCaminho })} label="Sugestões na barra de endereço" />
         </Linha>

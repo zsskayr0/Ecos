@@ -231,8 +231,10 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let espaco = q.espaco.clone().filter(|e| !e.is_empty()).map(|e| crate::espacos::fisica(&e, &usuario.0));
     let visivel_pasta = crate::espacos::visivel_chave_sql("", &usuario.0);
     let visivel_doc = visivel_pasta.clone();
-    let visivel_item = crate::espacos::visivel_sql("", &usuario.0);
+    let visivel_item = crate::espacos::visivel_item_sql("", &usuario.0);
     let visivel_item_nota = visivel_item.clone();
+    let fechadas = crate::routes::seguro::raizes_fechadas(&state, &usuario.0).await?;
+    let chave_pessoal = crate::espacos::fisica("pessoal", &usuario.0);
 
     let pastas: Vec<(String, String, i64, i64, String)> = state
         .db
@@ -243,7 +245,9 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                 let mut stmt = conn.prepare(&format!("SELECT caminho, nome, contagem_notas, contagem_tarefas, espaco FROM pasta_cache WHERE (?1 IS NULL OR espaco = ?1) AND {visivel_pasta}"))?;
                 let converter = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?, r.get::<_, String>(4)?));
                 let bruto: Vec<(String, String, i64, i64, String)> = stmt.query_map([&espaco], converter)?.filter_map(|r| r.ok()).collect();
-                let linhas = bruto.into_iter().filter(|(caminho, _, _, _, _)| {
+                let linhas = bruto.into_iter().filter(|(caminho, _, _, _, esp)| {
+                    // Dentro de pasta trancada e fechada nem os nomes das subpastas aparecem.
+                    if *esp == chave_pessoal && fechadas.iter().any(|r| caminho.starts_with(&format!("{r}/"))) { return false; }
                     let pai_de_caminho = caminho.rsplit_once('/').map(|(pai, _)| pai).unwrap_or("");
                     pai_de_caminho == pasta_pai || (recursivo && (pasta_pai.is_empty() || caminho.starts_with(&format!("{pasta_pai}/"))))
                 }).collect();
@@ -364,6 +368,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     }
     let nome = ecos_core::naming::sanitizar_nome_arquivo(&payload.nome);
     caminho_dentro_da_raiz("pasta_pai", payload.pasta_pai.as_deref().unwrap_or(""), true)?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal"), payload.pasta_pai.as_deref()).await?;
     validar_aparencia(&payload.cor, &payload.icone)?;
     validar_extras(&payload.extras)?;
     let raiz = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?.remove(0);
@@ -408,6 +413,11 @@ pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extensi
     caminho_dentro_da_raiz("novo_caminho", &payload.novo_caminho, false)?;
     validar_aparencia(&payload.cor, &payload.icone)?;
     validar_extras(&payload.extras)?;
+    let esp = payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal").to_string();
+    for caminho in [&payload.caminho_atual, &payload.novo_caminho] {
+        crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, &esp, caminho.rsplit_once('/').map(|(p, _)| p)).await?;
+    }
+    crate::routes::seguro::exigir_sem_tranca_na_pasta(&state, &usuario.0, &esp, &payload.caminho_atual).await?;
     let raizes = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     // A pasta lógica pode existir numa árvore ou nas duas: confere tudo antes de mexer em qualquer uma.
     let com_pasta: Vec<&std::path::PathBuf> = raizes.iter().filter(|r| r.join(&payload.caminho_atual).is_dir()).collect();
@@ -455,6 +465,9 @@ pub struct ExcluirPastaPayload {
 
 pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ExcluirPastaPayload>) -> AppResult<Json<serde_json::Value>> {
     caminho_dentro_da_raiz("caminho", &payload.caminho, false)?;
+    let esp = payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal").to_string();
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, &esp, payload.caminho.rsplit_once('/').map(|(p, _)| p)).await?;
+    crate::routes::seguro::exigir_sem_tranca_na_pasta(&state, &usuario.0, &esp, &payload.caminho).await?;
     let raizes = raizes_do_espaco(&state, &usuario.0, &payload.tipo, payload.espaco.as_deref()).await?;
     let dirs: Vec<std::path::PathBuf> = raizes.iter().map(|r| r.join(&payload.caminho)).filter(|d| d.is_dir()).collect();
     if dirs.is_empty() {
