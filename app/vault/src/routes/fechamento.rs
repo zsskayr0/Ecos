@@ -27,7 +27,13 @@ use serde_json::{json, Value};
 const CHAVE_LUCROS: &str = "categoria_lucros";
 /// Categorias (lista JSON de ids) cujos lançamentos são transferência entre contas próprias.
 const CHAVE_TRANSFERENCIAS: &str = "categorias_transferencia";
+/// Contas (lista JSON de ids) que a pessoa tirou do Fechamento: os lançamentos delas não entram em nenhum número,
+/// pendência, planilha ou arquivo do pacote. Conta nova entra sozinha; só sai quem for escolhido.
+const CHAVE_CONTAS_FORA: &str = "contas_fora";
 const MAX_CATEGORIAS_DE_TRANSFERENCIA: usize = 20;
+const MAX_CONTAS_FORA: usize = 500;
+/// Teto de lançamentos listados no Fechamento (um período de anos de movimento de uma empresa pequena cabe folgado).
+const LIMITE_DE_LANCAMENTOS: i64 = 50_000;
 const ITENS_DE_LUCROS: i64 = 5000;
 /// Quantos lançamentos de cada pendência vêm de amostra; a quantidade total vem à parte.
 const ITENS_POR_PENDENCIA: i64 = 25;
@@ -82,6 +88,28 @@ pub(crate) fn sql_eh_transferencia(ids: &[String]) -> String {
     format!("COALESCE(t.categoria_id IN ({}), 0)", lista.join(", "))
 }
 
+/// Ids das contas que ficam fora do Fechamento, só as que ainda existem.
+pub(crate) fn contas_fora(c: &Connection) -> rusqlite::Result<Vec<String>> {
+    let valor: Option<String> = c.query_row("SELECT valor FROM fechamento_config WHERE chave = ?1", [CHAVE_CONTAS_FORA], |r| r.get(0)).optional()?;
+    let ids: Vec<String> = valor.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(ids);
+    }
+    let mut stmt = c.prepare("SELECT id FROM conta")?;
+    let existentes: Vec<String> = stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+    Ok(ids.into_iter().filter(|i| existentes.contains(i)).collect())
+}
+
+/// Condição SQL (0/1, nunca nula) de que `coluna` (o id de uma conta) está entre as contas fora do Fechamento. Os ids
+/// vêm da tabela de contas e ainda assim entram escapados. Lançamento sem conta nunca está "fora".
+pub(crate) fn sql_conta_fora(coluna: &str, ids: &[String]) -> String {
+    if ids.is_empty() {
+        return "0".to_string();
+    }
+    let lista: Vec<String> = ids.iter().map(|i| format!("'{}'", i.replace('\'', "''"))).collect();
+    format!("COALESCE({coluna} IN ({}), 0)", lista.join(", "))
+}
+
 /// Uma linha de extrato (conta ou "sem conta") com os números do período já somados.
 #[allow(clippy::too_many_arguments)]
 fn linha_de_conta(
@@ -128,7 +156,8 @@ fn mes_anterior(de: &str) -> Option<String> {
     (d.day() == 1).then(|| d.pred_opt().map(|u| format!("{:04}-{:02}", u.year(), u.month()))).flatten()
 }
 
-fn contas_do_periodo(c: &Connection, de: &str, ate: &str, mes: Option<&str>, transf: &str) -> rusqlite::Result<Vec<Value>> {
+/// `conta_fora`: condição (sobre `c.id`) das contas que a pessoa tirou do Fechamento; elas não viram linha.
+fn contas_do_periodo(c: &Connection, de: &str, ate: &str, mes: Option<&str>, transf: &str, conta_fora: &str) -> rusqlite::Result<Vec<Value>> {
     let aberturas = aberturas_ate(c, de)?;
     let anterior = mes_anterior(de);
     let conferidas_antes: HashMap<String, i64> = match &anterior {
@@ -147,6 +176,7 @@ fn contas_do_periodo(c: &Connection, de: &str, ate: &str, mes: Option<&str>, tra
                 COALESCE(SUM(CASE WHEN t.data BETWEEN ?1 AND ?2 AND {transf} THEN (CASE WHEN t.tipo = 'entrada' THEN t.valor_centavos ELSE -t.valor_centavos END) ELSE 0 END), 0), \
                 COUNT(CASE WHEN t.data BETWEEN ?1 AND ?2 THEN 1 END) \
          FROM conta c LEFT JOIN transacao t ON t.conta_id = c.id AND t.status = 'efetivada' \
+         WHERE NOT {conta_fora} \
          GROUP BY c.id ORDER BY c.nome COLLATE NOCASE, c.id"
     ))?;
     let mut linhas: Vec<Value> = stmt
@@ -211,11 +241,11 @@ fn contas_do_periodo(c: &Connection, de: &str, ate: &str, mes: Option<&str>, tra
     Ok(linhas)
 }
 
-fn por_categoria(c: &Connection, de: &str, ate: &str, transf: &str) -> rusqlite::Result<Vec<Value>> {
+fn por_categoria(c: &Connection, de: &str, ate: &str, transf: &str, fora: &str) -> rusqlite::Result<Vec<Value>> {
     let mut stmt = c.prepare(&format!(
         "SELECT t.tipo, t.categoria_id, c.nome, c.pai_id, SUM(t.valor_centavos), COUNT(*) \
          FROM transacao t LEFT JOIN categoria c ON c.id = t.categoria_id \
-         WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND NOT {transf} \
+         WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND NOT {transf} AND NOT {fora} \
          GROUP BY t.tipo, t.categoria_id ORDER BY t.tipo, 5 DESC, c.nome"
     ))?;
     let linhas = stmt
@@ -240,23 +270,24 @@ fn pendencia(c: &Connection, onde: &str, de: &str, ate: &str) -> rusqlite::Resul
 
 /// Bloco "Lucros do mês": lançamentos de saída da categoria de lucros (e das subcategorias dela) e o recibo de cada um.
 /// Os totais contam só efetivados; pendentes aparecem na lista, marcados.
-fn lucros(c: &Connection, de: &str, ate: &str) -> rusqlite::Result<Value> {
+fn lucros(c: &Connection, de: &str, ate: &str, fora: &str) -> rusqlite::Result<Value> {
     let Some((id, nome)) = categoria_de_lucros(c)? else {
         return Ok(json!({ "configurada": false, "categoria_id": null, "categoria_nome": null, "quantidade": 0, "valor_centavos": 0, "sem_recibo": 0, "pendentes": 0, "itens": [] }));
     };
-    const ONDE: &str = "t.tipo = 'saida' AND t.data BETWEEN ?1 AND ?2 AND (t.categoria_id = ?3 OR t.categoria_id IN (SELECT id FROM categoria WHERE pai_id = ?3))";
+    let onde = format!("t.tipo = 'saida' AND t.data BETWEEN ?1 AND ?2 AND (t.categoria_id = ?3 OR t.categoria_id IN (SELECT id FROM categoria WHERE pai_id = ?3)) AND NOT {fora}");
+    let onde = onde.as_str();
     const SEM_RECIBO: &str = "NOT EXISTS (SELECT 1 FROM anexo a WHERE a.transacao_id = t.id AND a.tipo = 'recibo_lucros')";
     let (quantidade, valor, sem_recibo): (i64, i64, i64) = c.query_row(
-        &format!("SELECT COUNT(*), COALESCE(SUM(t.valor_centavos), 0), COUNT(CASE WHEN {SEM_RECIBO} THEN 1 END) FROM transacao t WHERE {ONDE} AND t.status = 'efetivada'"),
+        &format!("SELECT COUNT(*), COALESCE(SUM(t.valor_centavos), 0), COUNT(CASE WHEN {SEM_RECIBO} THEN 1 END) FROM transacao t WHERE {onde} AND t.status = 'efetivada'"),
         params![de, ate, id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
-    let pendentes: i64 = c.query_row(&format!("SELECT COUNT(*) FROM transacao t WHERE {ONDE} AND t.status = 'pendente'"), params![de, ate, id], |r| r.get(0))?;
+    let pendentes: i64 = c.query_row(&format!("SELECT COUNT(*) FROM transacao t WHERE {onde} AND t.status = 'pendente'"), params![de, ate, id], |r| r.get(0))?;
     let mut stmt = c.prepare(&format!(
         "SELECT t.id, t.descricao, t.data, t.valor_centavos, t.status, \
                 (SELECT COUNT(*) FROM anexo a WHERE a.transacao_id = t.id AND a.tipo = 'recibo_lucros'), \
                 (SELECT COUNT(*) FROM anexo a WHERE a.transacao_id = t.id AND a.tipo <> 'recibo_lucros') \
-         FROM transacao t WHERE {ONDE} ORDER BY t.data, t.id LIMIT ?4"
+         FROM transacao t WHERE {onde} ORDER BY t.data, t.id LIMIT ?4"
     ))?;
     let itens = stmt
         .query_map(params![de, ate, id, ITENS_DE_LUCROS], |r| {
@@ -269,11 +300,11 @@ fn lucros(c: &Connection, de: &str, ate: &str) -> rusqlite::Result<Value> {
 /// Bloco "Transferências entre contas": o que saiu de uma conta própria e entrou em outra não é receita nem despesa.
 /// Os lançamentos das categorias escolhidas ficam fora das entradas, das saídas e do resultado; o líquido por conta
 /// aparece à parte e fecha o saldo. Se entradas e saídas de transferência não empatam, falta o outro lado.
-fn transferencias(c: &Connection, escolhidas: &[(String, String)], transf: &str, de: &str, ate: &str) -> rusqlite::Result<Value> {
+fn transferencias(c: &Connection, escolhidas: &[(String, String)], transf: &str, fora: &str, de: &str, ate: &str) -> rusqlite::Result<Value> {
     let (quantidade, entradas, saidas): (i64, i64, i64) = c.query_row(
         &format!(
             "SELECT COUNT(*), COALESCE(SUM(CASE WHEN t.tipo = 'entrada' THEN t.valor_centavos ELSE 0 END), 0), COALESCE(SUM(CASE WHEN t.tipo = 'saida' THEN t.valor_centavos ELSE 0 END), 0) \
-             FROM transacao t WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND {transf}"
+             FROM transacao t WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND {transf} AND NOT {fora}"
         ),
         [de, ate],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
@@ -282,28 +313,73 @@ fn transferencias(c: &Connection, escolhidas: &[(String, String)], transf: &str,
     Ok(json!({ "configurada": !escolhidas.is_empty(), "categorias": categorias, "quantidade": quantidade, "entradas": entradas, "saidas": saidas, "liquido": entradas - saidas, "equilibrada": entradas == saidas }))
 }
 
+/// Todos os lançamentos efetivados do período (menos os de contas fora do Fechamento), do mais antigo ao mais novo: é a
+/// lista que a contabilidade confere contra o extrato. `transferencia` marca os que não contam como entrada nem saída.
+pub(crate) fn lancamentos(c: &Connection, data_de: NaiveDate, data_ate: NaiveDate) -> rusqlite::Result<Vec<Value>> {
+    let (de, ate) = (data_de.to_string(), data_ate.to_string());
+    let escolhidas = categorias_de_transferencia(c)?;
+    let transf = sql_eh_transferencia(&ids_de_transferencia(c, &escolhidas)?);
+    let fora = sql_conta_fora("t.conta_id", &contas_fora(c)?);
+    let mut stmt = c.prepare(&format!(
+        "SELECT t.id, t.data, t.conta_id, COALESCE(c.nome, 'Sem conta'), t.tipo, t.valor_centavos, cat.nome, b.nome, t.descricao, t.forma_pagamento, {transf},                 (SELECT COUNT(*) FROM anexo a WHERE a.transacao_id = t.id)          FROM transacao t LEFT JOIN conta c ON c.id = t.conta_id LEFT JOIN categoria cat ON cat.id = t.categoria_id LEFT JOIN beneficiario b ON b.id = t.beneficiario_id          WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND NOT {fora} ORDER BY t.data, t.id LIMIT ?3"
+    ))?;
+    let linhas = stmt
+        .query_map(params![de, ate, LIMITE_DE_LANCAMENTOS], |r| {
+            Ok(json!({
+                "id": r.get::<_, String>(0)?, "data": r.get::<_, String>(1)?, "conta_id": r.get::<_, Option<String>>(2)?, "conta": r.get::<_, String>(3)?,
+                "tipo": r.get::<_, String>(4)?, "valor_centavos": r.get::<_, i64>(5)?, "categoria": r.get::<_, Option<String>>(6)?, "beneficiario": r.get::<_, Option<String>>(7)?,
+                "descricao": r.get::<_, String>(8)?, "forma_pagamento": r.get::<_, Option<String>>(9)?, "transferencia": r.get::<_, i64>(10)? == 1, "arquivos": r.get::<_, i64>(11)?,
+            }))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(linhas)
+}
+
+/// `GET /vault/fechamento/lancamentos?data_de&data_ate`.
+pub async fn obter_lancamentos(State(state): State<AppState>, Query(q): Query<super::financeiro::Periodo>) -> AppResult<Json<Value>> {
+    q.validar()?;
+    let lista = state.db.with(move |c| lancamentos(c, q.data_de, q.data_ate)).await?;
+    Ok(Json(json!({ "lancamentos": lista, "limite": LIMITE_DE_LANCAMENTOS, "cortado": lista.len() as i64 >= LIMITE_DE_LANCAMENTOS })))
+}
+
 pub(crate) fn fechamento(c: &Connection, data_de: NaiveDate, data_ate: NaiveDate) -> rusqlite::Result<Value> {
     let (de, ate) = (data_de.to_string(), data_ate.to_string());
     let mes = mes_do_periodo(data_de, data_ate);
     let escolhidas = categorias_de_transferencia(c)?;
     let transf = sql_eh_transferencia(&ids_de_transferencia(c, &escolhidas)?);
-    let contas = contas_do_periodo(c, &de, &ate, mes.as_deref(), &transf)?;
+    // Período que ainda não terminou: os números são parciais e não há saldo final de banco para conferir.
+    let em_andamento = data_ate >= chrono::Utc::now().date_naive();
+    let fora_ids = contas_fora(c)?;
+    let fora = sql_conta_fora("t.conta_id", &fora_ids);
+    let contas = contas_do_periodo(c, &de, &ate, mes.as_deref(), &transf, &sql_conta_fora("c.id", &fora_ids))?;
+    // Todas as contas do Cofre, para a pessoa escolher quais entram; as de fora não aparecem no extrato.
+    let todas_as_contas: Vec<Value> = {
+        let mut stmt = c.prepare("SELECT id, nome, banco, cor, codigo_banco, sigla FROM conta ORDER BY nome COLLATE NOCASE, id")?;
+        let v = stmt
+            .query_map([], |r| {
+                let id: String = r.get(0)?;
+                Ok(json!({ "id": id, "nome": r.get::<_, String>(1)?, "banco": r.get::<_, Option<String>>(2)?, "cor": r.get::<_, String>(3)?, "codigo_banco": r.get::<_, Option<String>>(4)?, "sigla": r.get::<_, Option<String>>(5)?, "fora": fora_ids.contains(&id) }))
+            })?
+            .collect::<Result<_, _>>()?;
+        v
+    };
     let soma = |campo: &str| -> i64 { contas.iter().map(|l| l[campo].as_i64().unwrap_or(0)).sum() };
     let (saldo_inicial, entradas, saidas, liquido_transferencias) = (soma("saldo_inicial"), soma("entradas"), soma("saidas"), soma("transferencias"));
     let rascunhos: i64 = c.query_row("SELECT COUNT(*) FROM comprovante_rascunho", [], |r| r.get(0))?;
     Ok(json!({
-        "data_de": de, "data_ate": ate, "mes": mes,
+        "data_de": de, "data_ate": ate, "mes": mes, "em_andamento": em_andamento,
         "contas": contas,
+        "todas_as_contas": todas_as_contas,
         "totais": { "saldo_inicial": saldo_inicial, "entradas": entradas, "saidas": saidas, "transferencias": liquido_transferencias, "resultado": entradas - saidas, "saldo_final": saldo_inicial + entradas - saidas + liquido_transferencias },
-        "transferencias": transferencias(c, &escolhidas, &transf, &de, &ate)?,
-        "categorias": por_categoria(c, &de, &ate, &transf)?,
-        "lucros": lucros(c, &de, &ate)?,
+        "transferencias": transferencias(c, &escolhidas, &transf, &fora, &de, &ate)?,
+        "categorias": por_categoria(c, &de, &ate, &transf, &fora)?,
+        "lucros": lucros(c, &de, &ate, &fora)?,
         "pendencias": {
-            "pendentes": pendencia(c, "t.status = 'pendente'", &de, &ate)?,
-            "sem_categoria": pendencia(c, "t.status = 'efetivada' AND t.categoria_id IS NULL", &de, &ate)?,
+            "pendentes": pendencia(c, &format!("t.status = 'pendente' AND NOT {fora}"), &de, &ate)?,
+            "sem_categoria": pendencia(c, &format!("t.status = 'efetivada' AND t.categoria_id IS NULL AND NOT {fora}"), &de, &ate)?,
             "sem_conta": pendencia(c, "t.status = 'efetivada' AND t.conta_id IS NULL", &de, &ate)?,
-            "sem_comprovante": pendencia(c, &format!("t.status = 'efetivada' AND NOT {transf} AND NOT EXISTS (SELECT 1 FROM anexo a WHERE a.transacao_id = t.id)"), &de, &ate)?,
-            "nao_conciliadas": pendencia(c, "t.status = 'efetivada' AND t.conciliada = 0", &de, &ate)?,
+            "sem_comprovante": pendencia(c, &format!("t.status = 'efetivada' AND NOT {transf} AND NOT {fora} AND NOT EXISTS (SELECT 1 FROM anexo a WHERE a.transacao_id = t.id)"), &de, &ate)?,
+            "nao_conciliadas": pendencia(c, &format!("t.status = 'efetivada' AND t.conciliada = 0 AND NOT {fora}"), &de, &ate)?,
             // Rascunhos não têm data de lançamento: contam todos os que esperam revisão, em qualquer período.
             "rascunhos": rascunhos,
         },
@@ -473,6 +549,43 @@ pub async fn definir_transferencias(State(state): State<AppState>, Json(p): Json
             }
             let valor = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into());
             c.execute("INSERT INTO fechamento_config (chave, valor) VALUES (?1, ?2) ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor", params![CHAVE_TRANSFERENCIAS, valor])?;
+            Ok(Ok(()))
+        })
+        .await?;
+    resultado?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct DefinirContas {
+    /// Contas que ficam de fora do Fechamento; lista vazia traz todas de volta.
+    pub fora: Vec<String>,
+}
+
+pub async fn definir_contas(State(state): State<AppState>, Json(p): Json<DefinirContas>) -> AppResult<Json<Value>> {
+    let mut ids: Vec<String> = Vec::new();
+    for id in p.fora {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    if ids.len() > MAX_CONTAS_FORA {
+        return Err(AppError::new(ErrorCode::ValidationError).with_message("Contas demais."));
+    }
+    let resultado = state
+        .db
+        .with(move |c| {
+            if ids.is_empty() {
+                c.execute("DELETE FROM fechamento_config WHERE chave = ?1", [CHAVE_CONTAS_FORA])?;
+                return Ok(Ok(()));
+            }
+            for id in &ids {
+                if !c.query_row("SELECT EXISTS(SELECT 1 FROM conta WHERE id = ?1)", [id], |r| r.get::<_, bool>(0))? {
+                    return Ok(Err(AppError::new(ErrorCode::NotFound).with_message("Conta não encontrada.")));
+                }
+            }
+            let valor = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into());
+            c.execute("INSERT INTO fechamento_config (chave, valor) VALUES (?1, ?2) ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor", params![CHAVE_CONTAS_FORA, valor])?;
             Ok(Ok(()))
         })
         .await?;
@@ -973,6 +1086,87 @@ mod testes {
         let outro = pedir("2026-10-05", "2026-10-20").await;
         assert_eq!(outro.headers()["content-disposition"], "attachment; filename=\"resumo-fechamento-2026-10-05_a_2026-10-20.pdf\"");
         assert_eq!(pedir("2026-10-31", "2026-10-01").await.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn lista_de_lancamentos_traz_todos_os_efetivados_do_periodo_sem_as_contas_de_fora() {
+        let app = app();
+        ativar(&app).await;
+        let a = conta(&app, "Banco A", 0).await;
+        let b = conta(&app, "Caixa B", 0).await;
+        lancar(&app, Some(&a), "saida", 2_500, "2026-10-09", "efetivada", None).await;
+        lancar(&app, Some(&a), "entrada", 9_000, "2026-10-02", "efetivada", None).await;
+        lancar(&app, Some(&b), "saida", 300, "2026-10-05", "efetivada", None).await;
+        lancar(&app, None, "saida", 100, "2026-10-06", "efetivada", None).await;
+        lancar(&app, Some(&a), "saida", 700, "2026-10-07", "pendente", None).await;
+        lancar(&app, Some(&a), "saida", 800, "2026-11-01", "efetivada", None).await;
+        let (s, v) = chamar(&app, "GET", "/vault/fechamento/lancamentos?data_de=2026-10-01&data_ate=2026-10-31", None).await;
+        assert_eq!(s, StatusCode::OK);
+        let datas: Vec<&str> = v["lancamentos"].as_array().unwrap().iter().map(|l| l["data"].as_str().unwrap()).collect();
+        assert_eq!(datas, vec!["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-09"]);
+        assert_eq!(v["lancamentos"][0]["conta"], "Banco A");
+        assert_eq!(v["lancamentos"][0]["tipo"], "entrada");
+        assert_eq!(v["lancamentos"][2]["conta"], "Sem conta");
+        assert_eq!(v["cortado"], false);
+
+        chamar(&app, "PUT", "/vault/fechamento/contas", Some(json!({ "fora": [b] }))).await;
+        let (_, v) = chamar(&app, "GET", "/vault/fechamento/lancamentos?data_de=2026-10-01&data_ate=2026-10-31", None).await;
+        assert_eq!(v["lancamentos"].as_array().unwrap().len(), 3);
+        assert!(v["lancamentos"].as_array().unwrap().iter().all(|l| l["conta"] != "Caixa B"));
+        assert_eq!(chamar(&app, "GET", "/vault/fechamento/lancamentos?data_de=2026-10-31&data_ate=2026-10-01", None).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn periodo_que_ainda_nao_terminou_vem_marcado_como_em_andamento() {
+        let app = app();
+        ativar(&app).await;
+        assert_eq!(fechar(&app, "2026-10-01", "2026-10-31").await["em_andamento"], false);
+        assert_eq!(fechar(&app, "2099-01-01", "2099-01-31").await["em_andamento"], true);
+    }
+
+    #[tokio::test]
+    async fn conta_fora_do_fechamento_some_dos_numeros_das_pendencias_e_do_pacote_mas_continua_na_lista() {
+        let app = app();
+        ativar(&app).await;
+        let a = conta(&app, "Banco A", 1_000).await;
+        let b = conta(&app, "Caixa B", 5_000).await;
+        lancar(&app, Some(&a), "entrada", 10_000, "2026-10-02", "efetivada", None).await;
+        lancar(&app, Some(&b), "saida", 3_000, "2026-10-03", "efetivada", None).await;
+        lancar(&app, Some(&b), "saida", 700, "2026-10-04", "pendente", None).await;
+        let antes = fechar(&app, "2026-10-01", "2026-10-31").await;
+        assert_eq!(antes["contas"].as_array().unwrap().len(), 2);
+        assert_eq!(antes["totais"]["saidas"], 3_000);
+        assert_eq!(antes["pendencias"]["pendentes"]["quantidade"], 1);
+
+        let (s, _) = chamar(&app, "PUT", "/vault/fechamento/contas", Some(json!({ "fora": [b, b] }))).await;
+        assert_eq!(s, StatusCode::OK);
+        let v = fechar(&app, "2026-10-01", "2026-10-31").await;
+        let ids: Vec<&str> = v["contas"].as_array().unwrap().iter().filter_map(|c| c["conta_id"].as_str()).collect();
+        assert_eq!(ids, vec![a.as_str()]);
+        assert_eq!(v["totais"]["entradas"], 10_000);
+        assert_eq!(v["totais"]["saidas"], 0);
+        assert_eq!(v["totais"]["saldo_inicial"], 1_000);
+        assert_eq!(v["pendencias"]["pendentes"]["quantidade"], 0);
+        assert_eq!(v["pendencias"]["sem_categoria"]["quantidade"], 1);
+        assert!(v["categorias"].as_array().unwrap().iter().all(|c| c["tipo"] != "saida"));
+        // A lista para escolher continua com as duas, a de fora marcada.
+        let todas = v["todas_as_contas"].as_array().unwrap();
+        assert_eq!(todas.len(), 2);
+        assert_eq!(todas.iter().find(|c| c["id"] == b.as_str()).unwrap()["fora"], true);
+        assert_eq!(todas.iter().find(|c| c["id"] == a.as_str()).unwrap()["fora"], false);
+
+        assert_eq!(chamar(&app, "PUT", "/vault/fechamento/contas", Some(json!({ "fora": ["nao-existe"] }))).await.0, StatusCode::NOT_FOUND);
+        // Conta nova entra sozinha; lista vazia traz todas de volta.
+        let c = conta(&app, "Conta C", 0).await;
+        assert!(linha(&fechar(&app, "2026-10-01", "2026-10-31").await, &c)["conta_id"] == c.as_str());
+        assert_eq!(chamar(&app, "PUT", "/vault/fechamento/contas", Some(json!({ "fora": [] }))).await.0, StatusCode::OK);
+        let volta = fechar(&app, "2026-10-01", "2026-10-31").await;
+        assert_eq!(volta["contas"].as_array().unwrap().len(), 3);
+        assert_eq!(volta["totais"]["saidas"], 3_000);
+        // Apagar a conta de fora não deixa rastro na configuração.
+        chamar(&app, "PUT", "/vault/fechamento/contas", Some(json!({ "fora": [c] }))).await;
+        assert_eq!(chamar(&app, "DELETE", &format!("/vault/contas/{c}"), None).await.0, StatusCode::OK);
+        assert!(fechar(&app, "2026-10-01", "2026-10-31").await["todas_as_contas"].as_array().unwrap().iter().all(|c| c["fora"] == false));
     }
 
     #[tokio::test]

@@ -67,6 +67,8 @@ export interface Situacao {
   divergentes: number;
   /** Transferências entre contas que não se compensam: falta lançar o outro lado. */
   transferenciasSemPar: boolean;
+  /** O período ainda não terminou: não dá para conferir com o banco nem fechar. */
+  emAndamento: boolean;
   atencao: number;
   pronto: boolean;
 }
@@ -80,8 +82,8 @@ export function situacaoDoFechamento(f: FechamentoApi): Situacao {
   const recibosFaltando = f.lucros.configurada ? f.lucros.sem_recibo : 0;
   const transferenciasSemPar = f.transferencias.configurada && !f.transferencias.equilibrada;
   const atencao = quantos("atencao") + (f.pendencias.rascunhos > 0 ? 1 : 0) + (transferenciasSemPar ? 1 : 0);
-  const conferiveis = f.mes ? f.contas.filter(precisaConferir) : [];
+  const conferiveis = f.mes && !f.em_andamento ? f.contas.filter(precisaConferir) : [];
   const aConferir = conferiveis.filter((c) => c.saldo_banco === null).length;
   const divergentes = conferiveis.filter((c) => c.diferenca !== null && c.diferenca !== 0).length;
-  return { bloqueios, recibosFaltando, aConferir, divergentes, transferenciasSemPar, atencao, pronto: bloqueios === 0 && recibosFaltando === 0 && aConferir === 0 && divergentes === 0 };
+  return { bloqueios, recibosFaltando, aConferir, divergentes, transferenciasSemPar, atencao, emAndamento: f.em_andamento, pronto: !f.em_andamento && bloqueios === 0 && recibosFaltando === 0 && aConferir === 0 && divergentes === 0 };
 }

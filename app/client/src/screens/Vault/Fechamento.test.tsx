@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const o = await importOriginal<typeof import("@/lib/api")>();
-  return { ...o, vault: { ...o.vault, fechamento: { obter: vi.fn(), conferir: vi.fn(), definirLucros: vi.fn(), configuracao: vi.fn(), definirTransferencias: vi.fn(), pacote: vi.fn(), resumoPdf: vi.fn(), definirAbertura: vi.fn() }, categorias: { ...o.vault.categorias, criar: vi.fn() }, anexos: { ...o.vault.anexos, enviar: vi.fn() } } };
+  return { ...o, vault: { ...o.vault, fechamento: { obter: vi.fn(), conferir: vi.fn(), definirLucros: vi.fn(), configuracao: vi.fn(), definirTransferencias: vi.fn(), pacote: vi.fn(), resumoPdf: vi.fn(), definirAbertura: vi.fn(), definirContas: vi.fn(), lancamentos: vi.fn() }, categorias: { ...o.vault.categorias, criar: vi.fn() }, anexos: { ...o.vault.anexos, enviar: vi.fn() } } };
 });
 vi.mock("@/lib/baixar-arquivo", () => ({ baixarArquivo: vi.fn() }));
 import { baixarArquivo } from "@/lib/baixar-arquivo";
-import { ApiError, vault, type CategoriaApi, type FechamentoApi, type FechamentoContaApi, type FechamentoLucrosApi, type FechamentoPendenciaApi } from "@/lib/api";
+import { ApiError, vault, type CategoriaApi, type FechamentoApi, type FechamentoContaApi, type FechamentoLancamentoApi, type FechamentoLucrosApi, type FechamentoPendenciaApi } from "@/lib/api";
 import { VaultFechamento } from "./VaultFechamento";
 
 const obter = vi.mocked(vault.fechamento.obter);
@@ -17,6 +17,8 @@ const definirTransferencias = vi.mocked(vault.fechamento.definirTransferencias);
 const pacote = vi.mocked(vault.fechamento.pacote);
 const resumoPdf = vi.mocked(vault.fechamento.resumoPdf);
 const definirAbertura = vi.mocked(vault.fechamento.definirAbertura);
+const definirContas = vi.mocked(vault.fechamento.definirContas);
+const lancamentos = vi.mocked(vault.fechamento.lancamentos);
 const criarCategoria = vi.mocked(vault.categorias.criar);
 const enviarAnexo = vi.mocked(vault.anexos.enviar);
 const outubro = { kind: "month", year: 2026, month: 10 } as const;
@@ -30,7 +32,7 @@ const conta = (extra: Partial<FechamentoContaApi> = {}): FechamentoContaApi => (
 const SEM_LUCROS = { configurada: false, categoria_id: null, categoria_nome: null, quantidade: 0, valor_centavos: 0, sem_recibo: 0, pendentes: 0, itens: [] } as const;
 const SEM_TRANSFERENCIAS: FechamentoApi["transferencias"] = { configurada: false, categorias: [], quantidade: 0, entradas: 0, saidas: 0, liquido: 0, equilibrada: true };
 const dados = (extra: Partial<FechamentoApi> = {}): FechamentoApi => ({
-  data_de: "2026-10-01", data_ate: "2026-10-31", mes: "2026-10", contas: [conta()],
+  data_de: "2026-10-01", data_ate: "2026-10-31", mes: "2026-10", em_andamento: false, contas: [conta()], todas_as_contas: [{ id: "a", nome: "Banco A", banco: null, cor: "#fff", codigo_banco: null, sigla: null, fora: false }],
   totais: { saldo_inicial: 100_000, entradas: 50_000, saidas: 10_000, transferencias: 0, resultado: 40_000, saldo_final: 140_000 },
   transferencias: SEM_TRANSFERENCIAS,
   categorias: [{ tipo: "entrada", categoria_id: "m", nome: "Mensalidades", pai_id: null, valor: 50_000, lancamentos: 2 }, { tipo: "saida", categoria_id: null, nome: null, pai_id: null, valor: 10_000, lancamentos: 1 }],
@@ -53,7 +55,7 @@ const lucrosCom = (extra: Partial<FechamentoLucrosApi> = {}): FechamentoLucrosAp
   ...extra,
 });
 
-beforeEach(() => { vi.clearAllMocks(); definirAbertura.mockResolvedValue({ ok: true }); conferir.mockResolvedValue({ ok: true }); definirLucros.mockResolvedValue({ ok: true }); definirTransferencias.mockResolvedValue({ ok: true }); });
+beforeEach(() => { vi.clearAllMocks(); definirAbertura.mockResolvedValue({ ok: true }); conferir.mockResolvedValue({ ok: true }); definirLucros.mockResolvedValue({ ok: true }); definirTransferencias.mockResolvedValue({ ok: true }); definirContas.mockResolvedValue({ ok: true }); lancamentos.mockResolvedValue({ lancamentos: [], limite: 50_000, cortado: false }); });
 
 describe("VaultFechamento", () => {
   it("pede o fechamento do período escolhido e mostra o extrato da conta", async () => {
@@ -339,6 +341,82 @@ describe("VaultFechamento", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Ajustar o saldo inicial de Banco do Lar" }));
       fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
       expect(await screen.findByText("Saldo fora do limite.")).toBeTruthy();
+    });
+  });
+  describe("lançamentos do período", () => {
+    const lanc = (id: string, extra: Partial<FechamentoLancamentoApi> = {}): FechamentoLancamentoApi => ({
+      id, data: "2026-10-05", conta_id: "a", conta: "Banco do Lar", tipo: "saida", valor_centavos: 12_345, categoria: "Aluguel", beneficiario: null, descricao: `Lançamento ${id}`, forma_pagamento: null, transferencia: false, arquivos: 0, ...extra,
+    });
+
+    it("lista cada lançamento efetivado com data, conta, categoria e valor, e abre o lançamento ao clicar", async () => {
+      obter.mockResolvedValue(dados());
+      lancamentos.mockResolvedValue({ lancamentos: [lanc("l1", { beneficiario: "Imobiliária", arquivos: 2 }), lanc("l2", { tipo: "entrada", valor_centavos: 50_000, categoria: null, descricao: "Mensalidade", transferencia: false })], limite: 50_000, cortado: false });
+      const abrirLancamento = vi.fn();
+      tela(abrirLancamento);
+      expect(await screen.findByText("2 lançamentos efetivados")).toBeTruthy();
+      expect(screen.getByText("Lançamento l1")).toBeTruthy();
+      expect(screen.getByText("Imobiliária", { exact: false })).toBeTruthy();
+      expect(within(screen.getByRole("region", { name: "Lançamentos do período" })).getByText("Sem categoria")).toBeTruthy();
+      expect(lancamentos).toHaveBeenCalledWith({ data_de: "2026-10-01", data_ate: "2026-10-31" });
+      fireEvent.click(screen.getByRole("button", { name: /Abrir lançamento Lançamento l1/ }));
+      expect(abrirLancamento).toHaveBeenCalledWith("l1");
+    });
+
+    it("marca a transferência entre contas e avisa quando a lista foi cortada", async () => {
+      obter.mockResolvedValue(dados());
+      lancamentos.mockResolvedValue({ lancamentos: [lanc("t1", { transferencia: true })], limite: 1, cortado: true });
+      tela();
+      expect(await screen.findByText("Transferência entre contas")).toBeTruthy();
+      expect(screen.getByText(/cortada no limite/)).toBeTruthy();
+    });
+
+    it("mostra aos poucos: 200 por vez, com botão para o resto", async () => {
+      obter.mockResolvedValue(dados());
+      lancamentos.mockResolvedValue({ lancamentos: Array.from({ length: 230 }, (_, i) => lanc(`m${i}`)), limite: 50_000, cortado: false });
+      tela();
+      expect(await screen.findByText("230 lançamentos efetivados")).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: /Abrir lançamento/ })).toHaveLength(200);
+      fireEvent.click(screen.getByRole("button", { name: /Mostrar mais 30/ }));
+      expect(screen.getAllByRole("button", { name: /Abrir lançamento/ })).toHaveLength(230);
+    });
+  });
+
+  describe("período em andamento", () => {
+    it("não cobra conferência nem diz que não está pronto: avisa que o período não terminou", async () => {
+      obter.mockResolvedValue(dados({ em_andamento: true, mes: "2026-11", data_de: "2026-11-01", data_ate: "2026-11-30" }));
+      tela();
+      expect(await screen.findByText(/ainda está em andamento/)).toBeTruthy();
+      expect(screen.queryByText(/ainda não está pronto/)).toBeNull();
+      expect(screen.queryByRole("columnheader", { name: "Saldo no banco" })).toBeNull();
+    });
+  });
+
+  describe("contas que entram no fechamento", () => {
+    const duas = [
+      { id: "a", nome: "Banco do Lar", banco: null, cor: "#3366aa", codigo_banco: null, sigla: null, fora: false },
+      { id: "b", nome: "Caixa velho", banco: null, cor: "#aa6633", codigo_banco: null, sigla: null, fora: false },
+    ];
+
+    it("mostra quantas contas entram e deixa escolher; desmarcar grava as que ficam de fora", async () => {
+      obter.mockResolvedValue(dados({ todas_as_contas: duas }));
+      tela();
+      fireEvent.click(await screen.findByRole("button", { name: /Contas: 2 de 2/ }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /Caixa velho/ }));
+      await waitFor(() => expect(definirContas).toHaveBeenCalledWith(["b"]));
+    });
+
+    it("marcar de novo uma conta de fora a traz de volta", async () => {
+      obter.mockResolvedValue(dados({ todas_as_contas: [duas[0], { ...duas[1], fora: true }] }));
+      tela();
+      fireEvent.click(await screen.findByRole("button", { name: /Contas: 1 de 2/ }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /Caixa velho/ }));
+      await waitFor(() => expect(definirContas).toHaveBeenCalledWith([]));
+    });
+
+    it("com todas as contas fora avisa em vez de mostrar uma tabela vazia", async () => {
+      obter.mockResolvedValue(dados({ contas: [], todas_as_contas: duas.map((c) => ({ ...c, fora: true })) }));
+      tela();
+      expect(await screen.findByText("Todas as contas estão fora do fechamento")).toBeTruthy();
     });
   });
 });

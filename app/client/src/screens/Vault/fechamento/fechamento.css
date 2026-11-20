@@ -141,3 +141,21 @@
 .fech-inicial-acoes { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 10px; margin-top:3px; }
 .fech-inicial-acoes .fech-link { font-size:10.5px; white-space:nowrap; }
 .fech-pdf { white-space:nowrap; }
+
+/* Escolha das contas que entram no fechamento */
+.fech-contas-botao { min-height:32px; padding:0 12px; font-size:12px; gap:6px; }
+.fech-contas-escolha { display:grid; gap:10px; margin-bottom:10px; padding:14px 16px; }
+.fech-contas-dica { margin:0; color:var(--text-muted); font-size:12px; }
+.fech-contas-lista { display:flex; flex-wrap:wrap; gap:8px; margin:0; padding:0; list-style:none; }
+.fech-conta-opcao { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px 0 10px; border:1px solid var(--border-strong); border-radius:999px; font-size:13px; font-weight:600; cursor:pointer; }
+.fech-conta-opcao:has(input:checked) { border-color:rgb(var(--cofre-blue-rgb)); background:color-mix(in srgb,rgb(var(--cofre-blue-rgb)) 8%,transparent); }
+.fech-conta-opcao input { width:16px; height:16px; accent-color:rgb(var(--cofre-blue-rgb)); }
+
+/* Lista completa de lançamentos do período */
+.fech-lanc td { padding:8px 14px; vertical-align:top; }
+.fech-lanc-data { white-space:nowrap; }
+.fech-lanc-abrir { text-align:left; text-decoration:none; font-weight:600; color:var(--text); }
+.fech-lanc-abrir:hover { text-decoration:underline; }
+.fech-lanc td small { display:flex; align-items:center; gap:3px; color:var(--text-faint); }
+.fech-lanc-mais { display:flex; justify-content:center; padding:12px; border-top:1px solid var(--border); }
+.fech-lanc-carregando { padding:18px; color:var(--text-muted); font-size:13px; }

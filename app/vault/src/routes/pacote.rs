@@ -23,7 +23,7 @@ use ecos_core::ErrorCode;
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 
-use super::fechamento::{categorias_de_transferencia, fechamento, ids_de_transferencia, sql_eh_transferencia};
+use super::fechamento::{categorias_de_transferencia, contas_fora, fechamento, ids_de_transferencia, sql_conta_fora, sql_eh_transferencia};
 use crate::{
     error::{AppError, AppResult},
     state::AppState,
@@ -132,11 +132,12 @@ struct Arquivo {
 /// Metadados dos arquivos do período, com o caminho que cada um terá no `.zip`. Dois arquivos nunca ficam com o mesmo
 /// caminho: o início do id do anexo entra no nome e uma colisão rara ganha número.
 fn arquivos_do_periodo(c: &Connection, de: &str, ate: &str) -> rusqlite::Result<(Vec<Arquivo>, i64)> {
-    let mut stmt = c.prepare(
+    let fora = sql_conta_fora("t.conta_id", &contas_fora(c)?);
+    let mut stmt = c.prepare(&format!(
         "SELECT a.id, a.transacao_id, a.nome_arquivo, a.mime_type, a.tipo, a.tamanho_bytes, t.data, t.valor_centavos, COALESCE(b.nome, t.descricao) \
          FROM anexo a JOIN transacao t ON t.id = a.transacao_id LEFT JOIN beneficiario b ON b.id = t.beneficiario_id \
-         WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 ORDER BY t.data, t.id, a.criado_em, a.id",
-    )?;
+         WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND NOT {fora} ORDER BY t.data, t.id, a.criado_em, a.id"
+    ))?;
     let mut usados: HashMap<String, u32> = HashMap::new();
     let mut total = 0i64;
     let mut out = Vec::new();
@@ -238,7 +239,9 @@ struct Preparo {
 
 /// Os números do Fechamento e o nome de cada categoria (para o PDF mostrar "Mãe > filha"), numa leitura só.
 pub(super) fn dados_do_resumo(c: &Connection, data_de: NaiveDate, data_ate: NaiveDate) -> rusqlite::Result<(Value, HashMap<String, String>)> {
-    let f = fechamento(c, data_de, data_ate)?;
+    let mut f = fechamento(c, data_de, data_ate)?;
+    // A lista completa vai só para o PDF e o pacote; a tela a pede à parte, para o resumo continuar leve.
+    f["lancamentos"] = Value::Array(super::fechamento::lancamentos(c, data_de, data_ate)?);
     let mut stmt = c.prepare("SELECT id, nome FROM categoria")?;
     let nomes = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<Result<_, _>>()?;
     Ok((f, nomes))
@@ -296,12 +299,13 @@ fn preparar(c: &Connection, data_de: NaiveDate, data_ate: NaiveDate) -> rusqlite
     // Lançamentos efetivados do período.
     let escolhidas = categorias_de_transferencia(c)?;
     let transf = sql_eh_transferencia(&ids_de_transferencia(c, &escolhidas)?);
+    let fora = sql_conta_fora("t.conta_id", &contas_fora(c)?);
     let mut lancamentos = Csv::nova(&["Data", "Conta", "Tipo", "Valor", "Categoria", "Beneficiário", "Descrição", "Forma de pagamento", "Transferência entre contas", "Arquivos"]);
     {
         let mut stmt = c.prepare(&format!(
             "SELECT t.id, t.data, COALESCE(c.nome, 'Sem conta'), t.tipo, t.valor_centavos, cat.nome, b.nome, t.descricao, t.forma_pagamento, {transf} \
              FROM transacao t LEFT JOIN conta c ON c.id = t.conta_id LEFT JOIN categoria cat ON cat.id = t.categoria_id LEFT JOIN beneficiario b ON b.id = t.beneficiario_id \
-             WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 ORDER BY t.data, t.id"
+             WHERE t.status = 'efetivada' AND t.data BETWEEN ?1 AND ?2 AND NOT {fora} ORDER BY t.data, t.id"
         ))?;
         let linhas = stmt.query_map([&de, &ate], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, i64>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?, r.get::<_, String>(7)?, r.get::<_, Option<String>>(8)?, r.get::<_, i64>(9)?))

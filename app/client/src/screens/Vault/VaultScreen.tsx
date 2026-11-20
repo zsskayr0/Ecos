@@ -1,3 +1,4 @@
+import { onBackButtonPress } from "@tauri-apps/api/app";
 import { useMoeda } from "@/lib/exibicao-valores";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -173,7 +174,10 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
             catch (e) {
                 if (vivo && atual === geracao) {
                     // Sem servidor não há como saber se o Cofre está bloqueado: não pedimos a senha, só avisamos.
-                    if (e instanceof ApiError && e.code === "CONEXAO_INDISPONIVEL") {
+                    // Qualquer falha que não seja uma resposta clara do servidor (erro de rede, tempo esgotado, 5xx, aparelho offline)
+                    // é falta de conexão: nunca cai na tela de senha, que não consegue destrancar sem servidor.
+                    const semServidor = !(e instanceof ApiError) || e.code === "CONEXAO_INDISPONIVEL" || e.status === 0 || e.status >= 500 || navigator.onLine === false;
+                    if (semServidor) {
                         semConexaoRef.current = true;
                         setErro("");
                         setFase("sem_conexao");
@@ -215,6 +219,21 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
     } }
     // Inatividade (ou tempo em segundo plano) acima do limite das Configurações › Cofre › Segurança.
     useAutoBloqueio(fase === "aberto", () => void bloquear());
+    // Botão voltar do Android no Cofre: desce um nível dentro do Cofre; sem internet, bloqueado ou na raiz, sai para o Ecos.
+    const estadoVoltar = useRef({ fase, rotaAtual, voltar });
+    estadoVoltar.current = { fase, rotaAtual, voltar };
+    useEffect(() => {
+        if (embedded) return;
+        let remover: { unregister: () => Promise<void> } | undefined;
+        let ativo = true;
+        void onBackButtonPress(() => {
+            const { fase: f, rotaAtual: rota, voltar: sair } = estadoVoltar.current;
+            const naRaiz = rota === "/cofre" || rota === "/cofre/" || rota === "/cofre/painel";
+            if (f === "aberto" && !naRaiz) window.history.back();
+            else sair();
+        }).then((r) => { if (ativo) remover = r; else void r.unregister(); }).catch(() => undefined);
+        return () => { ativo = false; void remover?.unregister(); };
+    }, [embedded]);
     return <div className={embedded ? "cofre-app cofre-embedded" : "cofre-app"}>
         {!embedded&&<header className="cofre-header">
             <div className="cofre-brand"><span className="cofre-brand-icon"><ShieldHalf size={21}/></span><span>Cofre<small>{nomeEquipe ? `EQUIPE · ${nomeEquipe.toUpperCase()}` : "ECOS · FINANÇAS"}</small></span></div>
@@ -222,7 +241,7 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
         </header>}
         {erro && <p role="alert" className="cofre-notice">{erro}</p>}
         {fase !== "aberto" && esperando > 0 && <p role="status" className="cofre-notice">{esperando === 1 ? "1 comprovante está esperando" : `${esperando} comprovantes estão esperando`}: desbloqueie o Cofre para guardar. Se você sair antes, compartilhe de novo.</p>}
-        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "sem_conexao" ? <div role="alert" className="cofre-error-card"><span className="cofre-error-icon"><CloudOff size={25}/></span><h2>Sem conexão com o servidor</h2><p>Não foi possível falar com o servidor Ecos, então não sei se o Cofre está aberto ou bloqueado. Seus dados não foram alterados. Verifique a conexão e tente de novo.</p><div><button className="cofre-solid" onClick={() => { setFase("carregando"); setVersao(v => v + 1); }}><RefreshCw size={15}/>Tentar novamente</button></div></div> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} onVoltar={voltar} seletorEquipe={<TrocaDeEquipe/>} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onBiometria={temLembrada && lembradaExigeConfirmacao() ? destrancarComLembrada : undefined} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
+        {fase === "aberto" ? <><VaultWorkspace/>{!embedded&&<>{!rotaAtual.startsWith("/cofre/transacao")&&!rotaAtual.startsWith("/cofre/comprovantes")&&<Fab/>}<CreateFlow/></>}</> : fase === "carregando" ? <p className="p-8" role="status">Verificando Cofre…</p> : fase === "sem_conexao" ? <div role="alert" className="cofre-error-card"><span className="cofre-error-icon"><CloudOff size={25}/></span><h2>Sem conexão com o servidor</h2><p>Não foi possível falar com o servidor Ecos, então não sei se o Cofre está aberto ou bloqueado. Seus dados não foram alterados. Verifique a conexão e tente de novo.</p><div><button className="cofre-solid" onClick={() => { setFase("carregando"); setVersao(v => v + 1); }}><RefreshCw size={15}/>Tentar novamente</button><button className="cofre-secondary" onClick={voltar}><ArrowLeft size={15}/>Sair do Cofre</button></div></div> : fase === "desativado" ? <p className="p-8">Ative o módulo Cofre nas configurações do Ecos e no servidor.</p> : <VaultLockScreen equipe={nomeEquipe} onVoltar={voltar} seletorEquipe={<TrocaDeEquipe/>} primeiraVez={fase === "ativar"} permitirLembrar={podeLembrar} onBiometria={temLembrada && lembradaExigeConfirmacao() ? destrancarComLembrada : undefined} onSubmeter={async (senha,lembrar)=>{if(fase === "ativar")await vault.ativar(senha);else await vault.desbloquear(senha);if(chave){limparBloqueioManual(chave);if(lembrar)await lembrarSenha(chave,senha);}setErro("");setVersao(v=>v+1);}}/>}
     </div>;
 }
 

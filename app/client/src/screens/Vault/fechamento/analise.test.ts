@@ -46,7 +46,7 @@ const conta = (extra: Partial<FechamentoContaApi>): FechamentoContaApi => ({
 });
 const lucrosConfigurados = (semRecibo: number) => ({ configurada: true, categoria_id: "cl", categoria_nome: "Distribuição de lucros", quantidade: 2, valor_centavos: 150_000, sem_recibo: semRecibo, pendentes: 0, itens: [] });
 const fechamento = (extra: Partial<FechamentoApi> = {}, pend: Partial<FechamentoApi["pendencias"]> = {}): FechamentoApi => ({
-  data_de: "2026-10-01", data_ate: "2026-10-31", mes: "2026-10", contas: [conta({ saldo_banco: 1000, diferenca: 0 })],
+  data_de: "2026-10-01", data_ate: "2026-10-31", mes: "2026-10", em_andamento: false, contas: [conta({ saldo_banco: 1000, diferenca: 0 })], todas_as_contas: [{ id: "a", nome: "Banco A", banco: null, cor: "#fff", codigo_banco: null, sigla: null, fora: false }],
   totais: { saldo_inicial: 0, entradas: 1000, saidas: 0, transferencias: 0, resultado: 1000, saldo_final: 1000 }, categorias: [],
   transferencias: { configurada: false, categorias: [], quantidade: 0, entradas: 0, saidas: 0, liquido: 0, equilibrada: true },
   lucros: { configurada: false, categoria_id: null, categoria_nome: null, quantidade: 0, valor_centavos: 0, sem_recibo: 0, pendentes: 0, itens: [] },

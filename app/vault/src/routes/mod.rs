@@ -97,6 +97,8 @@ pub fn montar(state: AppState) -> Router {
         .route("/vault/fechamento/lucros", put(fechamento::definir_lucros))
         .route("/vault/fechamento/abertura", put(fechamento::definir_abertura))
         .route("/vault/fechamento/transferencias", put(fechamento::definir_transferencias))
+        .route("/vault/fechamento/contas", put(fechamento::definir_contas))
+        .route("/vault/fechamento/lancamentos", get(fechamento::obter_lancamentos))
         .route("/vault/fechamento/pacote", get(pacote::obter))
         .route("/vault/fechamento/resumo.pdf", get(resumo_pdf::obter))
         .route("/vault/fechamento/config", get(fechamento::configuracao))

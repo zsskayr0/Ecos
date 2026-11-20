@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { CheckCircle2, Download, FileText, Info, Paperclip, Pencil, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Download, FileText, Info, Paperclip, Pencil, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { ApiError, vault, type CategoriaApi, type FechamentoApi, type FechamentoContaApi } from "@/lib/api";
 import { formatMoeda } from "@/lib/format";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
@@ -7,6 +7,8 @@ import { PeriodPicker } from "./nexus/PeriodPicker";
 import { formatBR, periodLabel, periodRange, type Period } from "./nexus/period";
 import { ErroLista } from "./cadastros/CadastroLista";
 import { SeloConta } from "./contas/SeloConta";
+import { ContasDoFechamento } from "./fechamento/ContasDoFechamento";
+import { LancamentosDoPeriodo } from "./fechamento/LancamentosDoPeriodo";
 import { LucrosDoMes } from "./fechamento/LucrosDoMes";
 import { TransferenciasEntreContas } from "./fechamento/TransferenciasEntreContas";
 import { centavosBR, centavosParaCampo } from "./contas/analise";
@@ -101,6 +103,8 @@ export function VaultFechamento({ period, onPeriodChange, categorias, recarregar
 
           <Pendencias dados={dados} abrir={abrir} irParaComprovantes={irParaComprovantes} />
 
+          <LancamentosDoPeriodo de={de} ate={ate} versao={versao + recarregar} abrir={abrir} />
+
           <div className="fech-categorias">
             <Categorias titulo="Entradas por categoria" tom="pos" grupos={agruparCategorias(dados.categorias, "entrada", categorias)} total={dados.totais.entradas} />
             <Categorias titulo="Saídas por categoria" tom="neg" grupos={agruparCategorias(dados.categorias, "saida", categorias)} total={dados.totais.saidas} />
@@ -120,6 +124,14 @@ function Situacao({ dados, situacao, rotulo }: { dados: FechamentoApi; situacao:
   if (situacao.aConferir > 0) partes.push(plural(situacao.aConferir, "conta a conferir com o banco", "contas a conferir com o banco"));
   const avisoTransferencia = situacao.transferenciasSemPar && <> As transferências entre contas não se compensam: falta lançar o outro lado.</>;
 
+  if (dados.em_andamento) {
+    return (
+      <div className="cofre-card fech-situacao cofre-rise" data-tom="info" style={estiloI(1)} role="status">
+        <Info size={18} aria-hidden />
+        <p><b>{rotulo} ainda está em andamento.</b> Os números abaixo são parciais. A conferência com o extrato do banco e o fechamento ficam para depois do último dia do período.</p>
+      </div>
+    );
+  }
   if (!dados.mes) {
     return (
       <div className="cofre-card fech-situacao cofre-rise" data-tom="info" style={estiloI(1)} role="status">
@@ -149,14 +161,28 @@ function Resumo({ rotulo, valor, tom }: { rotulo: string; valor: number; tom: "p
 }
 
 function Extrato({ dados, aoGravar }: { dados: FechamentoApi; aoGravar: () => void }) {
-  const conferivel = dados.mes !== null;
+  const conferivel = dados.mes !== null && !dados.em_andamento;
   const comTransferencias = dados.transferencias.configurada;
   const vazio = dados.contas.length === 0;
+  const [escolhendo, setEscolhendo] = useState(false);
+  const todas = dados.todas_as_contas;
+  const dentro = todas.filter((c) => !c.fora).length;
   return (
     <section className="fech-bloco cofre-rise" style={estiloI(3)} aria-label="Extrato por conta">
-      <header><h2>Extrato por conta</h2>{conferivel && <p>Digite o saldo que o extrato do banco mostra no último dia do mês; a diferença aparece na hora.</p>}</header>
+      <header>
+        <h2>Extrato por conta</h2>
+        {conferivel && <p>Digite o saldo que o extrato do banco mostra no último dia do mês; a diferença aparece na hora.</p>}
+        {todas.length > 0 && (
+          <button type="button" className="cofre-secondary fech-contas-botao" aria-expanded={escolhendo} onClick={() => setEscolhendo((v) => !v)} title="Escolher quais contas entram no fechamento">
+            <SlidersHorizontal size={13} aria-hidden />Contas: {dentro} de {todas.length}
+          </button>
+        )}
+      </header>
+      {escolhendo && todas.length > 0 && <ContasDoFechamento contas={todas} aoMudar={aoGravar} />}
       {vazio ? (
-        <div className="cofre-card cofre-cats-empty"><p>Nenhuma conta cadastrada</p><small>Cadastre as contas em Cadastros para ver o extrato de cada uma.</small></div>
+        todas.length > 0
+          ? <div className="cofre-card cofre-cats-empty"><p>Todas as contas estão fora do fechamento</p><small>Use “Contas” acima para escolher quais entram.</small></div>
+          : <div className="cofre-card cofre-cats-empty"><p>Nenhuma conta cadastrada</p><small>Cadastre as contas em Cadastros para ver o extrato de cada uma.</small></div>
       ) : (
         <div className="cofre-card cofre-rec-lista">
           <div className="cofre-rec-tabela-rolagem">

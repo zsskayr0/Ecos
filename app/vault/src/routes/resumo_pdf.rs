@@ -108,6 +108,8 @@ fn base_centrada(topo: f32, altura: f32, tamanho: f32) -> f32 {
 // O que a tela chama de "situação": pronto para enviar, ou o que falta. Mesma regra de `analise.ts`.
 // ---------------------------------------------------------------------------------------------------------------------
 
+/// Altura dos três cartões de totais (entradas, saídas, resultado).
+const ALTURA_CARTAO: f32 = 48.0;
 const BLOQUEIAM: [&str; 3] = ["pendentes", "sem_categoria", "sem_conta"];
 const PEDEM_ATENCAO: [&str; 2] = ["sem_comprovante", "nao_conciliadas"];
 
@@ -119,6 +121,8 @@ struct Situacao {
     divergentes: i64,
     atencao: i64,
     pronto: bool,
+    /// O período ainda não terminou: números parciais, sem conferência com o banco.
+    em_andamento: bool,
 }
 
 fn situacao(f: &Value) -> Situacao {
@@ -129,7 +133,8 @@ fn situacao(f: &Value) -> Situacao {
     let sem_par = f["transferencias"]["configurada"].as_bool().unwrap_or(false) && !f["transferencias"]["equilibrada"].as_bool().unwrap_or(true);
     let atencao = quantos(&PEDEM_ATENCAO) + i64::from(n(&p["rascunhos"]) > 0) + i64::from(sem_par);
     let (mut a_conferir, mut divergentes) = (0, 0);
-    if f["mes"].is_string() {
+    let em_andamento = f["em_andamento"].as_bool().unwrap_or(false);
+    if f["mes"].is_string() && !em_andamento {
         for c in f["contas"].as_array().into_iter().flatten() {
             let confere = c["conta_id"].is_string() && (n(&c["lancamentos"]) > 0 || n(&c["saldo_inicial"]) != 0 || n(&c["saldo_final"]) != 0);
             if !confere {
@@ -143,7 +148,7 @@ fn situacao(f: &Value) -> Situacao {
             }
         }
     }
-    Situacao { bloqueios, recibos_faltando, a_conferir, divergentes, atencao, pronto: bloqueios == 0 && recibos_faltando == 0 && a_conferir == 0 && divergentes == 0 }
+    Situacao { bloqueios, recibos_faltando, a_conferir, divergentes, atencao, pronto: !em_andamento && bloqueios == 0 && recibos_faltando == 0 && a_conferir == 0 && divergentes == 0, em_andamento }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -274,15 +279,6 @@ impl Folha {
         self.y += 24.0;
     }
 
-    /// Texto corrido, quebrado em linhas que cabem na largura.
-    fn paragrafo(&mut self, texto: &str, fonte: Fonte, tamanho: f32, cor: Cor) {
-        for linha in quebrar(texto, LARGURA_UTIL, fonte, tamanho) {
-            self.garantir(tamanho + 5.0);
-            self.d.texto(MARGEM, self.y + tamanho, fonte, tamanho, cor, &linha);
-            self.y += tamanho + 4.0;
-        }
-    }
-
     fn cabecalho_da_marca(&mut self, de: &str, ate: &str) {
         self.d.logo(MARGEM, self.y, 32.0);
         self.d.texto(MARGEM + 42.0, self.y + 15.0, Fonte::Bold, 19.0, TEXTO, "Ecos");
@@ -303,10 +299,14 @@ impl Folha {
 
     fn faixa_de_situacao(&mut self, s: &Situacao) {
         let mut linhas: Vec<String> = Vec::new();
-        if s.bloqueios > 0 {
+        if s.em_andamento {
+            linhas.push("O período ainda não terminou: os números são parciais.".to_string());
+            linhas.push("A conferência com o extrato do banco e o fechamento ficam para depois do último dia.".to_string());
+        }
+        if s.bloqueios > 0 && !s.em_andamento {
             linhas.push(format!("{} tipo(s) de pendência a resolver: lançamentos pendentes, sem categoria ou sem conta.", s.bloqueios));
         }
-        if s.recibos_faltando > 0 {
+        if s.recibos_faltando > 0 && !s.em_andamento {
             linhas.push(format!("{} distribuição(ões) de lucros sem recibo anexado.", s.recibos_faltando));
         }
         if s.a_conferir > 0 {
@@ -323,7 +323,7 @@ impl Folha {
         }
         let altura = 16.0 + 14.0 + linhas.len() as f32 * 12.0 + 8.0;
         self.garantir(altura + 8.0);
-        let (fundo, borda, cor, titulo) = if s.pronto { (OK_FUNDO, OK_BORDA, OK, "Pronto para enviar à contabilidade") } else { (ALERTA_FUNDO, ALERTA_BORDA, ALERTA, "Ainda não está pronto para enviar") };
+        let (fundo, borda, cor, titulo) = if s.em_andamento { (ACENTO_CLARO, BORDA, ACENTO, "Período em andamento") } else if s.pronto { (OK_FUNDO, OK_BORDA, OK, "Pronto para enviar à contabilidade") } else { (ALERTA_FUNDO, ALERTA_BORDA, ALERTA, "Ainda não está pronto para enviar") };
         self.d.retangulo(MARGEM, self.y, LARGURA_UTIL, altura, 8.0, Some(fundo), Some((borda, 0.6)));
         self.d.retangulo(MARGEM + 11.0, self.y + 11.0, 3.0, altura - 22.0, 1.5, Some(cor), None);
         self.d.texto(MARGEM + 24.0, self.y + 21.0, Fonte::SemiBold, 11.0, cor, titulo);
@@ -334,24 +334,23 @@ impl Folha {
         self.y += altura + 14.0;
     }
 
-    fn cartao_de_valor(&mut self, x: f32, largura: f32, rotulo: &str, valor: &str, cor: Cor, nota: &str) {
-        self.d.retangulo(x, self.y, largura, 58.0, 8.0, Some(SUPERFICIE), Some((BORDA, 0.6)));
+    fn cartao_de_valor(&mut self, x: f32, largura: f32, rotulo: &str, valor: &str, cor: Cor) {
+        self.d.retangulo(x, self.y, largura, ALTURA_CARTAO, 8.0, Some(SUPERFICIE), Some((BORDA, 0.6)));
         self.d.retangulo(x + 12.0, self.y + 12.0, 5.0, 5.0, 2.5, Some(cor), None);
         self.d.texto_espacado(x + 22.0, self.y + 18.0, Fonte::SemiBold, 6.8, MUDO, 0.9, rotulo);
         self.d.texto(x + 12.0, self.y + 38.0, Fonte::Bold, 14.5, cor, &caber(valor, largura - 24.0, Fonte::Bold, 14.5));
-        self.d.texto(x + 12.0, self.y + 51.0, Fonte::Regular, 7.0, MUDO, nota);
     }
 
     fn totais(&mut self, f: &Value) {
         let t = &f["totais"];
         let com_transferencias = f["transferencias"]["configurada"].as_bool().unwrap_or(false);
-        self.garantir(58.0 + 12.0 + 40.0);
+        self.garantir(ALTURA_CARTAO + 12.0 + 40.0);
         let w = (LARGURA_UTIL - 20.0) / 3.0;
-        self.cartao_de_valor(MARGEM, w, "ENTRADAS", &rs(n(&t["entradas"])), OK, "recebido no período");
-        self.cartao_de_valor(MARGEM + w + 10.0, w, "SAÍDAS", &rs(n(&t["saidas"])), ERRO, "pago no período");
+        self.cartao_de_valor(MARGEM, w, "ENTRADAS", &rs(n(&t["entradas"])), OK);
+        self.cartao_de_valor(MARGEM + w + 10.0, w, "SAÍDAS", &rs(n(&t["saidas"])), ERRO);
         let resultado = n(&t["resultado"]);
-        self.cartao_de_valor(MARGEM + 2.0 * (w + 10.0), w, "RESULTADO", &rs(resultado), cor_do_valor(resultado), "entradas menos saídas");
-        self.y += 58.0 + 10.0;
+        self.cartao_de_valor(MARGEM + 2.0 * (w + 10.0), w, "RESULTADO", &rs(resultado), cor_do_valor(resultado));
+        self.y += ALTURA_CARTAO + 10.0;
 
         let mut itens = vec![("SALDO INICIAL", rs(n(&t["saldo_inicial"])), TEXTO)];
         if com_transferencias {
@@ -508,12 +507,48 @@ impl Folha {
             total.push(Cel::Vazio);
         }
         self.tabela(&cols, linhas, Some(total), 24.0);
-        let nota = if conferivel {
-            "Saldo final = saldo inicial + entradas - saídas + transferências. Banco: saldo do extrato do banco no último dia do mês; diferença = banco - Cofre."
-        } else {
-            "Saldo final = saldo inicial + entradas - saídas + transferências. A conferência com o banco vale para mês inteiro."
-        };
-        self.paragrafo(nota, Fonte::Regular, 6.8, MUDO);
+    }
+
+    /// Todos os lançamentos efetivados do período, um por linha, como na planilha.
+    fn lancamentos(&mut self, f: &Value) {
+        let lista = f["lancamentos"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        self.secao("Lançamentos do período", Some(&format!("{} lançamento(s) efetivado(s)", lista.len())));
+        if lista.is_empty() {
+            self.d.texto(MARGEM, self.y + 8.0, Fonte::Regular, 8.5, MUDO, "Nenhum lançamento efetivado neste período.");
+            self.y += 20.0;
+            return;
+        }
+        let mut cols = vec![
+            Col { titulo: "DATA", largura: 62.0, direita: false },
+            Col { titulo: "CONTA", largura: 92.0, direita: false },
+            Col { titulo: "DESCRIÇÃO", largura: 0.0, direita: false },
+            Col { titulo: "CATEGORIA", largura: 128.0, direita: false },
+            Col { titulo: "VALOR", largura: 62.0, direita: true },
+        ];
+        cols[2].largura = LARGURA_UTIL - cols.iter().map(|c| c.largura).sum::<f32>();
+        let linhas: Vec<Vec<Cel>> = lista
+            .iter()
+            .map(|l| {
+                let entrada = l["tipo"] == "entrada";
+                let valor = n(&l["valor_centavos"]);
+                let mut categoria = l["categoria"].as_str().unwrap_or("Sem categoria").to_string();
+                if l["transferencia"].as_bool().unwrap_or(false) {
+                    categoria.push_str(" (transf.)");
+                }
+                let descricao = match l["beneficiario"].as_str().filter(|b| !b.is_empty()) {
+                    Some(b) => format!("{b} · {}", l["descricao"].as_str().unwrap_or("")),
+                    None => l["descricao"].as_str().unwrap_or("").to_string(),
+                };
+                vec![
+                    Cel::Texto(br(l["data"].as_str().unwrap_or(""))),
+                    Cel::Texto(l["conta"].as_str().unwrap_or("").to_string()),
+                    Cel::Texto(descricao),
+                    Cel::Texto(categoria),
+                    Cel::Num(milhar(if entrada { valor } else { -valor }), if entrada { OK } else { ERRO }),
+                ]
+            })
+            .collect();
+        self.tabela(&cols, linhas, None, 18.0);
     }
 
     fn lucros(&mut self, f: &Value) {
@@ -694,6 +729,7 @@ pub fn resumo(f: &Value, categorias_por_id: &HashMap<String, String>) -> Vec<u8>
     p.transferencias(f);
     p.categorias(f, categorias_por_id);
     p.pendencias(f);
+    p.lancamentos(f);
     let gerado = chrono::Local::now().format("%d/%m/%Y %H:%M");
     p.d.finalizar(&format!("Ecos · Fechamento financeiro · {} a {}", br(de), br(ate)), &format!("Gerado pelo Ecos Cofre em {gerado} · regime de caixa · valores em reais"), MUDO, BORDA)
 }
@@ -753,7 +789,7 @@ mod testes {
     #[test]
     fn situacao_segue_a_mesma_regra_da_tela() {
         let mut f = vazio();
-        assert_eq!(situacao(&f), Situacao { bloqueios: 0, recibos_faltando: 0, a_conferir: 0, divergentes: 0, atencao: 0, pronto: true });
+        assert_eq!(situacao(&f), Situacao { bloqueios: 0, recibos_faltando: 0, a_conferir: 0, divergentes: 0, atencao: 0, pronto: true, em_andamento: false });
 
         f["pendencias"]["sem_categoria"]["quantidade"] = json!(2);
         f["pendencias"]["sem_comprovante"]["quantidade"] = json!(4);
@@ -777,6 +813,12 @@ mod testes {
 
         f["lucros"] = json!({ "configurada": true, "sem_recibo": 2 });
         assert_eq!(situacao(&f).recibos_faltando, 2);
+
+        // Período em andamento: nada a conferir com o banco e ainda não está "pronto".
+        f["mes"] = json!("2026-11");
+        f["em_andamento"] = json!(true);
+        let s = situacao(&f);
+        assert_eq!((s.a_conferir, s.divergentes, s.pronto, s.em_andamento), (0, 0, false, true));
     }
 
     #[test]
@@ -812,6 +854,27 @@ mod testes {
         }
         assert!(contem(&pdf, "/BaseFont /Poppins-Bold"), "Poppins incorporada");
         assert!(contem(&pdf, "/Sh1 sh"), "ícone da marca");
+    }
+
+    #[test]
+    fn pdf_traz_todos_os_lancamentos_do_periodo_em_ordem() {
+        let mut f = vazio();
+        f["lancamentos"] = json!([
+            { "data": "2026-10-02", "conta": "Banco A", "tipo": "entrada", "valor_centavos": 900_000, "categoria": "Mensalidades", "beneficiario": "Maria", "descricao": "Mensalidade outubro", "transferencia": false },
+            { "data": "2026-10-09", "conta": "Banco A", "tipo": "saida", "valor_centavos": 25_000, "categoria": null, "beneficiario": null, "descricao": "Compra de material", "transferencia": true },
+        ]);
+        let pdf = resumo(&f, &HashMap::new());
+        for trecho in ["Lan\u{e7}amentos do per\u{ed}odo", "02/10/2026", "Maria", "Mensalidade outubro", "9.000,00", "-250,00", "Sem categoria", "transf."] {
+            assert!(contem(&pdf, trecho), "o PDF devia conter {trecho:?}");
+        }
+        let texto = String::from_utf8_lossy(&pdf);
+        assert!(texto.find("Mensalidade outubro") < texto.find("Compra de material"), "do mais antigo ao mais novo");
+        // Sem lançamentos, a seção diz isso em vez de sumir.
+        assert!(contem(&resumo(&vazio(), &HashMap::new()), "Nenhum lan"));
+
+        f["lancamentos"] = json!((0..400).map(|i| json!({ "data": "2026-10-02", "conta": "Banco A", "tipo": "saida", "valor_centavos": i, "categoria": "X", "descricao": format!("Linha {i}"), "transferencia": false })).collect::<Vec<_>>());
+        let grande = resumo(&f, &HashMap::new());
+        assert!(String::from_utf8_lossy(&grande).matches("(DATA) Tj").count() >= 5, "cabeçalho repetido a cada página");
     }
 
     #[test]
