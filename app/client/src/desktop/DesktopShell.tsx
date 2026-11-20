@@ -214,6 +214,21 @@ interface JanelaAberta {
   z: number;
 }
 
+const MAX_JANELAS = 3;
+
+function normalizarCaminhoJanela(path: string) {
+  const semQuery = path.split(/[?#]/)[0];
+  return semQuery.length > 1 ? semQuery.replace(/\/+$/, "") : semQuery;
+}
+
+export function documentoDoLinkDireto(pathname: string): string | null {
+  const nota = /^\/(?:notas\/)?nota\/([^/]+)\/?$/.exec(pathname);
+  if (nota) return `/notas/nota/${nota[1]}`;
+  const tarefa = /^\/tarefa\/([^/]+)\/?$/.exec(pathname);
+  if (tarefa) return `/tarefa/${tarefa[1]}`;
+  return null;
+}
+
 function cofreCaminhoInicial() { try { return sessionStorage.getItem("ecos.desktop.cofre-rota.v1") || "/cofre"; } catch { return "/cofre"; } }
 
 function Conteudo() {
@@ -267,14 +282,33 @@ function Conteudo() {
         dispatch({ type: "open", path, where: "focused", reuse: "path", background: emAba === "segundo-plano" });
         return;
       }
+      const alvo = normalizarCaminhoJanela(path);
       setJanelas((js) => {
-        const existente = js.find((j) => j.path === path);
+        const existente = js.find((j) => normalizarCaminhoJanela(j.path) === alvo);
         if (existente) return js.map((j) => (j === existente ? { ...j, z: ++contador.current } : j));
-        return [...js, { id: ++contador.current, path, ordem: js.length, z: ++contador.current }];
+        let restantes = js;
+        // Acima do limite, a janela mais ao fundo vira aba (em segundo plano) na barra do topo, em vez de empilhar.
+        while (restantes.length >= MAX_JANELAS) {
+          const fundo = restantes.reduce((a, b) => (b.z < a.z ? b : a));
+          queueMicrotask(() => dispatch({ type: "open", path: fundo.path, where: "focused", reuse: "path", background: true }));
+          restantes = restantes.filter((j) => j !== fundo);
+        }
+        return [...restantes, { id: ++contador.current, path, ordem: restantes.length, z: ++contador.current }];
       });
     },
     [dispatch, cofreAberto],
   );
+
+  // Link direto (/notas/nota/<id>, /nota/<id>, /tarefa/<id>): abre o documento numa janela e limpa a URL.
+  const linkInicial = useRef(false);
+  useEffect(() => {
+    if (linkInicial.current) return;
+    linkInicial.current = true;
+    const doc = documentoDoLinkDireto(window.location.pathname);
+    if (!doc) return;
+    abrirDocumento(doc, false);
+    window.history.replaceState(null, "", "/");
+  }, [abrirDocumento]);
 
   function fixarComoAba(janela: JanelaAberta, paneId?: string) {
     if (paneId) dispatch({ type: "focus-pane", paneId });

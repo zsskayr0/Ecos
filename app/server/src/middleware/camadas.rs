@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::http::{header, HeaderValue, Request};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::Router;
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::compression::CompressionLayer;
@@ -26,7 +26,7 @@ async fn cache_estaticos(req: Request<axum::body::Body>, next: Next) -> Response
     if caminho.starts_with("/assets/") && resp.status().is_success() {
         resp.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable"));
     } else if !caminho.starts_with("/assets/") {
-        // Inclui as rotas do SPA, que o `ServeDir` serve com o index.html (hoje com status 404, comportamento antigo).
+        // Inclui as rotas do SPA, que o `ServeDir` serve com o index.html (status 200).
         resp.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     }
     resp
@@ -46,8 +46,24 @@ pub fn completar(api: Router, static_dir: Option<&Path>) -> Router {
         .layer(RateLimitLayer::new(3000, Duration::from_secs(60)));
 
     if let Some(dir) = static_dir {
-        let servico = tower_http::services::ServeDir::new(dir).not_found_service(tower_http::services::ServeFile::new(dir.join("index.html")));
-        app = app.fallback_service(servico);
+        // Arquivo real → ServeDir. Rota do cliente (sem extensão, fora de /api) → index.html com 200, pra abrir
+        // links diretos tipo /notas/nota/<id>. Arquivo inexistente (/assets/x.js) e /api continuam 404.
+        let indice = dir.join("index.html");
+        let arquivos = tower_http::services::ServeDir::new(dir).fallback(axum::routing::any(move |req: axum::extract::Request| {
+            let indice = indice.clone();
+            async move {
+                let caminho = req.uri().path();
+                let ultimo = caminho.rsplit('/').next().unwrap_or("");
+                if caminho.starts_with("/api/") || ultimo.contains('.') {
+                    return axum::http::StatusCode::NOT_FOUND.into_response();
+                }
+                match tokio::fs::read(&indice).await {
+                    Ok(html) => ([(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"))], html).into_response(),
+                    Err(_) => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }
+        }));
+        app = app.fallback_service(arquivos);
     }
 
     // gzip para texto (JS, CSS, JSON, SVG). Brotli ficou de fora: no nível padrão é caro demais para conteúdo

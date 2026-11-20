@@ -1,5 +1,5 @@
 import { lazy, type ComponentType, type ReactElement, type ReactNode } from "react";
-import { Navigate, Route } from "react-router-dom";
+import { Navigate, Route, useParams } from "react-router-dom";
 
 import { TelaSobDemanda } from "@/components/common/TelaSobDemanda";
 import {
@@ -92,6 +92,12 @@ const TrashScreen = carregar(() => import("@/screens/Trash/TrashScreen"), "Trash
  * MemoryRouter) both render exactly these, so a screen never has to know
  * which shell is hosting it.
  */
+/** Atalho curto `/nota/<id>` → tela da nota (em vez de cair no feed). */
+function RedirecionarNota() {
+  const { id } = useParams();
+  return <Navigate to={`/notas/nota/${id}`} replace />;
+}
+
 export const screenRoutes = (
   <>
     <Route path="/" element={<Navigate to="/feed" replace />} />
@@ -107,6 +113,7 @@ export const screenRoutes = (
     <Route path="/notas/pasta/nova" element={tela(FolderCreateScreen)} />
     <Route path="/notas/pasta/*" element={tela(FolderScreen)} />
     <Route path="/notas/nota/:id" element={tela(NoteDetailScreen, <SkeletonNotaDetalhe />)} />
+    <Route path="/nota/:id" element={<RedirecionarNota />} />
 
     <Route path="/grafico" element={tela(GraficoScreen)} />
 
