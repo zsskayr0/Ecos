@@ -17,20 +17,25 @@ interface Opcoes {
   aoAplicar: (limparSelecao: boolean) => void;
   /** Roda ao fim de qualquer ação (por exemplo, fechar o painel da barra). */
   aoTerminar?: () => void;
+  /** Mostra o resultado da ação na lista na hora: altera os itens (`alterar`) ou os tira da lista (`null`). */
+  aoOtimista?: (caminhos: Set<string>, alterar: ((a: ArquivoExplorador) => ArquivoExplorador) | null) => void;
 }
 
 /** As ações em lote da seleção de Arquivos. A barra flutuante e o menu de botão direito usam a mesma lógica. */
-export function useAcoesEmLote({ arquivosMarcados, espaco, aoAplicar, aoTerminar }: Opcoes) {
+export function useAcoesEmLote({ arquivosMarcados, espaco, aoAplicar, aoTerminar, aoOtimista }: Opcoes) {
   const [ocupado, setOcupado] = useState(false);
   const tarefasSel = arquivosMarcados.filter((a) => a.tipo === "tarefa" && a.id);
   const notasSel = arquivosMarcados.filter((a) => a.tipo === "nota" && a.id);
   const documentos = [...tarefasSel, ...notasSel];
   const todasConcluidas = tarefasSel.length > 0 && tarefasSel.every((t) => t.status === "concluida");
+  const todasArquivadas = documentos.length > 0 && documentos.every((d) => d.status === "arquivada");
   const tagsDaSelecao = new Map<string, number>();
   for (const d of documentos) for (const t of d.tags ?? []) tagsDaSelecao.set(t, (tagsDaSelecao.get(t) ?? 0) + 1);
 
-  async function executar(fazer: () => Promise<void>, sucesso: string, limpar = false) {
+  /** Otimista: `local` já altera (ou remove, com `null`) os itens na lista antes do servidor responder; se ele falhar, `aoAplicar` recarrega. */
+  async function executar(fazer: () => Promise<void>, sucesso: string, limpar = false, local?: { itens: ArquivoExplorador[]; alterar: ((a: ArquivoExplorador) => ArquivoExplorador) | null }) {
     if (ocupado) return;
+    if (local && aoOtimista) aoOtimista(new Set(local.itens.map((a) => a.caminho)), local.alterar);
     setOcupado(true);
     try { await fazer(); avisar(sucesso, "sucesso"); aoAplicar(limpar); }
     catch (e) { avisar(mensagemDeErro(e, "Não foi possível aplicar a ação."), "erro"); aoAplicar(false); }
@@ -40,14 +45,15 @@ export function useAcoesEmLote({ arquivosMarcados, espaco, aoAplicar, aoTerminar
   const atualizarDoc = (a: ArquivoExplorador, campos: { tags?: string[]; espaco?: string }) =>
     a.tipo === "nota" ? notas.atualizar(a.id!, campos) : tarefas.atualizar(a.id!, campos);
   const mudarTags = (nova: (atuais: string[]) => string[], sucesso: string) =>
-    executar(async () => { for (const d of documentos) await atualizarDoc(d, { tags: nova(d.tags ?? []) }); }, sucesso);
+    executar(async () => { for (const d of documentos) await atualizarDoc(d, { tags: nova(d.tags ?? []) }); }, sucesso, false, { itens: documentos, alterar: (a) => ({ ...a, tags: nova(a.tags ?? []) }) });
 
   return {
-    ocupado, tarefasSel, notasSel, documentos, todasConcluidas, tagsDaSelecao,
-    concluirOuReabrir: () => executar(async () => { for (const t of tarefasSel) await tarefas.atualizarStatus(t.id!, todasConcluidas ? "pendente" : "concluida"); }, todasConcluidas ? "Tarefas reabertas." : "Tarefas concluídas."),
-    arquivar: () => executar(async () => { for (const t of tarefasSel) await tarefas.atualizarStatus(t.id!, "arquivada"); }, "Tarefas arquivadas.", true),
-    prioridade: (p: Prioridade) => executar(async () => { for (const t of tarefasSel) await tarefas.atualizar(t.id!, { prioridade: p }); }, "Prioridade alterada."),
-    prazo: (iso: string | null) => executar(async () => { for (const t of tarefasSel) await tarefas.atualizar(t.id!, { due_date: iso }); }, iso ? "Prazo definido." : "Prazo removido."),
+    ocupado, tarefasSel, notasSel, documentos, todasConcluidas, todasArquivadas, tagsDaSelecao,
+    desarquivar: () => executar(async () => { for (const d of documentos) await (d.tipo === "nota" ? notas.arquivar(d.id!, false) : tarefas.atualizarStatus(d.id!, "pendente")); }, documentos.length === 1 ? "Item desarquivado." : "Itens desarquivados.", true, { itens: documentos, alterar: (a) => ({ ...a, status: a.tipo === "nota" ? undefined : "pendente" }) }),
+    concluirOuReabrir: () => executar(async () => { for (const t of tarefasSel) await tarefas.atualizarStatus(t.id!, todasConcluidas ? "pendente" : "concluida"); }, todasConcluidas ? "Tarefas reabertas." : "Tarefas concluídas.", false, { itens: tarefasSel, alterar: (a) => ({ ...a, status: todasConcluidas ? "pendente" : "concluida" }) }),
+    arquivar: () => executar(async () => { for (const d of documentos) await (d.tipo === "nota" ? notas.arquivar(d.id!, true) : tarefas.atualizarStatus(d.id!, "arquivada")); }, documentos.length === 1 ? "Item arquivado." : "Itens arquivados.", true, { itens: documentos, alterar: null }),
+    prioridade: (p: Prioridade) => executar(async () => { for (const t of tarefasSel) await tarefas.atualizar(t.id!, { prioridade: p }); }, "Prioridade alterada.", false, { itens: tarefasSel, alterar: (a) => ({ ...a, prioridade: p }) }),
+    prazo: (iso: string | null) => executar(async () => { for (const t of tarefasSel) await tarefas.atualizar(t.id!, { due_date: iso }); }, iso ? "Prazo definido." : "Prazo removido.", false, { itens: tarefasSel, alterar: (a) => ({ ...a, due_date: iso }) }),
     revisar: () => executar(async () => { for (const n of notasSel) await notas.atualizar(n.id!, { marcar_revisado: true }); }, "Marcadas como revisadas."),
     adicionarTag: (bruta: string) => {
       const tag = canonicaTag(bruta);
@@ -55,7 +61,7 @@ export function useAcoesEmLote({ arquivosMarcados, espaco, aoAplicar, aoTerminar
       return mudarTags((atuais) => (atuais.includes(tag) ? atuais : [...atuais, tag]), `Tag #${tag} aplicada.`);
     },
     removerTag: (tag: string) => mudarTags((atuais) => atuais.filter((x) => x !== tag), `Tag #${tag} removida.`),
-    mudarEquipe: (id: string) => executar(async () => { for (const d of documentos) await atualizarDoc(d, { espaco: id }); }, "Equipe alterada.", true),
+    mudarEquipe: (id: string) => executar(async () => { for (const d of documentos) await atualizarDoc(d, { espaco: id }); }, "Equipe alterada.", true, { itens: documentos, alterar: null }),
     exportarPdf: () => executar(() => exportarDocumentosEmPdf(documentos), "PDF baixado."),
     baixar: () => executar(async () => {
       if (arquivosMarcados.length === 1) {

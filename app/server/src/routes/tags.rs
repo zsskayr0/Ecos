@@ -49,8 +49,8 @@ pub struct TagCatalogo {
 
 /// `GET /tags[?espaco=]` — todas as tags que a pessoa enxerga, com contagem por tipo e por espaço.
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<CatalogoQuery>) -> AppResult<Json<Vec<TagCatalogo>>> {
-    let visivel_nota = crate::espacos::visivel_sql("n", &usuario.0);
-    let visivel_tarefa = crate::espacos::visivel_sql("t", &usuario.0);
+    let visivel_nota = crate::espacos::visivel_item_sql("n", &usuario.0);
+    let visivel_tarefa = crate::espacos::visivel_item_sql("t", &usuario.0);
     let espaco = q.espaco.clone();
     let (linhas, cores): (Vec<(String, String, i64, i64)>, BTreeMap<(String, String), String>) = state
         .db
@@ -128,8 +128,8 @@ async fn aplicar(state: &AppState, usuario_id: &str, espaco: &str, origens: Vec<
     espaco.parse::<ecos_core::types::Espaco>().map_err(|motivo| invalido("espaco", &motivo))?;
     crate::espacos::exigir_acesso(state, usuario_id, espaco).await?;
 
-    let visivel_nota = crate::espacos::visivel_sql("n", usuario_id);
-    let visivel_tarefa = crate::espacos::visivel_sql("t", usuario_id);
+    let visivel_nota = crate::espacos::visivel_item_sql("n", usuario_id);
+    let visivel_tarefa = crate::espacos::visivel_item_sql("t", usuario_id);
     let (espaco_q, origens_q) = (espaco.to_string(), origens.clone());
     let (caminhos_notas, caminhos_tarefas): (Vec<String>, Vec<String>) = state
         .db

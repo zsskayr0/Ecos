@@ -1,0 +1,43 @@
+/* Leitura (MarkdownPreview): bloco de código, realce de sintaxe, rodapé, marcas. */
+.ecos-markdown pre > code {
+  background: none;
+  padding: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.ecos-markdown mark {
+  background: rgb(234 179 8 / 0.35);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.ecos-markdown kbd {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85em;
+  border: 1px solid currentColor;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 4px;
+  opacity: 0.9;
+}
+.ecos-markdown details > summary { cursor: pointer; }
+.ecos-markdown .katex-display { overflow-x: auto; overflow-y: hidden; }
+.ecos-markdown section.footnotes {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--color-border, rgb(127 127 127 / 0.3));
+  padding-top: 0.5rem;
+  font-size: 0.88em;
+}
+.ecos-markdown section.footnotes ol { margin-left: 1.25rem; list-style: decimal; }
+.ecos-markdown [data-footnote-ref] { text-decoration: none; }
+
+/* Tokens do highlight.js — paleta neutra que funciona no claro e no escuro. */
+.ecos-markdown .hljs-comment, .ecos-markdown .hljs-quote { color: #8b949e; font-style: italic; }
+.ecos-markdown .hljs-keyword, .ecos-markdown .hljs-selector-tag, .ecos-markdown .hljs-built_in, .ecos-markdown .hljs-meta .hljs-keyword { color: #d16ba5; }
+.ecos-markdown .hljs-string, .ecos-markdown .hljs-regexp, .ecos-markdown .hljs-attr-value, .ecos-markdown .hljs-template-tag { color: #3fa36b; }
+.ecos-markdown .hljs-number, .ecos-markdown .hljs-literal, .ecos-markdown .hljs-symbol, .ecos-markdown .hljs-bullet { color: #d28b26; }
+.ecos-markdown .hljs-title, .ecos-markdown .hljs-section, .ecos-markdown .hljs-title.function_ { color: #4a8fe0; }
+.ecos-markdown .hljs-attr, .ecos-markdown .hljs-attribute, .ecos-markdown .hljs-variable, .ecos-markdown .hljs-property, .ecos-markdown .hljs-type { color: #2aa1b3; }
+.ecos-markdown .hljs-tag, .ecos-markdown .hljs-name, .ecos-markdown .hljs-meta { color: #8a7fd4; }
+.ecos-markdown .hljs-deletion { color: #e5534b; }
+.ecos-markdown .hljs-addition { color: #3fa36b; }

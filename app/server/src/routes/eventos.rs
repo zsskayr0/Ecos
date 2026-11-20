@@ -78,7 +78,7 @@ fn deduplicar(ids: Vec<String>) -> Vec<String> {
 /// Rejeita ids de tarefa/nota que não existem (o reindex descartaria em silêncio; aqui o cliente recebe o erro).
 async fn validar_vinculos(state: &AppState, usuario_id: &str, tarefas: &[String], notas: &[String]) -> AppResult<()> {
     let (t, n) = (tarefas.to_vec(), notas.to_vec());
-    let (visivel_t, visivel_n) = (crate::espacos::visivel_sql("", usuario_id), crate::espacos::visivel_sql("", usuario_id));
+    let (visivel_t, visivel_n) = (crate::espacos::visivel_item_sql("", usuario_id), crate::espacos::visivel_item_sql("", usuario_id));
     let (faltam_t, faltam_n) = state
         .db
         .with_read(move |conn| {
@@ -122,12 +122,15 @@ async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResu
     caminho.ok_or(AppError::new(ErrorCode::NotFound))
 }
 
-const SELECT_EVENTO: &str = "SELECT e.id, e.titulo, e.inicio, e.fim, e.dia_inteiro, e.fuso, e.local, e.categoria_id, c.nome, c.cor, c.icone, \
+/// Tarefas e notas vinculadas que estão em pasta trancada e fechada não aparecem (nem o título) no evento.
+fn select_evento(uid: &str) -> String {
+    format!("SELECT e.id, e.titulo, e.inicio, e.fim, e.dia_inteiro, e.fuso, e.local, e.categoria_id, c.nome, c.cor, c.icone, \
     e.visibilidade, e.rrule, e.espaco, e.google_event_id, e.sync_pendente, e.criado_em, e.atualizado_em, \
-    (SELECT json_group_array(json_object('id', t.id, 'titulo', t.titulo)) FROM evento_tarefa et JOIN tarefa t ON t.id = et.tarefa_id WHERE et.evento_id = e.id), \
-    (SELECT json_group_array(json_object('id', n.id, 'titulo', n.titulo)) FROM evento_nota en JOIN nota n ON n.id = en.nota_id WHERE en.evento_id = e.id) \
+    (SELECT json_group_array(json_object('id', t.id, 'titulo', t.titulo)) FROM evento_tarefa et JOIN tarefa t ON t.id = et.tarefa_id WHERE et.evento_id = e.id AND NOT {}), \
+    (SELECT json_group_array(json_object('id', n.id, 'titulo', n.titulo)) FROM evento_nota en JOIN nota n ON n.id = en.nota_id WHERE en.evento_id = e.id AND NOT {}) \
     , e.excecoes, e.recorrencia_extra, e.cor \
-    FROM evento e LEFT JOIN categoria_evento c ON c.id = e.categoria_id";
+    FROM evento e LEFT JOIN categoria_evento c ON c.id = e.categoria_id", crate::espacos::trancada_fechada_sql("t", uid), crate::espacos::trancada_fechada_sql("n", uid))
+}
 
 fn linha_json(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     let categoria_id: Option<String> = r.get(7)?;
@@ -167,9 +170,10 @@ async fn detalhe(state: &AppState, usuario_id: &str, id: &str) -> AppResult<serd
     let caminho_relativo = caminho_por_id(state, usuario_id, id).await?;
     let corpo = frontmatter::parse::<EventoFrontMatter>(&std::fs::read_to_string(absoluto(state, &caminho_relativo))?)?.body;
     let id = id.to_string();
+    let selecao = select_evento(usuario_id);
     let linha = state
         .db
-        .with_read(move |conn| conn.query_row(&format!("{SELECT_EVENTO} WHERE e.id = ?1"), [&id], linha_json).optional())
+        .with_read(move |conn| conn.query_row(&format!("{selecao} WHERE e.id = ?1"), [&id], linha_json).optional())
         .await?
         .ok_or(AppError::new(ErrorCode::NotFound))?;
     let mut linha = linha;
@@ -198,10 +202,11 @@ pub struct ListarQuery {
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Vec<serde_json::Value>>> {
     let limite = q.limit.unwrap_or(LIMITE_PADRAO).clamp(1, LIMITE_MAXIMO);
     let visivel = crate::espacos::visivel_sql("e", &usuario.0);
+    let selecao = select_evento(&usuario.0);
     let linhas = state
         .db
         .with_read(move |conn| {
-            let mut sql = String::from(SELECT_EVENTO);
+            let mut sql = selecao;
             let mut condicoes: Vec<String> = vec![visivel];
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
             match (q.de, q.ate) {
@@ -557,10 +562,11 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
 
 async fn eventos_vinculados(state: &AppState, usuario_id: &str, tabela: &'static str, coluna: &'static str, id: String) -> AppResult<Vec<serde_json::Value>> {
     let visivel = crate::espacos::visivel_sql("e", usuario_id);
+    let selecao = select_evento(usuario_id);
     let linhas = state
         .db
         .with_read(move |conn| {
-            let sql = format!("{SELECT_EVENTO} WHERE e.id IN (SELECT evento_id FROM {tabela} WHERE {coluna} = ?1) AND {visivel} ORDER BY e.inicio DESC");
+            let sql = format!("{selecao} WHERE e.id IN (SELECT evento_id FROM {tabela} WHERE {coluna} = ?1) AND {visivel} ORDER BY e.inicio DESC");
             let mut stmt = conn.prepare(&sql)?;
             let linhas = stmt.query_map([&id], linha_json)?.collect::<Result<Vec<_>, _>>()?;
             Ok(linhas)

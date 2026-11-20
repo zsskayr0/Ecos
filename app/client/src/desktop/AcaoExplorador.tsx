@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { Check, Trash2, X } from "lucide-react";
 import { arquivos, pastas } from "@/lib/api";
 import { mensagemDeErro } from "@/lib/erros";
+import { avisar } from "@/lib/toast";
 import { Dialog } from "@/components/common/Dialog";
 import { MoverExplorador, type ItemParaMover } from "./MoverExplorador";
 
@@ -45,6 +46,12 @@ interface Props {
   espaco: string;
   aoFechar: () => void;
   aoConcluir: (resultado: ResultadoAcao) => void;
+  /** Excluir: chamado antes do servidor responder, para a árvore já esconder os itens. */
+  aoOtimista?: (itens: string[]) => void;
+  /** Personalizar pasta: nome, cor e ícone novos, mostrados antes do servidor responder. */
+  aoOtimistaPasta?: (caminho: string, novoCaminho: string, nome: string, cor: string, icone: string) => void;
+  /** Excluir: o servidor recusou; a árvore deve ser refeita para mostrar os itens de volta. */
+  aoRecusar?: () => void;
 }
 
 /** Janela de uma ação da árvore lateral: renomear, mover, excluir (vai para a Lixeira) ou personalizar a pasta. */
@@ -57,7 +64,7 @@ export function AcaoExplorador(props: Props) {
   return <AcaoSimples {...props} />;
 }
 
-function AcaoSimples({ acao, alvo, espaco, aoFechar, aoConcluir }: Props) {
+function AcaoSimples({ acao, alvo, espaco, aoFechar, aoConcluir, aoOtimista, aoOtimistaPasta, aoRecusar }: Props) {
   const [nome, setNome] = useState(alvo.nomeEditavel);
   const [cor, setCor] = useState(alvo.cor ?? "");
   const [icone, setIcone] = useState(alvo.icone ?? "");
@@ -81,23 +88,43 @@ function AcaoSimples({ acao, alvo, espaco, aoFechar, aoConcluir }: Props) {
     return { mudancas: [{ de: alvo.caminho, para: r.caminho }], mensagem: alvo.pasta ? "Pasta renomeada." : "Renomeado." };
   }, "Não foi possível renomear.");
 
-  const personalizar = () => executar(async () => {
+  /** Otimista: a janela fecha e a árvore já mostra nome, cor e ícone novos; o servidor confirma depois. */
+  const personalizar = () => {
     const pai = paiDe(alvo.caminho);
     const novoNome = nome.trim();
     const destino = pai ? `${pai}/${novoNome}` : novoNome;
-    await pastas.renomear({ tipo: "nota", espaco, caminho_atual: alvo.caminho, novo_caminho: destino, cor, icone });
-    return { mudancas: [{ de: alvo.caminho, para: destino }], mensagem: "Pasta atualizada." };
-  }, "Não foi possível salvar a pasta.");
+    aoOtimistaPasta?.(alvo.caminho, destino, novoNome, cor, icone);
+    aoFechar();
+    void (async () => {
+      try {
+        await pastas.renomear({ tipo: "nota", espaco, caminho_atual: alvo.caminho, novo_caminho: destino, cor, icone });
+        aoConcluir({ mudancas: [{ de: alvo.caminho, para: destino }], mensagem: "Pasta atualizada." });
+      } catch (e) {
+        avisar(mensagemDeErro(e, "Não foi possível salvar a pasta."), "erro");
+        aoRecusar?.();
+      }
+    })();
+  };
 
   const itens = alvo.lote ?? [alvo.caminho];
 
-  const excluir = () => executar(async () => {
-    const r = await arquivos.excluir({ espaco, itens });
-    const motivo = r.falhas.map((f) => f.motivo).join("; ");
-    if (r.falhas.length && !r.excluidos.length) throw new Error(motivo);
-    const mensagem = itens.length === 1 ? "Enviado para a Lixeira." : `${r.excluidos.length} itens enviados para a Lixeira.${r.falhas.length ? ` Não excluiu ${r.falhas.length}: ${motivo}.` : ""}`;
-    return { mudancas: r.excluidos.map((de) => ({ de, para: null })), mensagem };
-  }, "Não foi possível excluir.");
+  /** Otimista: a janela fecha e os itens somem da árvore na hora; o servidor confirma depois (se falhar, a árvore é refeita e um aviso explica). */
+  const excluir = () => {
+    aoOtimista?.(itens);
+    aoFechar();
+    void (async () => {
+      try {
+        const r = await arquivos.excluir({ espaco, itens });
+        const motivo = r.falhas.map((f) => f.motivo).join("; ");
+        if (r.falhas.length && !r.excluidos.length) throw new Error(motivo);
+        const mensagem = itens.length === 1 ? "Enviado para a Lixeira." : `${r.excluidos.length} itens enviados para a Lixeira.${r.falhas.length ? ` Não excluiu ${r.falhas.length}: ${motivo}.` : ""}`;
+        aoConcluir({ mudancas: r.excluidos.map((de) => ({ de, para: null })), mensagem });
+      } catch (e) {
+        avisar(mensagemDeErro(e, "Não foi possível excluir."), "erro");
+        aoRecusar?.();
+      }
+    })();
+  };
 
   const campoNome = (
     <>

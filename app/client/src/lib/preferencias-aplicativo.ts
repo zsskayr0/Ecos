@@ -7,6 +7,8 @@ export type EstiloPastas = "grade" | "compacta";
 export type OrdemPastas = "padrao" | "nome" | "itens" | "uso";
 /** Como a árvore lateral marca os arquivos que não são nota nem tarefa: selo com a extensão, ícone, os dois ou nada. */
 export type MarcaArquivo = "ambos" | "selo" | "icone" | "nenhum";
+/** Colunas que a lista da tela de Arquivos pode mostrar depois do nome. */
+export type ColunaArquivos = "tipo" | "tamanho" | "modificado" | "status" | "prioridade" | "prazo" | "tags" | "proprietario";
 export type AltoContraste = "sistema" | "ligado" | "desligado";
 export type FormatoData = "completa" | "curta" | "mdy" | "dmy" | "ymd" | "relativo";
 export type PrioridadePadrao = "baixa" | "media" | "alta";
@@ -60,6 +62,10 @@ export interface PreferenciasAplicativo {
   exploradorMarcaArquivo: MarcaArquivo;
   /** Ícone escolhido por extensão (sem ponto, minúscula) na árvore lateral; sem entrada vale o ícone padrão do tipo. */
   exploradorIconesExtensao: Record<string, string>;
+  /** Tela de Arquivos (lista): colunas mostradas depois do nome, na ordem em que aparecem. */
+  exploradorColunas: ColunaArquivos[];
+  /** Tela de Arquivos (lista): checkbox para concluir a tarefa no lugar do ícone. */
+  exploradorCheckboxTarefa: boolean;
   /** Tela de Arquivos: a barra de endereço mostra sugestões de pastas enquanto você digita. */
   arquivosSugestoesCaminho: boolean;
   /** `sistema` segue `prefers-contrast: more` do sistema operacional. */
@@ -80,12 +86,18 @@ export interface PreferenciasAplicativo {
   notaMaximizada: boolean;
   /** Notas existentes abrem já em edição (desligado: em visualização). */
   notaAbreEditando: boolean;
+  /** No celular, a nota aberta para leitura usa Fluido (texto que reflui) ou Página (folha A4 com zoom). Notas com escrita à mão ficam sempre em Página. */
+  notaModoLeitura: "fluido" | "pagina";
+  /** O mesmo, para a nota em edição. */
+  notaModoEdicao: "fluido" | "pagina";
   /** Tarefas existentes abrem a descrição já em edição (desligado: em visualização). */
   tarefaAbreEditando: boolean;
   /** No modo Focus o painel lateral "Opções" começa recolhido (padrão) ou aberto. */
   focusPainelRecolhido: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
   mostrarConcluidas: boolean;
+  /** Concluídas aparecem só riscadas ou riscadas e em verde. */
+  concluidasEstilo: "riscada" | "riscada-verde";
   visualizacaoTarefasDesktop: VisualizacaoTarefasDesktop;
   visualizacaoTarefasMobile: VisualizacaoTarefasMobile;
   /** Na captura rápida do Feed, o que a tecla Enter cria (Ctrl+Enter cria o outro). */
@@ -150,6 +162,8 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   exploradorColorirPrioridade: true,
   exploradorMarcaArquivo: "ambos",
   exploradorIconesExtensao: {},
+  exploradorColunas: ["tipo", "tamanho", "modificado"],
+  exploradorCheckboxTarefa: true,
   arquivosSugestoesCaminho: true,
   altoContraste: "sistema",
   semanaComecaSegunda: false,
@@ -159,9 +173,12 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   tarefaMaximizada: false,
   notaMaximizada: false,
   notaAbreEditando: false,
+  notaModoLeitura: "fluido",
+  notaModoEdicao: "fluido",
   tarefaAbreEditando: true,
   focusPainelRecolhido: true,
   mostrarConcluidas: false,
+  concluidasEstilo: "riscada",
   visualizacaoTarefasDesktop: "tabela",
   visualizacaoTarefasMobile: "agrupada",
   capturaEnter: "nota",

@@ -2,19 +2,28 @@ import { MenuSuspenso } from "@/components/common/MenuSuspenso";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize, Printer } from "lucide-react";
+import { SeletorVisualizacao } from "./SeletorVisualizacao";
+import { lembrarModoDaNota, modoInicialDaNota, renovarModoDaNota, type ModoVisualNota } from "@/lib/modo-visual-nota";
 import { Toggle } from "@/components/common/Toggle";
 import { corDoFundo, ESTILOS_FOLHA, FUNDOS_FOLHA, useFolha } from "@/lib/tinta/folha";
 import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Keyboard, Link, Link2, List, ListChecks, ListOrdered, Minus, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
+import { SeletorEmoji } from "./SeletorEmoji";
+import { ContadorTexto } from "./ContadorTexto";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
+import { GRUPOS_ATALHOS } from "@/screens/Settings/AtalhosScreen";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { useIsDesktop, useIsMobile } from "@/lib/use-viewport";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
+import { media } from "@/lib/api";
+import { mensagemDeErro } from "@/lib/erros";
+import { inserirReferencia } from "./AttachmentsField";
 import { preservandoScroll } from "@/lib/preservar-scroll";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
 import { AvisoModoEscrita } from "@/components/tinta/AvisoModoEscrita";
 import { BarraTinta } from "@/components/tinta/BarraTinta";
 import { PaletaFlutuante } from "@/components/tinta/PaletaFlutuante";
+import { BarraFormatacao, type ComandoFormatacao } from "@/components/tinta/BarraFormatacao";
 import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type ModoBorracha, type Pincel } from "@/components/tinta/ColunaTinta";
 import { useTinta } from "@/lib/tinta/use-tinta";
 import { ativos, LARGURA_COLUNA_PADRAO, type Ferramenta } from "@/lib/tinta/tipos";
@@ -41,6 +50,12 @@ interface Props {
   espaco?: string;
   /** Nota que já existe: liga o Modo de escrita (tinta à mão sobre o texto). */
   tintaNotaId?: string;
+  /** A edição está fechando: a barra de formatação faz a animação de saída. */
+  fechando?: boolean;
+  /** Recebe a função que abre o seletor de anexo (botão "+" do cabeçalho); o arquivo entra na linha do cursor. */
+  anexarRef?: { current: (() => void) | null };
+  /** Avisa quando o Modo de escrita liga/desliga (a tela esconde o que cerca a nota e o oferece num painel). */
+  aoMudarEscrita?: (escrevendo: boolean) => void;
 }
 
 const AVISO_DIGITAR_COM_TINTA = "ecos.tinta.aviso-digitar";
@@ -59,16 +74,17 @@ const AVISO_DIGITAR_COM_TINTA = "ecos.tinta.aviso-digitar";
  * completa é a própria "aba de cima" pedida, sem seção separada ocupando
  * a tela pequena. Desktop mantém textarea + preview lado a lado.
  */
-export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false, notaId, espaco, tintaNotaId }: Props) {
+export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId, tipo, placeholder, rows = 8, layout = "split", initialPreview = false, semBorda = false, notaId, espaco, tintaNotaId, aoMudarEscrita, fechando = false, anexarRef }: Props) {
   // ---- Modo de escrita (tinta). Sem `tintaNotaId` nada disto aparece. ----
   const tinta = useTinta(tintaNotaId);
+  const [viewContador, setViewContador] = useState<import("@codemirror/view").EditorView | null>(null);
   const [escrevendo, setEscrevendo] = useState(false);
   const [avisoAberto, setAvisoAberto] = useState(false);
   const [confirmarLimpar, setConfirmarLimpar] = useState(false);
   const [dedoDesenha, setDedoDesenha] = useState(false);
   const [folha, alterarFolha] = useFolha(tintaNotaId);
   const [slotOpcoes, setSlotOpcoes] = useState<HTMLElement | null>(null);
-  const memoriaPincel = useRef<Record<Ferramenta, { cor: string; espessura: number }>>({ caneta: { cor: "auto", espessura: 2.5 }, "marca-texto": { cor: "#facc15", espessura: 16 } });
+  const memoriaPincel = useRef<Record<Ferramenta, { cor: string; espessura: number; reta?: boolean }>>({ caneta: { cor: "auto", espessura: 2.5 }, "marca-texto": { cor: "#facc15", espessura: 16 } });
   const [pincel, setPincel] = useState<Pincel>({ ferramenta: "caneta", ...memoriaPincel.current.caneta });
   const tracosAtivos = ativos(tinta.tracos);
   const comTinta = !!tintaNotaId && tracosAtivos.length > 0;
@@ -79,7 +95,6 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     abriuEscrita.current = true;
     if (tracosAtivos.length > 0 && tinta.largura !== null) setEscrevendo(true);
   }, [tintaNotaId, tinta.carregado, tinta.largura, tracosAtivos.length]);
-  const colunaFixa = !!tintaNotaId && (escrevendo || comTinta);
   const larguraColuna = tinta.largura ?? LARGURA_COLUNA_PADRAO;
   const { desfazer: desfazerTinta, refazer: refazerTinta } = tinta;
 
@@ -105,8 +120,8 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   }
 
   function escolherFerramenta(f: FerramentaUI) {
-    if (pincel.ferramenta !== "borracha" && pincel.ferramenta !== "laco") memoriaPincel.current[pincel.ferramenta] = { cor: pincel.cor, espessura: pincel.espessura };
-    setPincel(f === "borracha" || f === "laco" ? { ...pincel, ferramenta: f } : { ferramenta: f, ...memoriaPincel.current[f], modoBorracha: pincel.modoBorracha });
+    if (pincel.ferramenta !== "borracha" && pincel.ferramenta !== "laco") memoriaPincel.current[pincel.ferramenta] = { cor: pincel.cor, espessura: pincel.espessura, reta: pincel.reta };
+    setPincel(f === "borracha" || f === "laco" ? { ...pincel, ferramenta: f } : { ferramenta: f, ...memoriaPincel.current[f], modoBorracha: pincel.modoBorracha, tamanhoBorracha: pincel.tamanhoBorracha, soMarca: pincel.soMarca });
   }
 
   /** Duplo clique no botão da S Pen: caneta ↔ marca-texto (da borracha volta para a caneta). */
@@ -127,6 +142,8 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   }, [escrevendo, desfazerTinta, refazerTinta]);
 
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  /** Raiz deste editor: a página da nota é a que o contém (há mais de uma aberta ao mesmo tempo, p.ex. janela + Focus). */
+  const raizRef = useRef<HTMLDivElement>(null);
   /** Layout "document": o editor vivo (CodeMirror) expõe a seleção como se fosse um textarea. */
   const editorRef = useRef<AreaLike | null>(null);
   const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
@@ -149,10 +166,50 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   // Escrevendo, a página inteira abaixo do cabeçalho vira a folha cinza (sem faixas pretas em volta); ver `global.css`.
   useEffect(() => {
     if (!escrevendo) return;
-    const pagina = document.querySelector<HTMLElement>(".ecos-detail-page");
+    const pagina = raizRef.current?.closest<HTMLElement>(".ecos-detail-page") ?? null;
     pagina?.setAttribute("data-escrevendo", "");
     return () => pagina?.removeAttribute("data-escrevendo");
   }, [escrevendo]);
+  useEffect(() => { aoMudarEscrita?.(escrevendo); }, [escrevendo, aoMudarEscrita]);
+  // Ao sair do Modo de escrita a paleta se desfaz com animação enquanto a barra de formatação entra.
+  const [paletaSaindo, setPaletaSaindo] = useState(false);
+  const eraEscrevendo = useRef(false);
+  useEffect(() => {
+    let t = 0;
+    if (eraEscrevendo.current && !escrevendo) { setPaletaSaindo(true); t = window.setTimeout(() => setPaletaSaindo(false), 260); }
+    eraEscrevendo.current = escrevendo;
+    return () => window.clearTimeout(t);
+  }, [escrevendo]);
+  // No celular, a formatação do Modo texto também é a paleta flutuante (e a nota perde a moldura, como no Modo de escrita).
+  const usaPaleta = !!tintaNotaId && barraCompacta && layout === "document";
+  // Modo Fluido ou Página (celular): o padrão vem das configurações; uma troca vale por 2 minutos depois de fechar a nota.
+  const [modoNota, setModoNota] = useState<ModoVisualNota>(() => modoInicialDaNota(tintaNotaId, "edicao"));
+  const trocouModo = useRef(false);
+  function escolherModoNota(modo: ModoVisualNota) {
+    if (comTinta) return;
+    trocouModo.current = true;
+    setModoNota(modo);
+    if (tintaNotaId) lembrarModoDaNota(tintaNotaId, "edicao", modo);
+  }
+  useEffect(() => () => { if (tintaNotaId && trocouModo.current) renovarModoDaNota(tintaNotaId, "edicao"); }, [tintaNotaId]);
+  // Nota com escrita à mão (ou no Modo de escrita) é sempre Página: a tinta é absoluta, só alinha na coluna fixa.
+  const paginaNoCelular = usaPaleta && (modoNota === "pagina" || escrevendo || comTinta);
+  const colunaFixa = !!tintaNotaId && (escrevendo || comTinta || paginaNoCelular);
+  const [formatSaindo, setFormatSaindo] = useState(false);
+  const eraTexto = useRef(true);
+  useEffect(() => {
+    let t = 0;
+    if (eraTexto.current && escrevendo) { setFormatSaindo(true); t = window.setTimeout(() => setFormatSaindo(false), 260); }
+    eraTexto.current = !escrevendo;
+    return () => window.clearTimeout(t);
+  }, [escrevendo]);
+  const folhaPlana = usaPaleta && !escrevendo;
+  useLayoutEffect(() => {
+    if (!folhaPlana) return;
+    const pagina = raizRef.current?.closest<HTMLElement>(".ecos-detail-page") ?? null;
+    pagina?.setAttribute("data-folha-plana", "");
+    return () => pagina?.removeAttribute("data-folha-plana");
+  }, [folhaPlana]);
   // Os fundos escuros da folha só valem no tema escuro: no claro a tinta é escura e sumiria sobre eles.
   const [temaClaro, setTemaClaro] = useState(() => document.documentElement.getAttribute("data-theme") === "light");
   useEffect(() => {
@@ -161,16 +218,31 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     return () => obs.disconnect();
   }, []);
   const corFolha = temaClaro ? null : corDoFundo(folha.fundo);
-  useEffect(() => {
-    if (!escrevendo || !corFolha) return;
-    const pagina = document.querySelector<HTMLElement>(".ecos-detail-page");
-    pagina?.style.setProperty("--ecos-folha", corFolha);
-    return () => { pagina?.style.removeProperty("--ecos-folha"); };
-  }, [escrevendo, corFolha]);
+  useLayoutEffect(() => {
+    if (!(escrevendo || folhaPlana) || !corFolha) return;
+    const pagina = raizRef.current?.closest<HTMLElement>(".ecos-detail-page") ?? null;
+    // A área que rola e a janela em volta pintam com a mesma cor (ver `global.css`), então a variável vale nelas também.
+    const alvos = [pagina, pagina?.parentElement, pagina?.parentElement?.parentElement].filter((x): x is HTMLElement => !!x);
+    alvos.forEach((x) => x.style.setProperty("--ecos-folha", corFolha));
+    return () => { alvos.forEach((x) => x.style.removeProperty("--ecos-folha")); };
+  }, [escrevendo, folhaPlana, corFolha]);
   // Itens da escrita (folha, fundo, dedo, limpar…) entram no menu "⋯" da nota, que é renderizado no cabeçalho da página.
   useLayoutEffect(() => { setSlotOpcoes(tintaNotaId ? document.querySelector<HTMLElement>("[data-slot-opcoes-escrita]") : null); }, [tintaNotaId, escrevendo, tinta.carregado]);
   const [cursor, setCursor] = useState(0);
   const [emojiAberto, setEmojiAberto] = useState(false);
+  const [ajudaAberta, setAjudaAberta] = useState(false);
+  useEffect(() => {
+    if (layout !== "document") return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const alvoTecla = e.target as HTMLElement | null;
+      if (alvoTecla?.closest("input, textarea, select, [contenteditable=true], .cm-editor")) return;
+      e.preventDefault();
+      setAjudaAberta(true);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [layout]);
 
   function resizeArea() {
     const area = areaRef.current;
@@ -195,45 +267,64 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     return () => { active = false; observer.disconnect(); };
   }, [preview, layout]);
 
+  /** Texto atual: no editor vivo vem do CodeMirror (pode estar à frente da prop `corpo`). */
+  const doc = () => alvo()?.texto?.() ?? corpo;
+
+  /** Troca `[inicio, fim)` por `texto`. No editor vivo é uma transação pequena; no textarea, reescreve o corpo. */
+  function substituir(inicio: number, fim: number, texto: string, selecao?: [number, number]) {
+    const el = alvo();
+    if (el?.substituir) { el.substituir(inicio, fim, texto, selecao); return; }
+    const atual = doc();
+    onCorpoChange(atual.slice(0, inicio) + texto + atual.slice(fim));
+    requestAnimationFrame(() => {
+      el?.focus();
+      const [i, f] = selecao ?? [inicio + texto.length, inicio + texto.length];
+      el?.setSelectionRange(i, f);
+    });
+  }
+
   function envolverSelecao(prefixo: string, sufixo = prefixo) {
     const el = alvo();
     if (!el) return;
     const inicio = el.selectionStart;
     const fim = el.selectionEnd;
-    const selecionado = corpo.slice(inicio, fim);
-    onCorpoChange(corpo.slice(0, inicio) + prefixo + selecionado + sufixo + corpo.slice(fim));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = inicio + prefixo.length + selecionado.length;
-    });
+    const selecionado = doc().slice(inicio, fim);
+    const pos = inicio + prefixo.length + selecionado.length;
+    substituir(inicio, fim, prefixo + selecionado + sufixo, [pos, pos]);
   }
 
-  /** Comandos de início de linha (título, lista, citação, checklist) —
-   * aplica só na linha onde o cursor está, não na seleção inteira: mais
-   * simples e previsível que decidir "prefixar cada linha selecionada",
-   * e cobre o caso real de uso (cursor numa linha, formata ela). */
+  /** Comandos de início de linha: aplica só na linha onde o cursor está. */
   function prefixarLinhaAtual(prefixo: string) {
     const el = alvo();
     if (!el) return;
     const pos = el.selectionStart;
-    const inicioLinha = corpo.lastIndexOf("\n", pos - 1) + 1;
-    const novoCorpo = corpo.slice(0, inicioLinha) + prefixo + corpo.slice(inicioLinha);
-    onCorpoChange(novoCorpo);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = pos + prefixo.length;
-    });
+    const inicioLinha = doc().lastIndexOf("\n", pos - 1) + 1;
+    substituir(inicioLinha, inicioLinha, prefixo, [pos + prefixo.length, pos + prefixo.length]);
+  }
+
+  /** Anexo entra no texto na linha do cursor (em bloco próprio), nunca no fim da nota. */
+  const seletorAnexo = useRef<HTMLInputElement>(null);
+  const posAnexo = useRef(0);
+  function abrirAnexo() { posAnexo.current = alvo()?.selectionStart ?? corpo.length; seletorAnexo.current?.click(); }
+  useLayoutEffect(() => {
+    if (!anexarRef) return;
+    anexarRef.current = abrirAnexo;
+    return () => { anexarRef.current = null; };
+  });
+  async function anexarArquivo(arquivo: File) {
+    if (arquivo.size > 120 * 1024 * 1024) { avisar("O arquivo excede o limite de 120 MB.", "erro"); return; }
+    if (!arquivo.size) { avisar("O arquivo está vazio.", "erro"); return; }
+    try {
+      const item = await media.enviar(arquivo, espaco);
+      const texto = alvo()?.texto?.() ?? corpo;
+      onCorpoChange(inserirReferencia(texto, media.referencia(item), Math.min(posAnexo.current, texto.length)));
+    } catch (e) { avisar(mensagemDeErro(e, "Não foi possível enviar o arquivo. Tente novamente."), "erro"); }
   }
 
   function inserirNoCursor(texto: string) {
     const el = alvo();
     if (!el) return;
-    const pos = el.selectionStart;
-    onCorpoChange(corpo.slice(0, pos) + texto + corpo.slice(pos));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = pos + texto.length;
-    });
+    substituir(el.selectionStart, el.selectionEnd, texto);
   }
 
   // ---- Layout "document" (descrição de Tarefa): barra única no topo, sempre Markdown por baixo ----
@@ -247,26 +338,17 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     }
     return linha;
   };
-  const inicioDaLinha = (pos: number) => (pos === 0 ? 0 : corpo.lastIndexOf("\n", pos - 1) + 1);
-
-  function substituir(inicio: number, fim: number, texto: string, selecao?: [number, number]) {
-    const el = alvo();
-    onCorpoChange(corpo.slice(0, inicio) + texto + corpo.slice(fim));
-    requestAnimationFrame(() => {
-      el?.focus();
-      const [i, f] = selecao ?? [inicio + texto.length, inicio + texto.length];
-      el?.setSelectionRange(i, f);
-    });
-  }
+  const inicioDaLinha = (pos: number, texto = corpo) => (pos === 0 ? 0 : texto.lastIndexOf("\n", pos - 1) + 1);
 
   /** Aplica `fn` a cada linha que a seleção toca (uma linha só, se for só o cursor). */
   function transformarLinhas(fn: (linha: string, indice: number) => string) {
     const el = alvo();
     if (!el) return;
-    const inicio = inicioDaLinha(el.selectionStart);
-    let fim = corpo.indexOf("\n", el.selectionEnd);
-    if (fim === -1) fim = corpo.length;
-    const texto = corpo.slice(inicio, fim).split("\n").map(fn).join("\n");
+    const atual = doc();
+    const inicio = inicioDaLinha(el.selectionStart, atual);
+    let fim = atual.indexOf("\n", el.selectionEnd);
+    if (fim === -1) fim = atual.length;
+    const texto = atual.slice(inicio, fim).split("\n").map(fn).join("\n");
     substituir(inicio, fim, texto, el.selectionStart === el.selectionEnd ? undefined : [inicio, inicio + texto.length]);
   }
 
@@ -274,10 +356,11 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   function alternarBloco(detecta: RegExp, prefixo: (n: number) => string) {
     const el = alvo();
     if (!el) return;
-    const inicio = inicioDaLinha(el.selectionStart);
-    let fim = corpo.indexOf("\n", el.selectionEnd);
-    if (fim === -1) fim = corpo.length;
-    const todasJa = corpo.slice(inicio, fim).split("\n").every((l) => !l.trim() || detecta.test(l));
+    const atual = doc();
+    const inicio = inicioDaLinha(el.selectionStart, atual);
+    let fim = atual.indexOf("\n", el.selectionEnd);
+    if (fim === -1) fim = atual.length;
+    const todasJa = atual.slice(inicio, fim).split("\n").every((l) => !l.trim() || detecta.test(l));
     let n = 0;
     transformarLinhas((l) => (!l.trim() ? l : todasJa ? semPrefixoBloco(l) : prefixo(n++) + semPrefixoBloco(l)));
   }
@@ -291,15 +374,39 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     });
   }
 
-  /** Negrito/itálico/tachado alternam: já envolvido → desembrulha; senão envolve e mantém o texto selecionado. */
+  /**
+   * Negrito/itálico/tachado/código alternam. Com seleção: envolve ou desembrulha.
+   * Sem seleção: a palavra sob o cursor (desembrulha se já estiver marcada; no itálico vale `_x_` e `*x*`);
+   * fora de palavra, insere o par com o cursor no meio (ou tira um par vazio).
+   */
   function alternarInline(marca: string) {
     const el = alvo();
     if (!el) return;
-    const a = el.selectionStart;
-    const b = el.selectionEnd;
-    const envolvido = a >= marca.length && corpo.slice(a - marca.length, a) === marca && corpo.slice(b, b + marca.length) === marca;
-    if (envolvido) substituir(a - marca.length, b + marca.length, corpo.slice(a, b), [a - marca.length, b - marca.length]);
-    else substituir(a, b, marca + corpo.slice(a, b) + marca, [a + marca.length, b + marca.length]);
+    const atual = doc();
+    const cursor = el.selectionStart;
+    let a = el.selectionStart;
+    let b = el.selectionEnd;
+    const variantes = marca === "_" ? ["_", "*"] : [marca];
+    const cercada = (de: number, ate: number) => variantes.find((m) => {
+      if (de < m.length || atual.slice(de - m.length, de) !== m || atual.slice(ate, ate + m.length) !== m) return false;
+      // `*x*` não se confunde com `**x**` (negrito).
+      if (m === "*") return atual[de - 2] !== "*" && atual[ate + 1] !== "*";
+      return true;
+    });
+    const vazia = a === b;
+    if (vazia) {
+      const ehLetra = (c: string | undefined) => !!c && /[\p{L}\p{N}]/u.test(c);
+      while (a > 0 && ehLetra(atual[a - 1])) a--;
+      while (b < atual.length && ehLetra(atual[b])) b++;
+    }
+    const m = cercada(a, b);
+    if (vazia && a === b) {
+      if (m) substituir(a - m.length, b + m.length, "", [a - m.length, a - m.length]);
+      else substituir(a, a, marca + marca, [a + marca.length, a + marca.length]);
+      return;
+    }
+    if (m) substituir(a - m.length, b + m.length, atual.slice(a, b), vazia ? [cursor - m.length, cursor - m.length] : [a - m.length, b - m.length]);
+    else substituir(a, b, marca + atual.slice(a, b) + marca, vazia ? [cursor + marca.length, cursor + marca.length] : [a + marca.length, b + marca.length]);
   }
 
   function inserirLink() {
@@ -307,7 +414,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     if (!el) return;
     const a = el.selectionStart;
     const b = el.selectionEnd;
-    const texto = corpo.slice(a, b) || "texto";
+    const texto = doc().slice(a, b) || "texto";
     const urlInicio = a + texto.length + 3;
     substituir(a, b, `[${texto}](https://)`, [urlInicio, urlInicio + 8]);
   }
@@ -315,21 +422,41 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   function limparFormatacao() {
     const el = alvo();
     if (!el) return;
+    const atual = doc();
     let a = el.selectionStart;
     let b = el.selectionEnd;
     if (a === b) {
-      a = inicioDaLinha(a);
-      b = corpo.indexOf("\n", b);
-      if (b === -1) b = corpo.length;
+      a = inicioDaLinha(a, atual);
+      b = atual.indexOf("\n", b);
+      if (b === -1) b = atual.length;
     }
     // Checklists ficam: o parser do backend depende delas.
-    const limpo = corpo
+    const limpo = atual
       .slice(a, b)
       .replace(/(\*\*|~~|`)(.+?)\1/g, "$2")
       .replace(/(^|[^\w])_(.+?)_(?=$|[^\w])/g, "$1$2")
       .replace(/^(\s*)(#{1,6}\s+|>\s?|[-*+]\s(?!\[[ xX]\])|\d+\.\s)/gm, "$1");
     substituir(a, b, limpo, [a, a + limpo.length]);
   }
+
+  const alternarNumerada = () => alternarBloco(/^\d+\.\s/, (n) => `${n + 1}. `);
+  const alternarLista = () => alternarBloco(/^[-*+]\s(?!\[[ xX]\])/, () => "- ");
+  const alternarChecklist = () => alternarBloco(/^[-*+]\s\[[ xX]\]\s/, () => "- [ ] ");
+  const atalhosEditor: Record<string, () => void> = {
+    "Mod-b": () => alternarInline("**"),
+    "Mod-i": () => alternarInline("_"),
+    "Mod-k": inserirLink,
+    "Mod-e": () => alternarInline("`"),
+    "Mod-Shift-x": () => alternarInline("~~"),
+    "Mod-Alt-0": () => aplicarEstilo("p"),
+    "Mod-Alt-1": () => aplicarEstilo("h1"),
+    "Mod-Alt-2": () => aplicarEstilo("h2"),
+    "Mod-Alt-3": () => aplicarEstilo("h3"),
+    "Mod-Shift-7": alternarNumerada,
+    "Mod-Shift-8": alternarLista,
+    "Mod-Shift-9": alternarChecklist,
+    "Mod-/": () => setAjudaAberta(true),
+  };
 
 
   if (layout === "document") {
@@ -339,17 +466,18 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     const tam = barraCompacta ? "h-11 w-11" : "h-8 w-8";
     const separador = <span aria-hidden className="mx-1 h-5 w-px bg-border" />;
     const comandosExtras = [
-      { valor: "tachado", rotulo: "Tachado", icone: Strikethrough, executar: () => alternarInline("~~") },
-      { valor: "numerada", rotulo: "Lista numerada", icone: ListOrdered, executar: () => alternarBloco(/^\d+\.\s/, (n) => `${n + 1}. `), novoGrupo: true },
-      { valor: "lista", rotulo: "Lista com marcadores", icone: List, executar: () => alternarBloco(/^[-*+]\s(?!\[[ xX]\])/, () => "- ") },
-      { valor: "checklist", rotulo: "Checklist", icone: ListChecks, executar: () => alternarBloco(/^[-*+]\s\[[ xX]\]\s/, () => "- [ ] ") },
+      { valor: "tachado", rotulo: "Tachado", atalho: "Ctrl+Shift+X", icone: Strikethrough, executar: () => alternarInline("~~") },
+      { valor: "numerada", rotulo: "Lista numerada", atalho: "Ctrl+Shift+7", icone: ListOrdered, executar: alternarNumerada, novoGrupo: true },
+      { valor: "lista", rotulo: "Lista com marcadores", atalho: "Ctrl+Shift+8", icone: List, executar: alternarLista },
+      { valor: "checklist", rotulo: "Checklist", atalho: "Ctrl+Shift+9", icone: ListChecks, executar: alternarChecklist },
       { valor: "citacao", rotulo: "Citação", icone: Quote, executar: () => alternarBloco(/^>\s?/, () => "> ") },
-      { valor: "link", rotulo: "Link", icone: Link, executar: inserirLink, novoGrupo: true },
+      { valor: "link", rotulo: "Link", atalho: "Ctrl+K", icone: Link, executar: inserirLink, novoGrupo: true },
       { valor: "wikilink", rotulo: "Wikilink [[nota]]", icone: Brackets, executar: () => envolverSelecao("[[", "]]") },
-      { valor: "codigo", rotulo: "Código", icone: Code, executar: () => alternarInline("`") },
+      { valor: "codigo", rotulo: "Código", atalho: "Ctrl+E", icone: Code, executar: () => alternarInline("`") },
       { valor: "linha", rotulo: "Linha horizontal", icone: Minus, executar: () => inserirNoCursor("\n---\n") },
       { valor: "emoji", rotulo: "Emoji", icone: Smile, executar: () => setEmojiAberto((v) => !v), novoGrupo: true },
       { valor: "limpar", rotulo: "Limpar formatação", icone: RemoveFormatting, executar: limparFormatacao },
+      { valor: "atalhos", rotulo: "Atalhos do editor", atalho: "Ctrl+/", icone: Keyboard, executar: () => setAjudaAberta(true) },
     ];
     const seletorEmoji = emojiAberto && <SeletorEmoji alinharDireita={barraCompacta} aoEscolher={(emoji) => { inserirNoCursor(emoji); setEmojiAberto(false); }} aoFechar={() => setEmojiAberto(false)} />;
 
@@ -387,20 +515,33 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
             className={`h-9 w-9 rounded-full border-2 transition-transform ${folha.fundo === f.id ? "scale-110 border-steel-400" : "border-border"}`} style={{ background: f.cor ?? "rgb(var(--ecos-surface-1-rgb))" }} />)}
         </div>
       </div>}
+      {usaPaleta && <SeletorVisualizacao modo={modoNota} travado={comTinta || escrevendo} aoEscolher={escolherModoNota} />}
       {escrevendo && <label className="flex min-h-[44px] items-center justify-between gap-3 text-sm text-text-secondary">Desenhar com o dedo<Toggle checked={dedoDesenha} onChange={setDedoDesenha} label="Desenhar com o dedo" /></label>}
       <button type="button" className={itemMenu} onClick={() => { fecharMenu(); if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); }}><Maximize size={16} />Tela cheia</button>
       <button type="button" className={itemMenu} onClick={() => { fecharMenu(); window.setTimeout(() => window.print(), 350); }}><Printer size={16} />Imprimir ou salvar em PDF</button>
       {tracosAtivos.length > 0 && <button type="button" className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-error/40 px-3 text-sm text-error transition-colors hover:bg-error/10" onClick={() => { fecharMenu(); setConfirmarLimpar(true); }}>Limpar anotações</button>}
     </>;
-    return <div className="min-w-0" data-corpo-editor>
+    // Celular e tablet (até 1023px), nota sem escrita à mão: texto de 16px, igual ao da leitura (14px é pequeno na tela do telefone). Com tinta a coluna é fixa e o texto não pode mudar de tamanho, senão a escrita desalinha.
+    const fonteMaior = usaPaleta && !colunaFixa;
+    return <div ref={raizRef} className="min-w-0" data-corpo-editor style={fonteMaior ? ({ "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" } as React.CSSProperties) : undefined}>
       {slotOpcoes && createPortal(conteudoMenu, slotOpcoes)}
-      {barraCompacta && (slotModo ? createPortal(controlesModo, slotModo) : !escrevendo && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>)}
-      <div style={escrevendo ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : undefined} className={semBorda ? "min-w-0" : escrevendo ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
-      {escrevendo ? <PaletaFlutuante aoSair={barraCompacta && slotModo ? undefined : alternarEscrita}>
-        {({ vertical, alinhar, embaixo }) => <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))} onModoBorracha={(modoBorracha: ModoBorracha) => setPincel((p) => ({ ...p, modoBorracha }))}
+      {barraCompacta && !tintaNotaId && (slotModo ? createPortal(controlesModo, slotModo) : !escrevendo && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>)}
+      <div style={escrevendo || folhaPlana ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : undefined} className={semBorda || escrevendo || folhaPlana ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
+      {(escrevendo || paletaSaindo) && <PaletaFlutuante saindo={!escrevendo} aoSair={alternarEscrita}>
+        {({ vertical, alinhar, embaixo }) => <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))} onReta={(reta) => setPincel((p) => ({ ...p, reta }))} onTamanhoBorracha={(tamanhoBorracha) => setPincel((p) => ({ ...p, tamanhoBorracha }))} onModoBorracha={(modoBorracha: ModoBorracha) => setPincel((p) => ({ ...p, modoBorracha }))} onSoMarca={(soMarca) => setPincel((p) => ({ ...p, soMarca }))}
           podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
           ehMobile={ehMobile} vertical={vertical} alinhar={alinhar} embaixo={embaixo} />}
-      </PaletaFlutuante> : <div className={`ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
+      </PaletaFlutuante>}
+      {usaPaleta && tinta.carregado && (!escrevendo || formatSaindo) && <PaletaFlutuante desvanecer saindo={escrevendo || fechando} rotulo="Formatação da descrição" iconeBolinha={Type} iconeSair={PenLine} rotuloSair="Escrever à mão" aoSair={alternarEscrita} reservarTopo>
+        {({ vertical, alinhar }) => <BarraFormatacao estilo={estiloAtual} onEstilo={aplicarEstilo} ehMobile={ehMobile} vertical={vertical} alinhar={alinhar}
+          grupos={[
+            [{ valor: "negrito", rotulo: "Negrito", atalho: "Ctrl+B", icone: Bold, executar: () => alternarInline("**") }, { valor: "italico", rotulo: "Itálico", atalho: "Ctrl+I", icone: Italic, executar: () => alternarInline("_") }, comandosExtras[0]!],
+            [comandosExtras[2]!, comandosExtras[4]!],
+            [comandosExtras[5]!],
+          ] satisfies ComandoFormatacao[][]}
+          extras={[comandosExtras[1]!, comandosExtras[3]!, comandosExtras[7]!, comandosExtras[6]!, comandosExtras[8]!, comandosExtras[9]!, comandosExtras[10]!, comandosExtras[11]!]} />}
+      </PaletaFlutuante>}
+      {!escrevendo && !usaPaleta && <div className={`${fechando ? "ecos-barra-sai" : "ecos-barra-entra"} ecos-editor-floating sticky z-20 flex flex-wrap items-center gap-0.5 px-2 py-1.5 ${semBorda ? "mx-auto mb-4 w-fit max-w-full rounded-2xl border border-steel-400/25 bg-surface-2/45 px-3 shadow-nav backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.07),0_8px_28px_rgb(0_0_0/0.28)]" : "rounded-t-xl border-b border-border bg-surface-1"}`} style={semBorda ? { top: "calc(var(--ecos-editor-sticky-top, 0px) + 16px)" } : undefined} data-editor-toolbar role="toolbar" aria-label="Formatação da descrição">
         <div className={`flex min-w-0 items-center gap-0.5 transition-opacity duration-[250ms] ease-in-out motion-reduce:transition-none ${barraCompacta ? "w-full" : "flex-wrap"} ${preview ? "pointer-events-none opacity-35" : "opacity-100"}`} aria-hidden={preview || undefined} {...(preview ? ({ inert: "" } as object) : {})}>
           <MenuSuspenso ariaLabel="Estilo do texto" valor={estiloAtual} onChange={aplicarEstilo} larguraMenu="min-w-[9rem]"
             opcoes={[{ valor: "p", rotulo: "Normal", icone: Type }, { valor: "h1", rotulo: "Título 1", icone: Heading1 }, { valor: "h2", rotulo: "Título 2", icone: Heading2 }, { valor: "h3", rotulo: "Título 3", icone: Heading3 }]}
@@ -410,15 +551,16 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
           <ToolbarBtn Icon={Bold} label="Negrito (Ctrl+B)" tamanho={tam} onClick={() => alternarInline("**")} />
           <ToolbarBtn Icon={Italic} label="Itálico (Ctrl+I)" tamanho={tam} onClick={() => alternarInline("_")} />
           {barraCompacta ? <>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center">
+              {tintaNotaId && controlesModo}
               <MenuSuspenso ariaLabel="Mais opções de formatação" opcoes={comandosExtras} alinhar="dir" fixo larguraMin={220}
                 onChange={(valor) => comandosExtras.find((comando) => comando.valor === valor)?.executar()}
                 classeGatilho="flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400"
                 gatilho={() => <Ellipsis size={19} aria-hidden />} />
             </div>
             {seletorEmoji}
-          </> : comandosExtras.map(({ valor, rotulo, icone, executar, novoGrupo }) => {
-            const botao = <ToolbarBtn Icon={icone} label={rotulo} tamanho={tam} onClick={executar} />;
+          </> : comandosExtras.map(({ valor, rotulo, atalho, icone, executar, novoGrupo }) => {
+            const botao = <ToolbarBtn Icon={icone} label={atalho ? `${rotulo} (${atalho})` : rotulo} tamanho={tam} onClick={executar} />;
             return <Fragment key={valor}>
               {novoGrupo && separador}
               {valor === "emoji" ? <div className="relative">{botao}{seletorEmoji}</div> : botao}
@@ -427,6 +569,8 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         </div>
         {!barraCompacta && controlesModo}
       </div>}
+      <input ref={seletorAnexo} type="file" className="hidden" aria-label="Escolher arquivo para anexar" onChange={(e) => { const a = e.target.files?.[0]; e.target.value = ""; if (a) void anexarArquivo(a); }} />
+      {usaPaleta && emojiAberto && <div className="fixed inset-x-0 top-28 z-50 flex justify-center"><div className="relative h-0 w-72">{seletorEmoji}</div></div>}
       {tintaNotaId && <>
         <AvisoModoEscrita open={avisoAberto} largura={LARGURA_COLUNA_PADRAO} onRecusar={() => setAvisoAberto(false)} onAceitar={() => { setAvisoAberto(false); tinta.converter(LARGURA_COLUNA_PADRAO); setEscrevendo(true); }} />
         <ConfirmDeleteDialog open={confirmarLimpar} title="Limpar as anotações?" busy={false} description="Apaga toda a escrita à mão desta Nota. O texto não muda, e dá para desfazer enquanto a Nota estiver aberta." onCancel={() => setConfirmarLimpar(false)}
@@ -440,16 +584,18 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
       {tintaNotaId && !tinta.carregado
         ? <div aria-hidden className={semBorda ? "min-h-[60vh]" : "min-h-40"} />
         : colunaFixa
-        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo}>
-            <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
-              alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
+        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} folhaPlana={folhaPlana} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo}>
+            <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
+              alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
               className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
           </ColunaTinta>
         : preview
         ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
-        : <EditorVivo corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
-            alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={{ "Mod-b": () => alternarInline("**"), "Mod-i": () => alternarInline("_") }}
+        : <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
+            alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
             className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />}
+      {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} className="px-2 pb-1 text-right" />}
+      {ajudaAberta && <FolhaAtalhosEditor aoFechar={() => { setAjudaAberta(false); editorRef.current?.focus(); }} />}
       </div>
     </div>;
   }
@@ -508,18 +654,32 @@ function ToolbarBtn({ Icon, onClick, label, disabled, tamanho = "h-11 w-11" }: {
   );
 }
 
-const EMOJIS = ["😀", "😄", "😊", "😉", "😍", "🤔", "😅", "😢", "😡", "👍", "👎", "👏", "🙏", "💪", "🔥", "⭐", "✨", "💡", "✅", "❌", "⚠️", "❗", "❓", "📌", "📎", "📅", "⏰", "📝", "📚", "💰", "🚀", "🎯", "🔒", "🎉", "❤️", "👀"];
-
-function SeletorEmoji({ aoEscolher, aoFechar, alinharDireita }: { aoEscolher: (emoji: string) => void; aoFechar: () => void; alinharDireita: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
+/** Folha de ajuda com os atalhos do editor (Ctrl+/ no texto, ou ? fora de campos). */
+function FolhaAtalhosEditor({ aoFechar }: { aoFechar: () => void }) {
+  const grupo = GRUPOS_ATALHOS.find((g) => g.titulo === "Editor de texto");
+  const fechar = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) aoFechar(); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") aoFechar(); };
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc); };
+    fechar.current?.focus();
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); aoFechar(); } };
+    window.addEventListener("keydown", esc, true);
+    return () => window.removeEventListener("keydown", esc, true);
   }, [aoFechar]);
-  return <div ref={ref} role="dialog" aria-label="Escolher emoji" className={`absolute top-full z-40 mt-1 grid w-64 grid-cols-9 gap-0.5 rounded-xl border border-border bg-surface-2 p-1.5 shadow-nav ecos-fade-in ${alinharDireita ? "right-0" : "left-0"}`}>
-    {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => aoEscolher(emoji)} className="flex h-7 w-7 items-center justify-center rounded-md text-base hover:bg-surface-3">{emoji}</button>)}
-  </div>;
+  if (!grupo) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) aoFechar(); }}>
+      <div role="dialog" aria-modal="true" aria-label="Atalhos do editor" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface-1 p-4 shadow-nav ecos-fade-in">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Keyboard size={16} aria-hidden />Atalhos do editor</p>
+          <button ref={fechar} type="button" onClick={aoFechar} className="rounded-lg px-2 py-1 text-xs text-text-secondary hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400">Fechar</button>
+        </div>
+        {grupo.atalhos.map(({ teclas, acao }) => (
+          <div key={acao} className="flex min-h-9 items-center justify-between gap-4 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+            <span className="text-sm text-text-secondary">{acao}</span>
+            <span className="flex shrink-0 items-center gap-1">{teclas.map((t) => <kbd key={t} className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono-value text-[11px] text-text-primary">{t}</kbd>)}</span>
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
 }

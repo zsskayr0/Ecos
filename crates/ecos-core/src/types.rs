@@ -109,6 +109,10 @@ pub struct NotaFrontMatter {
     /// e editores de Markdown resolvem `[[Título]]` pelo nome do arquivo ou por alias.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<String>,
+    /// Nota guardada: segue no disco e na busca; o explorador a separa na aba Arquivadas.
+    /// Só vai ao arquivo quando `true`, para não sujar o front-matter das notas comuns.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub arquivada: bool,
     /// Chaves que o Ecos não conhece (propriedades de outros editores, plugins…): voltam ao arquivo intactas a cada regravação.
     #[serde(flatten)]
     pub extras: std::collections::BTreeMap<String, serde_yaml::Value>,

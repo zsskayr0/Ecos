@@ -60,6 +60,13 @@ function posicaoNoEditor(alvo: EventTarget | null): ((ponto?: { x: number; y: nu
   return (ponto) => (ponto ? view.posAtCoords(ponto) ?? undefined : view.state.selection.main.head);
 }
 
+/** Posição do cursor no editor da nota que está na tela (o botão fica fora dele, no menu "⋯"). */
+function cursorDoEditorNaTela(): number | undefined {
+  const dom = document.querySelector<HTMLElement>("[data-corpo-editor] .cm-editor");
+  const view = dom ? EditorView.findFromDOM(dom) : null;
+  return view?.state.selection.main.head;
+}
+
 /** Um único controle de anexos para criação e edição. O Markdown mantém a
  * associação; a biblioteca global guarda o arquivo antes do primeiro save.
  * Colar (Ctrl+V) uma captura de tela ou um arquivo em qualquer campo do
@@ -69,6 +76,7 @@ export function AttachmentsField(props: Props) {
   atual.current = props;
   const raiz = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const posBotao = useRef<number | undefined>(undefined);
   const ocupado = useRef(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -217,7 +225,7 @@ export function AttachmentsField(props: Props) {
             <button type="button" disabled={props.disabled || enviando} className="cofre-anexo-remover" aria-label={`Remover referência de ${a[2]}`} onClick={() => props.onCorpoChange(props.corpo.replace(a[0], "").replace(/\n{3,}/g, "\n\n").trim())}><X size={13} aria-hidden /></button>
           </li>)}
           <li className="cofre-anexo-item">
-            <button type="button" className="cofre-anexo-novo" disabled={enviando || props.disabled} onClick={() => input.current?.click()}>
+            <button type="button" className="cofre-anexo-novo" disabled={enviando || props.disabled} onClick={() => { posBotao.current = cursorDoEditorNaTela(); input.current?.click(); }}>
               <Paperclip size={20} aria-hidden />
               <span>{enviando ? "Enviando…" : "Anexar"}</span>
             </button>
@@ -226,7 +234,7 @@ export function AttachmentsField(props: Props) {
         {anexos.length === 0 && <p className="cofre-anexos-vazio">Cole com Ctrl+V ou arraste arquivos até aqui.</p>}
       </div>
       {visualizador}
-      <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo); }} />
+      <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo, posBotao.current); }} />
     </section>;
   }
 
@@ -236,7 +244,7 @@ export function AttachmentsField(props: Props) {
       <p className="flex items-center gap-2 text-sm font-medium text-text-secondary"><Paperclip size={17} />Anexos<span className="hidden text-xs font-normal text-text-muted md:inline">· cole com Ctrl+V ou arraste arquivos até aqui</span></p>
       <div className="flex flex-wrap items-center gap-3">
       {anexos.length > 1 && <button type="button" aria-expanded={todos} onClick={() => setTodos((v) => !v)} className="relative flex min-h-11 items-center gap-1.5 rounded-lg py-2 pl-3 pr-7 text-sm font-medium text-steel-300">{todos ? <ChevronUp size={16} /> : <ChevronDown size={16} />}{todos ? "Mostrar só o último" : "Mostrar todos"}<span aria-label={`${anexos.length} anexos`} className="pointer-events-none absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-steel-700 px-1 text-[10px] font-semibold leading-none text-on-steel shadow-sm">{anexos.length}</span></button>}
-      <button type="button" disabled={enviando || props.disabled} onClick={() => input.current?.click()} className="flex min-h-11 items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm font-medium text-text-secondary disabled:opacity-40"><Paperclip size={16} />{enviando ? "Enviando arquivo..." : "Adicionar arquivo"}</button>
+      <button type="button" disabled={enviando || props.disabled} onClick={() => { posBotao.current = cursorDoEditorNaTela(); input.current?.click(); }} className="flex min-h-11 items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm font-medium text-text-secondary disabled:opacity-40"><Paperclip size={16} />{enviando ? "Enviando arquivo..." : "Adicionar arquivo"}</button>
       </div>
     </div>
     {anexos.length > 1 && <div className="grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none" style={{ gridTemplateRows: todos ? "1fr" : "0fr", opacity: todos ? 1 : 0 }} aria-hidden={!todos} {...({ inert: todos ? undefined : "" } as object)}>
@@ -251,7 +259,7 @@ export function AttachmentsField(props: Props) {
       <a href={url(a[3])} target="_blank" rel="noreferrer" className="flex-1 truncate text-sm text-steel-300">{a[2]}</a>
       <button type="button" disabled={props.disabled || enviando} className="flex min-h-11 min-w-11 items-center justify-center" aria-label={`Remover referência de ${a[2]}`} onClick={() => props.onCorpoChange(props.corpo.replace(a[0], "").replace(/\n{3,}/g, "\n\n").trim())}><X size={15} className="text-text-secondary" /></button>
     </div>)}
-    <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo); }} />
+    <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo, posBotao.current); }} />
     {!props.compact && <p className="text-xs text-text-secondary">Até 120 MB por arquivo. Salve a nota ou tarefa para manter o vínculo.</p>}
     {erro && <div role="alert" className="min-w-0 text-sm text-error"><p>{arquivoFalhou && <span className="break-all font-medium">{arquivoFalhou.name}: </span>}{erro}</p>{arquivoFalhou && <button type="button" disabled={enviando || props.disabled} onClick={() => void enviar(arquivoFalhou)} className="mt-2 min-h-11 rounded-lg border border-error/40 px-3 text-sm disabled:opacity-40">Tentar novamente</button>}</div>}
     {visualizador}

@@ -39,6 +39,10 @@ const INDICE: Record<string, Entrada[]> = {
   ],
   [`${C}/atalhos`]: [["Atalhos de teclado", "teclas ctrl paleta de comandos fechar aba dividir painel keyboard shortcut"]],
 
+  [`${C}/feed`]: [
+    ["Ocultar do Feed", "esconder pastas tags notas tarefas não mostrar feed personalizar"],
+  ],
+
   [`${C}/tarefas`]: [
     ["Visualização padrão", "tabela grade kanban matriz feed lista agrupada tarefas"],
     ["Mostrar concluídas ao abrir", "feitas finalizadas pendentes"],
@@ -100,6 +104,7 @@ const INDICE: Record<string, Entrada[]> = {
     ["Anexos ao excluir", "lixeira arquivos"],
   ],
   [`${C}/organizacao`]: [["Pastas", "criar nova pasta subpasta renomear mover organizar espaço"], ["Tags", "etiquetas renomear mesclar excluir catálogo"]],
+  [`${C}/pastas-trancadas`]: [["Senha-mestra", "pasta trancada cadeado senha segredo diário privado"], ["Trancar sozinha após", "tempo inatividade minutos"], ["Mostrar tarefas de pastas trancadas", "tarefa privada agenda hoje"]],
   [`${C}/icones`]: [["Ícones personalizados", "imagem logo png enviar upload pasta"]],
 
   [`${C}/cofre/seguranca`]: [["Bloquear agora", "cofre senha"], ["Bloquear por inatividade", "cofre tempo automático"]],

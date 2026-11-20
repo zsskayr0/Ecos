@@ -12,7 +12,7 @@ const TAREFA = { id: "t1", titulo: "Pagar boleto", corpo: "", status: "pendente"
 
 function semearIndexedDb(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const abrir = indexedDB.open("ecos-offline-v1", 1);
+    const abrir = indexedDB.open("ecos-offline-v1");
     abrir.onupgradeneeded = () => {
       abrir.result.createObjectStore("respostas", { keyPath: "chave" });
       abrir.result.createObjectStore("fila", { keyPath: "id" });

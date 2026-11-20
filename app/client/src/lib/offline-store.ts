@@ -22,6 +22,7 @@ type CacheRegistro = { chave: string; valor: unknown; salvoEm: number };
 const NOME_DB = "ecos-offline-v1";
 const CACHE = "respostas";
 const FILA = "fila";
+const RASCUNHOS = "rascunhos";
 const memoriaCache = new Map<string, CacheRegistro>();
 const memoriaFila = new Map<string, MutacaoPendente>();
 let dbPromessa: Promise<IDBDatabase | null> | null = null;
@@ -80,9 +81,10 @@ function abrirDb(): Promise<IDBDatabase | null> {
     };
     const prazo = setTimeout(() => { if (!resolvida) { resolvida = true; proximaAberturaEm = Date.now() + ESPERA_NOVA_TENTATIVA_MS; if (dbPromessa === promessa) dbPromessa = null; resolve(null); } }, PRAZO_IDB_MS);
     try {
-      const pedido = indexedDB.open(NOME_DB, 1);
+      const pedido = indexedDB.open(NOME_DB, 2);
       pedido.onupgradeneeded = () => {
         const db = pedido.result;
+        if (!db.objectStoreNames.contains(RASCUNHOS)) db.createObjectStore(RASCUNHOS, { keyPath: "chave" });
         if (!db.objectStoreNames.contains(CACHE)) db.createObjectStore(CACHE, { keyPath: "chave" });
         if (!db.objectStoreNames.contains(FILA)) db.createObjectStore(FILA, { keyPath: "id" });
       };
@@ -222,7 +224,7 @@ async function remover(loja: string, chave: IDBValidKey): Promise<void> {
 }
 
 async function limparLoja(loja: string): Promise<void> {
-  (loja === CACHE ? memoriaCache : memoriaFila).clear();
+  if (loja === CACHE) memoriaCache.clear(); else if (loja === FILA) memoriaFila.clear();
   const db = await abrirDb();
   if (!db) return;
   await comPrazo<void>(db, undefined, (fim) => {
@@ -556,9 +558,139 @@ export async function limparDadosOffline(): Promise<void> {
   mesclagens.clear();
   if (temporizadorLote !== null) { clearTimeout(temporizadorLote); temporizadorLote = null; }
   await liberacao;
-  await Promise.all([limparLoja(CACHE), limparLoja(FILA)]);
+  await Promise.all([limparLoja(CACHE), limparLoja(FILA), limparRascunhosNota()]);
   estado = { servidorDisponivel: typeof navigator === "undefined" ? true : navigator.onLine, sincronizando: false, pendentes: 0, erro: null };
   emitir();
 }
 
 void atualizarQuantidade();
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rascunhos de nota: o texto digitado e ainda não confirmado pelo servidor. Antes ficavam no `localStorage`
+// (limite de ~5 MB por origem, síncrono, e que some calado quando enche); agora ficam no IndexedDB.
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface RascunhoNota {
+  /** Id da nota. */
+  chave: string;
+  titulo: string;
+  corpo: string;
+  tags?: string[];
+  pasta?: string | null;
+  espaco?: string;
+  /** Versão do servidor sobre a qual o rascunho foi escrito (para detectar conflito ao reenviar). */
+  baseVersao?: number;
+  salvoEm: number;
+}
+
+const PREFIXOS_RASCUNHO_LEGADO = ["ecos.note-draft.v2:", "ecos.note-draft.v1:"];
+const VALIDADE_RASCUNHO_MS = 30 * 86_400_000;
+/** Só o que não coube no banco; vale até recarregar a página. */
+const memoriaRascunhos = new Map<string, RascunhoNota>();
+let migracaoRascunhos: Promise<void> | null = null;
+
+function rascunhoValido(r: unknown): r is RascunhoNota {
+  const v = r as RascunhoNota | null;
+  return !!v && typeof v.titulo === "string" && typeof v.corpo === "string";
+}
+
+async function gravarRascunhoNoBanco(valor: RascunhoNota): Promise<boolean> {
+  const db = await abrirDb();
+  if (!db) return false;
+  return comPrazo(db, false, (fim) => {
+    const tx = db.transaction(RASCUNHOS, "readwrite");
+    tx.objectStore(RASCUNHOS).put(valor);
+    // `oncomplete` (e não `onsuccess` do put): só aí o dado está de fato gravado.
+    tx.oncomplete = () => fim(true);
+    tx.onerror = tx.onabort = () => fim(false);
+  });
+}
+
+/**
+ * Leva para o IndexedDB os rascunhos antigos do `localStorage` (v2 do desktop tem precedência sobre o v1 do celular)
+ * e apaga os vencidos. A chave antiga só sai do `localStorage` depois que a cópia foi gravada.
+ */
+export function migrarRascunhosNotaLegados(agora = Date.now()): Promise<void> {
+  if (migracaoRascunhos) return migracaoRascunhos;
+  migracaoRascunhos = (async () => {
+    const vistos = new Set<string>();
+    const chaves = guardaLocal(() => Object.keys(localStorage)) ?? [];
+    for (const prefixo of PREFIXOS_RASCUNHO_LEGADO) {
+      for (const k of chaves.filter((c) => c.startsWith(prefixo))) {
+        const id = k.slice(prefixo.length);
+        let bruto: unknown = null;
+        try { bruto = JSON.parse(guardaLocal(() => localStorage.getItem(k)) ?? "null"); } catch { /* corrompido: descarta */ }
+        if (vistos.has(id) || !rascunhoValido(bruto)) { guardaLocal(() => localStorage.removeItem(k)); continue; }
+        const existente = await lerRascunhoNoBanco(id);
+        const ok = existente ? true : await gravarRascunhoNoBanco({ ...(bruto as RascunhoNota), chave: id, salvoEm: agora });
+        if (ok) { vistos.add(id); guardaLocal(() => localStorage.removeItem(k)); }
+      }
+    }
+    const db = await abrirDb();
+    if (db) {
+      const todos = await comPrazo<RascunhoNota[]>(db, [], (fim) => {
+        const pedido = db.transaction(RASCUNHOS, "readonly").objectStore(RASCUNHOS).getAll();
+        pedido.onsuccess = () => fim((pedido.result ?? []) as RascunhoNota[]);
+        pedido.onerror = () => fim([]);
+      });
+      for (const r of todos) if (agora - (r.salvoEm ?? agora) >= VALIDADE_RASCUNHO_MS) await removerRascunhoNota(r.chave);
+    }
+  })().catch(() => undefined);
+  return migracaoRascunhos;
+}
+
+async function lerRascunhoNoBanco(id: string): Promise<RascunhoNota | undefined> {
+  const db = await abrirDb();
+  if (!db) return undefined;
+  const lido = await comPrazo<unknown>(db, undefined, (fim) => {
+    const pedido = db.transaction(RASCUNHOS, "readonly").objectStore(RASCUNHOS).get(id);
+    pedido.onsuccess = () => fim(pedido.result);
+    pedido.onerror = () => fim(undefined);
+  });
+  return rascunhoValido(lido) ? lido : undefined;
+}
+
+/** Grava o rascunho. `false` = não coube no aparelho (ficou só em memória): a tela deve avisar. */
+export async function guardarRascunhoNota(id: string, dados: Omit<RascunhoNota, "chave" | "salvoEm">): Promise<boolean> {
+  const valor: RascunhoNota = { ...dados, chave: id, salvoEm: Date.now() };
+  const ok = await gravarRascunhoNoBanco(valor);
+  if (ok) memoriaRascunhos.delete(id);
+  else memoriaRascunhos.set(id, valor);
+  return ok;
+}
+
+export async function lerRascunhoNota(id: string): Promise<RascunhoNota | undefined> {
+  await migrarRascunhosNotaLegados();
+  return memoriaRascunhos.get(id) ?? (await lerRascunhoNoBanco(id));
+}
+
+export async function removerRascunhoNota(id: string): Promise<void> {
+  memoriaRascunhos.delete(id);
+  const db = await abrirDb();
+  if (!db) return;
+  await comPrazo<void>(db, undefined, (fim) => {
+    const tx = db.transaction(RASCUNHOS, "readwrite");
+    tx.objectStore(RASCUNHOS).delete(id);
+    tx.oncomplete = () => fim();
+    tx.onerror = tx.onabort = () => fim();
+  });
+}
+
+export async function contarRascunhosNota(): Promise<number> {
+  const db = await abrirDb();
+  if (!db) return memoriaRascunhos.size;
+  const n = await comPrazo<number>(db, 0, (fim) => {
+    const pedido = db.transaction(RASCUNHOS, "readonly").objectStore(RASCUNHOS).count();
+    pedido.onsuccess = () => fim(pedido.result);
+    pedido.onerror = () => fim(0);
+  });
+  return n + memoriaRascunhos.size;
+}
+
+async function limparRascunhosNota(): Promise<void> {
+  memoriaRascunhos.clear();
+  await limparLoja(RASCUNHOS);
+}
+
+/** Só para testes: esquece a migração já feita. */
+export function _reiniciarMigracaoRascunhos(): void { migracaoRascunhos = null; }

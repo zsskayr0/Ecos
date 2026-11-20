@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 use crate::error::{AppError, AppResult, CampoInvalido};
-use crate::espacos::{fisica, visivel_sql};
+use crate::espacos::{fisica, visivel_item_sql};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
@@ -70,7 +70,7 @@ fn carregar(conn: &rusqlite::Connection, uid: &str) -> rusqlite::Result<Vec<(Can
     for (tabela, alias, tipo) in [("nota", "n", TipoItem::Nota), ("tarefa", "t", TipoItem::Tarefa)] {
         let mut stmt = conn.prepare(&format!(
             "SELECT {alias}.id, {alias}.titulo, {alias}.espaco, COALESCE({alias}.criado_por, ''), {alias}.atualizado_em, {alias}.caminho_arquivo FROM {tabela} {alias} WHERE {}",
-            visivel_sql(alias, uid)
+            visivel_item_sql(alias, uid)
         ))?;
         let linhas = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)))?;
         for l in linhas {
@@ -219,8 +219,8 @@ async fn renomear_item(state: &AppState, u: &UsuarioAutenticado, tipo: TipoItem,
     }
     let (s, e, p) = (State(state.clone()), Extension(u.clone()), Path(id.to_string()));
     match tipo {
-        TipoItem::Nota => crate::routes::notas::atualizar(s, e, p, Json(serde_json::from_value(campos).map_err(|_| AppError::new(ErrorCode::InternalError))?)).await.map(|_| ()),
-        TipoItem::Tarefa => crate::routes::tarefas::atualizar(s, e, p, Json(serde_json::from_value(campos).map_err(|_| AppError::new(ErrorCode::InternalError))?)).await.map(|_| ()),
+        TipoItem::Nota => crate::routes::notas::atualizar_sem_links(s, e, p, Json(serde_json::from_value(campos).map_err(|_| AppError::new(ErrorCode::InternalError))?)).await.map(|_| ()),
+        TipoItem::Tarefa => crate::routes::tarefas::atualizar_sem_links(s, e, p, Json(serde_json::from_value(campos).map_err(|_| AppError::new(ErrorCode::InternalError))?)).await.map(|_| ()),
     }
 }
 
@@ -257,6 +257,12 @@ fn limpar(temps: &[PathBuf]) {
     for t in temps {
         let _ = std::fs::remove_file(t);
     }
+}
+
+/// Renomeia reescrevendo os links, para o PATCH de título com a preferência "Atualizar links internos" ligada.
+pub async fn renomear_com_links(state: &AppState, usuario: &UsuarioAutenticado, tipo: TipoItem, id: &str, titulo: &str, escopo: Option<&str>) -> AppResult<Value> {
+    let corpo = CorpoRenomear { titulo: titulo.to_string(), reescrever_links: true, escopo: escopo.map(str::to_string) };
+    aplicar(state.clone(), usuario.clone(), tipo, id.to_string(), corpo).await.map(|Json(v)| v)
 }
 
 async fn aplicar(state: AppState, usuario: UsuarioAutenticado, tipo: TipoItem, id: String, corpo: CorpoRenomear) -> AppResult<Json<Value>> {

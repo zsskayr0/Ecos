@@ -12,6 +12,7 @@ import { anexosDaNota } from "@/lib/note-media";
 import { alternarChecklist, cortarCorpo, primeiroLink } from "@/lib/checklist";
 import { notas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
+import { OcultarDoFeed } from "./OcultarDoFeed";
 import { BotaoAcao, CLASSE_BARRA, aoClicarCartao, CLASSE_CARTAO_CLICAVEL, AvisoCortado, CartaoLink, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, type PastaOpcao } from "./feed-comum";
 
 const MAX_MINIATURAS = 3;
@@ -70,6 +71,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
             <ItemMenu onClick={() => void mover(null)} ativo={!pasta}>Sem pasta</ItemMenu>
             <ArvorePastas opcoes={pastas.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[pasta ?? ""]} onSelect={(p) => void mover(p)} />
           </MenuAcao>
+          <OcultarDoFeed id={nota.id} espaco={nota.espaco} pasta={pasta} tags={nota.tags} rotulo="nota" />
           <BotaoAcao titulo="Abrir nota" onClick={() => abrirDocumento(`/notas/nota/${nota.id}`)}><SquareArrowOutUpRight size={15} /></BotaoAcao>
         </div>
       </div>

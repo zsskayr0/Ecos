@@ -10,6 +10,7 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { tarefas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { alternarChecklist, cortarCorpo } from "@/lib/checklist";
+import { OcultarDoFeed } from "./OcultarDoFeed";
 import { AvisoCortado, BotaoAcao, CLASSE_BARRA, CLASSE_CARTAO_CLICAVEL, aoClicarCartao, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
 
 /** A borda esquerda carrega a prioridade (como o roxo/verde das notas) — o fundo vermelho quebrava o ritmo do feed. */
@@ -93,6 +94,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
               {menu === "prioridade" && (["alta", "media", "baixa"] as const).map((p) => <ItemMenu key={p} onClick={() => void mudarPrioridade(p)} ativo={prioridade === p}><FlagTriangleRight size={14} className="mr-2 text-text-muted" />{ROTULO_PRIORIDADE[p]}</ItemMenu>)}
               {menu === "pasta" && <><ItemMenu onClick={() => void mover(null)} ativo={!pasta}>Sem pasta</ItemMenu><ArvorePastas opcoes={pastas.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true }))} valores={[pasta ?? ""]} onSelect={(p) => void mover(p)} /></>}
             </MenuAcao>
+            <OcultarDoFeed id={tarefa.id} espaco={tarefa.espaco} pasta={pasta} tags={tags} rotulo="tarefa" />
             <BotaoAcao titulo="Abrir tarefa" onClick={() => abrirDocumento(`/tarefa/${tarefa.id}`)}><SquareArrowOutUpRight size={15} /></BotaoAcao>
           </div>
         </div>

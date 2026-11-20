@@ -32,6 +32,39 @@ function lerAbertas(): Set<string> {
 
 type ItemArvore = { tipo: "pasta"; pasta: PastaExplorador } | { tipo: "arquivo"; arquivo: ArquivoExplorador };
 
+/** Campo de renomear no lugar: ocupa a largura da linha e só tem a borda de baixo (como no Windows).
+ * Enter ou perder o foco confirma; Esc cancela. Para arquivos comuns seleciona só o nome, sem a extensão. */
+function CampoRenomear({ valor, semExtensao = false, aoConfirmar, aoCancelar }: { valor: string; semExtensao?: boolean; aoConfirmar: (nome: string) => void; aoCancelar: () => void }) {
+  const [texto, setTexto] = useState(valor);
+  const ref = useRef<HTMLInputElement>(null);
+  const encerrado = useRef(false);
+  useEffect(() => {
+    const campo = ref.current;
+    if (!campo) return;
+    campo.focus();
+    const ponto = semExtensao ? valor.lastIndexOf(".") : -1;
+    campo.setSelectionRange(0, ponto > 0 ? ponto : valor.length);
+  }, [valor, semExtensao]);
+  const concluir = (confirmar: boolean) => {
+    if (encerrado.current) return;
+    encerrado.current = true;
+    if (confirmar) aoConfirmar(texto); else aoCancelar();
+  };
+  return (
+    <input ref={ref} value={texto} aria-label="Novo nome" spellCheck={false} style={{ outline: "none", boxShadow: "none", fieldSizing: "content", width: typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content") ? undefined : `${Math.max(texto.length + 2, 10)}ch` } as React.CSSProperties}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => concluir(true)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); concluir(true); }
+        else if (e.key === "Escape") { e.preventDefault(); concluir(false); }
+      }}
+      className="h-6 min-w-[10ch] max-w-full rounded-none border-0 border-b-2 border-cyan bg-transparent px-1 text-[13px] font-normal text-text-primary outline-none focus:border-cyan" />
+  );
+}
+
 /** Árvore de arquivos do espaço no menu lateral (modo explorador): pastas expansíveis e arquivos pelo nome. */
 export function ExploradorLateral() {
   const espaco = useEspacoFiltro() ?? "pessoal";
@@ -50,6 +83,7 @@ export function ExploradorLateral() {
   useEffect(() => limparEspera, []);
   const [menu, setMenu] = useState<{ x: number; y: number; item: ItemArvore } | null>(null);
   const [pastaEmEdicao, setPastaEmEdicao] = useState<PastaExplorador | null>(null);
+  const [renomeando, setRenomeando] = useState<AlvoExplorador | null>(null);
   const sobrepostas = usePastasOtimistas();
   useEffect(() => { Object.values(cache).forEach((c) => reconciliarPastasOtimistas(c.pastas.map((p) => ({ ...p, contagem_itens: 0 })))); }, [cache]);
   const [acaoAberta, setAcaoAberta] = useState<{ acao: TipoAcao; alvo: AlvoExplorador } | null>(null);
@@ -164,7 +198,7 @@ export function ExploradorLateral() {
     if (e.key === "F2") {
       const unico = selecao.size <= 1 ? (foco ?? [...selecao][0]) : null;
       const item = unico ? itensPorCaminho.get(unico) : undefined;
-      if (item) { e.preventDefault(); setAcaoAberta({ acao: "renomear", alvo: alvoDe(item) }); }
+      if (item) { e.preventDefault(); setRenomeando(alvoDe(item)); }
       return;
     }
     if (foco && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
@@ -335,7 +369,7 @@ export function ExploradorLateral() {
     }
     const alvo = { ...alvoDe(item), detalhes: [detalheDe(item)] };
     const comuns: ItemMenuExplorador[] = [
-      { rotulo: "Renomear", icone: Pencil, acao: () => setAcaoAberta({ acao: "renomear", alvo }) },
+      { rotulo: "Renomear", icone: Pencil, acao: () => setRenomeando(alvo) },
       ...(item.tipo === "pasta" ? [{ rotulo: "Editar", icone: SlidersHorizontal, acao: () => setPastaEmEdicao(item.pasta) }] : []),
       { rotulo: "Mover", icone: FolderInput, acao: () => setAcaoAberta({ acao: "mover", alvo }) },
       { rotulo: "Excluir", icone: Trash2, perigo: true, acao: () => setAcaoAberta({ acao: "excluir", alvo }) },
@@ -401,6 +435,42 @@ export function ExploradorLateral() {
     notificar();
   }
 
+  /** Renomear no lugar, como no Explorador do Windows. Otimista: a árvore mostra o nome novo na hora e o servidor confirma depois;
+   * se ele recusar, o recarregamento devolve o nome antigo e um aviso explica. */
+  async function confirmarRenomeio(alvoR: AlvoExplorador, nomeNovo: string) {
+    setRenomeando(null);
+    const novo = nomeNovo.trim();
+    if (!novo || novo === alvoR.nomeEditavel) return;
+    const pai = paiDe(alvoR.caminho);
+    const caminhoNovo = pai ? `${pai}/${novo}` : novo;
+    if (alvoR.pasta) {
+      setCache((atual) => {
+        const prox: Record<string, Conteudo> = {};
+        for (const [chave, valor] of Object.entries(atual)) {
+          const nova = chave === alvoR.caminho || chave.startsWith(`${alvoR.caminho}/`) ? caminhoNovo + chave.slice(alvoR.caminho.length) : chave;
+          prox[nova] = valor;
+        }
+        const origem = prox[pai];
+        if (origem) prox[pai] = { ...origem, pastas: origem.pastas.map((p) => (p.caminho === alvoR.caminho ? { ...p, nome: novo, caminho: caminhoNovo } : p)) };
+        return prox;
+      });
+      setAbertas((a) => new Set([...a].map((c) => (c === alvoR.caminho || c.startsWith(`${alvoR.caminho}/`) ? caminhoNovo + c.slice(alvoR.caminho.length) : c))));
+    } else {
+      setCache((atual) => {
+        const origem = atual[pai];
+        if (!origem) return atual;
+        return { ...atual, [pai]: { ...origem, arquivos: origem.arquivos.map((x) => (x.caminho === alvoR.caminho ? (x.tipo ? { ...x, titulo: novo } : { ...x, nome: novo }) : x)) } };
+      });
+    }
+    try {
+      await arquivos.renomear({ espaco, caminho: alvoR.caminho, novo_nome: novo });
+    } catch (e) {
+      avisar(mensagemDeErro(e, "Não foi possível renomear."), "erro");
+    }
+    // Sucesso ou falha, a árvore é refeita com o que o servidor decidiu (caminho final, nome antigo se recusou).
+    notificar();
+  }
+
   const recuo = (nivel: number) => ({ paddingLeft: 6 + nivel * 14 });
 
   function filhos(caminho: string, nivel: number) {
@@ -424,7 +494,12 @@ export function ExploradorLateral() {
                   className="mr-0.5 flex h-6 w-5 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-3 hover:text-text-primary">
                   {aberta ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
-                <button type="button" data-caminho={p.caminho} title={p.nome} className="flex h-full min-w-0 flex-1 items-center text-left"
+                {renomeando?.caminho === p.caminho ? (
+                  <div className="flex h-full min-w-0 flex-1 items-center" data-sem-arraste="">
+                    <IconePasta pasta={p} aberta={aberta} className="mr-2" />
+                    <CampoRenomear valor={renomeando.nomeEditavel} aoConfirmar={(n) => void confirmarRenomeio(renomeando, n)} aoCancelar={() => setRenomeando(null)} />
+                  </div>
+                ) : <button type="button" data-caminho={p.caminho} title={p.nome} className="flex h-full min-w-0 flex-1 items-center text-left"
                   onClick={(e) => {
                     if (selecionar(p.caminho, e)) return;
                     if (!aberta) alternar(p.caminho);
@@ -434,7 +509,7 @@ export function ExploradorLateral() {
                   onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirPastaNaTela(p.caminho, "segundo-plano"); } }}>
                   <IconePasta pasta={p} aberta={aberta} className="mr-2" />
                   <span className="truncate">{p.nome}</span>
-                </button>
+                </button>}
                 {botaoMais({ tipo: "pasta", pasta: p }, p.nome, p.caminho)}
               </div>
               {aberta && <ul role="group" {...soltarEm(p.caminho)}>{filhos(p.caminho, nivel + 1)}</ul>}
@@ -454,7 +529,12 @@ export function ExploradorLateral() {
           return (
             <li key={a.caminho} role="treeitem" aria-selected={marcado || ativo} className={entrando.has(a.caminho) ? "ecos-entra-item" : undefined}>
               <div className="group relative" onContextMenu={aoClicarDireito({ tipo: "arquivo", arquivo: a })}>
-              <button type="button" title={a.nome} data-caminho={a.caminho}
+              {renomeando?.caminho === a.caminho ? (
+                <div className="flex h-7 w-full items-center gap-2 pr-2" data-sem-arraste="" style={{ paddingLeft: 6 + nivel * 14 + 20 }}>
+                  <IconeArquivo a={a} personalizados={iconesExtensao} colorirPrioridade={colorirPrioridade} className="text-text-muted" />
+                  <CampoRenomear valor={renomeando.nomeEditavel} semExtensao={!a.tipo} aoConfirmar={(n) => void confirmarRenomeio(renomeando, n)} aoCancelar={() => setRenomeando(null)} />
+                </div>
+              ) : <button type="button" title={a.nome} data-caminho={a.caminho}
                 onClick={(e) => { if (!selecionar(a.caminho, e)) abrir(a, false); }}
                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
                 onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrir(a, "segundo-plano"); } }}
@@ -468,7 +548,7 @@ export function ExploradorLateral() {
                   className={`text-text-muted ${feita ? "opacity-50" : ""}`} /> : <span aria-hidden className="h-3.5 w-3.5 shrink-0" />}
                 <span className={`min-w-0 flex-1 truncate ${feita ? "line-through opacity-50" : ""}`}>{rotulo(a)}</span>
                 {s && <span className="shrink-0 text-[10px] font-medium tracking-wide text-text-muted">{s}</span>}
-              </button>
+              </button>}
               {anexos.length > 0 && <span className="absolute right-8 top-1/2 -translate-y-1/2"><BadgeAnexos quantidade={anexos.length} aberto={anexosVisiveis} aoAlternar={() => alternarAnexos(a.caminho)} /></span>}
               {botaoMais({ tipo: "arquivo", arquivo: a }, rotulo(a), a.caminho)}
               </div>
@@ -514,7 +594,33 @@ export function ExploradorLateral() {
             if (novo !== antigo) setAbertas((a) => new Set([...a].map((c) => (c === antigo || c.startsWith(`${antigo}/`) ? novo + c.slice(antigo.length) : c))));
           }} />
       )}
-      {acaoAberta && <AcaoExplorador acao={acaoAberta.acao} alvo={acaoAberta.alvo} espaco={espaco} aoFechar={() => setAcaoAberta(null)} aoConcluir={aoConcluirAcao} />}
+      {acaoAberta && <AcaoExplorador acao={acaoAberta.acao} alvo={acaoAberta.alvo} espaco={espaco} aoFechar={() => setAcaoAberta(null)} aoConcluir={aoConcluirAcao}
+        aoOtimista={(itens) => {
+          setCache((atual) => {
+            const prox: Record<string, Conteudo> = {};
+            for (const [chave, valor] of Object.entries(atual)) {
+              if (itens.some((i) => chave === i || chave.startsWith(`${i}/`))) continue;
+              prox[chave] = { pastas: valor.pastas.filter((p) => !itens.includes(p.caminho)), arquivos: valor.arquivos.filter((a) => !itens.includes(a.caminho)) };
+            }
+            return prox;
+          });
+          setSelecao(new Set());
+        }}
+        aoOtimistaPasta={(caminho, novoCaminho, nome, cor, icone) => {
+          const pai = paiDe(caminho);
+          setCache((atual) => {
+            const prox: Record<string, Conteudo> = {};
+            for (const [chave, valor] of Object.entries(atual)) {
+              const nova = chave === caminho || chave.startsWith(`${caminho}/`) ? novoCaminho + chave.slice(caminho.length) : chave;
+              prox[nova] = valor;
+            }
+            const origem = prox[pai];
+            if (origem) prox[pai] = { ...origem, pastas: origem.pastas.map((p) => (p.caminho === caminho ? { ...p, nome, caminho: novoCaminho, cor: cor || p.cor, icone: icone || p.icone } : p)) };
+            return prox;
+          });
+          setAbertas((a) => new Set([...a].map((c) => (c === caminho || c.startsWith(`${caminho}/`) ? novoCaminho + c.slice(caminho.length) : c))));
+        }}
+        aoRecusar={notificar} />}
     </div>
   );
 }

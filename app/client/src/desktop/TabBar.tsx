@@ -145,7 +145,7 @@ export function TabBar({ pane }: { pane: Pane }) {
           <MenuModulos
             aoEscolher={(path) => {
               dispatch({ type: "focus-pane", paneId: pane.id });
-              dispatch({ type: "open", path, where: "focused", reuse: "modulo" });
+              dispatch({ type: "open", path, where: "focused", reuse: "nenhum" });
               setMenuAberto(false);
             }}
             aoFechar={() => setMenuAberto(false)}

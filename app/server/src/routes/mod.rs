@@ -3,6 +3,7 @@
 //! `/auth/*`.
 
 pub mod anexos_comuns;
+pub mod nota_versoes;
 pub mod arquivos;
 pub mod arquivos_problemas;
 pub mod avatar;
@@ -17,10 +18,13 @@ mod eventos_testes;
 #[cfg(test)]
 mod isolamento_testes;
 #[cfg(test)]
+mod feed_oculto_testes;
+#[cfg(test)]
 mod admin_testes;
 #[cfg(test)]
 mod tags_testes;
 pub mod feed;
+pub mod feed_oculto;
 pub mod grafico;
 pub mod health;
 pub mod links;
@@ -37,6 +41,9 @@ pub mod pagination;
 pub mod pastas;
 pub mod preferencias;
 pub mod rotina;
+pub mod seguro;
+#[cfg(test)]
+mod seguro_testes;
 pub mod sync;
 pub mod sync_problemas;
 pub mod tags;
@@ -80,6 +87,15 @@ fn rotas_oauth_publicas() -> Router<AppState> {
         .layer(RateLimitLayer::new(20, Duration::from_secs(60)))
 }
 
+/// Senhas das pastas trancadas: tentar adivinhar (desbloquear, trocar, redefinir) leva o mesmo limite rígido do login.
+fn rotas_seguro_sensiveis() -> Router<AppState> {
+    Router::new()
+        .route("/seguro/desbloquear", post(seguro::desbloquear))
+        .route("/seguro/senha", post(seguro::trocar_senha))
+        .route("/seguro/redefinir", post(seguro::redefinir))
+        .layer(RateLimitLayer::new(10, Duration::from_secs(60)))
+}
+
 fn rotas_protegidas(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/me", get(crate::auth::perfil).patch(crate::auth::atualizar_perfil).delete(crate::conta::excluir_conta))
@@ -87,6 +103,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/me/metricas", get(metricas::obter))
         .route("/me/atividade", get(metricas::atividade))
         .route("/me/preferencias/calendario", get(preferencias::obter).patch(preferencias::atualizar))
+        .route("/me/feed/ocultos", get(feed_oculto::listar).put(feed_oculto::alterar))
         .route("/me/aceites/termos", post(crate::auth::aceitar_termos))
         .route("/admin/usuarios", get(crate::admin::listar).post(crate::admin::criar))
         .route("/admin/usuarios/:id/redefinir-senha", post(crate::admin::redefinir_senha))
@@ -106,10 +123,13 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/me/icones/:id", get(icones::obter).delete(icones::remover))
         .route("/captura", post(captura::capturar))
         .route("/captura/campos-compativeis", get(captura::campos_compativeis))
-        .route("/notas", get(notas::listar).post(notas::criar))
+        .route("/notas", get(notas::listar).post(notas::criar).layer(DefaultBodyLimit::max(notas::TAMANHO_MAXIMO_NOTA_BYTES)).layer(axum::middleware::map_response(notas::traduzir_413)))
         .route("/notas/importar", post(notas::importar))
-        .route("/notas/:id", get(notas::obter).patch(notas::atualizar).delete(notas::excluir))
+        .route("/notas/:id", get(notas::obter).patch(notas::atualizar).delete(notas::excluir).layer(DefaultBodyLimit::max(notas::TAMANHO_MAXIMO_NOTA_BYTES)).layer(axum::middleware::map_response(notas::traduzir_413)))
         .route("/notas/:id/links", get(notas::links))
+        .route("/notas/:id/versoes", get(nota_versoes::listar).post(nota_versoes::criar))
+        .route("/notas/:id/versoes/:vid", get(nota_versoes::obter))
+        .route("/notas/:id/versoes/:vid/restaurar", post(nota_versoes::restaurar))
         .route("/tarefas/:id/links", get(tarefas::links))
         .route("/notas/:id/renomear/previa", post(renomear::previa_nota))
         .route("/notas/:id/renomear", post(renomear::aplicar_nota))
@@ -145,6 +165,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/tarefas", get(tarefas::listar).post(tarefas::criar))
         .route("/tarefas/:id", get(tarefas::obter).patch(tarefas::atualizar).delete(tarefas::excluir))
         .route("/tarefas/:id/status", patch(tarefas::atualizar_status))
+        .route("/notas/:id/arquivada", patch(notas::arquivar))
         .route("/tarefas/:id/serie", get(tarefas_serie::obter).put(tarefas_serie::definir))
         .route("/tarefas/:id/serie/acao", post(tarefas_serie::acao))
         .route("/tarefas/:id/time-entries", get(tarefas::listar_time_entries).post(tarefas::criar_time_entry))
@@ -200,6 +221,13 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/calendario/conectar/:provider", get(calendario::conectar))
         .route("/calendario/sincronizar", post(calendario::sincronizar))
         .route("/calendario/:provider", delete(calendario::desconectar))
+        .route("/seguro/status", get(seguro::status))
+        .route("/seguro/configurar", post(seguro::configurar))
+        .route("/seguro/trancar", post(seguro::trancar))
+        .route("/seguro/manter", post(seguro::manter))
+        .route("/seguro/config", patch(seguro::atualizar_config))
+        .route("/seguro/pastas", post(seguro::trancar_pasta).delete(seguro::destrancar_pasta))
+        .merge(rotas_seguro_sensiveis())
         .route("/vault/*resto", axum::routing::any(vault_proxy::encaminhar).layer(DefaultBodyLimit::max(vault_proxy::LIMITE_CORPO_BYTES)))
         .route_layer(from_fn_with_state(state, exigir_sessao))
 }

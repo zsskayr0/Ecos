@@ -13,8 +13,16 @@ import type { SalvarTintaNota, TintaNota } from "@/lib/tinta/tipos";
 import type { TipoEquipe } from "./tipo-equipe";
 import { mensagemDeCampos, mensagemLimiteDeTentativas } from "./erros";
 import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
+import { cabeNoKeepalive } from "./nota-sincronia";
 import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
 import { invoke } from "@tauri-apps/api/core";
+import { lerPreferenciasAplicativo } from "./preferencias-aplicativo";
+
+/** PATCH que muda o título leva a preferência "Atualizar links internos": o servidor reescreve os `[[links]]`. */
+function comReescritaDeLinks<T extends { titulo?: string }>(payload: T): T & { reescrever_links?: boolean } {
+  if (payload.titulo === undefined) return payload;
+  return { ...payload, reescrever_links: lerPreferenciasAplicativo().atualizarLinks };
+}
 import {
   concluirMutacaoPendente,
   enfileirarMutacao,
@@ -189,7 +197,8 @@ async function executarRenovacaoWeb(): Promise<boolean> {
 const ROTAS_SEM_RENOVACAO = ["/auth/login", "/auth/registrar", "/auth/refresh", "/auth/logout", "/auth/recuperar-senha", "/auth/status"];
 
 function podeUsarCacheOffline(path: string): boolean {
-  return !path.startsWith("/auth/") && !path.startsWith("/vault/") && path !== "/me/export";
+  // `/seguro/` guarda o estado das pastas trancadas: nunca no cache do navegador.
+  return !path.startsWith("/auth/") && !path.startsWith("/vault/") && !path.startsWith("/seguro/") && path !== "/me/export";
 }
 
 function podeEnfileirarOffline(path: string, init?: RequestInit): init is RequestInit & { method: "POST" | "PUT" | "PATCH" | "DELETE"; body?: string } {
@@ -243,7 +252,7 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
     ...init,
     ...(aborto ? { signal: aborto.signal } : {}),
     credentials: "include",
-    cache: path.startsWith("/vault/") ? "no-store" : init?.cache,
+    cache: path.startsWith("/vault/") || path.startsWith("/seguro/") ? "no-store" : init?.cache,
     headers: {
       ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       // Fallback pro cliente Tauri (cookie cross-origin não sobrevive —
@@ -287,8 +296,11 @@ async function req<T>(path: string, init?: RequestInit, tentouRenovar = false, s
   if (!resp.ok) {
     if (path.startsWith("/vault/") && resp.status === 423) window.dispatchEvent(new Event("ecos:cofre-bloqueado"));
     const code = body?.error ?? "UNKNOWN";
+    if (code === "FOLDER_LOCKED") window.dispatchEvent(new Event("ecos:seguro-trancada"));
     const message = body?.message ?? mensagemHttp(resp.status);
-    throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos, body?.details && typeof body.details === "object" ? body.details : undefined);
+    // 409 de nota: o servidor manda o conteúdo atual em `atual` (fora de `details`) para a tela oferecer a escolha.
+    const dados = body?.details && typeof body.details === "object" ? body.details : body?.atual && typeof body.atual === "object" ? { atual: body.atual } : undefined;
+    throw new ApiError(code, message, resp.status, body?.campos, body?.retry_after_segundos, dados);
   }
   // Real bug found on Android: a misconfigured server address (missing
   // `http://`, see `server-config.ts`) made `fetch()` land back on the
@@ -530,6 +542,27 @@ export const sync = {
   definirModo: (modo: ModoSync) => patch<{ ok: true }>("/sync/config", { modo }),
 };
 
+/** Pastas trancadas: o servidor esconde o conteúdo até a senha (nada disso vai ao cache offline). */
+export interface PastaTrancada { pasta: string; propria: boolean; aberta: boolean; minutos: number; restante_s: number | null }
+export interface SeguroEstado {
+  mestra: { configurada: boolean; aberta: boolean; minutos: number; restante_s: number | null };
+  /** Mostrar tarefas de pastas trancadas (mascaradas como "Tarefa privada") na Agenda e no Hoje. */
+  mostrar_tarefas: boolean;
+  pastas: PastaTrancada[];
+}
+export const seguro = {
+  status: () => get<SeguroEstado>("/seguro/status"),
+  configurar: (senha: string) => post<SeguroEstado>("/seguro/configurar", { senha }),
+  desbloquear: (senha: string, pasta?: string) => post<SeguroEstado>("/seguro/desbloquear", { senha, pasta }),
+  trancar: (pasta?: string) => post<SeguroEstado>("/seguro/trancar", { pasta }),
+  manter: () => post<SeguroEstado>("/seguro/manter", {}),
+  configurarTempo: (dados: { minutos?: number; pasta?: string; mostrar_tarefas?: boolean }) => patch<SeguroEstado>("/seguro/config", dados),
+  trocarSenha: (atual: string, nova: string, pasta?: string) => post<{ ok: true }>("/seguro/senha", { atual, nova, pasta }),
+  redefinir: (senha_conta: string, nova: string, pasta?: string) => post<{ ok: true }>("/seguro/redefinir", { senha_conta, nova, pasta }),
+  trancarPasta: (pasta: string, opcoes?: { senha?: string; minutos?: number }) => post<SeguroEstado>("/seguro/pastas", { pasta, ...opcoes }),
+  tirarCadeado: (pasta: string) => del<SeguroEstado>("/seguro/pastas", { pasta }),
+};
+
 export const avatarPerfil = {
   /** Sem `usuarioId`, a foto de quem está logado; com ele, a de outra pessoa. */
   obter: (usuarioId?: string) => reqBlob(usuarioId ? `/usuarios/${encodeURIComponent(usuarioId)}/avatar` : "/me/avatar"),
@@ -591,20 +624,57 @@ export interface NotaResumo {
   criado_por_nome: string | null;
 }
 
+export interface AtualizarNotaPayload { titulo?: string; pasta?: string; espaco?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean; base_versao?: number }
+export interface VersaoNotaResumo { id: string; criado_em: string; tamanho_bytes: number; motivo: string }
+export interface VersaoNota { id: string; criado_em: string; titulo: string; corpo: string }
+export type NotaDetalhe = { id: string; titulo: string; modo: string; tags: string[]; espaco: string; criado_em: string; atualizado_em: string; ultima_revisao_em: string | null; caminho_arquivo: string; corpo: string; arquivada?: boolean; versao?: number };
+
+/** `fetch` que sobrevive ao fechamento da página. Sem resposta para ler: quem chama já guardou o rascunho antes. */
+function enviarKeepalive(path: string, method: "PATCH" | "POST", corpo: string | null): void {
+  const accessToken = obterAccessToken();
+  try {
+    void fetch(`${BASE()}${path}`, {
+      method,
+      keepalive: true,
+      credentials: "include",
+      body: corpo ?? undefined,
+      headers: { ...(corpo ? { "Content-Type": "application/json" } : {}), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+    }).catch(() => undefined);
+  } catch { /* navegador recusou o keepalive: o rascunho local cobre */ }
+}
+
 export const notas = {
+  arquivar: (id: string, arquivada: boolean) => patch<{ id: string; arquivada: boolean }>(`/notas/${id}/arquivada`, { arquivada }),
   listar: (params: { pasta?: string; espaco?: string; tag?: string; cursor?: string; limit?: number } = {}) =>
     get<Pagina<NotaResumo>>(`/notas${qs(params)}`),
   obter: (id: string) =>
-    get<{ id: string; titulo: string; modo: string; tags: string[]; espaco: string; criado_em: string; atualizado_em: string; ultima_revisao_em: string | null; caminho_arquivo: string; corpo: string }>(
-      `/notas/${id}`,
-    ),
+    get<NotaDetalhe>(`/notas/${id}`),
   criar: (payload: { titulo: string; corpo?: string; pasta?: string; tags?: string[]; espaco?: string; modo?: "texto" | "pagina" }) =>
     post<{ id: string }>("/notas", payload),
   /** `.md` de fora: o servidor completa o front-matter que faltar e não mexe no corpo. */
   importar: (payload: { nome: string; conteudo: string; pasta?: string }) =>
     post<{ id: string; titulo: string; pasta: string | null }>("/notas/importar", payload),
-  atualizar: (id: string, payload: { titulo?: string; pasta?: string; espaco?: string; tags?: string[]; corpo?: string; marcar_revisado?: boolean }) =>
-    patch<{ id: string }>(`/notas/${id}`, payload),
+  /** `base_versao`: a versão sobre a qual a edição foi feita. Se a nota mudou desde então, o servidor responde 409 `CONFLICT`. */
+  atualizar: (id: string, payload: AtualizarNotaPayload) =>
+    patch<{ id: string; versao?: number }>(`/notas/${id}`, comReescritaDeLinks(payload)),
+  /**
+   * Último envio ao fechar a página (`pagehide`): `fetch` com `keepalive`, que o navegador termina mesmo depois de a
+   * página sumir. Devolve `false` sem enviar quando o corpo passa do limite do keepalive — aí vale o rascunho local.
+   */
+  atualizarAoSair: (id: string, payload: AtualizarNotaPayload): boolean => {
+    const corpo = JSON.stringify(comReescritaDeLinks(payload));
+    if (!cabeNoKeepalive(corpo)) return false;
+    enviarKeepalive(`/notas/${id}`, "PATCH", corpo);
+    return true;
+  },
+  versoes: {
+    listar: (id: string) => get<VersaoNotaResumo[]>(`/notas/${id}/versoes`),
+    obter: (id: string, versaoId: string) => get<VersaoNota>(`/notas/${id}/versoes/${encodeURIComponent(versaoId)}`),
+    restaurar: (id: string, versaoId: string) => post<NotaDetalhe>(`/notas/${id}/versoes/${encodeURIComponent(versaoId)}/restaurar`),
+    /** Instantâneo de fechamento: chamado ao sair da nota. Falha calada — é só um ponto a mais no histórico. */
+    fechar: (id: string) => post<unknown>(`/notas/${id}/versoes`),
+    fecharAoSair: (id: string) => enviarKeepalive(`/notas/${id}/versoes`, "POST", null),
+  },
   excluir: (id: string) => del<{ ok: true }>(`/notas/${id}`),
   links: (id: string) => get<ConexoesItem>(`/notas/${id}/links`),
   /** Mirror de `tarefas.anexos` (mesmo padrão de backend, `notas.rs::enviar_anexo`)
@@ -697,8 +767,13 @@ export interface SubtarefaInput {
   concluida: boolean;
 }
 
+/** Ids de tarefas mascaradas ("Tarefa privada") vistas nas listas: abrir uma delas pede a senha da pasta. */
+export const tarefasPrivadas = new Set<string>();
+
 export interface TarefaResumo {
   id: string;
+  /** Tarefa de pasta trancada, mostrada sem título (opção em Configurações › Pastas trancadas). */
+  privada?: boolean;
   caminho_arquivo: string;
   titulo: string;
   status: "pendente" | "concluida" | "arquivada";
@@ -813,11 +888,14 @@ export const tarefas = {
     const { pasta, ...resto } = params;
     const base = qs(resto);
     const filtroPasta = pasta === undefined ? "" : `${base ? "&" : "?"}pasta=${encodeURIComponent(pasta)}`;
-    return get<Pagina<TarefaResumo>>(`/tarefas${base}${filtroPasta}`);
+    return get<Pagina<TarefaResumo>>(`/tarefas${base}${filtroPasta}`).then((pagina) => {
+      for (const t of pagina.items) if (t.privada) tarefasPrivadas.add(t.id);
+      return pagina;
+    });
   },
   obter: (id: string) => get<TarefaDetalhe>(`/tarefas/${id}`),
   criar: (payload: CriarTarefaPayload) => post<{ id: string }>("/tarefas", payload),
-  atualizar: (id: string, payload: AtualizarTarefaPayload) => patch<{ id: string }>(`/tarefas/${id}`, payload),
+  atualizar: (id: string, payload: AtualizarTarefaPayload) => patch<{ id: string }>(`/tarefas/${id}`, comReescritaDeLinks(payload)),
   atualizarStatus: (id: string, status: "pendente" | "concluida" | "arquivada") => patch<{ id: string; status: string }>(`/tarefas/${id}/status`, { status }),
   timeEntries: {
     listar: (id: string) => get<{ id: string; tipo: "planejado" | "real"; inicio_em: string; fim_em: string | null; duracao_min: number; foco: string; criado_em: string }[]>(`/tarefas/${id}/time-entries`),
@@ -858,7 +936,17 @@ export const tarefas = {
 
 export const feed = {
   obter: (params: { espaco?: string; cursor?: string; limit?: number } = {}) => get<Pagina<Record<string, unknown>>>(`/feed${qs(params)}`),
+  /** O que a pessoa escolheu não ver no Feed (item, pasta com subpastas, tag). Só filtra o Feed. */
+  ocultos: () => get<FeedOcultos>("/me/feed/ocultos"),
+  /** Oculta (`oculto: true`) ou volta a mostrar. Pasta exige `espaco`. */
+  ocultar: (alvo: { tipo: "item" | "pasta" | "tag"; ref: string; espaco?: string }, oculto: boolean) => put<FeedOcultos>("/me/feed/ocultos", { ...alvo, oculto }),
 };
+
+export interface FeedOcultos {
+  itens: { id: string; tipo: "nota" | "tarefa" | null; titulo: string | null }[];
+  pastas: { espaco: string; caminho: string }[];
+  tags: string[];
+}
 
 // --- Search (section 11.8) ------------------------------------------------
 
@@ -1165,7 +1253,7 @@ export interface ArquivoExplorador {
   tipo?: "nota" | "tarefa";
   id?: string;
   titulo?: string;
-  /** Só em tarefas. */
+  /** Tarefas: pendente/concluida/arquivada. Notas: só `arquivada` quando guardadas. */
   status?: "pendente" | "concluida" | "arquivada";
   prioridade?: "baixa" | "media" | "alta";
   scheduled_at?: string | null;
@@ -1729,6 +1817,23 @@ export interface FechamentoContaApi {
   /** "AAAA-MM" do mês anterior, quando `saldo_banco_anterior` pode existir. */
   mes_anterior: string | null;
 }
+export interface FechamentoContaDisponivelApi { id: string; nome: string; banco: string | null; cor: string; codigo_banco: string | null; sigla: string | null; fora: boolean }
+/** Um lançamento efetivado do período, como aparece na lista completa do Fechamento (e na planilha do pacote). */
+export interface FechamentoLancamentoApi {
+  id: string;
+  data: string;
+  conta_id: string | null;
+  conta: string;
+  tipo: "entrada" | "saida";
+  valor_centavos: number;
+  categoria: string | null;
+  beneficiario: string | null;
+  descricao: string;
+  forma_pagamento: string | null;
+  /** Transferência entre contas próprias: não conta como entrada nem saída. */
+  transferencia: boolean;
+  arquivos: number;
+}
 export interface FechamentoCategoriaApi { tipo: "entrada" | "saida"; categoria_id: string | null; nome: string | null; pai_id: string | null; valor: number; lancamentos: number }
 export interface FechamentoPendenciaItemApi { id: string; descricao: string; tipo: "entrada" | "saida"; valor_centavos: number; data: string }
 export interface FechamentoPendenciaApi { quantidade: number; valor_centavos: number; itens: FechamentoPendenciaItemApi[] }
@@ -1773,6 +1878,10 @@ export interface FechamentoApi {
   /** "AAAA-MM" quando o período é exatamente um mês do calendário. */
   mes: string | null;
   contas: FechamentoContaApi[];
+  /** O período ainda não terminou: números parciais, sem conferência com o extrato do banco. */
+  em_andamento: boolean;
+  /** Todas as contas do Cofre, para escolher quais entram no Fechamento; `fora` = a pessoa tirou do Fechamento. */
+  todas_as_contas: FechamentoContaDisponivelApi[];
   totais: { saldo_inicial: number; entradas: number; saidas: number; transferencias: number; resultado: number; saldo_final: number };
   transferencias: FechamentoTransferenciasApi;
   categorias: FechamentoCategoriaApi[];
@@ -1921,6 +2030,10 @@ export const vault = {
     configuracao: () => get<{ categoria_lucros_id: string | null; categorias_lucros: string[]; categorias_transferencia: string[] }>("/vault/fechamento/config"),
     /** "No começo de `data` a conta tinha `saldo_centavos`": o extrato parte dali em vez do saldo inicial do cadastro (`null` desfaz). */
     definirAbertura: (p: { conta_id: string; data: string; saldo_centavos: number | null }) => put<{ ok: true }>("/vault/fechamento/abertura", p),
+    /** Todos os lançamentos efetivados do período (menos os de contas fora do Fechamento), do mais antigo ao mais novo. */
+    lancamentos: (p: { data_de: string; data_ate: string }) => get<{ lancamentos: FechamentoLancamentoApi[]; limite: number; cortado: boolean }>(`/vault/fechamento/lancamentos${qs(p)}`),
+    /** Contas que ficam de fora do Fechamento (lista vazia traz todas de volta). Conta nova entra sozinha. */
+    definirContas: (fora: string[]) => put<{ ok: true }>("/vault/fechamento/contas", { fora }),
     /** Escolhe as categorias que são transferência entre contas próprias (lista vazia desfaz). Não podem ser a de lucros. */
     definirTransferencias: (categoriaIds: string[]) => put<{ ok: true }>("/vault/fechamento/transferencias", { categoria_ids: categoriaIds }),
     /** O `.zip` para a contabilidade: planilhas do período e os arquivos (comprovantes, notas fiscais, recibos de lucros). */

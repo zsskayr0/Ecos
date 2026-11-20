@@ -25,6 +25,7 @@ pub enum ErrorCode {
     RecurringTransactionNotFound,
     RecurringInstallmentsRequired,
     AttachmentTooLarge,
+    NoteTooLarge,
     VaultBackupFailed,
     /// Efetivar uma mensalidade com ciclo de reajuste sem decisão (o corpo do erro traz `details` com a
     /// recorrência e o ciclo).
@@ -32,6 +33,8 @@ pub enum ErrorCode {
 
     // --- Gerais (seção 7.1 e regras de segurança da seção 5.4) ---
     ValidationError,
+    /// Pasta Segura trancada (nunca desbloqueada, expirada por inatividade ou trancada à mão).
+    FolderLocked,
     NotFound,
     Unauthorized,
     Forbidden,
@@ -60,6 +63,7 @@ impl ErrorCode {
             ErrorCode::RecurringInstallmentsRequired => {
                 "Recorrência parcelada exige o número total de parcelas."
             }
+            ErrorCode::NoteTooLarge => "Esta nota passou do tamanho máximo (10 MB).",
             ErrorCode::AttachmentTooLarge => "O comprovante excede o tamanho máximo permitido (8MB).",
             ErrorCode::VaultBackupFailed => "Falha ao gerar backup do Cofre. Nenhum dado foi alterado.",
             ErrorCode::MensalidadeReajustePendente => {
@@ -67,6 +71,7 @@ impl ErrorCode {
             }
 
             ErrorCode::ValidationError => "Um ou mais campos são inválidos.",
+            ErrorCode::FolderLocked => "A Pasta Segura está trancada. Informe a senha para continuar.",
             ErrorCode::NotFound => "Recurso não encontrado.",
             ErrorCode::Unauthorized => "Autenticação necessária.",
             ErrorCode::Forbidden => "Você não tem permissão para esta ação.",
@@ -93,7 +98,9 @@ impl ErrorCode {
             ErrorCode::VaultLocked | ErrorCode::Unauthorized | ErrorCode::InvalidCredentials => 401,
             ErrorCode::Forbidden | ErrorCode::PasswordChangeRequired => 403,
             ErrorCode::Conflict | ErrorCode::MensalidadeReajustePendente => 409,
+            ErrorCode::FolderLocked => 423,
             ErrorCode::RateLimited => 429,
+            ErrorCode::NoteTooLarge => 413,
             ErrorCode::ValidationError
             | ErrorCode::TransactionInvalidAmount
             | ErrorCode::PaymentMethodInvalid

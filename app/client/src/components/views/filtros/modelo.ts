@@ -4,7 +4,9 @@ import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 
 /** Filtros simples da lista, mais a ordem. Prioridade, "Atrasadas" e "Concluídas" só existem em tarefas. */
 
-export type FiltroStatus = "pendente" | "atrasada" | "concluida" | "arquivada" | "todos";
+/** `todos` inclui as arquivadas: guardar não é esconder (para sumir de vez existe a Lixeira).
+ * `ativas` ficou só por compatibilidade com estados salvos e vale o mesmo que `todos`. */
+export type FiltroStatus = "pendente" | "atrasada" | "concluida" | "arquivada" | "ativas" | "todos";
 export type FiltroPrioridade = "todas" | "alta" | "media" | "baixa";
 export type Ordem = "relevancia" | "edicao" | "criacao" | "titulo" | "prioridade" | "agenda" | "status" | "duracao" | "pasta" | "equipe" | "tags" | "dono";
 
@@ -39,11 +41,12 @@ export type ItemFiltravel = {
   origemEquipe?: { nome: string };
 } & (
   | ({ tipo: "tarefa"; pasta?: string | null } & Partial<Pick<Tarefa, "status" | "prioridade" | "scheduledAt" | "dueDate">>)
-  | { tipo: "nota"; pastaId?: string | null; preview?: string; corpo?: string }
+  | { tipo: "nota"; pastaId?: string | null; preview?: string; corpo?: string; status?: "arquivada" }
   | { tipo: "arquivo" | "pasta"; pasta: string }
 );
 
 /** Onde há tarefas, as concluídas ficam a um clique de distância em vez de poluir a lista. */
+/** "Mostrar concluídas ao abrir" desligado = só pendentes; ligado = tudo, concluídas e arquivadas juntas. */
 export const estadoInicial = (temTarefas: boolean): EstadoFiltros => (temTarefas && !lerPreferenciasAplicativo().mostrarConcluidas ? { ...ESTADO_VAZIO, status: "pendente" } : ESTADO_VAZIO);
 
 export const filtrosAtivos = (e: EstadoFiltros, temTarefas: boolean) =>
@@ -86,7 +89,9 @@ export function filtrar<T extends ItemFiltravel>(itens: T[], e: EstadoFiltros): 
     if (e.prioridade !== "todas" && !(item.tipo === "tarefa" && item.prioridade === e.prioridade)) return false;
     if (e.status === "atrasada" && !tarefaAtrasada(item, agora)) return false;
     if (e.status === "concluida" && !(item.tipo === "tarefa" && item.status === "concluida")) return false;
-    if (e.status === "arquivada" && !(item.tipo === "tarefa" && item.status === "arquivada")) return false;
+    const guardado = "status" in item && item.status === "arquivada";
+    if (e.status === "arquivada" && !guardado) return false;
+    if (e.status !== "arquivada" && e.status !== "todos" && e.status !== "ativas" && guardado) return false;
     if (e.status === "pendente" && item.tipo === "tarefa" && item.status !== "pendente") return false;
     return true;
   });

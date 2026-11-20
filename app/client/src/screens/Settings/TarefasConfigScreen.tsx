@@ -15,6 +15,11 @@ const PRIORIDADES = [
 
 const DURACOES = [5, 15, 30, 45, 60, 90, 120].map((min) => ({ valor: String(min), rotulo: min < 60 ? `${min} min` : min % 60 === 0 ? `${min / 60} h` : `${Math.floor(min / 60)} h ${min % 60} min`, icone: Timer, cor: TOM.ciano }));
 
+const ESTILOS_CONCLUIDA = [
+  { valor: "riscada", rotulo: "Só riscadas", icone: CheckSquare, cor: TOM.aco },
+  { valor: "riscada-verde", rotulo: "Riscadas e verdes", icone: CheckSquare, cor: TOM.sucesso },
+] as const;
+
 const VISUALIZACOES_DESKTOP = [
   { valor: "tabela", rotulo: "Tabela", icone: LayoutList, cor: TOM.aco },
   { valor: "grade", rotulo: "Grade", icone: LayoutList, cor: TOM.aco },
@@ -53,8 +58,11 @@ export function TarefasConfigScreen() {
             <Seletor valor={prefs.visualizacaoTarefasMobile} opcoes={VISUALIZACOES_MOBILE} onChange={(visualizacaoTarefasMobile) => { limparEscolhaDeVisualizacao(); alterar({ visualizacaoTarefasMobile }); }} label="Visualização padrão de tarefas" />
           </Linha>
         )}
-        <Linha Icone={CheckSquare} titulo="Mostrar concluídas ao abrir" descricao="As listas começam só com as pendentes. Ligue para ver também as concluídas.">
+        <Linha Icone={CheckSquare} titulo="Mostrar concluídas ao abrir" descricao="As listas começam só com as pendentes. Ligue para ver também as concluídas e as arquivadas.">
           <Toggle checked={prefs.mostrarConcluidas} onChange={(mostrarConcluidas) => alterar({ mostrarConcluidas })} label="Mostrar concluídas ao abrir" />
+        </Linha>
+        <Linha Icone={CheckSquare} titulo="Aparência das concluídas" descricao="Nas listas, a tarefa concluída fica riscada. Escolha se ela também fica verde. Arquivadas ficam em itálico.">
+          <Seletor valor={prefs.concluidasEstilo} opcoes={ESTILOS_CONCLUIDA} onChange={(concluidasEstilo) => alterar({ concluidasEstilo })} label="Aparência das concluídas" />
         </Linha>
       </Secao>
 

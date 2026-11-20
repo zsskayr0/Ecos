@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 30;
+const SCHEMA_VERSION_CONHECIDA: i64 = 34;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
@@ -50,6 +50,10 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0027_link_pendente_up.sql")).down(include_str!("../../migrations/0027_link_pendente_down.sql")),
         M::up(include_str!("../../migrations/0028_ref_item_up.sql")).down(include_str!("../../migrations/0028_ref_item_down.sql")),
         M::up(include_str!("../../migrations/0029_pasta_unica_up.sql")).down(include_str!("../../migrations/0029_pasta_unica_down.sql")),
+        M::up(include_str!("../../migrations/0030_pasta_segura_up.sql")).down(include_str!("../../migrations/0030_pasta_segura_down.sql")),
+        M::up(include_str!("../../migrations/0031_feed_oculto_up.sql")).down(include_str!("../../migrations/0031_feed_oculto_down.sql")),
+        M::up(include_str!("../../migrations/0032_pastas_trancadas_up.sql")).down(include_str!("../../migrations/0032_pastas_trancadas_down.sql")),
+        M::up(include_str!("../../migrations/0033_nota_arquivada_up.sql")).down(include_str!("../../migrations/0033_nota_arquivada_down.sql")),
     ])
 }
 

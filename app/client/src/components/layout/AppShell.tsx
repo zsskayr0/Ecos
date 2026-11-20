@@ -9,6 +9,7 @@ import { Drawer } from "./Drawer";
 import { CreateFlow } from "@/screens/Create/CreateFlow";
 import { useAppUI } from "@/lib/ui-context";
 import { prefetchRotasProvaveis } from "@/lib/prefetch-rotas";
+import { useManterPastasAbertas, usePastasTrancadas } from "@/lib/pastas-trancadas";
 
 const ROTAS_BASE_COM_TOPBAR = ["/feed", "/hoje", "/pastas", "/notas", "/agenda", "/eventos", "/cofre", "/tarefas", "/media", "/arquivos", "/busca", "/lixeira"];
 const REGEX_SECAO_LARGA = /^\/(?:feed|notas|busca|tarefas|agenda|eventos|notificacoes)(?:\/|$)/i;
@@ -45,6 +46,7 @@ export function AppShell() {
     : secaoLarga ? "max-w-2xl" : "max-w-md md:max-w-2xl";
 
   useEffect(() => { prefetchRotasProvaveis(); }, []);
+  useManterPastasAbertas(usePastasTrancadas());
 
   useEffect(() => {
     rotaAtual.current = location.pathname;
@@ -68,8 +70,10 @@ export function AppShell() {
         return;
       }
       if (rotaAtual.current !== "/feed") {
-        navigate("/feed", { replace: true });
-        mostrarAviso();
+        // Voltar de verdade: um passo no histórico do app. Só sem histórico (aberto direto numa tela) cai no Feed.
+        const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+        if (idx > 0) navigate(-1);
+        else navigate("/feed", { replace: true });
         return;
       }
 

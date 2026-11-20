@@ -1,12 +1,19 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { syntaxTree } from "@codemirror/language";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
+import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
 import { tabelas } from "./tabela-widget";
+import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
+import { contadorTexto } from "./ContadorTexto";
+import { autocompletarEmoji } from "./SeletorEmoji";
 
 /** O que a barra de formatação precisa de um campo de texto (a mesma interface de um `<textarea>`). */
 export interface AreaLike {
@@ -14,6 +21,22 @@ export interface AreaLike {
   selectionEnd: number;
   focus(): void;
   setSelectionRange(inicio: number, fim: number): void;
+  /** Editor vivo: o texto atual do documento (pode estar à frente da prop `corpo`). */
+  texto?(): string;
+  /** Editor vivo: troca um trecho com uma transação pequena (desfazer funciona, o resto do documento não é reescrito). */
+  substituir?(inicio: number, fim: number, texto: string, selecao?: [number, number]): void;
+}
+
+/** Atalhos que o editor pai pode tratar (`atalhos`). Fora daqui a tecla não chega ao pai. */
+export const TECLAS_EDITOR = ["Mod-b", "Mod-i", "Mod-k", "Mod-e", "Mod-Shift-x", "Mod-Alt-1", "Mod-Alt-2", "Mod-Alt-3", "Mod-Alt-0", "Mod-Shift-7", "Mod-Shift-8", "Mod-Shift-9", "Mod-/"] as const;
+
+/** Textos do painel de busca em pt-BR. */
+const FRASES_BUSCA = {
+  "Find": "Buscar", "Replace": "Substituir", "next": "próximo", "previous": "anterior", "all": "todos",
+  "match case": "maiúsculas", "by word": "palavra inteira", "regexp": "regex", "replace": "substituir",
+  "replace all": "substituir todos", "close": "fechar", "current match": "ocorrência atual",
+  "replaced $ matches": "$ ocorrências substituídas", "replaced match on line $": "ocorrência substituída na linha $",
+  "on line": "na linha", "Go to line": "Ir para a linha", "go": "ir",
 }
 
 interface Props {
@@ -21,6 +44,8 @@ interface Props {
   onCorpoChange: (corpo: string) => void;
   /** Recebe o "textarea virtual" para a barra de formatação operar sobre a seleção. */
   areaRef: MutableRefObject<AreaLike | null>;
+  /** Recebe a EditorView criada (null ao destruir), para o contador de palavras. */
+  aoCriarView?: (v: EditorView | null) => void;
   ariaLabel: string;
   placeholder?: string;
   alturaMinima: string;
@@ -68,6 +93,35 @@ class Marcador extends WidgetType {
   toDOM() { const s = document.createElement("span"); s.className = this.classe; s.textContent = this.texto; return s; }
 }
 
+/** Cabeçalho do bloco de código fora de edição: rótulo da linguagem e botão "Copiar". */
+class CabecalhoCodigo extends WidgetType {
+  constructor(private readonly lingua: string, private readonly codigo: string) { super(); }
+  eq(o: CabecalhoCodigo) { return o.lingua === this.lingua && o.codigo === this.codigo; }
+  toDOM() {
+    const caixa = document.createElement("span");
+    caixa.className = "cm-cod-cabecalho";
+    const rotulo = document.createElement("span");
+    rotulo.className = "cm-cod-lingua";
+    rotulo.textContent = this.lingua || "texto";
+    const botao = document.createElement("button");
+    botao.type = "button";
+    botao.className = "cm-cod-copiar";
+    botao.textContent = "Copiar";
+    botao.addEventListener("mousedown", (e) => e.preventDefault());
+    botao.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void navigator.clipboard?.writeText(this.codigo).then(() => {
+        botao.textContent = "Copiado";
+        setTimeout(() => { botao.textContent = "Copiar"; }, 1500);
+      });
+    });
+    caixa.append(rotulo, botao);
+    return caixa;
+  }
+  ignoreEvent() { return true; }
+}
+
 class Caixa extends WidgetType {
   constructor(private readonly marcada: boolean, private readonly de: number) { super(); }
   eq(o: Caixa) { return o.marcada === this.marcada && o.de === this.de; }
@@ -89,6 +143,18 @@ class Caixa extends WidgetType {
 
 const ocultar = Decoration.replace({});
 const ESTILO_TITULO = ["", "cm-h1", "cm-h2", "cm-h3", "cm-h4", "cm-h5", "cm-h6"];
+const REALCE = /==(?=\S)([^=\n]*?\S)==/g;
+const NOTA_DEF = /^\[\^[^\]\s]+\]:\s?/;
+/** Só cores de código: os nós do próprio Markdown (títulos, ênfase, links) já têm o estilo das decorações. */
+const realceCodigo = HighlightStyle.define([
+  { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword], color: "rgb(var(--ecos-steel-300-rgb))", fontWeight: "600" },
+  { tag: [t.string, t.special(t.string), t.regexp], color: "#9ccc8a" },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: "rgb(var(--ecos-text-secondary-rgb))", fontStyle: "italic" },
+  { tag: [t.number, t.bool, t.null, t.atom], color: "#e0a96d" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "rgb(var(--ecos-cyan-rgb))" },
+  { tag: [t.typeName, t.className, t.tagName], color: "#d7a3e0" },
+  { tag: [t.attributeName, t.propertyName], color: "#8fb8e8" },
+]);
 const WIKILINK = /\[\[([^\]|\n]+)(?:\|([^\]\n]*))?\]\]/g;
 
 /**
@@ -106,6 +172,9 @@ function montarDecoracoes(view: EditorView): DecorationSet {
     }
   }
   const linhaAtiva = (pos: number) => ativas.has(state.doc.lineAt(pos).number);
+  // Marcas inline (`**`, `[..](..)`, `==`, `[[..]]`) só aparecem no trecho que o cursor toca, não na linha toda:
+  // assim o texto não alarga e a linha não quebra em duas ao entrar nela.
+  const tocaCursor = (de: number, ate: number) => view.hasFocus && state.selection.ranges.some((r) => r.from <= ate && r.to >= de);
   const decos: Range<Decoration>[] = [];
   const esconder = (de: number, ate: number) => {
     if (ate > de && !state.sliceDoc(de, ate).includes("\n")) decos.push(ocultar.range(de, ate));
@@ -114,6 +183,17 @@ function montarDecoracoes(view: EditorView): DecorationSet {
     if (ate > de) decos.push(Decoration.mark({ class: classe }).range(de, ate));
   };
   const linha = (pos: number, classe: string) => decos.push(Decoration.line({ class: classe }).range(state.doc.lineAt(pos).from));
+
+  // Rótulos de `[ref]: url` do documento, para saber se `[x]` é link de referência.
+  const referencias = new Set<string>();
+  syntaxTree(state).iterate({
+    enter: (no) => {
+      if (no.name !== "LinkReference") return;
+      const l = no.node.getChild("LinkLabel");
+      if (l) referencias.add(state.sliceDoc(l.from + 1, l.to - 1).trim().toLowerCase());
+      return false;
+    },
+  });
 
   syntaxTree(state).iterate({
     enter: (no) => {
@@ -129,13 +209,29 @@ function montarDecoracoes(view: EditorView): DecorationSet {
         case "Strikethrough": marcar(no.from, no.to, "cm-tach"); return;
         case "InlineCode": marcar(no.from, no.to, "cm-cod"); return;
         case "EmphasisMark": case "StrikethroughMark": case "CodeMark":
-          // Em bloco de código o `CodeMark` são as cercas ```: continuam visíveis.
-          if (no.node.parent?.name !== "FencedCode" && !linhaAtiva(no.from)) esconder(no.from, no.to);
+          // Em bloco de código o `CodeMark` são as cercas ```: tratadas no `FencedCode`.
+          { const pai = no.node.parent; if (pai && pai.name !== "FencedCode" && !tocaCursor(pai.from, pai.to)) esconder(no.from, no.to); }
           return;
         case "FencedCode": {
           const a = state.doc.lineAt(no.from).number;
           const b = state.doc.lineAt(no.to).number;
+          let ativo = false;
+          for (let n = a; n <= b; n++) if (ativas.has(n)) ativo = true;
           for (let n = a; n <= b; n++) decos.push(Decoration.line({ class: "cm-bloco-cod" }).range(state.doc.line(n).from));
+          if (ativo) return;
+          // Fora de edição: a cerca de abertura vira rótulo + "Copiar"; a de fechamento some.
+          const info = no.node.getChild("CodeInfo");
+          const texto = no.node.getChild("CodeText");
+          const lingua = info ? state.sliceDoc(info.from, info.to).trim() : "";
+          const codigo = texto ? state.sliceDoc(texto.from, texto.to) : "";
+          const topo = state.doc.line(a);
+          decos.push(Decoration.line({ class: "cm-bloco-topo" }).range(topo.from));
+          decos.push(Decoration.replace({ widget: new CabecalhoCodigo(lingua, codigo) }).range(topo.from, topo.to));
+          const fim = state.doc.line(b);
+          if (b > a && /^\s*(`{3,}|~{3,})\s*$/.test(fim.text)) {
+            decos.push(Decoration.line({ class: "cm-bloco-fim" }).range(fim.from));
+            esconder(fim.from, fim.to);
+          }
           return;
         }
         case "Blockquote": {
@@ -169,7 +265,7 @@ function montarDecoracoes(view: EditorView): DecorationSet {
           }
           return;
         case "Image": {
-          if (linhaAtiva(no.from)) return false;
+          const editando = tocaCursor(no.from, no.to);
           const resolver = state.facet(resolverFacet);
           const url = no.node.getChild("URL");
           const bruto = url ? state.sliceDoc(url.from, url.to) : "";
@@ -177,15 +273,32 @@ function montarDecoracoes(view: EditorView): DecorationSet {
           if (!src || state.sliceDoc(no.from, no.to).includes("\n")) return false;
           const marcas = no.node.getChildren("LinkMark");
           const alt = marcas.length >= 2 ? state.sliceDoc(marcas[0].to, marcas[1].from) : "";
-          decos.push(Decoration.replace({ widget: new ImagemWidget(src, alt, no.from) }).range(no.from, no.to));
+          // Editando: o Markdown aparece e a imagem continua logo abaixo, para a tela não pular.
+          if (editando) decos.push(Decoration.widget({ widget: new ImagemWidget(src, alt, no.from), side: 1 }).range(no.to));
+          else decos.push(Decoration.replace({ widget: new ImagemWidget(src, alt, no.from) }).range(no.from, no.to));
           return false;
         }
         case "Link": {
           const marcas: { from: number; to: number }[] = [];
           for (let f = no.node.firstChild; f; f = f.nextSibling) if (f.name === "LinkMark") marcas.push({ from: f.from, to: f.to });
-          if (marcas.length >= 2) {
+          if (marcas.length < 2) return false;
+          const rotulo = state.sliceDoc(marcas[0].to, marcas[1].from);
+          // Nota de rodapé `[^n]`: sobrescrito; na definição `[^n]: texto` a marca fica visível (a linha ganha estilo próprio).
+          if (rotulo.startsWith("^") && marcas[1].to === no.to) {
+            const def = no.from === state.doc.lineAt(no.from).from && state.sliceDoc(no.to, no.to + 1) === ":";
+            if (def) { marcar(no.from, no.to, "cm-nota-marca"); return false; }
+            marcar(marcas[0].to + 1, marcas[1].from, "cm-nota-ref");
+            if (!tocaCursor(no.from, no.to)) { esconder(marcas[0].from, marcas[0].to + 1); esconder(marcas[1].from, marcas[1].to); }
+            return false;
+          }
+          // Só é link com endereço (`[x](url)`) ou com referência definida (`[x][ref]`, `[x]`); `[1]`, `[TOC]` ficam como texto.
+          const temUrl = !!no.node.getChild("URL");
+          const label = no.node.getChild("LinkLabel");
+          const chave = (label ? state.sliceDoc(label.from + 1, label.to - 1) || rotulo : rotulo).trim().toLowerCase();
+          if (!temUrl && !referencias.has(chave)) return false;
+          {
             marcar(marcas[0].to, marcas[1].from, "cm-link");
-            if (!linhaAtiva(no.from)) { esconder(marcas[0].from, marcas[0].to); esconder(marcas[1].from, no.to); }
+            if (!tocaCursor(no.from, no.to)) { esconder(marcas[0].from, marcas[0].to); esconder(marcas[1].from, no.to); }
           }
           return false;
         }
@@ -214,7 +327,21 @@ function montarDecoracoes(view: EditorView): DecorationSet {
   // Wikilinks `[[Nota]]` / `[[Nota|apelido]]`: sintaxe própria do Ecos, fora do Markdown padrão.
   for (let n = 1; n <= state.doc.lines; n++) {
     const l = state.doc.line(n);
-    if (!l.length && !ativas.has(n) && !emCodigo.has(n) && n < state.doc.lines) decos.push(Decoration.line({ class: "cm-vazia" }).range(l.from));
+    // Só encolhe a partir da 2ª linha vazia seguida: uma linha em branco mantém a altura e dá espaço visível.
+    if (!l.length && n > 1 && !state.doc.line(n - 1).length && !ativas.has(n) && !emCodigo.has(n) && n < state.doc.lines) decos.push(Decoration.line({ class: "cm-vazia" }).range(l.from));
+    if (emCodigo.has(n)) continue;
+    if (NOTA_DEF.test(l.text)) linha(l.from, "cm-nota-def");
+    if (l.text.includes("==")) {
+      REALCE.lastIndex = 0;
+      let r: RegExpExecArray | null;
+      while ((r = REALCE.exec(l.text))) {
+        const de = l.from + r.index;
+        const ate = de + r[0].length;
+        if (syntaxTree(state).resolveInner(de + 1, 1).name === "InlineCode") continue;
+        marcar(de + 2, ate - 2, "cm-realce");
+        if (!tocaCursor(de, ate)) { esconder(de, de + 2); esconder(ate - 2, ate); }
+      }
+    }
     if (!l.text.includes("[[")) continue;
     WIKILINK.lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -224,7 +351,7 @@ function montarDecoracoes(view: EditorView): DecorationSet {
       const rotuloIni = de + 2 + (m[2] !== undefined ? m[1].length + 1 : 0);
       const rotuloFim = ate - 2;
       if (rotuloFim > rotuloIni) decos.push(Decoration.mark({ class: "cm-wikilink", attributes: { title: "Ctrl+clique para abrir" } }).range(rotuloIni, rotuloFim));
-      if (!ativas.has(n)) { esconder(de, rotuloIni); esconder(rotuloFim, ate); }
+      if (!tocaCursor(de, ate)) { esconder(de, rotuloIni); esconder(rotuloFim, ate); }
     }
   }
   return Decoration.set(decos, true);
@@ -241,9 +368,9 @@ const plugin = ViewPlugin.fromClass(class {
 }, { decorations: (p) => p.decorations });
 
 const tema = EditorView.theme({
-  "&": { backgroundColor: "transparent", color: "rgb(var(--ecos-text-primary-rgb))", fontSize: "14px" },
+  "&": { backgroundColor: "transparent", color: "rgb(var(--ecos-text-primary-rgb))", fontSize: "var(--ecos-fonte-nota, 14px)" },
   "&, &.cm-focused, .cm-content, .cm-content:focus-visible, .cm-scroller": { outline: "none !important" },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "20px", overflow: "visible" },
+  ".cm-scroller": { fontFamily: "inherit", lineHeight: "var(--ecos-linha-nota, 20px)", overflow: "visible" },
   ".cm-content": { padding: "0", caretColor: "rgb(var(--ecos-cyan-rgb))" },
   ".cm-line": { padding: "0" },
   ".cm-vazia": { height: "8px", lineHeight: "8px", overflow: "hidden" },
@@ -256,7 +383,20 @@ const tema = EditorView.theme({
   ".cm-h1": { fontSize: "1.4286em", lineHeight: "28px" },
   ".cm-h2": { fontSize: "1.2857em", lineHeight: "28px" },
   ".cm-h3": { fontSize: "1.1429em", fontWeight: "600", lineHeight: "24px" },
-  ".cm-h4, .cm-h5, .cm-h6": { fontWeight: "600" },
+  ".cm-h4, .cm-h5, .cm-h6": { fontWeight: "600", lineHeight: "22px" },
+  ".cm-h4": { fontSize: "1.0714em", fontFamily: "\"Space Grotesk\", sans-serif" },
+  ".cm-h5": { fontSize: "1em", letterSpacing: "0.01em" },
+  ".cm-h6": { fontSize: "0.9286em", color: "rgb(var(--ecos-text-secondary-rgb))", textTransform: "uppercase", letterSpacing: "0.04em" },
+  ".cm-realce": { background: "rgb(250 204 21 / 0.3)", borderRadius: "3px", padding: "0 2px" },
+  ".cm-nota-ref": { verticalAlign: "super", fontSize: "0.75em", lineHeight: "0", color: "rgb(var(--ecos-steel-300-rgb))" },
+  ".cm-nota-def": { fontSize: "0.93em", color: "rgb(var(--ecos-text-secondary-rgb))" },
+  ".cm-nota-marca": { color: "rgb(var(--ecos-steel-300-rgb))" },
+  ".cm-bloco-topo": { lineHeight: "24px" },
+  ".cm-bloco-fim": { height: "8px", lineHeight: "8px", overflow: "hidden" },
+  ".cm-cod-cabecalho": { display: "inline-flex", width: "100%", justifyContent: "space-between", alignItems: "center", fontFamily: "inherit", fontSize: "12px", color: "rgb(var(--ecos-text-secondary-rgb))" },
+  ".cm-cod-lingua": { textTransform: "lowercase" },
+  ".cm-cod-copiar": { background: "rgb(var(--ecos-surface-3-rgb))", color: "inherit", border: "0", borderRadius: "6px", padding: "0 8px", fontSize: "12px", lineHeight: "20px", cursor: "pointer" },
+  ".cm-cod-copiar:hover": { color: "rgb(var(--ecos-text-primary-rgb))" },
   ".cm-neg": { fontWeight: "700" },
   ".cm-ita": { fontStyle: "italic" },
   ".cm-tach": { textDecoration: "line-through", opacity: "0.7" },
@@ -270,18 +410,26 @@ const tema = EditorView.theme({
   ".cm-feita": { color: "rgb(var(--ecos-text-secondary-rgb))", textDecoration: "line-through" },
   ".cm-imagem": { display: "block", maxWidth: "100%", maxHeight: "70vh", borderRadius: "12px", margin: "6px 0", cursor: "text" },
   ".cm-imagem-falha": { color: "rgb(var(--ecos-text-secondary-rgb))", fontStyle: "italic" },
-  ".cm-tabela-rolagem": { overflowX: "auto", margin: "0", cursor: "text" },
-  ".cm-tabela": { width: "100%", borderCollapse: "collapse", fontSize: "0.93em", lineHeight: "1.5" },
-  ".cm-tabela th, .cm-tabela td": { padding: "10px 14px", textAlign: "left", verticalAlign: "top", borderBottom: "1px solid rgb(var(--ecos-border-rgb))" },
-  ".cm-tabela th": { fontWeight: "700", color: "rgb(var(--ecos-text-primary-rgb))", borderBottomColor: "rgb(var(--ecos-steel-500-rgb) / 0.6)", whiteSpace: "nowrap" },
-  ".cm-tabela td": { color: "rgb(var(--ecos-text-secondary-rgb))" },
-  ".cm-tabela tbody tr:last-child td": { borderBottom: "0" },
+  // Painel de busca (Ctrl+F / Ctrl+H) com as cores do Ecos.
+  ".cm-panels": { backgroundColor: "rgb(var(--ecos-surface-2-rgb))", color: "rgb(var(--ecos-text-primary-rgb))", borderRadius: "12px", zIndex: "30" },
+  ".cm-panels.cm-panels-top": { borderBottom: "1px solid rgb(var(--ecos-border-rgb))", marginBottom: "8px" },
+  ".cm-panel.cm-search": { padding: "8px 32px 8px 10px", fontFamily: "inherit", fontSize: "13px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 6px" },
+  ".cm-panel.cm-search br": { flexBasis: "100%", height: "0" },
+  ".cm-panel.cm-search input.cm-textfield": { background: "rgb(var(--ecos-surface-1-rgb))", color: "inherit", border: "1px solid rgb(var(--ecos-border-rgb))", borderRadius: "8px", padding: "4px 8px", fontSize: "13px", outline: "none" },
+  ".cm-panel.cm-search input.cm-textfield:focus": { borderColor: "rgb(var(--ecos-steel-400-rgb))" },
+  ".cm-panel.cm-search .cm-button": { backgroundImage: "none", background: "rgb(var(--ecos-surface-3-rgb))", color: "inherit", border: "0", borderRadius: "8px", padding: "4px 10px", fontSize: "12px", cursor: "pointer" },
+  ".cm-panel.cm-search .cm-button:hover": { background: "rgb(var(--ecos-steel-500-rgb) / 0.4)" },
+  ".cm-panel.cm-search label": { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "rgb(var(--ecos-text-secondary-rgb))" },
+  ".cm-panel.cm-search input[type=checkbox]": { accentColor: "rgb(var(--ecos-steel-500-rgb))" },
+  ".cm-panel.cm-search button[name=close]": { position: "absolute", top: "6px", right: "8px", background: "none", border: "0", color: "rgb(var(--ecos-text-secondary-rgb))", fontSize: "18px", cursor: "pointer" },
+  ".cm-searchMatch": { backgroundColor: "rgb(var(--ecos-steel-500-rgb) / 0.35)", borderRadius: "2px" },
+  ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "rgb(var(--ecos-cyan-rgb) / 0.35)" },
   ".cm-linha-regua": { height: "1px", lineHeight: "1px", overflow: "hidden", background: "rgb(var(--ecos-border-rgb))" },
 });
 
 const edicao = (somenteLeitura: boolean) => [EditorState.readOnly.of(somenteLeitura), EditorView.editable.of(!somenteLeitura)];
 
-export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink, somenteLeitura = false }: Props) {
+export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink, somenteLeitura = false, aoCriarView }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const leitura = useRef(new Compartment());
   const somenteLeituraInicial = useRef(somenteLeitura);
@@ -303,9 +451,22 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
       doc: corpo,
       extensions: [
         history(),
-        markdown({ base: markdownLanguage, extensions: [GFM] }),
-        Prec.highest(keymap.of(["Mod-b", "Mod-i"].map((tecla) => ({ key: tecla, run: () => { const f = atalhosRef.current?.[tecla]; if (!f) return false; f(); return true; } })))),
-        keymap.of([...historyKeymap, ...defaultKeymap.filter((k) => k.key !== "Mod-i")]),
+        markdown({ base: markdownLanguage, extensions: [GFM], codeLanguages: languages }),
+        syntaxHighlighting(realceCodigo),
+        Prec.highest(keymap.of(TECLAS_EDITOR.map((tecla) => ({ key: tecla, preventDefault: true, run: () => { const f = atalhosRef.current?.[tecla]; if (!f) return false; f(); return true; } })))),
+        // Enter continua a lista/citação (e encerra numa linha vazia); Backspace tira a marca; listas numeradas são renumeradas.
+        Prec.high(keymap.of([
+          { key: "Enter", run: insertNewlineContinueMarkup },
+          { key: "Backspace", run: deleteMarkupBackward },
+          { key: "Mod-h", run: openSearchPanel, preventDefault: true },
+        ])),
+        search({ top: true }),
+        EditorState.phrases.of(FRASES_BUSCA),
+        // Fecha só parênteses, colchetes e crase: aspas e apóstrofos atrapalhariam o português.
+        closeBrackets(),
+        markdownLanguage.data.of({ closeBrackets: { brackets: ["(", "[", "`"] } }),
+        // Tab/Shift+Tab indentam (listas aninhadas). Esc e depois Tab sai do editor (modo de foco do CodeMirror).
+        keymap.of([...closeBracketsKeymap, ...searchKeymap, ...historyKeymap, ...defaultKeymap.filter((k) => k.key !== "Mod-i"), indentWithTab]),
         EditorView.lineWrapping,
         leitura.current.of(edicao(somenteLeituraInicial.current)),
         tema,
@@ -314,8 +475,17 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         EditorView.theme({ ".cm-content": { minHeight: alturaMinima } }),
         plugin,
         tabelas,
-        wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : [],
+        wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : autocompletarEmoji(),
+        colarMarkdown(),
+        Prec.highest(keymap.of([atalhoColarTextoSimples])),
+        contadorTexto,
         EditorView.domEventHandlers({
+          keydown(e) {
+            // Atalhos do editor não sobem para os globais da janela (Ctrl+K = link aqui, busca global fora; Ctrl+B = negrito, não a barra lateral).
+            const mod = e.ctrlKey || e.metaKey;
+            if (mod && !e.shiftKey && !e.altKey && ["k", "b", "i", "e"].includes(e.key.toLowerCase())) e.stopPropagation();
+            return false;
+          },
           click(e, v) {
             // Link web: `[texto](url)` ou endereço solto. Clique simples abre em outra aba (sem seleção em andamento).
             if (e.button !== 0 || !v.state.selection.main.empty) return false;
@@ -364,6 +534,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
     });
     const v = new EditorView({ state: estado, parent: raiz.current });
     view.current = v;
+    aoCriarView?.(v);
     areaRef.current = {
       get selectionStart() { return v.state.selection.main.from; },
       set selectionStart(n: number) { const p = Math.min(Math.max(n, 0), v.state.doc.length); v.dispatch({ selection: { anchor: p, head: Math.max(p, v.state.selection.main.to) } }); },
@@ -371,8 +542,15 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
       set selectionEnd(n: number) { const p = Math.min(Math.max(n, 0), v.state.doc.length); v.dispatch({ selection: { anchor: Math.min(v.state.selection.main.from, p), head: p } }); },
       focus() { v.focus(); },
       setSelectionRange(a: number, b: number) { const t = v.state.doc.length; v.dispatch({ selection: { anchor: Math.min(a, t), head: Math.min(b, t) } }); },
+      texto() { return v.state.doc.toString(); },
+      substituir(de: number, ate: number, texto: string, selecao?: [number, number]) {
+        const fim = de + texto.length;
+        const [i, f] = selecao ?? [fim, fim];
+        v.dispatch({ changes: { from: de, to: ate, insert: texto }, selection: { anchor: i, head: f }, scrollIntoView: true, userEvent: "input.format" });
+        v.focus();
+      },
     };
-    return () => { v.destroy(); view.current = null; areaRef.current = null; };
+    return () => { v.destroy(); view.current = null; areaRef.current = null; aoCriarView?.(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

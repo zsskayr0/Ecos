@@ -139,6 +139,7 @@ fn montar_nota(texto: &str, nome_arquivo: &str, pasta: &str, agora: DateTime<Utc
         titulo: titulo.clone(),
         tipo: Default::default(),
         aliases: vec![titulo.clone()],
+        arquivada: false,
         extras: Default::default(),
         modo: NotaModo::default(),
         criado_em: criado,

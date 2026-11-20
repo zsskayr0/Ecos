@@ -22,6 +22,8 @@ pub struct AppError {
     /// Lista de campos inválidos — seção 7.2: "erro por campo, nunca
     /// mensagem genérica única".
     campos: Option<Vec<CampoInvalido>>,
+    /// Chaves extras no corpo do erro (ex.: `atual` no 409 de conflito de versão).
+    extras: serde_json::Map<String, serde_json::Value>,
 }
 
 impl AppError {
@@ -30,6 +32,7 @@ impl AppError {
             code,
             message: None,
             campos: None,
+            extras: Default::default(),
         }
     }
 
@@ -38,11 +41,17 @@ impl AppError {
             code: ErrorCode::ValidationError,
             message: None,
             campos: Some(campos),
+            extras: Default::default(),
         }
     }
 
     pub fn with_message(mut self, message: impl Into<String>) -> Self {
         self.message = Some(message.into());
+        self
+    }
+
+    pub fn with_extra(mut self, chave: &str, valor: serde_json::Value) -> Self {
+        self.extras.insert(chave.to_string(), valor);
         self
     }
 }
@@ -91,6 +100,8 @@ struct ErrorBody {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     campos: Option<Vec<CampoInvalido>>,
+    #[serde(flatten)]
+    extras: serde_json::Map<String, serde_json::Value>,
 }
 
 impl IntoResponse for AppError {
@@ -100,6 +111,7 @@ impl IntoResponse for AppError {
             error: self.code,
             message: self.message.unwrap_or_else(|| self.code.message().to_string()),
             campos: self.campos,
+            extras: self.extras,
         };
         (status, Json(body)).into_response()
     }

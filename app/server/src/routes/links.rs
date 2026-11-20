@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult, CampoInvalido};
 use ecos_core::ErrorCode;
-use crate::espacos::{fisica, visivel_sql};
+use crate::espacos::{fisica, visivel_item_sql};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
@@ -23,7 +23,7 @@ fn candidatos_visiveis(conn: &Connection, uid: &str) -> rusqlite::Result<Vec<Can
     for (tabela, alias, tipo) in [("nota", "n", TipoItem::Nota), ("tarefa", "t", TipoItem::Tarefa)] {
         let mut stmt = conn.prepare(&format!(
             "SELECT {alias}.id, {alias}.titulo, {alias}.espaco, COALESCE({alias}.criado_por, ''), {alias}.atualizado_em FROM {tabela} {alias} WHERE {}",
-            visivel_sql(alias, uid)
+            visivel_item_sql(alias, uid)
         ))?;
         let linhas = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)))?;
         for l in linhas {
@@ -42,8 +42,8 @@ pub async fn links_do_item(state: &AppState, uid: &str, tipo: TipoItem, id: &str
     let (entrada, saida): (Lado, Lado) = state
         .db
         .with_read(move |conn| {
-            let vis_n = visivel_sql("n", &uid);
-            let vis_t = visivel_sql("t", &uid);
+            let vis_n = visivel_item_sql("n", &uid);
+            let vis_t = visivel_item_sql("t", &uid);
             let lado = |dono: &str, outro: &str| -> rusqlite::Result<Lado> {
                 let mut itens: Lado = Vec::new();
                 for (tabela, alias, vis, t) in [("nota", "n", &vis_n, "nota"), ("tarefa", "t", &vis_t, "tarefa")] {
@@ -180,7 +180,7 @@ pub async fn pendentes(State(state): State<AppState>, Extension(usuario): Extens
             for (tabela, alias, tipo, pasta) in [("nota", "n", "nota", "n.pasta_id"), ("tarefa", "t", "tarefa", "NULL")] {
                 let mut stmt = conn.prepare(&format!(
                     "SELECT p.titulo_alvo, {alias}.id, {alias}.titulo, {alias}.espaco, {pasta} FROM link_pendente p JOIN {tabela} {alias} ON p.origem_tipo = '{tipo}' AND {alias}.id = p.origem_id WHERE {}",
-                    visivel_sql(alias, &uid)
+                    visivel_item_sql(alias, &uid)
                 ))?;
                 for l in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?)))? {
                     let (alvo, id, titulo, espaco, pasta) = l?;

@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { tarefasPrivadas } from "@/lib/api";
+import { avisar } from "@/lib/toast";
 
 /** Fornecido pelo shell desktop: abre Tarefa/Nota numa janela flutuante (ou, com `emAba`, direto numa aba nova). */
 /** Como abrir: `false` janela flutuante; `true` guia nova em foco; `"segundo-plano"` guia nova sem sair do que está aberto. */
@@ -33,8 +35,12 @@ export function useAbrirDocumento() {
   const abrir = useContext(DocumentoPopupContext);
   const navigate = useNavigate();
   return useCallback(
-    (path: string, clique?: ModificadoresDeClique) =>
-      abrir ? abrir(path, clique?.button === 1 ? "segundo-plano" : !!clique && (clique.ctrlKey || clique.metaKey)) : navigate(path),
+    (path: string, clique?: ModificadoresDeClique) => {
+      // Tarefa mascarada: o conteúdo está numa pasta trancada; não há o que abrir sem a senha.
+      const id = /^\/tarefa\/([^/?#]+)/.exec(path)?.[1];
+      if (id && tarefasPrivadas.has(id)) { avisar("Tarefa privada. Destranque a pasta dela para abrir.", "neutro"); return; }
+      return abrir ? abrir(path, clique?.button === 1 ? "segundo-plano" : !!clique && (clique.ctrlKey || clique.metaKey)) : navigate(path);
+    },
     [abrir, navigate],
   );
 }

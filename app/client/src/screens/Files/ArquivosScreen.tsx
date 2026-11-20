@@ -1,8 +1,13 @@
+import { abrirPastaNosArquivos } from "../../desktop/navegacao-abas";
+import { useWorkspaceOpcional } from "../../desktop/workspace-store";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as PointerReact } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Archive, ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, CalendarDays, Check, CheckCheck, ChevronDown, ChevronRight, ChevronsDownUp, CircleDot, Download, ExternalLink, FileDown, FileText, Flag, FolderInput, FolderOpen, FolderPlus, HardDrive, LayoutGrid, List, MoreHorizontal, Paperclip, Pencil, PencilLine, RotateCcw, RotateCw, Search, SlidersHorizontal, Tag, Tags, Trash2, Upload, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, CalendarDays, Check, CheckCheck, ChevronDown, ChevronRight, ChevronsDownUp, CircleDot, Download, ExternalLink, FileDown, FileText, Flag, FolderInput, FolderOpen, FolderPlus, HardDrive, LayoutGrid, List, Lock, LockOpen, MoreHorizontal, Paperclip, Pencil, PencilLine, RotateCcw, RotateCw, Search, SlidersHorizontal, Tag, Tags, Trash2, Upload, Users, X } from "lucide-react";
 import { EditarPasta } from "@/components/views/EditarPasta";
-import { arquivos, pastas as pastasApi, type ArquivoExplorador, type PastaExplorador } from "@/lib/api";
+import { arquivos, pastas as pastasApi, seguro, tarefas, ApiError, type ArquivoExplorador, type PastaExplorador } from "@/lib/api";
+import { COLUNAS_ARQUIVOS, useColunasArquivos } from "@/lib/colunas-arquivos";
+import { DesbloquearPastaDialog, TrancarPastaDialog } from "@/components/common/DialogosPastaTrancada";
+import { assinaturaSeguro, publicarEstadoSeguro, trancaQueCobre, usePastasTrancadas } from "@/lib/pastas-trancadas";
 import { EstadoCarregando } from "@/components/common/EstadoCarregando";
 import { EstadoErro } from "@/components/common/EstadoErro";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
@@ -43,6 +48,8 @@ const ORDENS = [
   { valor: "status", rotulo: "Status", icone: CircleDot },
   { valor: "prioridade", rotulo: "Prioridade", icone: Flag },
   { valor: "tags", rotulo: "Tags", icone: Tags },
+  { valor: "prazo", rotulo: "Prazo", icone: CalendarDays },
+  { valor: "proprietario", rotulo: "Proprietário", icone: Users },
 ] as const;
 type ChaveOrdem = typeof ORDENS[number]["valor"];
 interface PreferenciaVista { vista: Vista; chave: ChaveOrdem; dir: 1 | -1 }
@@ -91,7 +98,7 @@ function itemParaFiltro(linha: Linha, espaco: string): ItemFiltravel & { linha: 
   const dono = arquivo.criado_por_nome
     ? { id: arquivo.criado_por ?? null, nome: arquivo.criado_por_nome }
     : undefined;
-  if (arquivo.tipo === "nota") return { ...base, tipo: "nota", pastaId: pasta, dono };
+  if (arquivo.tipo === "nota") return { ...base, tipo: "nota", pastaId: pasta, dono, status: arquivo.status === "arquivada" ? "arquivada" : undefined };
   return {
     ...base, tipo: "tarefa", pasta, dono,
     status: arquivo.status ?? "pendente",
@@ -114,6 +121,12 @@ function tamanho(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/** Dia do prazo (AAAA-MM-DD…) como dd/mm/aaaa, sem passar por fuso horário. */
+const dia = (iso?: string | null) => { const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
+const ROTULO_STATUS = { pendente: "Pendente", concluida: "Concluída", arquivada: "Arquivada" } as const;
+const ROTULO_PRIORIDADE = { alta: "Alta", media: "Média", baixa: "Baixa" } as const;
+const COR_PRIORIDADE = { alta: "text-error", media: "text-warning", baixa: "text-text-muted" } as const;
 
 const quando = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "");
 
@@ -219,14 +232,14 @@ function NomeEmLinha({ linha, centralizado, onFechar, onSalvar }: { linha: Linha
   }
 
   return (
-    <input ref={campo} value={valor} aria-label={titulo ? "Título" : "Nome"} onChange={(e) => setValor(e.target.value)} onBlur={() => void confirmar()}
+    <input ref={campo} value={valor} style={{ outline: "none", boxShadow: "none", fieldSizing: "content", width: centralizado || (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content")) ? undefined : `${Math.max(valor.length + 2, 10)}ch` } as React.CSSProperties} aria-label={titulo ? "Título" : "Nome"} onChange={(e) => setValor(e.target.value)} onBlur={() => void confirmar()}
       onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); void confirmar(); }
         else if (e.key === "Escape") { e.preventDefault(); encerrado.current = true; onFechar(); }
       }}
-      className={`w-full min-w-0 rounded-md border border-steel-400 bg-surface-1 px-1.5 py-0.5 text-sm text-text-primary outline-none ${centralizado ? "text-center" : ""}`} />
+      className={`${centralizado ? "" : "self-start"} max-w-full min-w-[10ch] rounded-none border-0 border-b-2 border-cyan bg-transparent px-1 py-0.5 text-sm text-text-primary outline-none focus:border-cyan ${centralizado ? "text-center" : ""}`} />
   );
 }
 
@@ -262,6 +275,10 @@ export function ArquivosScreen() {
   const [ancora, setAncora] = useState<string | null>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const estadoSeguro = usePastasTrancadas();
+  const [pastaBloqueada, setPastaBloqueada] = useState(false);
+  const [trancando, setTrancando] = useState<string | null>(null);
+  const [destrancando, setDestrancando] = useState<{ pasta: string; propria: boolean } | null>(null);
   const [renomeando, setRenomeando] = useState<Linha | null>(null);
   const [pastaEmEdicao, setPastaEmEdicao] = useState<PastaExplorador | null>(null);
   const [excluindo, setExcluindo] = useState<string[] | null>(null);
@@ -282,8 +299,10 @@ export function ArquivosScreen() {
   // Config por dispositivo (Aparência › Pastas): sugestões na barra de endereço. Lida ao abrir a barra, sempre em dia.
   const [comSugestoes, setComSugestoes] = useState(() => lerPreferenciasAplicativo().arquivosSugestoesCaminho);
   const [padraoTarefas, setPadraoTarefas] = useState(() => estadoInicial(true));
+  const [concluidaVerde, setConcluidaVerde] = useState(() => lerPreferenciasAplicativo().concluidasEstilo === "riscada-verde");
   useEffect(() => {
     const atualizar = () => {
+      setConcluidaVerde(lerPreferenciasAplicativo().concluidasEstilo === "riscada-verde");
       setComSugestoes(lerPreferenciasAplicativo().arquivosSugestoesCaminho);
       setPadraoTarefas(estadoInicial(true));
     };
@@ -316,6 +335,12 @@ export function ArquivosScreen() {
     window.addEventListener("resize", medir);
     return () => window.removeEventListener("resize", medir);
   }, [desktop, conteudoVisivel, erroVisivel]);
+  const { colunas: idsColunas, checkboxTarefa } = useColunasArquivos();
+  const colunas = useMemo(() => idsColunas.map((id) => COLUNAS_ARQUIVOS.find((c) => c.id === id)!), [idsColunas]);
+  /** Nome flexível + colunas escolhidas + coluna das ações. */
+  const modeloColunas = `minmax(0,1fr) ${colunas.map((c) => c.largura).join(" ")} 32px`.replace("  ", " ");
+  /** Com a coluna Status à vista, o selo "Arquivada" ao lado do nome seria repetido. */
+  const colunaStatusVisivel = desktop && idsColunas.includes("status");
   const [vista, setVista] = useState<PreferenciaVista>(lerVista);
   const alterarVista = (patch: Partial<PreferenciaVista>) => setVista((atual) => {
     const proxima = { ...atual, ...patch };
@@ -348,14 +373,19 @@ export function ArquivosScreen() {
   useEffect(() => {
     let vivo = true;
     setErro(null);
+    setPastaBloqueada(false);
     arquivos.listar({ espaco, pasta: pastaAtual })
       .then((r) => {
         if (!vivo) return;
         setConteudo({ ...r, espaco, pasta: pastaAtual });
       })
-      .catch((e) => vivo && setErro(mensagemDeErro(e, "Não foi possível abrir a pasta.")));
+      .catch((e) => { if (!vivo) return; setPastaBloqueada(e instanceof ApiError && e.code === "FOLDER_LOCKED"); setErro(mensagemDeErro(e, "Não foi possível abrir a pasta.")); });
     return () => { vivo = false; };
   }, [espaco, pastaAtual, versao]);
+  // Pasta que abre ou fecha (aqui ou em outra tela): a lista é lida de novo.
+  const assinatura = assinaturaSeguro(estadoSeguro);
+  const primeiraAssinatura = useRef(assinatura);
+  useEffect(() => { if (primeiraAssinatura.current !== assinatura) { primeiraAssinatura.current = assinatura; notificar(); } }, [assinatura, notificar]);
 
   useEffect(() => {
     if (!desktop || !modoExplorador) return;
@@ -432,6 +462,10 @@ export function ArquivosScreen() {
     arquivosMarcados, espaco,
     aoAplicar: (limpar) => { if (limpar) setSelecao(new Set()); notificar(); },
     aoTerminar: () => setPainelBarra(null),
+    aoOtimista: (caminhos, alterar) => setConteudo((c) => c && {
+      ...c,
+      arquivos: alterar ? c.arquivos.map((a) => (caminhos.has(a.caminho) ? alterar(a) : a)) : c.arquivos.filter((a) => !caminhos.has(a.caminho)),
+    }),
   });
 
   // Com itens marcados: Esc (sem menu ou janela abertos) ou um clique fora da lista, da barra e dos menus encerra a seleção.
@@ -487,7 +521,9 @@ export function ArquivosScreen() {
   /** O que a tela mostra: com o filtro da pasta, e na ordem escolhida (pastas sempre antes dos arquivos). */
   const visiveis = useMemo(() => {
     const termo = semAcento(filtroPasta.trim());
-    const filtradas = nFiltros ? filtrar(itensFiltraveis, { ...filtrosPasta, pastas: [] }).map((item) => item.linha) : linhas;
+    // Sem filtro escolhido vale o padrão: "Todos" mostra arquivadas junto; "Pendentes" as deixa de fora.
+    const semArquivadas = filtrosPasta.status !== "todos";
+    const filtradas = nFiltros ? filtrar(itensFiltraveis, { ...filtrosPasta, pastas: [] }).map((item) => item.linha) : semArquivadas ? linhas.filter((l) => !(l.arquivo?.tipo && l.arquivo.status === "arquivada")) : linhas;
     const base = termo ? filtradas.filter((l) => semAcento(`${nomeExibido(l)} ${l.nome}`).includes(termo)) : filtradas;
     const por = (a: Linha, b: Linha): number => {
       const nomes = nomeExibido(a).localeCompare(nomeExibido(b), "pt-BR", { numeric: true, sensitivity: "base" }) * vista.dir;
@@ -509,10 +545,18 @@ export function ArquivosScreen() {
           return compararOpcional(a.arquivo?.prioridade, b.arquivo?.prioridade, (x, y) => PESO_PRIORIDADE[x] - PESO_PRIORIDADE[y]);
         case "tags":
           return ((a.arquivo?.tags?.length ?? 0) - (b.arquivo?.tags?.length ?? 0)) * vista.dir || nomes;
+        case "prazo":
+          return compararOpcional(a.arquivo?.due_date ?? undefined, b.arquivo?.due_date ?? undefined, (x, y) => x.localeCompare(y));
+        case "proprietario":
+          return compararOpcional(a.arquivo?.criado_por_nome ?? undefined, b.arquivo?.criado_por_nome ?? undefined, (x, y) => x.localeCompare(y, "pt-BR"));
       }
     };
     return [...base.filter((l) => l.pasta).sort(por), ...base.filter((l) => !l.pasta).sort(por)];
   }, [linhas, filtroPasta, filtrosPasta, itensFiltraveis, nFiltros, vista.chave, vista.dir]);
+
+  const workspace = useWorkspaceOpcional();
+  /** Pasta em aba própria (clique do meio / menu), como o Explorador do Windows. */
+  const abrirPastaEmAba = (caminho: string, emAba: true | "segundo-plano") => { if (workspace) abrirPastaNosArquivos(workspace, caminho, emAba); };
 
   const abrir = useCallback((linha: Linha, evento?: Pick<MouseEvent, "ctrlKey" | "metaKey" | "button">) => {
     if (linha.pasta) { setPastaAtual(linha.caminho); return; }
@@ -526,8 +570,8 @@ export function ArquivosScreen() {
   }, [abrirDocumento, espaco, setPastaAtual, selecao]);
 
   function clicar(linha: Linha, evento: MouseEvent) {
-    // Clique do meio: arquivo abre em guia (pasta não muda nada).
-    if (evento.button === 1) { if (!linha.pasta) abrir(linha, evento); return; }
+    // Clique do meio: pasta e arquivo abrem em outra guia, em segundo plano.
+    if (evento.button === 1) { if (linha.pasta) abrirPastaEmAba(linha.caminho, "segundo-plano"); else abrir(linha, evento); return; }
     if (!desktop) { abrir(linha, evento); return; }
     if (evento.shiftKey && ancora) {
       const ordem = visiveis.map((l) => l.caminho);
@@ -583,39 +627,58 @@ export function ArquivosScreen() {
   const editandoNome = (linha: Linha) => desktop && renomeando?.caminho === linha.caminho;
 
   async function renomear(linha: Linha, novo: string): Promise<string | null> {
+    // Otimista: a lista já mostra o nome novo; o servidor confirma depois e, se recusar, a lista volta ao que era.
+    const caminhoNovo = pai(linha.caminho) ? `${pai(linha.caminho)}/${novo}` : novo;
+    setRenomeando(null);
+    setConteudo((c) => c && {
+      ...c,
+      pastas: c.pastas.map((p) => (p.caminho === linha.caminho ? { ...p, nome: novo, caminho: caminhoNovo } : p)),
+      arquivos: c.arquivos.map((x) => (x.caminho === linha.caminho ? (x.tipo ? { ...x, titulo: novo } : { ...x, nome: novo, caminho: caminhoNovo }) : x)),
+    });
+    if (linha.pasta) acompanhar(linha.caminho, caminhoNovo);
+    setSelecao(new Set([caminhoNovo]));
     try {
       const r = await arquivos.renomear({ espaco, caminho: linha.caminho, novo_nome: novo });
-      setRenomeando(null);
-      if (linha.pasta) acompanhar(linha.caminho, r.caminho);
-      setSelecao(new Set([r.caminho]));
-      avisar(`Renomeado para ${r.caminho.split("/").pop()}.`, "sucesso");
-      notificar();
-      return null;
-    } catch (e) { return mensagemDeErro(e, "Não foi possível renomear."); }
+      if (r.caminho !== caminhoNovo) {
+        if (linha.pasta) acompanhar(caminhoNovo, r.caminho);
+        setSelecao(new Set([r.caminho]));
+      }
+    } catch (e) {
+      if (linha.pasta) acompanhar(caminhoNovo, linha.caminho);
+      setSelecao(new Set([linha.caminho]));
+      avisar(mensagemDeErro(e, "Não foi possível renomear."), "erro");
+    }
+    notificar();
+    return null;
   }
 
   async function excluir(itens: string[]) {
-    setApagando(true);
+    // Otimista: some da lista e o diálogo fecha na hora; se o servidor recusar algo, o recarregamento traz de volta.
+    setExcluindo(null);
+    setConteudo((c) => c && { ...c, pastas: c.pastas.filter((p) => !itens.includes(p.caminho)), arquivos: c.arquivos.filter((a) => !itens.includes(a.caminho)) });
+    setSelecao(new Set());
+    itens.forEach((i) => acompanhar(i, null));
     try {
       const r = await arquivos.excluir({ espaco, itens });
       if (r.excluidos.length) avisar(`${r.excluidos.length === 1 ? `${r.excluidos[0].split("/").pop()} foi` : `${r.excluidos.length} itens foram`} para a Lixeira.`, "sucesso");
-      r.excluidos.forEach((i) => acompanhar(i, null));
       if (r.falhas.length) avisar(`Não foi possível excluir: ${r.falhas.map((f) => f.caminho.split("/").pop()).join(", ")}.`, "erro");
-      notificar();
     } catch (e) { avisar(mensagemDeErro(e, "Não foi possível excluir."), "erro"); }
-    finally { setApagando(false); setExcluindo(null); }
+    notificar();
   }
 
   async function criarPasta(nome: string): Promise<string | null> {
     if (conteudo?.pastas.some((p) => p.nome.toLowerCase() === nome.toLowerCase())) return `Já existe a pasta "${nome}" aqui.`;
+    // Otimista: a pasta aparece e o campo fecha na hora; se o servidor recusar, ela some no recarregamento e um aviso explica.
+    const caminhoNovo = pastaAtual ? `${pastaAtual}/${nome}` : nome;
+    setCriandoPasta(false);
+    setConteudo((c) => c && { ...c, pastas: [...c.pastas, { nome, caminho: caminhoNovo }].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true, sensitivity: "base" })) });
+    setSelecao(new Set([caminhoNovo]));
     try {
       const r = await pastasApi.criar({ nome, pasta_pai: pastaAtual || undefined, espaco });
-      setCriandoPasta(false);
-      setSelecao(new Set([r.caminho]));
-      avisar(`Pasta ${nome} criada.`, "sucesso");
-      notificar();
-      return null;
-    } catch (e) { return mensagemDeErro(e, "Não foi possível criar a pasta."); }
+      if (r.caminho !== caminhoNovo) setSelecao(new Set([r.caminho]));
+    } catch (e) { avisar(mensagemDeErro(e, "Não foi possível criar a pasta."), "erro"); }
+    notificar();
+    return null;
   }
 
   /** Envia um por vez (cada um até 120 MB), para a pasta `destino`. */
@@ -750,9 +813,11 @@ export function ArquivosScreen() {
         { rotulo: "Prioridade média", icone: Flag, acao: () => void emLote.prioridade("media") },
         { rotulo: "Prioridade baixa", icone: Flag, acao: () => void emLote.prioridade("baixa") },
         { rotulo: "Prazo…", icone: CalendarDays, acao: () => setPainelBarra("prazo") },
-        { rotulo: "Arquivar", icone: Archive, acao: () => void emLote.arquivar() },
       );
     }
+    if (emLote.documentos.length) itens.push(emLote.todasArquivadas
+      ? { rotulo: "Desarquivar", icone: ArchiveRestore, acao: () => void emLote.desarquivar() }
+      : { rotulo: "Arquivar", icone: Archive, acao: () => void emLote.arquivar() });
     if (emLote.notasSel.length) itens.push({ rotulo: "Marcar como revisada", icone: CheckCheck, acao: () => void emLote.revisar() });
     if (emLote.documentos.length) itens.push({ rotulo: "Tags…", icone: Tag, acao: () => setPainelBarra("tags") }, { rotulo: "Equipe…", icone: Users, acao: () => setPainelBarra("equipe") });
     if (emLote.documentos.length) itens.push({ rotulo: "Exportar PDF", icone: FileDown, acao: () => void emLote.exportarPdf() });
@@ -772,12 +837,27 @@ export function ArquivosScreen() {
       ];
     }
     const doc = (linha.pasta ? [] : acoesDeDocumento()) as ItemMenuExplorador[];
+    /** Cadeado: só no espaço pessoal, e um nível só (não dá para trancar dentro de pasta já trancada). */
+    function acoesDeCadeado(l: Linha): ItemMenuExplorador[] {
+      if (!l.pasta || espaco !== "pessoal") return [];
+      const cobre = trancaQueCobre(estadoSeguro, l.caminho);
+      if (!cobre) return [{ rotulo: "Trancar com senha…", icone: Lock, acao: () => setTrancando(l.caminho) }];
+      if (cobre.pasta !== l.caminho) return [];
+      return [
+        ...(cobre.aberta ? [{ rotulo: "Trancar agora", icone: Lock, acao: () => { seguro.trancar(cobre.propria ? cobre.pasta : undefined).then(publicarEstadoSeguro).catch((e) => avisar(mensagemDeErro(e, "Não foi possível trancar."), "erro")); } } as ItemMenuExplorador] : []),
+        { rotulo: "Tirar o cadeado", icone: LockOpen, acao: () => { seguro.tirarCadeado(cobre.pasta).then((e) => { publicarEstadoSeguro(e); avisar("Cadeado removido.", "sucesso"); }).catch((e) => avisar(mensagemDeErro(e, "Destranque a pasta antes de tirar o cadeado."), "erro")); } },
+      ];
+    }
     return [
       { rotulo: linha.pasta ? "Abrir pasta" : "Abrir", icone: linha.pasta ? FolderOpen : Pencil, acao: () => abrir(linha) },
-      ...(linha.pasta ? [] : [{ rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrir(linha, { ctrlKey: false, metaKey: false, button: 1 }) }]),
+      ...(linha.pasta
+        ? [{ rotulo: "Abrir em nova aba", icone: ExternalLink, acao: () => abrirPastaEmAba(linha.caminho, true) },
+           { rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrirPastaEmAba(linha.caminho, "segundo-plano") }]
+        : [{ rotulo: "Abrir em segundo plano", icone: ExternalLink, acao: () => abrir(linha, { ctrlKey: false, metaKey: false, button: 1 }) }]),
       ...doc,
       { rotulo: "Renomear", icone: Pencil, acao: () => setRenomeando(linha) },
       ...(linha.pasta && linha.info ? [{ rotulo: "Editar", icone: SlidersHorizontal, acao: () => setPastaEmEdicao(linha.info!) }] : []),
+      ...acoesDeCadeado(linha),
       { rotulo: "Mover para…", icone: FolderInput, acao: () => setMovendo([linha.caminho]) },
       { rotulo: "Excluir", icone: Trash2, perigo: true, acao: () => setExcluindo([linha.caminho]) },
     ];
@@ -844,7 +924,7 @@ export function ArquivosScreen() {
           <button type="button" tabIndex={-1} aria-label={aberta ? `Recolher ${p.nome}` : `Expandir ${p.nome}`} onClick={() => alternar(p.caminho)} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted ${vazia ? "invisible" : ""}`}>
             {aberta ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
-          <button type="button" onClick={() => { setPastaAtual(p.caminho); if (!aberta) alternar(p.caminho); }} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <button type="button" onClick={() => { setPastaAtual(p.caminho); if (!aberta) alternar(p.caminho); }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); abrirPastaEmAba(p.caminho, "segundo-plano"); } }} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
             <IconePasta pasta={p} aberta={aberta} size={14} />
             <span className="truncate">{p.nome}</span>
           </button>
@@ -913,6 +993,122 @@ export function ArquivosScreen() {
 
   const corDoIcone = (l: Linha) => l.arquivo?.fora_do_padrao ? "text-error" : l.arquivo?.tipo === "tarefa" ? "text-cyan" : l.arquivo?.tipo === "nota" ? "text-steel-300" : "text-text-secondary";
   const concluida = (l: Linha) => l.arquivo?.tipo === "tarefa" && l.arquivo.status === "concluida";
+  /** Concluída: riscada (e verde, se a preferência pedir). Arquivada: itálico, sem riscar. */
+  const estiloDoNome = (l: Linha) => concluida(l) ? (concluidaVerde ? "line-through !text-success/80" : "line-through opacity-50") : arquivada(l) ? "italic !text-text-muted" : "";
+  const arquivada = (l: Linha) => !!l.arquivo?.tipo && l.arquivo.status === "arquivada";
+
+  /** Concluir/reabrir pelo checkbox da linha. Otimista: marca na hora e o servidor confirma depois (se recusar, a lista volta). */
+  async function alternarTarefa(l: Linha) {
+    const a = l.arquivo;
+    if (!a?.id || a.tipo !== "tarefa") return;
+    const novo = a.status === "concluida" ? "pendente" : "concluida";
+    setConteudo((c) => c && { ...c, arquivos: c.arquivos.map((x) => (x.caminho === l.caminho ? { ...x, status: novo } : x)) });
+    try { await tarefas.atualizarStatus(a.id, novo); }
+    catch (e) { avisar(mensagemDeErro(e, "Não foi possível atualizar a tarefa."), "erro"); }
+    notificar();
+  }
+
+  /** Mesma cor que o ícone da tarefa tem na lista (prioridade, se ligada no modo explorador; senão o ciano padrão). */
+  function corDaTarefa(l: Linha): string {
+    const a = l.arquivo;
+    if (a?.fora_do_padrao) return "rgb(var(--ecos-error-rgb))";
+    if (desktop && modoExplorador && colorirPrioridade && a?.prioridade) {
+      return { alta: "rgb(var(--ecos-error-rgb))", media: "rgb(var(--ecos-warning-rgb))", baixa: "rgb(var(--ecos-cyan-rgb))" }[a.prioridade];
+    }
+    return "rgb(var(--ecos-cyan-rgb))";
+  }
+
+  /** Ícone da tarefa: ao passar o mouse sobre ele, vira o checkbox (e volta ao sair), com uma troca animada.
+   * Os dois ocupam o mesmo espaço, então nada se mexe na linha. */
+  function marcadorDaLinha(l: Linha) {
+    const icone = iconeDaLinha(l, 18);
+    if (!(desktop && checkboxTarefa && l.arquivo?.tipo === "tarefa" && l.arquivo.id)) return icone;
+    const feita = concluida(l);
+    return (
+      <span data-sem-arraste="" style={{ color: corDaTarefa(l) }} className="group/marc relative flex h-[18px] w-[18px] shrink-0 items-center justify-center"
+        onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+        <span aria-hidden className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/marc:opacity-0 group-focus-within/marc:opacity-0">{icone}</span>
+        <button type="button" role="checkbox" aria-checked={feita} aria-label={feita ? "Reabrir tarefa" : "Concluir tarefa"}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Clique de mouse não deve deixar o foco preso na caixa (ela voltaria a ser ícone só ao clicar fora); pelo teclado (detail 0) o foco fica.
+            if (e.detail > 0) e.currentTarget.blur();
+            void alternarTarefa(l);
+          }}
+          className={`absolute inset-0 flex items-center justify-center rounded-full border-[1.5px] border-current opacity-0 outline-none transition-[opacity,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none group-hover/marc:opacity-100 group-focus-within/marc:opacity-100 focus-visible:ring-2 focus-visible:ring-current ${feita ? "bg-current" : "bg-transparent hover:bg-current/15"}`}>
+          {/* O risco do "ok" se desenha ao marcar (e some ao desmarcar). */}
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+            className={`stroke-base [stroke-dasharray:14] transition-[stroke-dashoffset] duration-200 ease-out motion-reduce:transition-none ${feita ? "[stroke-dashoffset:0]" : "[stroke-dashoffset:14] group-hover/marc:opacity-0"}`}>
+            <path d="M3.6 8.6l2.9 2.9 6-6.6" />
+          </svg>
+        </button>
+      </span>
+    );
+  }
+
+  /** Conteúdo de uma coluna opcional da lista. */
+  function celulaDaColuna(id: string, l: Linha, vermelho?: boolean) {
+    const a = l.arquivo;
+    switch (id) {
+      case "tipo":
+        return <span role="gridcell" className={`flex min-w-0 items-center gap-1.5 text-xs ${vermelho ? "text-error" : "text-text-muted"}`}>
+          <span className="truncate">{vermelho ? "fora do padrão" : rotuloDe(l)}</span>
+          {/* A extensão sempre aparece: nota e tarefa são .md, e os demais mostram o formato real. */}
+          {a && !vermelho && extensaoDe(a) && <span className="shrink-0 font-mono-value text-[11px] text-text-muted/70">.{extensaoDe(a)}</span>}
+        </span>;
+      case "tamanho": return <span role="gridcell" className="text-right text-xs tabular-nums text-text-muted">{a ? tamanho(a.tamanho_bytes) : ""}</span>;
+      case "modificado": return <span role="gridcell" className="text-xs tabular-nums text-text-muted">{quando(a?.modificado_em ?? null)}</span>;
+      case "status": {
+        if (!a?.tipo || (a.tipo === "nota" && a.status !== "arquivada")) return <span role="gridcell" />;
+        const st = a.status ?? "pendente";
+        const cor = st === "concluida" ? "bg-success text-success" : st === "arquivada" ? "bg-text-muted text-text-muted" : "bg-cyan text-cyan";
+        return <span role="gridcell" className="flex min-w-0">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${cor.split(" ")[1]} bg-current/10`}>
+            {st === "arquivada" ? <Archive size={11} aria-hidden className="text-text-muted" /> : <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${cor.split(" ")[0]}`} />}
+            <span className="text-text-secondary">{ROTULO_STATUS[st]}</span>
+          </span>
+        </span>;
+      }
+      case "prioridade": {
+        if (a?.tipo !== "tarefa" || !a.prioridade) return <span role="gridcell" />;
+        const cor = { alta: "text-error", media: "text-warning", baixa: "text-cyan" }[a.prioridade];
+        return <span role="gridcell" className={`flex min-w-0 items-center gap-1.5 text-xs font-medium ${cor}`}>
+          <Flag size={12} strokeWidth={2.2} className="shrink-0" fill={a.prioridade === "alta" ? "currentColor" : "none"} aria-hidden />
+          <span className="truncate">{ROTULO_PRIORIDADE[a.prioridade]}</span>
+        </span>;
+      }
+      case "prazo": {
+        const iso = a?.due_date?.slice(0, 10);
+        if (!iso) return <span role="gridcell" />;
+        const hoje = new Date().toLocaleDateString("sv-SE");
+        const aberta = a?.tipo === "tarefa" && a.status !== "concluida" && a.status !== "arquivada";
+        const estado = aberta && iso < hoje ? "atrasado" : aberta && iso === hoje ? "hoje" : "normal";
+        const cor = estado === "atrasado" ? "text-error" : estado === "hoje" ? "text-warning" : "text-text-muted";
+        return <span role="gridcell" className={`flex min-w-0 items-center gap-1.5 text-xs tabular-nums ${cor}`} title={estado === "atrasado" ? "Prazo vencido" : estado === "hoje" ? "Vence hoje" : undefined}>
+          <CalendarDays size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+          <span className="truncate">{dia(a?.due_date)}</span>
+        </span>;
+      }
+      case "tags": {
+        const lista = a?.tags ?? l.info?.tags ?? [];
+        if (!lista.length) return <span role="gridcell" />;
+        return <span role="gridcell" className="flex min-w-0 items-center gap-1 overflow-hidden" title={lista.map((t) => `#${t}`).join(" ")}>
+          {lista.slice(0, 2).map((t) => <span key={t} className="min-w-0 max-w-[88px] truncate rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[11px] text-text-secondary">#{t}</span>)}
+          {lista.length > 2 && <span className="shrink-0 rounded-md px-1 text-[11px] font-medium text-text-muted">+{lista.length - 2}</span>}
+        </span>;
+      }
+      case "proprietario": {
+        const nome = a?.criado_por_nome;
+        if (!nome) return <span role="gridcell" />;
+        const iniciais = nome.trim().slice(0, 2).toUpperCase();
+        return <span role="gridcell" className="flex min-w-0 items-center gap-2 text-xs text-text-secondary">
+          <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-steel-500/25 text-[9px] font-semibold text-steel-200">{iniciais}</span>
+          <span className="truncate">{nome}</span>
+        </span>;
+      }
+      default: return <span role="gridcell" />;
+    }
+  }
 
   function iconeDaLinha(l: Linha, tamanhoIcone: number) {
     return l.pasta
@@ -1139,7 +1335,13 @@ export function ArquivosScreen() {
           )}
           {enviando && !desktop && <p role="status" className="mb-2 text-xs text-steel-300">Enviando {Math.min(enviando.feitos + 1, enviando.total)} de {enviando.total}…</p>}
           {desktop && enviando && <p role="status" className="mb-2 flex min-h-8 items-center text-xs text-steel-300">Enviando {Math.min(enviando.feitos + 1, enviando.total)} de {enviando.total}…</p>}
-          {erroVisivel ? <EstadoErro mensagem={erroVisivel} onTentarDeNovo={() => notificar()} /> : !conteudoVisivel ? <EstadoCarregando texto={visaoCombinada ? "Reunindo pastas…" : "Carregando…"} /> : (
+          {erroVisivel && pastaBloqueada && !visaoCombinada ? (
+            <div role="status" className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-border bg-surface-1 p-6 text-center">
+              <Lock size={28} className="text-steel-300" aria-hidden="true" />
+              <p className="text-sm text-text-primary">Esta pasta está trancada.</p>
+              <button type="button" onClick={() => { const t = trancaQueCobre(estadoSeguro, pastaAtual); setDestrancando({ pasta: t?.pasta ?? pastaAtual, propria: !!t?.propria }); }} className="min-h-11 rounded-xl bg-steel-500 px-5 text-sm font-semibold text-white">Destrancar</button>
+            </div>
+          ) : erroVisivel ? <EstadoErro mensagem={erroVisivel} onTentarDeNovo={() => notificar()} /> : !conteudoVisivel ? <EstadoCarregando texto={visaoCombinada ? "Reunindo pastas…" : "Carregando…"} /> : (
             <div ref={cartao} style={desktop && alturaLista ? { height: alturaLista } : undefined} role="grid" aria-label="Arquivos" aria-multiselectable={desktop} tabIndex={-1} onKeyDown={teclaNaLista} {...soltarEm(pastaAtual)}
               onMouseDown={iniciarRetangulo}
               onContextMenu={(e) => {
@@ -1150,10 +1352,10 @@ export function ArquivosScreen() {
                 setMenuVazio({ x: e.clientX, y: e.clientY });
               }}
               onClick={(e) => { if (ignorarClique.current) return; if (e.target === e.currentTarget) setSelecao(new Set()); }}
-              className={`rounded-2xl border border-border bg-surface-1 ${desktop ? "flex flex-col overflow-y-auto [&>*]:shrink-0" : "overflow-hidden"} ${realce(pastaAtual)}`}>
+              className={`rounded-2xl border border-border bg-surface-1 outline-none ${desktop ? "flex flex-col overflow-y-auto [&>*]:shrink-0" : "overflow-hidden"} ${realce(pastaAtual)}`}>
               {desktop && vista.vista === "lista" && (
-                <div role="row" className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_110px_90px_110px_32px] gap-3 border-b border-border bg-surface-1 px-3 py-2">
-                  {cabecalho("nome", "Nome")}{cabecalho("tipo", "Tipo")}{cabecalho("tamanho", "Tamanho", "justify-end")}{cabecalho("modificado", "Modificado")}<span role="columnheader" aria-label="Ações" />
+                <div role="row" style={{ gridTemplateColumns: modeloColunas }} className="sticky top-0 z-10 grid gap-3 border-b border-border bg-surface-1 px-3 py-2">
+                  {cabecalho("nome", "Nome")}{colunas.map((c) => <Fragment key={c.id}>{cabecalho(c.id, c.rotulo, c.direita ? "justify-end" : "")}</Fragment>)}<span role="columnheader" aria-label="Ações" />
                 </div>
               )}
               {visiveis.length === 0 && (
@@ -1176,6 +1378,8 @@ export function ArquivosScreen() {
                         data-caminho={linha.caminho}
           onPointerDown={(e) => arrastar(e, linha)}
                         onClick={(e) => clicar(linha, e)}
+                        onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); clicar(linha, e); } }}
                         onDoubleClick={(e) => abrir(linha, e)}
                         onContextMenu={(e) => abrirMenuCtx(linha, e)}
                         onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
@@ -1185,8 +1389,8 @@ export function ArquivosScreen() {
                       >
                         <span className={`absolute right-1 top-1 ${selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}`}>{acoes(linha)}</span>
                         {iconeDaLinha(linha, 38)}
-                        {editandoNome(linha) ? campoDeNome(linha, true) : <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>}
-                        <span className="text-[10px] uppercase tracking-wide text-text-muted">{s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>
+                        {editandoNome(linha) ? campoDeNome(linha, true) : <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${estiloDoNome(linha)}`}>{nomeExibido(linha)}</span>}
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-text-muted">{arquivada(linha) && <Archive size={10} aria-hidden />}{arquivada(linha) ? "Arquivada" : s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>
                         {visaoCombinada && <span className="w-full truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                         {!!linha.arquivo?.anexos?.length && <span className="absolute left-1 top-1"><BadgeAnexos quantidade={linha.arquivo.anexos.length} aberto={false} aoAlternar={() => abrir(linha)} /></span>}
                       </div>
@@ -1207,31 +1411,34 @@ export function ArquivosScreen() {
                     data-caminho={linha.caminho}
           onPointerDown={(e) => arrastar(e, linha)}
                     onClick={(e) => clicar(linha, e)}
+                        onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); clicar(linha, e); } }}
                     onDoubleClick={(e) => desktop && abrir(linha, e)}
                     onContextMenu={(e) => abrirMenuCtx(linha, e)}
                     onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
                     tabIndex={0}
                     data-fora-do-padrao={vermelho || undefined}
-                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline-none ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto_32px]"} border-l-[3px] ${selecionada ? "border-l-steel-400 bg-steel-500/20" : `border-l-transparent`} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                    style={desktop ? { gridTemplateColumns: modeloColunas } : undefined}
+                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline-none ${desktop ? "" : "grid-cols-[minmax(0,1fr)_auto_32px]"} border-l-[3px] ${selecionada ? "border-l-steel-400 bg-steel-500/20" : `border-l-transparent`} ${linha.pasta ? realce(linha.caminho) : ""}`}
                     {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                   >
                     <span role="gridcell" className="flex min-w-0 items-center gap-2.5">
-                      {iconeDaLinha(linha, 18)}
-                      <span className="flex min-w-0 flex-col">
-                        {editandoNome(linha) ? campoDeNome(linha) : <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${concluida(linha) ? "line-through opacity-50" : ""}`}>{nomeExibido(linha)}</span>}
+                      {marcadorDaLinha(linha)}
+                      <span className={`flex min-w-0 flex-col ${editandoNome(linha) ? "flex-1" : ""}`}>
+                        {editandoNome(linha) ? campoDeNome(linha) : <span className={`truncate ${vermelho ? "text-error" : "text-text-primary"} ${estiloDoNome(linha)}`}>{nomeExibido(linha)}</span>}
                         {visaoCombinada && <span className="truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                       </span>
+                      {linha.pasta && espaco === "pessoal" && estadoSeguro?.pastas.some((p) => p.pasta === linha.caminho) && (
+                        <Lock size={13} className="shrink-0 text-steel-300" aria-label="Pasta trancada" />
+                      )}
+                      {arquivada(linha) && !colunaStatusVisivel && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-muted" title={linha.arquivo?.tipo === "nota" ? "Nota arquivada" : "Tarefa arquivada"}>
+                          <Archive size={10} aria-hidden />Arquivada
+                        </span>
+                      )}
                       {anexos.length > 0 && <BadgeAnexos quantidade={anexos.length} aberto={aberto} aoAlternar={() => alternarAnexos(linha.caminho)} />}
                     </span>
-                    {desktop ? <>
-                      <span role="gridcell" className={`flex min-w-0 items-center gap-1.5 text-xs ${vermelho ? "text-error" : "text-text-muted"}`}>
-                        <span className="truncate">{vermelho ? "fora do padrão" : rotuloDe(linha)}</span>
-                        {/* A extensão sempre aparece: nota e tarefa são .md, e os demais mostram o formato real. */}
-                        {linha.arquivo && !vermelho && extensaoDe(linha.arquivo) && <span className="shrink-0 font-mono-value text-[11px] text-text-muted/70">.{extensaoDe(linha.arquivo)}</span>}
-                      </span>
-                      <span role="gridcell" className="text-right text-xs text-text-muted">{linha.arquivo ? tamanho(linha.arquivo.tamanho_bytes) : ""}</span>
-                      <span role="gridcell" className="text-xs text-text-muted">{quando(linha.arquivo?.modificado_em ?? null)}</span>
-                    </> : <span role="gridcell" className="text-text-muted">{linha.pasta ? <ChevronRight size={16} /> : <span className="text-xs">{rotuloDe(linha)}</span>}</span>}
+                    {desktop ? colunas.map((c) => <Fragment key={c.id}>{celulaDaColuna(c.id, linha, vermelho)}</Fragment>) :<span role="gridcell" className="text-text-muted">{linha.pasta ? <ChevronRight size={16} /> : <span className="text-xs">{rotuloDe(linha)}</span>}</span>}
                     <span role="gridcell" className={selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}>{acoes(linha)}</span>
                   </div>
                   {anexos.length > 0 && (
@@ -1242,16 +1449,16 @@ export function ArquivosScreen() {
                           <div key={m.caminho} role="row" tabIndex={aberto ? 0 : -1}
                             onDoubleClick={(e) => desktop && abrirDocumento(rotaDoAnexo(m), e)}
                             onKeyDown={(e) => { if (e.key === "Enter") abrirDocumento(rotaDoAnexo(m)); }}
-                            className={`grid min-h-9 cursor-default select-none items-center gap-3 border-b border-border/70 bg-surface-2/40 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-steel-400 ${desktop ? "grid-cols-[minmax(0,1fr)_110px_90px_110px_32px]" : "grid-cols-[minmax(0,1fr)_auto]"}`}>
+                            style={desktop ? { gridTemplateColumns: modeloColunas } : undefined}
+                            className={`grid min-h-9 cursor-default select-none items-center gap-3 border-b border-border/70 bg-surface-2/40 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-steel-400 ${desktop ? "" : "grid-cols-[minmax(0,1fr)_auto]"}`}>
                             <span role="gridcell" className="flex min-w-0 items-center gap-2.5 pl-7">
                               <IconeArquivo a={anexoComoArquivo(m)} personalizados={iconesExtensao} size={16} className="text-text-muted" />
                               <span className="truncate text-text-secondary">{anexoComoArquivo(m).nome}</span>
                             </span>
                             {desktop ? <>
-                              <span role="gridcell" className="text-xs text-text-muted">anexo</span>
-                              <span role="gridcell" className="text-right text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>
-                              <span role="gridcell" /><span role="gridcell" />
-                            </> : <span role="gridcell" className="text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>}
+                              {colunas.map((c) => <span key={c.id} role="gridcell" className={`text-xs text-text-muted ${c.id === "tamanho" ? "text-right" : ""}`}>{c.id === "tipo" ? "anexo" : c.id === "tamanho" ? tamanho(m.tamanho_bytes) : ""}</span>)}
+                              <span role="gridcell" />
+                            </> :<span role="gridcell" className="text-xs text-text-muted">{tamanho(m.tamanho_bytes)}</span>}
                           </div>
                         ))}
                       </div>
@@ -1291,6 +1498,8 @@ export function ArquivosScreen() {
         <EditarPasta pasta={{ ...pastaEmEdicao, contagem_itens: 0 }} tipo="nota" espaco={espaco} aoFechar={() => setPastaEmEdicao(null)}
           aoSalvar={(novo) => { if (novo !== pastaEmEdicao.caminho) acompanhar(pastaEmEdicao.caminho, novo); notificar(); }} />
       )}
+      {trancando && <TrancarPastaDialog pasta={trancando} mestraConfigurada={!!estadoSeguro?.mestra.configurada} onFechar={() => setTrancando(null)} />}
+      {destrancando && <DesbloquearPastaDialog pasta={destrancando.pasta} propria={destrancando.propria} onFechar={() => setDestrancando(null)} />}
       {renomeando && !desktop && <RenomearDialog linha={renomeando} onFechar={() => setRenomeando(null)} onSalvar={(novo) => renomear(renomeando, novo)} />}
       {retangulo && <div aria-hidden className="pointer-events-none fixed z-50 rounded-sm border border-steel-400 bg-steel-500/20" style={{ left: retangulo.l, top: retangulo.t, width: retangulo.w, height: retangulo.h }} />}
       {menuVazio && <MenuExplorador x={menuVazio.x} y={menuVazio.y} rotulo={pastaAtual ? pastaAtual.split("/").pop()! : "Raiz"} aoFechar={() => setMenuVazio(null)} itens={[

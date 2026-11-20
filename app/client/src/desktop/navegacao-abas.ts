@@ -42,7 +42,7 @@ export function abrirPastaNosArquivos(
       return;
     }
   }
-  dispatch({ type: "open", path, where: "focused", reuse: "path", background: emAba === "segundo-plano" });
+  dispatch({ type: "open", path, where: "focused", reuse: emAba ? "nenhum" : "path", background: emAba === "segundo-plano" });
 }
 
 export function aoMudarNavegacao(fn: () => void): () => void {

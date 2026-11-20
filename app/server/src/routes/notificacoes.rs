@@ -140,7 +140,9 @@ fn prazos_a_notificar(conn: &rusqlite::Connection, usuario_id: &str) -> rusqlite
     let hoje = chrono::Utc::now().with_timezone(&tz).date_naive();
     let amanha = hoje + chrono::Duration::days(1);
     let (h, a) = (hoje.format("%Y-%m-%d").to_string(), amanha.format("%Y-%m-%d").to_string());
-    let mut stmt = conn.prepare("SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1 AND status = 'pendente' AND due_date IN (?2, ?3)")?;
+    // Tarefa em pasta trancada e fechada não gera aviso (o título vazaria na notificação).
+    let trancada = crate::espacos::trancada_fechada_sql("", usuario_id);
+    let mut stmt = conn.prepare(&format!("SELECT id, titulo, due_date FROM tarefa WHERE espaco = 'pessoal' AND criado_por = ?1 AND status = 'pendente' AND due_date IN (?2, ?3) AND NOT {trancada}"))?;
     let tarefas = stmt.query_map(rusqlite::params![usuario_id, h, a], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
     let vistos: std::collections::HashSet<String> = match memo_prazos().lock().unwrap_or_else(|e| e.into_inner()).get(usuario_id) {
         Some((dia, set)) if *dia == h => set.clone(),

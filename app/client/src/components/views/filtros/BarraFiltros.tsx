@@ -9,9 +9,11 @@ import { BuscaExpansivel } from "./BuscaExpansivel";
 import { ESTADO_VAZIO, PASTAS_INDEXADAS, estadoInicial, filtrosAtivos, type EstadoFiltros, type FiltroPrioridade, type FiltroStatus, type Ordem } from "./modelo";
 
 const STATUS: OpcaoMenu<FiltroStatus>[] = [
-  { valor: "todos", rotulo: "Todos os status", icone: ListChecks }, { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck },
+  { valor: "todos", rotulo: "Todos os status", icone: ListChecks },
+  { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle },
+  { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock },
+  { valor: "concluida", rotulo: "Concluídas", cor: TOM.sucesso, icone: CircleCheck },
   { valor: "arquivada", rotulo: "Arquivadas", cor: TOM.aco, icone: Archive },
-  { valor: "atrasada", rotulo: "Atrasadas", cor: TOM.erro, icone: AlarmClock }, { valor: "pendente", rotulo: "Pendentes", cor: TOM.aco, icone: Circle },
 ];
 const PRIORIDADES: OpcaoMenu<FiltroPrioridade>[] = [
   { valor: "todas", rotulo: "Todas as prioridades", icone: ListChecks },

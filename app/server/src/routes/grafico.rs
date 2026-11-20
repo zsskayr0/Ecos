@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::error::AppResult;
-use crate::espacos::visivel_sql;
+use crate::espacos::{visivel_item_sql, visivel_sql};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::state::AppState;
 
@@ -67,8 +67,8 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     let grafico = state
         .db
         .with_read(move |conn| {
-            let vis_n = visivel_sql("n", &uid);
-            let vis_t = visivel_sql("t", &uid);
+            let vis_n = visivel_item_sql("n", &uid);
+            let vis_t = visivel_item_sql("t", &uid);
             let vis_e = visivel_sql("e", &uid);
             let mut nos: Vec<NoGrafico> = Vec::new();
             let mut arestas: Vec<ArestaGrafico> = Vec::new();

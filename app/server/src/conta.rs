@@ -62,12 +62,17 @@ struct DadosExportacao {
     pasta_pessoal: Option<String>,
 }
 
-fn coletar_arquivos(state: &AppState, dados: &DadosExportacao, usuario_id: &str) -> Vec<(String, PathBuf)> {
+/// `trancadas`: pastas com cadeado. Ficam de fora do pacote (ele sai sem pedir a senha, então não pode abrir o que ela tranca).
+fn coletar_arquivos(state: &AppState, dados: &DadosExportacao, usuario_id: &str, trancadas: &[String]) -> Vec<(String, PathBuf)> {
     let raiz = &state.config.notes_root;
     let mut arquivos = Vec::new();
     let Some(pessoal) = crate::espacos::dir_existente(raiz, &crate::espacos::fisica("pessoal", usuario_id)) else { return arquivos };
     for e in walkdir::WalkDir::new(&pessoal).follow_links(false).into_iter().filter_map(Result::ok) {
         if !e.file_type().is_file() || e.file_name() == crate::espacos::MARCADOR { continue; }
+        if let Ok(dentro) = e.path().strip_prefix(&pessoal) {
+            let dentro = dentro.to_string_lossy().replace('\\', "/");
+            if trancadas.iter().any(|t| dentro.starts_with(&format!("{t}/"))) { continue; }
+        }
         if let Ok(rel) = e.path().strip_prefix(raiz) {
             arquivos.push((rel.to_string_lossy().replace('\\', "/"), e.path().to_path_buf()));
         }
@@ -134,7 +139,8 @@ pub(crate) async fn gerar_pacote(state: &AppState, usuario_id: &str, destino: &P
     let dados = DadosExportacao { nome_usuario, nome, criado_em, equipes, itens_de_equipe, configuracoes, pasta_pessoal };
 
     let (destino, cofre_ativo, usuario_id) = (destino.to_path_buf(), state.config.vault_enabled, usuario_id.to_string());
-    let arquivos = coletar_arquivos(state, &dados, &usuario_id);
+    let trancadas = crate::routes::seguro::pastas_trancadas(state, &usuario_id).await?;
+    let arquivos = coletar_arquivos(state, &dados, &usuario_id, &trancadas);
     let gerado = tokio::task::spawn_blocking(move || montar_zip(&destino, &dados, &arquivos, &usuario_id, cofre_ativo)).await;
     match gerado {
         Ok(Ok(())) => Ok(()),

@@ -27,7 +27,7 @@ export interface WorkspaceState {
 export type Side = "left" | "right";
 
 export type WorkspaceAction =
-  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path"; side?: Side; /** Abre a guia sem trocar a ativa nem o foco. */ background?: boolean }
+  | { type: "open"; path: string; where: "focused" | "new-pane"; reuse: "modulo" | "path" | "nenhum"; side?: Side; /** Abre a guia sem trocar a ativa nem o foco. */ background?: boolean }
   | { type: "close-tab"; paneId: string; tabId: string }
   | { type: "activate-tab"; paneId: string; tabId: string }
   | { type: "focus-pane"; paneId: string }
@@ -108,7 +108,7 @@ export function reducer(state: WorkspaceState, action: WorkspaceAction): Workspa
       const alvoModulo = moduloDaRota(action.path).id;
       if (action.where === "focused") {
         // Reaproveita uma aba já aberta em vez de duplicar: por módulo (clique no rail) ou por caminho exato (palette).
-        for (const pane of state.panes) {
+        for (const pane of action.reuse === "nenhum" ? [] : state.panes) {
           const existente = pane.tabs.find((t) =>
             action.reuse === "path" ? t.path === action.path : moduloDaRota(t.path).id === alvoModulo,
           );

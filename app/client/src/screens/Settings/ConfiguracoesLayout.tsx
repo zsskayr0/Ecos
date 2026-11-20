@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bell, CalendarClock, CalendarDays, DatabaseBackup, EyeOff, FolderCog, FolderTree, Info, Keyboard, Languages, ListChecks, Network, Palette, PenLine, Server, Shapes, StickyNote, User, UserCog, Users, type LucideIcon } from "lucide-react";
+import { Bell, CalendarClock, CalendarDays, DatabaseBackup, EyeOff, FolderCog, FolderTree, Info, Keyboard, Languages, ListChecks, Lock, Network, Palette, PenLine, Rss, Server, Shapes, StickyNote, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAuth } from "@/lib/auth-context";
 import { ABAS_COFRE } from "./abas-cofre";
@@ -35,6 +35,7 @@ function montarGrupos({ admin, desktop }: { admin: boolean; desktop: boolean }):
     { titulo: "Tarefas e notas", abas: [
       { para: `${C}/tarefas`, rotulo: "Tarefas", Icone: ListChecks },
       { para: `${C}/notas`, rotulo: "Notas", Icone: StickyNote },
+      { para: `${C}/feed`, rotulo: "Feed", Icone: Rss },
       { para: `${C}/editor`, rotulo: "Editor e escrita", Icone: PenLine },
       { para: `${C}/calendario`, rotulo: "Calendário e agenda", Icone: CalendarDays },
       { para: `${C}/grafico`, rotulo: "Gráfico", Icone: Network },
@@ -42,6 +43,7 @@ function montarGrupos({ admin, desktop }: { admin: boolean; desktop: boolean }):
     { titulo: "Pastas e arquivos", abas: [
       { para: `${C}/pastas-arquivos`, rotulo: "Exibição e lixeira", Icone: FolderTree },
       { para: `${C}/organizacao`, rotulo: "Gerenciar pastas e tags", Icone: FolderCog },
+      { para: `${C}/pastas-trancadas`, rotulo: "Pastas trancadas", Icone: Lock },
       { para: `${C}/icones`, rotulo: "Ícones personalizados", Icone: Shapes },
     ] },
     { titulo: "Cofre", abas: [

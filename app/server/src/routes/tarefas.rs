@@ -182,7 +182,7 @@ pub async fn listar_blocos(State(state): State<AppState>, Extension(usuario): Ex
     let tz_mod = modificador_tz(q.tz);
     let tipo = if q.tipo.as_deref() == Some("real") { "real" } else { "planejado" };
     let (de, ate) = (q.data_de.to_string(), q.data_ate.to_string());
-    let visivel = crate::espacos::visivel_sql("t", &usuario.0);
+    let visivel = crate::espacos::visivel_item_sql("t", &usuario.0);
     let blocos = state
         .db
         .with_read(move |conn| {
@@ -210,7 +210,11 @@ pub async fn listar_blocos(State(state): State<AppState>, Extension(usuario): Ex
 }
 
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<serde_json::Value>>> {
-    let visivel = crate::espacos::visivel_sql("t", &usuario.0);
+    // Tarefa em pasta trancada e fechada: some da lista — ou, se a pessoa pediu nas configurações, aparece mascarada
+    // ("Tarefa privada", sem título, tags nem caminho) para o dia continuar completo na Agenda e no Hoje.
+    let mascarar = crate::routes::seguro::mostrar_tarefas_trancadas(&state, &usuario.0).await?;
+    let visivel = if mascarar { crate::espacos::visivel_sql("t", &usuario.0) } else { crate::espacos::visivel_item_sql("t", &usuario.0) };
+    let coluna_trancada = if mascarar { crate::espacos::trancada_fechada_sql("t", &usuario.0) } else { "0".to_string() };
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
     let tz_mod = modificador_tz(q.tz);
@@ -218,10 +222,11 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     let linhas: Vec<serde_json::Value> = state
         .db
         .with_read(move |conn| {
-            let mut sql = String::from(
+            let mut sql = format!(
                 "SELECT t.id, t.caminho_arquivo, t.titulo, t.status, t.scheduled_at, t.duration_min, t.due_date, t.espaco, \
                  t.criado_em, t.prioridade, t.criado_por, u.nome_usuario, COALESCE(t.atualizado_em, t.criado_em), t.pasta_id, \
-                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em, t.serie_id, t.ocorrencia_data \
+                 (SELECT json_group_array(tag) FROM tarefa_tag WHERE tarefa_id = t.id), t.concluida_em, t.serie_id, t.ocorrencia_data, \
+                 {coluna_trancada} \
                  FROM tarefa t LEFT JOIN usuario u ON u.id = t.criado_por",
             );
             let mut condicoes = vec![visivel.clone()];
@@ -275,10 +280,12 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
             let linhas = stmt
                 .query_map(refs.as_slice(), |r| {
+                    let privada = r.get::<_, bool>(18)?;
                     Ok(serde_json::json!({
                         "id": r.get::<_, String>(0)?,
-                        "caminho_arquivo": r.get::<_, String>(1)?,
-                        "titulo": r.get::<_, String>(2)?,
+                        "privada": privada,
+                        "caminho_arquivo": if privada { String::new() } else { r.get::<_, String>(1)? },
+                        "titulo": if privada { "Tarefa privada".to_string() } else { r.get::<_, String>(2)? },
                         "status": r.get::<_, String>(3)?,
                         "scheduled_at": r.get::<_, Option<String>>(4)?,
                         "duration_min": r.get::<_, Option<i64>>(5)?,
@@ -289,10 +296,10 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                         "criado_por": r.get::<_, Option<String>>(10)?,
                         "criado_por_nome": r.get::<_, Option<String>>(11)?,
                         "atualizado_em": r.get::<_, String>(12)?,
-                        "pasta": r.get::<_, Option<String>>(13)?,
-                        "tags": serde_json::from_str::<Vec<String>>(&r.get::<_, String>(14)?).unwrap_or_default(),
+                        "pasta": if privada { None } else { r.get::<_, Option<String>>(13)? },
+                        "tags": if privada { Vec::new() } else { serde_json::from_str::<Vec<String>>(&r.get::<_, String>(14)?).unwrap_or_default() },
                         "concluida_em": r.get::<_, Option<String>>(15)?,
-                        "serie_id": r.get::<_, Option<String>>(16)?,
+                        "serie_id": if privada { None } else { r.get::<_, Option<String>>(16)? },
                         "ocorrencia_data": r.get::<_, Option<String>>(17)?,
                     }))
                 })?
@@ -355,6 +362,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
     crate::espacos::validar_pasta(pasta_relativa)?;
     crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, &espaco.to_string(), pasta_relativa).await?;
     let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Tarefas").await?;
     let dir = match pasta_relativa {
         Some(p) => raiz.join(p),
@@ -414,7 +422,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
 
 pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
-    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let visivel = crate::espacos::visivel_item_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
         .with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM tarefa WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
@@ -493,6 +501,10 @@ mod nullable_task_dates_tests {
 
 #[derive(Debug, Deserialize)]
 pub struct AtualizarTarefaPayload {
+    /// Com o título mudando, reescreve os wikilinks que apontavam para o item (mesmo fluxo de `/renomear`).
+    /// O cliente manda a preferência "Atualizar links internos"; ausente = só renomeia (compatível).
+    #[serde(default)]
+    pub reescrever_links: bool,
     #[serde(default)]
     pub titulo: Option<String>,
     #[serde(default)]
@@ -528,9 +540,20 @@ fn mudou_molde(antes: &TarefaFrontMatter, corpo_antes: &str, fm: &TarefaFrontMat
         || antes.subtarefas.iter().map(|s| &s.titulo).ne(fm.subtarefas.iter().map(|s| &s.titulo))
 }
 
-pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(mut payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
+    if payload.reescrever_links {
+        if let Some(titulo) = payload.titulo.take() {
+            crate::routes::renomear::renomear_com_links(&state, &usuario, ecos_core::wikilink::TipoItem::Tarefa, &id, &titulo, payload.escopo.as_deref()).await?;
+        }
+    }
+    atualizar_sem_links(State(state), Extension(usuario), Path(id), Json(payload)).await
+}
+
+/// O PATCH em si, sem reescrever links de outros arquivos (usado também por `renomear`).
+pub async fn atualizar_sem_links(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
     crate::espacos::validar_pasta(payload.pasta.as_deref())?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, "pessoal", payload.pasta.as_deref()).await?;
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
     let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
     let doc = frontmatter::parse::<TarefaFrontMatter>(&bruto)?;
@@ -850,7 +873,7 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
             let data_str = data_str.clone();
             let tz_mod = tz_mod.clone();
             // O cache externo não tem dono próprio: só conta o que está ligado a uma tarefa que esta pessoa enxerga.
-            let visivel = crate::espacos::visivel_sql("t", &usuario.0);
+            let visivel = crate::espacos::visivel_item_sql("t", &usuario.0);
             move |conn| {
                 conn.query_row(
                     &format!("SELECT COALESCE(SUM((strftime('%s', e.fim) - strftime('%s', e.inicio)) / 60), 0) \
@@ -863,7 +886,7 @@ pub async fn capacidade(State(state): State<AppState>, Extension(usuario): Exten
         })
         .await?;
 
-    let visivel = crate::espacos::visivel_sql("", &usuario.0);
+    let visivel = crate::espacos::visivel_item_sql("", &usuario.0);
     let consumido_tarefas_min: i64 = state
         .db
         .with_read({

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, CalendarDays, Check, CheckCheck, Download, FileDown, ExternalLink, Flag, FolderInput, RotateCcw, Tag, Trash2, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarDays, Check, CheckCheck, Download, FileDown, ExternalLink, Flag, FolderInput, RotateCcw, Tag, Trash2, Users, X } from "lucide-react";
 import { BarraSelecao } from "@/components/common/BarraSelecao";
 import { GradeMes } from "@/components/common/GradeMes";
 import { tagsApi } from "@/lib/api";
@@ -81,7 +81,9 @@ export function BarraSelecaoArquivos({ total, espaco, acoes, painel, aoMudarPain
             </div>
           </Painel>
         </div>
-        <button type="button" disabled={ocupado} onClick={() => void acoes.arquivar()} className={BOTAO}><Archive size={14} />Arquivar</button>
+        {acoes.todasArquivadas
+          ? <button type="button" disabled={ocupado} onClick={() => void acoes.desarquivar()} className={BOTAO}><ArchiveRestore size={14} />Desarquivar</button>
+          : <button type="button" disabled={ocupado} onClick={() => void acoes.arquivar()} className={BOTAO}><Archive size={14} />Arquivar</button>}
       </>}
 
       {notasSel.length > 0 && <button type="button" disabled={ocupado} onClick={() => void acoes.revisar()} className={BOTAO}><CheckCheck size={14} />Revisada</button>}

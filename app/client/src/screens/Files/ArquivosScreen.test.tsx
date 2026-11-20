@@ -64,7 +64,7 @@ describe("ArquivosScreen", () => {
         { nome: "alta.md", caminho: "alta.md", categoria: "markdown", tamanho_bytes: 10, modificado_em: null,
           tipo: "tarefa", status: "pendente", prioridade: "alta", tags: ["uma"] },
         { nome: "baixa.md", caminho: "baixa.md", categoria: "markdown", tamanho_bytes: 10, modificado_em: null,
-          tipo: "tarefa", status: "arquivada", prioridade: "baixa", tags: ["uma", "duas"] },
+          tipo: "tarefa", status: "concluida", prioridade: "baixa", tags: ["uma", "duas"] },
       ],
     });
     const tela = () => <MemoryRouter><ArquivosScreen /></MemoryRouter>;

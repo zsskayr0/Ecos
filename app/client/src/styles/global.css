@@ -1140,12 +1140,22 @@ body::-webkit-scrollbar {
 
 
 /* Modo de escrita: a página toda abaixo do cabeçalho é a mesma folha cinza, de borda a borda. */
-.ecos-detail-page[data-escrevendo] {
+.ecos-detail-page[data-escrevendo],
+.ecos-detail-page[data-folha-plana] {
   min-height: 100dvh;
   background: var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)));
 }
 
-.ecos-detail-page[data-escrevendo] .ecos-detail-content {
+/* Sem faixas: a área que rola e a janela que envolve a nota têm o mesmo tom da folha. */
+:has(> .ecos-detail-page[data-escrevendo]),
+:has(> * > .ecos-detail-page[data-escrevendo]),
+:has(> .ecos-detail-page[data-folha-plana]),
+:has(> * > .ecos-detail-page[data-folha-plana]) {
+  background-color: var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)));
+}
+
+.ecos-detail-page[data-escrevendo] .ecos-detail-content,
+.ecos-detail-page[data-folha-plana] .ecos-detail-content {
   padding: 0 !important;
 }
 

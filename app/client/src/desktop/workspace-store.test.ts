@@ -30,3 +30,14 @@ describe("workspace — Home como estado de repouso", () => {
     expect(reducer(s, { type: "close-tab", paneId: s.panes[0].id, tabId: s.panes[0].tabs[0].id })).toBe(s);
   });
 });
+
+describe("workspace — reuse: nenhum", () => {
+  it("abre outra aba para a mesma rota, no mesmo painel (middle click / + no explorador)", () => {
+    let s = reducer(estadoInicial(), { type: "open", path: "/arquivos?pasta=a", where: "focused", reuse: "path" });
+    const antes = s.panes[0].tabs.length;
+    s = reducer(s, { type: "open", path: "/arquivos?pasta=a", where: "focused", reuse: "nenhum" });
+    s = reducer(s, { type: "open", path: "/arquivos?pasta=a", where: "focused", reuse: "nenhum", background: true });
+    expect(s.panes).toHaveLength(1);
+    expect(s.panes[0].tabs).toHaveLength(antes + 2);
+  });
+});

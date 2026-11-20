@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ApiError, auth, definirUsuarioDoCofre, agendarPreparacaoOffline } from "./api";
 import { esquecerSenhasDaConta } from "./cofre-lembrado";
 import { contarRascunhosLocais, expirarRascunhosAntigos, limparConteudoLocal } from "./dados-locais";
-import { limparDadosOffline, listarMutacoesPendentes } from "./offline-store";
+import { contarRascunhosNota, limparDadosOffline, listarMutacoesPendentes } from "./offline-store";
 import { Dialog } from "@/components/common/Dialog";
 import { registrarCoresDasEquipes } from "./team-color";
 import { definirUsuarioDasFotos } from "./profile-avatar";
@@ -160,7 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async (opcoes?: { semAviso?: boolean }) => {
     if (!opcoes?.semAviso) {
-      const rascunhos = contarRascunhosLocais();
+      let rascunhos = contarRascunhosLocais();
+      try { rascunhos += await contarRascunhosNota(); } catch { /* sem banco legível: contam só os do localStorage */ }
       let pendentes = 0;
       try { pendentes = (await listarMutacoesPendentes()).length; } catch { /* sem fila legível: só os rascunhos contam */ }
       if (rascunhos + pendentes > 0 && !(await new Promise<boolean>((resolver) => setPedidoSaida({ rascunhos, pendentes, resolver })))) return;

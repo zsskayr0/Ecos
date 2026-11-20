@@ -295,7 +295,7 @@ pub struct AcaoPayload {
 
 /// Ocorrências ainda pendentes da série (id, caminho, título), visíveis para a pessoa.
 async fn pendentes(state: &AppState, usuario_id: &str, serie_id: &str) -> AppResult<Vec<(String, String, String)>> {
-    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let visivel = crate::espacos::visivel_item_sql("", usuario_id);
     let sid = serie_id.to_string();
     Ok(state
         .db

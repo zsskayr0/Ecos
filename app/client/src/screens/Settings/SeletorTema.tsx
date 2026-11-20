@@ -1,12 +1,14 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
-import { resolverTema, type ModoTema } from "@/lib/theme";
+import { Clock, Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { horarioTemaSalvo, resolverTema, salvarHorarioTema, type HorarioTema, type ModoTema } from "@/lib/theme";
+import { TimePicker } from "@/components/common/TimePicker";
 
-/** Ordem do seletor: Escuro · Automático · Claro. */
+/** Ordem do seletor: Escuro · Automático · Horário · Claro. */
 const OPCOES: { modo: ModoTema; rotulo: string; dica: string; Icone: LucideIcon }[] = [
   { modo: "dark", rotulo: "Escuro", dica: "Sempre escuro", Icone: Moon },
   { modo: "sistema", rotulo: "Automático", dica: "Acompanha o sistema", Icone: Monitor },
+  { modo: "horario", rotulo: "Horário", dica: "Pelo relógio", Icone: Clock },
   { modo: "light", rotulo: "Claro", dica: "Tom azulado", Icone: Sun },
 ];
 
@@ -45,6 +47,8 @@ function respiro(): void {
 export function SeletorTema({ modo, aoEscolher, reduzirMovimento }: { modo: ModoTema; aoEscolher: (m: ModoTema) => void; reduzirMovimento: boolean }) {
   const celulas = useRef<Record<string, HTMLButtonElement | null>>({});
   const indice = OPCOES.findIndex((o) => o.modo === modo);
+  const [horario, setHorario] = useState<HorarioTema>(horarioTemaSalvo);
+  const mudarHorario = (h: HorarioTema) => { setHorario(h); salvarHorarioTema(h); };
 
   function escolher(novo: ModoTema) {
     if (novo === modo) return;
@@ -73,15 +77,15 @@ export function SeletorTema({ modo, aoEscolher, reduzirMovimento }: { modo: Modo
     <section data-config="tema" className="mt-0">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Tema</p>
       <div className="rounded-2xl border border-border bg-surface-1 p-2">
-        <div role="radiogroup" aria-label="Tema" onKeyDown={aoTeclar} className="relative grid grid-cols-3 overflow-hidden rounded-xl bg-surface-2 p-1">
+        <div role="radiogroup" aria-label="Tema" onKeyDown={aoTeclar} className="relative grid grid-cols-4 overflow-hidden rounded-xl bg-surface-2 p-1">
           {/* Realce que desliza entre as opções */}
           <span aria-hidden className="absolute inset-y-1 left-1 rounded-lg border border-border bg-surface-3 shadow-sm transition-transform duration-500 ease-[cubic-bezier(.22,1,.36,1)]"
-            style={{ width: "calc((100% - 0.5rem) / 3)", transform: `translateX(${indice * 100}%)` }} />
+            style={{ width: "calc((100% - 0.5rem) / 4)", transform: `translateX(${indice * 100}%)` }} />
           {OPCOES.map(({ modo: m, rotulo, dica, Icone }) => {
             const ativo = modo === m;
             return (
               <button key={m} ref={(el) => { celulas.current[m] = el; }} type="button" role="radio" aria-checked={ativo} tabIndex={ativo ? 0 : -1} onClick={() => escolher(m)}
-                className={`relative z-10 flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-steel-400 ${ativo ? "text-text-primary" : "text-text-muted hover:text-text-secondary"}`}>
+                className={`relative z-10 flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-steel-400 ${ativo ? "text-text-primary" : "text-text-muted hover:text-text-secondary"}`}>
                 <Icone size={20} strokeWidth={1.75} aria-hidden
                   className={`mb-0.5 transition-[transform,color] duration-500 ease-[cubic-bezier(.34,1.56,.64,1)] ${ativo ? (m === "light" ? "rotate-90 scale-110 text-warning" : m === "dark" ? "-rotate-12 scale-110 text-steel-300" : "scale-110 text-cyan") : "rotate-0 scale-100"}`} />
                 <span className="text-sm font-medium">{rotulo}</span>
@@ -90,6 +94,14 @@ export function SeletorTema({ modo, aoEscolher, reduzirMovimento }: { modo: Modo
             );
           })}
         </div>
+        {modo === "horario" && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-sm text-text-secondary">
+            <label className="flex items-center gap-2"><Sun size={16} aria-hidden className="text-warning" />Claro às
+              <TimePicker value={horario.claro} onChange={(v) => mudarHorario({ ...horario, claro: v })} passo={15} ariaLabel="Início do tema claro" /></label>
+            <label className="flex items-center gap-2"><Moon size={16} aria-hidden className="text-steel-300" />Escuro às
+              <TimePicker value={horario.escuro} onChange={(v) => mudarHorario({ ...horario, escuro: v })} passo={15} ariaLabel="Início do tema escuro" alinhar="dir" /></label>
+          </div>
+        )}
       </div>
     </section>
   );

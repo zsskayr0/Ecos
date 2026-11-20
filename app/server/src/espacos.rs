@@ -94,6 +94,22 @@ pub fn visivel_sql(alias: &str, usuario_id: &str) -> String {
     )
 }
 
+/// Verdadeira quando o item (nota ou tarefa: precisa de `espaco`, `criado_por` e `pasta_id`) está numa **pasta trancada e fechada**
+/// do espaço pessoal da pessoa (a própria pasta ou uma filha). Pasta trancada e aberta, ou sem tranca, dá falsa.
+pub fn trancada_fechada_sql(alias: &str, usuario_id: &str) -> String {
+    let p = if alias.is_empty() { String::new() } else { format!("{alias}.") };
+    let uid = literal(usuario_id);
+    format!(
+        "EXISTS (SELECT 1 FROM pasta_trancada pt WHERE pt.usuario_id = {uid} AND {p}espaco = 'pessoal'          AND ({p}pasta_id = pt.pasta OR substr({p}pasta_id, 1, length(pt.pasta) + 1) = pt.pasta || '/')          AND NOT EXISTS (SELECT 1 FROM pasta_aberta pa WHERE pa.usuario_id = pt.usuario_id               AND pa.grupo = CASE WHEN pt.senha_hash IS NULL THEN 'mestra' ELSE pt.pasta END AND pa.ate > CAST(strftime('%s', 'now') AS INTEGER)))"
+    )
+}
+
+/// `visivel_sql` + fora de pasta trancada e fechada. É o filtro de todo lugar que lista, busca, conta ou abre **nota ou tarefa**
+/// (eventos não têm pasta: usam `visivel_sql`).
+pub fn visivel_item_sql(alias: &str, usuario_id: &str) -> String {
+    format!("({} AND NOT {})", visivel_sql(alias, usuario_id), trancada_fechada_sql(alias, usuario_id))
+}
+
 /// Igual à anterior, para tabelas cuja coluna `espaco` guarda a chave física (pasta_cache, documento_cache, categoria_evento).
 pub fn visivel_chave_sql(alias: &str, usuario_id: &str) -> String {
     let p = if alias.is_empty() { String::new() } else { format!("{alias}.") };

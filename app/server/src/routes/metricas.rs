@@ -71,8 +71,8 @@ pub async fn atividade(State(state): State<AppState>, Extension(usuario): Extens
     let uid = usuario.0;
     let escopo_consulta = escopo.clone();
     let (linhas, tags, pendentes, concluidas) = state.db.with_read(move |conn| {
-        let vis_n = crate::espacos::visivel_sql("n", &uid);
-        let vis_t = crate::espacos::visivel_sql("t", &uid);
+        let vis_n = crate::espacos::visivel_item_sql("n", &uid);
+        let vis_t = crate::espacos::visivel_item_sql("t", &uid);
         let filtro = match escopo_consulta.as_str() {
             "geral" => String::new(),
             "pessoal" => " AND {alias}.espaco = 'pessoal'".to_string(),
@@ -136,11 +136,12 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
             let entrou_em: Option<String> = conn.query_row("SELECT criado_em FROM usuario WHERE id = ?1", [&uid], |r| r.get(0)).ok();
             let Some(entrou_em) = entrou_em else { return Ok(None) };
             let (nota_vis, tarefa_vis) = if escopo_consulta == "pessoal" {
-                ("(n.espaco = 'pessoal' AND n.criado_por = ?1)".to_string(), "(t.espaco = 'pessoal' AND t.criado_por = ?1)".to_string())
+                (format!("(n.espaco = 'pessoal' AND n.criado_por = ?1 AND NOT {})", crate::espacos::trancada_fechada_sql("n", &uid)),
+                 format!("(t.espaco = 'pessoal' AND t.criado_por = ?1 AND NOT {})", crate::espacos::trancada_fechada_sql("t", &uid)))
             } else {
                 let filtro = if escopo_consulta == "geral" { String::new() } else { format!(" AND {{alias}}.espaco = '{}'", escopo_consulta.replace('\'', "''")) };
-                (format!("({}){}", crate::espacos::visivel_sql("n", &uid), filtro.replace("{alias}", "n")),
-                 format!("({}){}", crate::espacos::visivel_sql("t", &uid), filtro.replace("{alias}", "t")))
+                (format!("({}){}", crate::espacos::visivel_item_sql("n", &uid), filtro.replace("{alias}", "n")),
+                 format!("({}){}", crate::espacos::visivel_item_sql("t", &uid), filtro.replace("{alias}", "t")))
             };
             let param: Vec<&dyn rusqlite::ToSql> = if escopo_consulta == "pessoal" { vec![&uid] } else { vec![] };
             let tarefas: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM tarefa t WHERE {tarefa_vis}"), param.as_slice(), |r| r.get(0))?;

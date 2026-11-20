@@ -32,6 +32,15 @@ fn validar_caminho(campo: &str, caminho: &str, pode_ser_raiz: bool) -> AppResult
     }
 }
 
+fn pai_de(caminho: &str) -> &str {
+    caminho.rsplit_once('/').map(|(p, _)| p).unwrap_or("")
+}
+
+/// Pasta trancada e fechada → 423; aberta → renova o prazo. Vale só para o espaço pessoal.
+async fn exigir_aberta(state: &AppState, usuario_id: &str, espaco: Option<&str>, pasta: &str) -> AppResult<()> {
+    crate::routes::seguro::exigir_pasta_aberta(state, usuario_id, espaco.filter(|e| !e.is_empty()).unwrap_or("pessoal"), Some(pasta)).await
+}
+
 /// As raízes físicas do espaço (uma por árvore), depois de conferir o acesso.
 async fn raizes(state: &AppState, usuario_id: &str, espaco: Option<&str>) -> AppResult<Vec<PathBuf>> {
     let espaco = espaco.filter(|e| !e.is_empty()).unwrap_or("pessoal");
@@ -84,6 +93,7 @@ pub struct ListarQuery {
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let pasta = q.pasta.clone().unwrap_or_default();
     validar_caminho("pasta", &pasta, true)?;
+    exigir_aberta(&state, &usuario.0, q.espaco.as_deref(), &pasta).await?;
     let raizes = raizes(&state, &usuario.0, q.espaco.as_deref()).await?;
     let notes_root = state.config.notes_root.clone();
 
@@ -122,7 +132,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
         .with_read(move |conn| {
             let mut out = std::collections::HashMap::new();
             for (tabela, campos_tarefa) in [
-                ("nota", "NULL, NULL, NULL, NULL"),
+                ("nota", "CASE WHEN d.arquivada THEN 'arquivada' END, NULL, NULL, NULL"),
                 ("tarefa", "d.status, d.prioridade, d.scheduled_at, d.due_date"),
             ] {
                 let mut consulta = conn.prepare(&format!(
@@ -151,6 +161,9 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
                                 item["prioridade"] = serde_json::json!(r.get::<_, String>(3)?);
                                 item["scheduled_at"] = serde_json::json!(r.get::<_, Option<String>>(4)?);
                                 item["due_date"] = serde_json::json!(r.get::<_, Option<String>>(5)?);
+                            }
+                            if tabela == "nota" && r.get::<_, Option<String>>(2)?.is_some() {
+                                item["status"] = serde_json::json!("arquivada");
                             }
                             Ok(item)
                         })
@@ -252,6 +265,7 @@ fn percorrer(dir: &Path, notes_root: &Path, profundidade: u32, pastas: &mut u64,
 pub async fn resumo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<serde_json::Value>> {
     let pasta = q.pasta.clone().unwrap_or_default();
     validar_caminho("pasta", &pasta, true)?;
+    exigir_aberta(&state, &usuario.0, q.espaco.as_deref(), &pasta).await?;
     let raizes = raizes(&state, &usuario.0, q.espaco.as_deref()).await?;
     let notes_root = state.config.notes_root.clone();
 
@@ -316,6 +330,7 @@ pub async fn conteudo(State(state): State<AppState>, Extension(usuario): Extensi
     if q.caminho.split('/').any(interna) {
         return Err(AppError::new(ErrorCode::NotFound));
     }
+    exigir_aberta(&state, &usuario.0, q.espaco.as_deref(), pai_de(&q.caminho)).await?;
     let raizes = raizes(&state, &usuario.0, q.espaco.as_deref()).await?;
     let arquivo = localizar(&raizes, &q.caminho).ok_or(AppError::new(ErrorCode::NotFound))?;
     let nome = arquivo.file_name().and_then(|n| n.to_str()).unwrap_or("arquivo").to_string();
@@ -376,6 +391,12 @@ pub async fn mover(State(state): State<AppState>, Extension(usuario): Extension<
         if payload.destino == *item || payload.destino.starts_with(&format!("{item}/")) {
             return Err(invalido("destino", "uma pasta não pode ir para dentro dela mesma"));
         }
+    }
+    // Mover para dentro ou para fora de pasta trancada só com ela destrancada; mexer na própria pasta com cadeado, nunca.
+    exigir_aberta(&state, &usuario.0, payload.espaco.as_deref(), &payload.destino).await?;
+    for item in &payload.itens {
+        exigir_aberta(&state, &usuario.0, payload.espaco.as_deref(), pai_de(item)).await?;
+        crate::routes::seguro::exigir_sem_tranca_na_pasta(&state, &usuario.0, payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal"), item).await?;
     }
     let raizes = raizes(&state, &usuario.0, payload.espaco.as_deref()).await?;
     let notes_root = state.config.notes_root.clone();
@@ -486,6 +507,8 @@ pub async fn renomear(State(state): State<AppState>, Extension(usuario): Extensi
     if novo_nome.is_empty() {
         return Err(invalido("novo_nome", "o nome não pode ficar vazio"));
     }
+    exigir_aberta(&state, &usuario.0, payload.espaco.as_deref(), pai_de(&payload.caminho)).await?;
+    crate::routes::seguro::exigir_sem_tranca_na_pasta(&state, &usuario.0, payload.espaco.as_deref().filter(|e| !e.is_empty()).unwrap_or("pessoal"), &payload.caminho).await?;
     let raizes = raizes(&state, &usuario.0, payload.espaco.as_deref()).await?;
     let pai = payload.caminho.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
     let nome_atual = payload.caminho.rsplit('/').next().unwrap_or(&payload.caminho);
@@ -569,6 +592,10 @@ pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extensio
         }
     }
     let espaco = payload.espaco.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| "pessoal".into());
+    for item in &payload.itens {
+        exigir_aberta(&state, &usuario.0, Some(&espaco), pai_de(item)).await?;
+        crate::routes::seguro::exigir_sem_tranca_na_pasta(&state, &usuario.0, &espaco, item).await?;
+    }
     let raizes = raizes(&state, &usuario.0, Some(&espaco)).await?;
     let fisica = crate::espacos::fisica(&espaco, &usuario.0);
     let notes_root = state.config.notes_root.clone();
@@ -627,6 +654,7 @@ pub async fn enviar(
     if q.pasta.split('/').any(interna) {
         return Err(invalido("pasta", "pasta interna do Ecos"));
     }
+    exigir_aberta(&state, &usuario.0, q.espaco.as_deref(), &q.pasta).await?;
     let raizes = raizes(&state, &usuario.0, q.espaco.as_deref()).await?;
     let campo = multipart
         .next_field()

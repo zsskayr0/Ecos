@@ -1,3 +1,4 @@
+import { fonteEmoji } from "./SeletorEmoji";
 import { autocompletion, acceptCompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec, type Extension } from "@codemirror/state";
@@ -158,12 +159,12 @@ export function autocompletarWikilink(opcoes: () => OpcoesWikilink | undefined):
   let consultaAtual = "";
   return [
     autocompletion({
-      override: [(ctx) => { consultaAtual = ctx.matchBefore(ABERTURA)?.text.slice(2) ?? ""; return fonte(opcoes)(ctx); }],
+      override: [(ctx) => { consultaAtual = ctx.matchBefore(ABERTURA)?.text.slice(2) ?? ""; return fonte(opcoes)(ctx); }, fonteEmoji],
       icons: false,
       activateOnTyping: true,
       closeOnBlur: true,
       maxRenderedOptions: LIMITE + 1,
-      addToOptions: [{ render: (c) => desenharLinha(c, consultaAtual) as HTMLElement, position: 10 }],
+      addToOptions: [{ render: (c) => (c.type === "emoji" ? null : desenharLinha(c, consultaAtual) as HTMLElement), position: 10 }],
     }),
     Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
     fecharPar,

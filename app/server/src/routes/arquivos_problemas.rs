@@ -23,7 +23,7 @@ struct ItemFora {
 
 /// Itens visíveis para a pessoa cujo nome de arquivo não segue o padrão do tipo.
 async fn fora_do_padrao(state: &AppState, usuario_id: &str) -> AppResult<Vec<ItemFora>> {
-    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let visivel = crate::espacos::visivel_item_sql("", usuario_id);
     let linhas: Vec<ItemFora> = state
         .db
         .with_read(move |conn| {

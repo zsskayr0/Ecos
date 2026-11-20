@@ -1,0 +1,42 @@
+/* Tabela GFM renderizada no editor ao vivo (tabela-widget.ts). */
+.cm-editor .cm-tabela-bloco { position: relative; margin: 4px 0; padding-top: 30px; }
+.cm-editor .cm-tabela-rolagem { overflow-x: auto; cursor: text; }
+.cm-editor .cm-tabela {
+  width: auto; max-width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 0.93em; line-height: 1.5;
+  border: 1px solid rgb(var(--ecos-border-rgb)); border-radius: 10px; overflow: hidden;
+}
+.cm-editor .cm-tabela th,
+.cm-editor .cm-tabela td {
+  padding: 7px 12px; text-align: left; vertical-align: top; min-width: 3em;
+  border-bottom: 1px solid rgb(var(--ecos-border-rgb));
+  border-left: 1px solid rgb(var(--ecos-border-rgb) / 0.55);
+}
+.cm-editor .cm-tabela th:first-child,
+.cm-editor .cm-tabela td:first-child { border-left: 0; }
+.cm-editor .cm-tabela th {
+  font-weight: 700; color: rgb(var(--ecos-text-primary-rgb)); white-space: nowrap;
+  background: rgb(var(--ecos-surface-2-rgb));
+  border-bottom-color: rgb(var(--ecos-steel-500-rgb) / 0.6);
+}
+.cm-editor .cm-tabela td { color: rgb(var(--ecos-text-secondary-rgb)); }
+.cm-editor .cm-tabela tbody tr:nth-child(even) td { background: rgb(var(--ecos-surface-2-rgb) / 0.45); }
+.cm-editor .cm-tabela tbody tr:hover td { background: rgb(var(--ecos-steel-500-rgb) / 0.12); }
+.cm-editor .cm-tabela tbody tr:last-child td { border-bottom: 0; }
+.cm-editor .cm-tabela .cm-celula-ativa { box-shadow: inset 0 0 0 2px rgb(var(--ecos-steel-500-rgb)); }
+.cm-editor .cm-tabela-entrada {
+  width: 100%; min-width: 6em; box-sizing: border-box; font: inherit; color: rgb(var(--ecos-text-primary-rgb));
+  background: transparent; border: 0; outline: 0; padding: 0; margin: 0; text-align: inherit;
+}
+.cm-editor .cm-tabela img.cm-tabela-img { max-height: 4em; max-width: 12em; vertical-align: middle; border-radius: 4px; }
+.cm-editor .cm-tabela-barra {
+  position: absolute; top: 0; left: 0; display: flex; gap: 4px; opacity: 0; transition: opacity 0.12s;
+}
+.cm-editor .cm-tabela-bloco:hover .cm-tabela-barra,
+.cm-editor .cm-tabela-bloco:focus-within .cm-tabela-barra { opacity: 1; }
+.cm-editor .cm-tabela-barra button {
+  font: inherit; font-size: 12px; line-height: 1; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  color: rgb(var(--ecos-text-secondary-rgb)); background: rgb(var(--ecos-surface-2-rgb));
+  border: 1px solid rgb(var(--ecos-border-rgb));
+}
+.cm-editor .cm-tabela-barra button:hover { color: rgb(var(--ecos-text-primary-rgb)); border-color: rgb(var(--ecos-steel-500-rgb)); }

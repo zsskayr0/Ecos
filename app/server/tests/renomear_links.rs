@@ -124,3 +124,38 @@ async fn sem_reescrever_so_renomeia_e_titulo_vazio_e_recusado() {
     let (st, _) = e.chamar("POST", &format!("/api/v1/notas/{alvo}/renomear/previa"), Some(&b), Some(json!({ "titulo": "X" }))).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn patch_de_titulo_com_reescrever_links_atualiza_links_e_backlinks() {
+    let e = nova();
+    let (_, a) = e.admin("ana").await;
+    let alvo = criar(&e, "/api/v1/notas", &a, json!({ "titulo": "Antigo", "corpo": "x" })).await;
+    let b = criar(&e, "/api/v1/notas", &a, json!({ "titulo": "B", "corpo": "ver [[Antigo]] e [[Antigo|apelido]]" })).await;
+    let t = criar(&e, "/api/v1/tarefas", &a, json!({ "titulo": "Tarefa", "corpo": "[[nota:Antigo]]" })).await;
+    let rota_links = format!("/api/v1/notas/{alvo}/links");
+    assert_eq!(entradas(&e, &rota_links, &a).await, 2);
+
+    // Sem a flag (cliente antigo ou preferência desligada): só renomeia, links ficam soltos.
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{alvo}"), Some(&a), Some(json!({ "titulo": "Meio" }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(corpo_de(&e, &format!("/api/v1/notas/{b}"), &a).await, "ver [[Antigo]] e [[Antigo|apelido]]");
+    assert_eq!(entradas(&e, &rota_links, &a).await, 0);
+    let (st, _) = e.chamar("PATCH", &format!("/api/v1/notas/{alvo}"), Some(&a), Some(json!({ "titulo": "Antigo" }))).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(entradas(&e, &rota_links, &a).await, 2);
+
+    // Com a flag: reescreve as duas formas, mantém o corpo enviado junto e /links continua consistente.
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{alvo}"), Some(&a), Some(json!({ "titulo": "Novo", "corpo": "y", "reescrever_links": true }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(corpo_de(&e, &format!("/api/v1/notas/{b}"), &a).await, "ver [[Novo]] e [[Novo|apelido]]");
+    assert_eq!(corpo_de(&e, &format!("/api/v1/tarefas/{t}"), &a).await, "[[nota:Novo]]");
+    assert_eq!(corpo_de(&e, &format!("/api/v1/notas/{alvo}"), &a).await, "y");
+    assert_eq!(entradas(&e, &rota_links, &a).await, 2);
+    let (st, r) = e.chamar("GET", &format!("/api/v1/notas/{b}/links"), Some(&a), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(r.to_string().contains(&alvo), "saída de B deve apontar para o alvo: {r}");
+
+    // Tarefa pelo mesmo caminho.
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/tarefas/{t}"), Some(&a), Some(json!({ "titulo": "Tarefa 2", "reescrever_links": true }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+}

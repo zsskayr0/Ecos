@@ -34,7 +34,7 @@ describe("dados offline", () => {
 
     const fila = await listarMutacoesPendentes();
     expect(fila).toHaveLength(1);
-    expect(JSON.parse(fila[0].corpo ?? "{}")).toEqual({ titulo: "Depois", corpo: "Texto offline" });
+    expect(JSON.parse(fila[0].corpo ?? "{}")).toEqual({ titulo: "Depois", corpo: "Texto offline", reescrever_links: true });
     expect(await obterRespostaOffline<{ titulo: string; corpo: string }>("/notas/n1")).toMatchObject({ titulo: "Depois", corpo: "Texto offline" });
     expect(await obterRespostaOffline<{ items: { titulo: string }[] }>("/notas")).toMatchObject({ items: [{ titulo: "Depois" }] });
   });

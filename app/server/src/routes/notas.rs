@@ -17,6 +17,7 @@ use crate::db::reindex_incremental::{reindexar_itens, relativo, Mudanca};
 use crate::error::{AppError, AppResult, CampoInvalido};
 use crate::middleware::auth_guard::UsuarioAutenticado;
 use crate::routes::anexos_comuns::mime_por_extensao;
+use crate::routes::nota_versoes as nv;
 use crate::routes::pagination::{codificar, decodificar, limite_efetivo, Pagina};
 use crate::state::AppState;
 
@@ -52,7 +53,7 @@ pub struct ListarQuery {
 }
 
 pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Query(q): Query<ListarQuery>) -> AppResult<Json<Pagina<NotaResumo>>> {
-    let visivel = crate::espacos::visivel_sql("n", &usuario.0);
+    let visivel = crate::espacos::visivel_item_sql("n", &usuario.0);
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);
 
@@ -212,6 +213,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
     crate::espacos::validar_pasta(pasta_relativa)?;
     crate::espacos::exigir_acesso(&state, &usuario.0, &espaco.to_string()).await?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, &espaco.to_string(), pasta_relativa).await?;
     let raiz = crate::espacos::raiz(&state, &crate::espacos::fisica(&espaco.to_string(), &usuario.0), "Notas").await?;
     let dir = match pasta_relativa {
         Some(p) => raiz.join(p),
@@ -228,7 +230,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         titulo: payload.titulo.clone(),
         tipo: Default::default(),
         aliases: vec![payload.titulo.clone()],
-        extras: Default::default(),
+        arquivada: false,
+        extras: [("versao".to_string(), serde_yaml::Value::Number(1.into()))].into_iter().collect(),
         modo: payload.modo.unwrap_or_default(),
         criado_em: agora,
         atualizado_em: agora,
@@ -241,7 +244,7 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     let corpo = payload.corpo.unwrap_or_default();
     let conteudo = frontmatter::serialize(&front_matter, &corpo)?;
-    std::fs::write(&caminho_absoluto, conteudo)?;
+    nv::gravar_atomico(caminho_absoluto.clone(), conteudo.into_bytes()).await?;
 
     // Incremental: só esta nota (a reconstrução completa fica para o boot e o watcher).
     reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
@@ -273,6 +276,7 @@ pub struct ImportarNotaPayload {
 pub async fn importar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<ImportarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     let pasta_relativa = payload.pasta.as_deref().filter(|p| !p.is_empty());
     crate::espacos::validar_pasta(pasta_relativa)?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, payload.espaco.as_deref().unwrap_or("pessoal"), pasta_relativa).await?;
     let nome = payload.nome.trim().trim_end_matches(".md").trim_end_matches(".MD");
     if nome.is_empty() {
         return Err(AppError::validation(vec![CampoInvalido { campo: "nome".into(), motivo: "não pode ser vazio".into() }]));
@@ -297,7 +301,7 @@ pub async fn importar(State(state): State<AppState>, Extension(usuario): Extensi
     doc.front_matter.criado_por = Some(usuario.0.clone());
     let conteudo = frontmatter::serialize(&doc.front_matter, &doc.body)?;
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &naming::nome_padrao(false, nome), "md");
-    std::fs::write(&caminho_absoluto, conteudo)?;
+    nv::gravar_atomico(caminho_absoluto.clone(), conteudo.into_bytes()).await?;
     reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(relativo(&state.config.notes_root, &caminho_absoluto))]).await?;
 
     Ok(Json(serde_json::json!({
@@ -309,7 +313,7 @@ pub async fn importar(State(state): State<AppState>, Extension(usuario): Extensi
 
 pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str) -> AppResult<String> {
     let id_owned = id.to_string();
-    let visivel = crate::espacos::visivel_sql("", usuario_id);
+    let visivel = crate::espacos::visivel_item_sql("", usuario_id);
     let caminho: Option<String> = state
         .db
         .with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM nota WHERE id = ?1 AND {visivel}"), [&id_owned], |r| r.get(0)).optional())
@@ -319,10 +323,11 @@ pub(crate) async fn caminho_por_id(state: &AppState, usuario_id: &str, id: &str)
 
 pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
-    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let bruto = nv::ler(&absoluto(&state, &caminho_relativo)).await?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     Ok(Json(serde_json::json!({
         "id": doc.front_matter.id,
+        "versao": nv::versao(&doc.front_matter),
         "titulo": doc.front_matter.titulo,
         "modo": doc.front_matter.modo,
         "tags": doc.front_matter.tags,
@@ -332,11 +337,16 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         "ultima_revisao_em": doc.front_matter.ultima_revisao_em,
         "caminho_arquivo": caminho_relativo,
         "corpo": doc.body,
+        "arquivada": doc.front_matter.arquivada,
     })))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AtualizarNotaPayload {
+    /// Com o título mudando, reescreve os wikilinks que apontavam para o item (mesmo fluxo de `/renomear`).
+    /// O cliente manda a preferência "Atualizar links internos"; ausente = só renomeia (compatível).
+    #[serde(default)]
+    pub reescrever_links: bool,
     #[serde(default)]
     pub titulo: Option<String>,
     #[serde(default)]
@@ -350,14 +360,39 @@ pub struct AtualizarNotaPayload {
     /// Marca "revisado" manual (alimenta o critério Esquecimento, seção 4.1).
     #[serde(default)]
     pub marcar_revisado: bool,
+    /// `versao` que o cliente tinha ao editar; diferente da atual = 409 `CONFLICT`. Ausente = sem checagem.
+    #[serde(default)]
+    pub base_versao: Option<u64>,
 }
 
-pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(mut payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+    if payload.reescrever_links && payload.titulo.is_some() {
+        // A renomeação grava antes do PATCH (e soma versão): confere a base aqui e não de novo depois.
+        if let Some(base) = payload.base_versao.take() {
+            let caminho = absoluto(&state, &caminho_por_id(&state, &usuario.0, &id).await?);
+            let _trava = nv::travar(&id).await;
+            let doc = frontmatter::parse::<NotaFrontMatter>(&nv::ler(&caminho).await?)?;
+            nv::checar_base(Some(base), &doc.front_matter, &doc.body)?;
+        }
+        if let Some(titulo) = payload.titulo.take() {
+            crate::routes::renomear::renomear_com_links(&state, &usuario, ecos_core::wikilink::TipoItem::Nota, &id, &titulo, None).await?;
+        }
+    }
+    atualizar_sem_links(State(state), Extension(usuario), Path(id), Json(payload)).await
+}
+
+/// O PATCH em si, sem reescrever links de outros arquivos (usado também por `renomear`).
+pub async fn atualizar_sem_links(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await?;
     crate::espacos::validar_pasta(payload.pasta.as_deref())?;
+    crate::routes::seguro::exigir_pasta_aberta(&state, &usuario.0, "pessoal", payload.pasta.as_deref()).await?;
+    let _trava = nv::travar(&id).await;
+    // O caminho pode ter mudado enquanto esperava a trava (outro PATCH renomeou/moveu).
+    let caminho_relativo_atual = caminho_por_id(&state, &usuario.0, &id).await.unwrap_or(caminho_relativo_atual);
     let caminho_absoluto_atual = absoluto(&state, &caminho_relativo_atual);
-    let bruto = std::fs::read_to_string(&caminho_absoluto_atual)?;
+    let bruto = nv::ler(&caminho_absoluto_atual).await?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
+    nv::checar_base(payload.base_versao, &doc.front_matter, &doc.body)?;
     let mut fm = doc.front_matter;
     let mut corpo = doc.body;
 
@@ -374,8 +409,10 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
         fm.tags = ecos_core::tags::atualizar_preservando(&fm.tags, &tags);
     }
     if let Some(novo_corpo) = payload.corpo {
+        nv::snapshot_antes_de_gravar(&state, &id, &bruto, &corpo, &novo_corpo).await?;
         corpo = novo_corpo;
     }
+    let versao_nova = nv::incrementar(&mut fm);
     fm.atualizado_em = Utc::now();
     if payload.marcar_revisado {
         fm.ultima_revisao_em = Some(fm.atualizado_em);
@@ -413,9 +450,9 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     let conteudo = frontmatter::serialize(&fm, &corpo)?;
 
     if caminho_absoluto_destino == caminho_absoluto_atual {
-        std::fs::write(&caminho_absoluto_atual, conteudo)?;
+        nv::gravar_atomico(caminho_absoluto_atual.clone(), conteudo.into_bytes()).await?;
     } else {
-        std::fs::write(&caminho_absoluto_destino, conteudo)?;
+        nv::gravar_atomico(caminho_absoluto_destino.clone(), conteudo.into_bytes()).await?;
         std::fs::remove_file(&caminho_absoluto_atual)?;
         // `_anexos/<id>` (tinta do Modo de escrita, anexos locais) mora ao lado do `.md`: muda de pasta junto.
         let anexos_antes = anexos_dir(&state, &id, &caminho_relativo_atual);
@@ -440,16 +477,39 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     }
     reindexar_itens(&state.db, raiz, &mudancas).await?;
 
-    Ok(Json(serde_json::json!({ "id": fm.id, "titulo": fm.titulo, "atualizado_em": fm.atualizado_em })))
+    Ok(Json(serde_json::json!({ "id": fm.id, "titulo": fm.titulo, "atualizado_em": fm.atualizado_em, "versao": versao_nova })))
 }
 
 /// `{escopo: "apenas_eu"|"todos"}` no corpo (seção 11.4) — não muda o efeito
 /// local, já que só existe uma cópia física do arquivo por instância; a
 /// distinção importa pro sync entre dispositivos de Equipe (seção 6), fora
 /// de escopo do reindex síncrono, por isso não é lida aqui.
+#[derive(Debug, Deserialize)]
+pub struct ArquivarPayload {
+    pub arquivada: bool,
+}
+
+/// Arquiva ou desarquiva a nota: grava `arquivada` no front-matter; o arquivo não muda de lugar.
+pub async fn arquivar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(payload): Json<ArquivarPayload>) -> AppResult<Json<serde_json::Value>> {
+    let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
+    let caminho_absoluto = absoluto(&state, &caminho_relativo);
+    let _trava = nv::travar(&id).await;
+    let bruto = nv::ler(&caminho_absoluto).await?;
+    let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
+    let mut fm = doc.front_matter;
+    if fm.arquivada != payload.arquivada {
+        fm.arquivada = payload.arquivada;
+        nv::incrementar(&mut fm);
+        nv::gravar_atomico(caminho_absoluto.clone(), frontmatter::serialize(&fm, &doc.body)?.into_bytes()).await?;
+        reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo)]).await?;
+    }
+    Ok(Json(serde_json::json!({ "id": fm.id, "arquivada": fm.arquivada })))
+}
+
 pub async fn excluir(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>) -> AppResult<Json<serde_json::Value>> {
     let caminho_relativo = caminho_por_id(&state, &usuario.0, &id).await?;
-    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let _trava = nv::travar(&id).await;
+    let bruto = nv::ler(&absoluto(&state, &caminho_relativo)).await?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     crate::routes::lixeira::mover(&state, &caminho_relativo, "nota", &doc.front_matter.titulo, &anexos_dir(&state, &id, &caminho_relativo))?;
     reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Removido(caminho_relativo)]).await?;
@@ -480,10 +540,12 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
     let espaco = crate::espacos::espaco_do_caminho(&state.config.notes_root, &caminho_relativo).unwrap_or_else(|| crate::espacos::fisica("pessoal", &usuario.0));
     let midia = crate::routes::media::enviar_para_biblioteca(&state, &espaco, multipart).await?;
     let referencia_relativa = midia.caminho;
-    let bruto = std::fs::read_to_string(absoluto(&state, &caminho_relativo))?;
+    let _trava = nv::travar(&id).await;
+    let bruto = nv::ler(&absoluto(&state, &caminho_relativo)).await?;
     let doc = frontmatter::parse::<NotaFrontMatter>(&bruto)?;
     let mut fm = doc.front_matter;
     fm.atualizado_em = Utc::now();
+    let versao_nova = nv::incrementar(&mut fm);
     let linha_md = if midia.mime.starts_with("image/") {
         format!("![{}]({referencia_relativa})", midia.nome)
     } else {
@@ -491,7 +553,7 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
     };
     let novo_corpo = if doc.body.trim().is_empty() { linha_md.clone() } else { format!("{}\n\n{linha_md}", doc.body.trim_end()) };
     let conteudo = frontmatter::serialize(&fm, &novo_corpo)?;
-    std::fs::write(absoluto(&state, &caminho_relativo), conteudo)?;
+    nv::gravar_atomico(absoluto(&state, &caminho_relativo), conteudo.into_bytes()).await?;
     reindexar_itens(&state.db, &state.config.notes_root, &[Mudanca::Escrito(caminho_relativo.clone())]).await?;
 
     Ok(Json(serde_json::json!({
@@ -499,6 +561,7 @@ pub async fn enviar_anexo(State(state): State<AppState>, Extension(usuario): Ext
         "url_relativa": referencia_relativa,
         "tamanho_bytes": midia.tamanho_bytes,
         "corpo": novo_corpo,
+        "versao": versao_nova,
     })))
 }
 
@@ -516,4 +579,17 @@ pub async fn obter_anexo(State(state): State<AppState>, Extension(usuario): Exte
     }
     let bytes = std::fs::read(&caminho)?;
     Ok(([(axum::http::header::CONTENT_TYPE, mime_por_extensao(&nome_arquivo).to_string())], bytes))
+}
+
+/// Limite explícito do corpo de uma nota (o padrão do axum é 2 MB).
+pub const TAMANHO_MAXIMO_NOTA_BYTES: usize = 10 * 1024 * 1024;
+
+/// O extrator do axum devolve 413 em texto puro e em inglês; troca pelo
+/// formato do catálogo `{error, message}`.
+pub async fn traduzir_413(resposta: axum::response::Response) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if resposta.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE {
+        return crate::error::AppError::new(ecos_core::ErrorCode::NoteTooLarge).into_response();
+    }
+    resposta
 }

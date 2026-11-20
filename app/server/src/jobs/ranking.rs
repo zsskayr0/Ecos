@@ -202,6 +202,13 @@ fn fator_urgencia(scheduled_at: Option<&str>, due_date: Option<&str>, hoje: chro
     }
 }
 
+/// Faixa de score das Tarefas no Feed: as Notas chegam a `PESO_NOTA_NO_FEED` e, com o score cru (0,07–0,85), as
+/// Tarefas ficavam todas abaixo das 40 primeiras Notas e nunca apareciam. Mapeia o boost (0–0,85) para 0,55–1,0:
+/// a Tarefa urgente de prioridade alta compete com as Notas do topo, e a sem pressa entra no meio da lista.
+fn normalizar_score_tarefa(bruto: f64) -> f64 {
+    0.55 + 0.45 * (bruto / 0.85).clamp(0.0, 1.0)
+}
+
 async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
     let hoje = Utc::now().date_naive();
 
@@ -223,7 +230,7 @@ async fn recalcular_tarefas_encaixadas(db: &IndexDb) -> anyhow::Result<()> {
         .into_iter()
         .filter_map(|(id, espaco, scheduled_at, due_date, prioridade, ref_em)| {
             let fator = fator_urgencia(scheduled_at.as_deref(), due_date.as_deref(), hoje)?;
-            let score = ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(&prioridade)) * fator;
+            let score = normalizar_score_tarefa(ecos_core::ranking::boost_tarefa_prioridade(prioridade_de_str(&prioridade)) * fator);
             Some((score, id, espaco, ref_em, fator >= 1.0))
         })
         .collect();

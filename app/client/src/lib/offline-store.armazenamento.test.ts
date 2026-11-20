@@ -6,7 +6,7 @@ const idbOriginal = globalThis.indexedDB;
 
 function abrirLegado(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const abrir = indexedDB.open("ecos-offline-v1", 1);
+    const abrir = indexedDB.open("ecos-offline-v1");
     abrir.onupgradeneeded = () => {
       abrir.result.createObjectStore("respostas", { keyPath: "chave" });
       abrir.result.createObjectStore("fila", { keyPath: "id" });
@@ -74,11 +74,11 @@ it("onversionchange: fecha a conexão antiga para não bloquear outra aba", asyn
   const loja = await import("./offline-store");
   await loja.listarMutacoesPendentes(); // abre a conexão do módulo
   const atualizou = await new Promise<boolean>((resolve) => {
-    const pedido = indexedDB.open("ecos-offline-v1", 2);
+    const pedido = indexedDB.open("ecos-offline-v1", 3);
     pedido.onblocked = () => resolve(false);
     pedido.onsuccess = () => { pedido.result.close(); resolve(true); };
   });
   expect(atualizou).toBe(true);
-  // E o módulo reabre sozinho depois (na versão 2 já existente a abertura em v1 falha: cai para memória sem travar).
+  // E o módulo reabre sozinho depois (na versão 3 já existente a abertura em v2 falha: cai para memória sem travar).
   expect(await loja.listarMutacoesPendentes()).toBeDefined();
 });

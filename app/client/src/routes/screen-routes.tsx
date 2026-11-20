@@ -69,10 +69,12 @@ const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"
 const ProblemasSincronizacaoScreen = carregar(() => import("@/screens/Settings/ProblemasSincronizacaoScreen"), "ProblemasSincronizacaoScreen");
 const ProblemasArquivosScreen = carregar(() => import("@/screens/Settings/ProblemasArquivosScreen"), "ProblemasArquivosScreen");
 const CalendarPreferencesScreen = carregar(() => import("@/screens/Settings/CalendarPreferencesScreen"), "CalendarPreferencesScreen");
+const FeedConfigScreen = carregar(() => import("@/screens/Settings/FeedConfigScreen"), "FeedConfigScreen");
 const TarefasConfigScreen = carregar(() => import("@/screens/Settings/TarefasConfigScreen"), "TarefasConfigScreen");
 const NotasConfigScreen = carregar(() => import("@/screens/Settings/NotasConfigScreen"), "NotasConfigScreen");
 const EditorConfigScreen = carregar(() => import("@/screens/Settings/EditorConfigScreen"), "EditorConfigScreen");
 const PastasArquivosScreen = carregar(() => import("@/screens/Settings/PastasArquivosScreen"), "PastasArquivosScreen");
+const PastasTrancadasScreen = carregar(() => import("@/screens/Settings/PastasTrancadasScreen"), "PastasTrancadasScreen");
 const IdiomaRegiaoScreen = carregar(() => import("@/screens/Settings/IdiomaRegiaoScreen"), "IdiomaRegiaoScreen");
 const AtalhosScreen = carregar(() => import("@/screens/Settings/AtalhosScreen"), "AtalhosScreen");
 const NotificacoesPreferenciasScreen = carregar(() => import("@/screens/Settings/NotificacoesPreferenciasScreen"), "NotificacoesPreferenciasScreen");
@@ -139,6 +141,7 @@ export const screenRoutes = (
     <Route path="/cofre/transacao/:id" element={tela(VaultTransacaoEntry)} />
     <Route path="/cofre/*" element={tela(VaultEntry)} />
 
+
     <Route path="/equipe/nova" element={tela(TeamCreateJoinScreen)} />
     <Route path="/equipe/escanear" element={tela(EscanearQrScreen)} />
     <Route path="/equipes" element={tela(TeamsScreen, <SkeletonEquipes />)} />
@@ -171,9 +174,11 @@ export const screenRoutes = (
       <Route path="arquivos/problemas" element={tela(ProblemasArquivosScreen)} />
       <Route path="uso-diario" element={<Navigate to="/configuracoes/tarefas" replace />} />
       <Route path="tarefas" element={tela(TarefasConfigScreen)} />
+      <Route path="feed" element={tela(FeedConfigScreen)} />
       <Route path="notas" element={tela(NotasConfigScreen)} />
       <Route path="editor" element={tela(EditorConfigScreen)} />
       <Route path="pastas-arquivos" element={tela(PastasArquivosScreen)} />
+      <Route path="pastas-trancadas" element={tela(PastasTrancadasScreen)} />
       <Route path="idioma-regiao" element={tela(IdiomaRegiaoScreen)} />
       <Route path="atalhos" element={tela(AtalhosScreen)} />
       <Route path="organizacao" element={tela(OrganizationScreen, <SkeletonOrganizacao />)} />

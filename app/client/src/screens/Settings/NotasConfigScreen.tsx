@@ -1,7 +1,7 @@
-import { Maximize2, Pencil, PanelRight } from "lucide-react";
+import { FileText, Maximize2, Pencil, PanelRight, ScrollText } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 import { useIsDesktop } from "@/lib/use-viewport";
-import { Cabecalho, Linha, Secao, usePreferencias } from "./campos-config";
+import { Cabecalho, Linha, Secao, Segmentado, usePreferencias } from "./campos-config";
 import { LinhasPastaETags } from "./novo-item-config";
 
 /** Tudo que é só de notas: como uma nota abre e com o que uma nota nova nasce. */
@@ -19,6 +19,12 @@ export function NotasConfigScreen() {
         </Linha>
         <Linha Icone={Pencil} titulo="Abrir notas em edição" descricao="Ao abrir uma nota existente, o texto já fica editável. Desligado, ela abre em visualização e você alterna quando quiser.">
           <Toggle checked={prefs.notaAbreEditando} onChange={(notaAbreEditando) => alterar({ notaAbreEditando })} label="Abrir notas em edição" />
+        </Linha>
+        <Linha Icone={ScrollText} titulo="Leitura no celular" descricao="Fluido: o texto reflui na largura da tela. Página: folha A4 reduzida, com zoom pela pinça. Trocar numa nota vale por 2 minutos depois que você a fecha; depois volta a este padrão. Notas com escrita à mão ficam sempre em Página.">
+          <Segmentado valor={prefs.notaModoLeitura} opcoes={[{ id: "fluido", rotulo: "Fluido", Icone: ScrollText }, { id: "pagina", rotulo: "Página", Icone: FileText }]} onChange={(notaModoLeitura) => alterar({ notaModoLeitura })} label="Leitura da nota no celular" />
+        </Linha>
+        <Linha Icone={Pencil} titulo="Edição no celular" descricao="O modo com que a nota abre ao editar. Pode ser diferente do da leitura, mas aí a tela muda ao tocar em Editar.">
+          <Segmentado valor={prefs.notaModoEdicao} opcoes={[{ id: "fluido", rotulo: "Fluido", Icone: ScrollText }, { id: "pagina", rotulo: "Página", Icone: FileText }]} onChange={(notaModoEdicao) => alterar({ notaModoEdicao })} label="Edição da nota no celular" />
         </Linha>
       </Secao>
 

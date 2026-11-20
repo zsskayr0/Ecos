@@ -390,11 +390,11 @@ pub(super) fn gravar_nota(tx: &rusqlite::Connection, item: &NotaColetada, existe
     let fm = &item.front_matter;
     tx.execute(
         "INSERT INTO nota (id, caminho_arquivo, titulo, modo, pasta_id, espaco, criado_em, \
-         atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca, criado_por) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, (SELECT id FROM usuario WHERE id = ?11)) \
+         atualizado_em, ultima_revisao_em, hash_conteudo, contagem_acessos_7d, ocr_texto_busca, criado_por, arquivada) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, (SELECT id FROM usuario WHERE id = ?11), ?12) \
          ON CONFLICT (id) DO UPDATE SET caminho_arquivo = excluded.caminho_arquivo, titulo = excluded.titulo, modo = excluded.modo, \
          pasta_id = excluded.pasta_id, espaco = excluded.espaco, criado_em = excluded.criado_em, atualizado_em = excluded.atualizado_em, \
-         ultima_revisao_em = excluded.ultima_revisao_em, hash_conteudo = excluded.hash_conteudo, criado_por = excluded.criado_por",
+         ultima_revisao_em = excluded.ultima_revisao_em, hash_conteudo = excluded.hash_conteudo, criado_por = excluded.criado_por, arquivada = excluded.arquivada",
         params![
             fm.id,
             item.caminho_relativo,
@@ -407,6 +407,7 @@ pub(super) fn gravar_nota(tx: &rusqlite::Connection, item: &NotaColetada, existe
             fm.ultima_revisao_em.map(|d| d.to_rfc3339()),
             item.hash_conteudo,
             fm.criado_por,
+            fm.arquivada,
         ],
     )?;
     if existente {
