@@ -63,6 +63,9 @@ pub struct Traco {
     pub ferramenta: Ferramenta,
     pub cor: String,
     pub espessura: f64,
+    /// Marca-texto com ponta reta (`butt`); ausente = ponta redonda.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reta: bool,
     pub pontos: Vec<Ponto>,
     /// Caneta: contorno fechado (preenchido). Marca-texto: linha central (traçada com `espessura`).
     pub d: String,
@@ -179,8 +182,8 @@ pub fn montar_svg(largura: u32, tracos: &[Traco]) -> String {
         match t.ferramenta {
             Ferramenta::Caneta => s.push_str(&format!("  <path d=\"{}\" fill=\"{cor}\"/>\n", t.d)),
             Ferramenta::MarcaTexto => s.push_str(&format!(
-                "  <path d=\"{}\" fill=\"none\" stroke=\"{cor}\" stroke-width=\"{}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\"0.35\"/>\n",
-                t.d, t.espessura
+                "  <path d=\"{}\" fill=\"none\" stroke=\"{cor}\" stroke-width=\"{}\" stroke-linecap=\"{}\" stroke-linejoin=\"round\" stroke-opacity=\"0.35\"/>\n",
+                t.d, t.espessura, if t.reta { "butt" } else { "round" }
             )),
         }
     }
@@ -245,7 +248,7 @@ mod testes {
     use super::*;
 
     fn traco(id: &str) -> Traco {
-        Traco { id: id.into(), ferramenta: Ferramenta::Caneta, cor: "auto".into(), espessura: 2.0, pontos: vec![Ponto { x: 10.0, y: 20.0, pressao: 0.5 }], d: "M10 20 L12 22 Z".into(), criado_em: Utc::now(), apagado_em: None }
+        Traco { id: id.into(), ferramenta: Ferramenta::Caneta, cor: "auto".into(), espessura: 2.0, reta: false, pontos: vec![Ponto { x: 10.0, y: 20.0, pressao: 0.5 }], d: "M10 20 L12 22 Z".into(), criado_em: Utc::now(), apagado_em: None }
     }
 
     fn payload(tracos: Vec<Traco>) -> SalvarTinta {

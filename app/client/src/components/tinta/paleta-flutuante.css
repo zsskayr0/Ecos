@@ -50,6 +50,7 @@
 .ecos-paleta-aba[data-saindo="true"][data-lado="esquerda"] { animation-name: ecos-aba-esq-sai; }
 .ecos-paleta-aba[data-saindo="true"][data-lado="baixo"] { animation-name: ecos-aba-baixo-sai; }
 .ecos-paleta-aba[data-saindo="true"][data-lado="cima"] { animation-name: ecos-aba-cima-sai; }
+.ecos-paleta-aba[data-troca="true"]:not([data-saindo="true"]) { animation: none; }
 @media (prefers-reduced-motion: reduce) { .ecos-paleta-aba { animation: none !important; } }
 
 
@@ -66,3 +67,27 @@
 /* Assinatura: cada traço do esqueleto é "escrito" em sequência, em velocidade constante. */
 .ecos-traco { stroke-dasharray: 1 2; stroke-linecap: round; stroke-dashoffset: 1; animation-name: ecos-rabisco; animation-timing-function: linear; animation-fill-mode: both; }
 @media (prefers-reduced-motion: reduce) { .ecos-traco { animation: none; stroke-dashoffset: 0; } }
+
+/* Escrevendo, a nota é uma folha só: sem organização, equipe, conexões nem contador em volta. */
+.ecos-detail-page[data-escrevendo] [data-oculto-escrevendo] { display: none; }
+
+/* Entrada e saída da paleta (troca com a barra de formatação do modo teclado). */
+@keyframes ecos-paleta-entra { from { opacity: 0; transform: scale(0.9) translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ecos-paleta-sai { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.9) translateY(6px); } }
+.ecos-paleta-entra { animation: ecos-paleta-entra 320ms cubic-bezier(0.2, 0.9, 0.25, 1.1) both; }
+.ecos-paleta-sai { animation: ecos-paleta-sai 220ms cubic-bezier(0.5, 0, 0.8, 0.4) both; }
+@keyframes ecos-fade-entra { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ecos-fade-sai { from { opacity: 1; } to { opacity: 0; } }
+.ecos-barra-entra, .ecos-paleta-fade-entra { animation: ecos-fade-entra 200ms ease-out both; }
+.ecos-paleta-fade-sai { animation: ecos-fade-sai 50ms ease-in both; pointer-events: none; }
+.ecos-barra-sai { animation: ecos-fade-sai 50ms ease-in both; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .ecos-paleta-entra, .ecos-paleta-sai, .ecos-barra-entra, .ecos-barra-sai, .ecos-paleta-fade-entra, .ecos-paleta-fade-sai { animation: none; } }
+
+/* Seletor de cor: troca de modo (Amostras ⇄ Espectro) e botões do grupo próprio. */
+@keyframes ecos-modo-entra-dir { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes ecos-modo-entra-esq { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.ecos-modo-entra { animation: ecos-modo-entra-dir 260ms cubic-bezier(0.2, 0.9, 0.25, 1) both; }
+.ecos-modo-entra[data-de="esq"] { animation-name: ecos-modo-entra-esq; }
+@keyframes ecos-botao-entra { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
+.ecos-botao-entra { animation: ecos-botao-entra 240ms cubic-bezier(0.2, 0.9, 0.25, 1.25) 80ms both; }
+@media (prefers-reduced-motion: reduce) { .ecos-modo-entra, .ecos-botao-entra { animation: none; } }

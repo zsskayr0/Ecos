@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
  * Recolhe/expande o conteúdo animando a largura (barra horizontal) ou a altura (barra na lateral),
  * em vez de sumir e aparecer: o conteúdo desliza para dentro do ponto de onde sai. Fechado, fica inerte.
  */
-export function Colapso({ aberto, vertical, children, duracao = 320 }: { aberto: boolean; vertical: boolean; children: ReactNode; duracao?: number }) {
+export function Colapso({ aberto, vertical, children, duracao = 320, zerarCruzado = false }: { aberto: boolean; vertical: boolean; children: ReactNode; duracao?: number; zerarCruzado?: boolean }) {
   // Só recorta durante a animação; assentado e aberto, deixa as abas do seletor transbordarem.
   const [assentado, setAssentado] = useState(aberto);
   useEffect(() => {
@@ -16,7 +16,10 @@ export function Colapso({ aberto, vertical, children, duracao = 320 }: { aberto:
   const tempo = `${duracao}ms cubic-bezier(0.2, 0.9, 0.25, 1)`;
   return (
     <div aria-hidden={!aberto || undefined} className="grid min-h-0 min-w-0 motion-reduce:!transition-none"
-      style={{ [eixo]: aberto ? "1fr" : "0fr", opacity: aberto ? 1 : 0, transition: `${vertical ? "grid-template-rows" : "grid-template-columns"} ${tempo}, opacity ${duracao * 0.7}ms ease` }}>
+      style={{ [eixo]: aberto ? "1fr" : "0fr", opacity: aberto ? 1 : 0,
+        // Fechado, o outro eixo também some (senão a bolinha fica oval, com a largura/altura da barra).
+        ...(zerarCruzado ? { [vertical ? "maxWidth" : "maxHeight"]: aberto ? 800 : 0 } : {}),
+        transition: `${vertical ? "grid-template-rows" : "grid-template-columns"} ${tempo}, opacity ${duracao * 0.7}ms ease${zerarCruzado ? `, ${vertical ? "max-width" : "max-height"} ${tempo}` : ""}` }}>
       <div className={`min-h-0 min-w-0 ${aberto && assentado ? "" : "overflow-hidden"}`} {...(aberto ? {} : ({ inert: "" } as object))}>{children}</div>
     </div>
   );

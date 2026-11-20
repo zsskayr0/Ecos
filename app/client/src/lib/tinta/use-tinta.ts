@@ -33,15 +33,19 @@ export interface TintaControle {
   gravarAgora: () => Promise<void>;
 }
 
+/** Última tinta lida de cada Nota: a edição nasce com ela (sem tela em branco ao passar da leitura para a edição) e relê em seguida. */
+const ULTIMA_LEITURA = new Map<string, { tracos: Traco[]; largura: number | null; revisao: number }>();
+
 export function useTinta(notaId: string | undefined): TintaControle {
-  const [carregado, setCarregado] = useState(false);
-  const [tracos, setTracos] = useState<Traco[]>([]);
-  const [largura, setLargura] = useState<number | null>(null);
+  const semente = notaId ? ULTIMA_LEITURA.get(notaId) : undefined;
+  const [carregado, setCarregado] = useState(!!semente);
+  const [tracos, setTracos] = useState<Traco[]>(semente?.tracos ?? []);
+  const [largura, setLargura] = useState<number | null>(semente?.largura ?? null);
   const [hist, setHist] = useState<Historico>(historicoVazio);
   const [estado, setEstado] = useState<EstadoGravacao>("ocioso");
   const [erro, setErro] = useState<string | null>(null);
   const [versaoCarga, setVersaoCarga] = useState(0);
-  const revisao = useRef(0);
+  const revisao = useRef(semente?.revisao ?? 0);
   const sujo = useRef(false);
   const emCurso = useRef<Promise<void> | null>(null);
   const tracosRef = useRef(tracos);
@@ -54,9 +58,11 @@ export function useTinta(notaId: string | undefined): TintaControle {
   useEffect(() => {
     if (!notaId) return;
     let ativo = true;
-    setCarregado(false);
+    if (!ULTIMA_LEITURA.has(notaId) || versaoCarga > 0) setCarregado(false);
     notas.tinta.obter(notaId).then((t) => {
       if (!ativo) return;
+      if (sujo.current && ULTIMA_LEITURA.has(notaId) && versaoCarga === 0) return; // já mexeram na tinta semeada: a leitura não passa por cima
+      ULTIMA_LEITURA.set(notaId, { tracos: t.tracos, largura: t.largura_coluna, revisao: t.revisao });
       revisao.current = t.revisao;
       sujo.current = false;
       setTracos(t.tracos);
@@ -85,6 +91,7 @@ export function useTinta(notaId: string | undefined): TintaControle {
       try {
         const r = await notas.tinta.salvar(notaId, { revisao_base: revisao.current, largura_coluna: larguraRef.current ?? LARGURA_COLUNA_PADRAO, tracos: lista });
         revisao.current = r.revisao;
+        ULTIMA_LEITURA.set(notaId, { tracos: lista, largura: larguraRef.current, revisao: r.revisao });
         setEstado(sujo.current ? "pendente" : "salvo");
         setErro(null);
       } catch (e) {

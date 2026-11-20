@@ -4,10 +4,12 @@
  * alinhada ao gatilho, e a sombra da paleta maior cai sobre ela para marcar a hierarquia.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
 
 export type LadoPaleta = "baixo" | "cima" | "direita" | "esquerda";
 export interface OpcaoPaleta { valor: string; rotulo: string; conteudo: ReactNode }
+
+/** Por grupo, quem está aberto: trocar de gatilho no mesmo grupo fecha o outro na hora, sem a aba sair e voltar. */
+const abertosPorGrupo = new Map<string, () => void>();
 
 const ITEM = 26;
 const PAD = 3;
@@ -21,12 +23,18 @@ interface Props {
   /** Conteúdo livre da aba (ex.: um slide), no lugar da lista de opções. */
   conteudoAba?: ReactNode;
   lado: LadoPaleta;
-  /** Conteúdo do gatilho (a cor ou a espessura atual); a seta é desenhada aqui. */
+  /** Conteúdo do gatilho (a cor ou a espessura atual). */
   gatilho: ReactNode;
   classeGatilho: string;
+  /** Chamado ao abrir a aba (ex.: o gatilho do marca-texto também escolhe a ferramenta). */
+  aoAbrir?: () => boolean | void;
+  /** Gatilhos do mesmo grupo se revezam: tocar em outro troca a aba direto, num toque só. */
+  grupo?: string;
+  /** Neste gatilho do grupo: é a ele que a aba de todos os gatilhos do grupo se alinha (fica no mesmo lugar ao trocar). */
+  ancora?: boolean;
 }
 
-export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteudoAba, lado, gatilho, classeGatilho }: Props) {
+export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteudoAba, lado, gatilho, classeGatilho, aoAbrir, grupo, ancora }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const aba = useRef<HTMLDivElement>(null);
   const botao = useRef<HTMLButtonElement>(null);
@@ -42,7 +50,19 @@ export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteud
     temporizador.current = window.setTimeout(() => { setAberto(false); setSaindo(false); }, 200);
   }, []);
   useEffect(() => () => window.clearTimeout(temporizador.current), []);
-  const abrir = () => { window.clearTimeout(temporizador.current); setSaindo(false); setAberto(true); };
+  const [troca, setTroca] = useState(false);
+  const fecharJa = useCallback(() => { window.clearTimeout(temporizador.current); setAberto(false); setSaindo(false); }, []);
+  const abrir = () => {
+    window.clearTimeout(temporizador.current);
+    setSaindo(false);
+    if (aoAbrir?.() === false) return;
+    const outro = grupo ? abertosPorGrupo.get(grupo) : undefined;
+    if (grupo) { if (outro && outro !== fecharJa) outro(); abertosPorGrupo.set(grupo, fecharJa); }
+    setTroca(!!outro && outro !== fecharJa);
+    setAberto(true);
+  };
+  useEffect(() => () => { if (grupo && abertosPorGrupo.get(grupo) === fecharJa) abertosPorGrupo.delete(grupo); }, [grupo, fecharJa]);
+  useEffect(() => { if (grupo && !aberto && abertosPorGrupo.get(grupo) === fecharJa) abertosPorGrupo.delete(grupo); }, [aberto, grupo, fecharJa]);
 
   // A aba nasce colada na borda da paleta, alinhada ao centro do gatilho.
   useLayoutEffect(() => {
@@ -51,7 +71,8 @@ export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteud
     if (!barra) return;
     const r = raiz.current.getBoundingClientRect();
     const b = barra.getBoundingClientRect();
-    const g = botao.current.getBoundingClientRect();
+    const alvo = grupo ? barra.querySelector<HTMLElement>(`[data-ancora-paleta="${grupo}"] button`) : null;
+    const g = (alvo ?? botao.current).getBoundingClientRect();
     const tamAba = { w: aba.current?.offsetWidth ?? LADO_ABA, h: aba.current?.offsetHeight ?? LADO_ABA };
     const cx = g.left - r.left + g.width / 2;
     const cy = g.top - r.top + g.height / 2;
@@ -62,7 +83,7 @@ export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteud
     else if (lado === "cima") setPos({ left: ref.x - tamAba.w / 2, bottom: b.height - 1 });
     else setPos({ left: ref.x - tamAba.w / 2, top: b.height - 1 });
     setAjuste(0);
-  }, [aberto, lado]);
+  }, [aberto, lado, grupo]);
   // Mantém a aba dentro da janela deslizando-a ao longo da borda (nunca descolando da paleta).
   useLayoutEffect(() => {
     if (!aberto || !aba.current) return;
@@ -77,7 +98,12 @@ export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteud
 
   useEffect(() => {
     if (!aberto) return;
-    const fora = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) fechar(); };
+    const fora = (e: PointerEvent) => {
+      if (raiz.current?.contains(e.target as Node)) return;
+      // Outro gatilho do mesmo grupo assume a aba sozinho: aqui ela não sai.
+      if (grupo && (e.target as Element | null)?.closest?.("[data-grupo-paleta]")?.getAttribute("data-grupo-paleta") === grupo) return;
+      fechar();
+    };
     const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); fechar(); botao.current?.focus(); } };
     // Se a barra rolar, o gatilho sai do lugar: a aba volta para ele.
     const barra = botao.current?.closest<HTMLElement>("[role=toolbar]");
@@ -86,26 +112,24 @@ export function SeletorPaleta({ ariaLabel, valor, opcoes = [], onChange, conteud
     document.addEventListener("pointerdown", fora);
     document.addEventListener("keydown", tecla, true);
     return () => { barra?.removeEventListener("scroll", rolou, true); document.removeEventListener("pointerdown", fora); document.removeEventListener("keydown", tecla, true); };
-  }, [aberto, fechar]);
+  }, [aberto, fechar, grupo]);
 
   const girado = aberto && !saindo;
-  const giro = lado === "cima" ? (girado ? "" : "rotate-180") : lado === "baixo" ? (girado ? "rotate-180" : "") : lado === "direita" ? (girado ? "rotate-90" : "-rotate-90") : (girado ? "-rotate-90" : "rotate-90");
   const deslocamento = lado === "baixo" || lado === "cima" ? `translateX(${ajuste}px)` : `translateY(${ajuste}px)`;
   // O recorte só vale do lado da paleta: a aba aparece "saindo" de trás dela, e a própria sombra não é cortada.
   const recorte = lado === "direita" ? "inset(-24px -24px -24px 0)" : lado === "esquerda" ? "inset(-24px 0 -24px -24px)" : lado === "cima" ? "inset(-24px -24px 0 -24px)" : "inset(0 -24px -24px -24px)";
-  const arredondar = lado === "cima" ? "rounded-t-2xl" : lado === "baixo" ? "rounded-b-2xl" : conteudoAba ? (lado === "direita" ? "rounded-r-2xl" : "rounded-l-2xl") : lado === "direita" ? "rounded-r-full" : "rounded-l-full";
+  const arredondar = lado === "cima" ? "rounded-t-xl" : lado === "baixo" ? "rounded-b-xl" : conteudoAba ? (lado === "direita" ? "rounded-r-xl" : "rounded-l-xl") : lado === "direita" ? "rounded-r-full" : "rounded-l-full";
   const sombra = lado === "cima" ? "bg-gradient-to-t" : lado === "direita" ? "bg-gradient-to-r" : lado === "esquerda" ? "bg-gradient-to-l" : "bg-gradient-to-b";
   const posSombra = lado === "cima" ? "inset-x-0 bottom-0 h-3" : lado === "baixo" ? "inset-x-0 top-0 h-3" : lado === "direita" ? "inset-y-0 left-0 w-3" : "inset-y-0 right-0 w-3";
 
   return (
-    <div ref={raiz} className="relative">
+    <div ref={raiz} className="relative" data-grupo-paleta={grupo} data-ancora-paleta={ancora ? grupo : undefined}>
       <button ref={botao} type="button" aria-haspopup="menu" aria-expanded={girado} aria-label={ariaLabel} title={ariaLabel} onClick={() => (aberto && !saindo ? fechar() : abrir())} className={classeGatilho}>
         {gatilho}
-        <ChevronDown size={14} aria-hidden className={`text-text-muted transition-transform duration-150 ${giro}`} />
       </button>
       {aberto && (
         <div ref={aba} role="menu" aria-label={ariaLabel} style={{ ...pos, clipPath: recorte, transform: deslocamento }} className="fixed z-40">
-          <div data-lado={lado} data-saindo={saindo} className={`ecos-paleta-aba relative flex flex-row border border-border bg-surface-1 shadow-nav ${arredondar}`} style={{ padding: conteudoAba ? 0 : PAD, gap: 2 }}>
+          <div data-lado={lado} data-saindo={saindo} data-troca={troca} className={`ecos-paleta-aba relative flex flex-row border border-border bg-surface-1 shadow-nav ${arredondar}`} style={{ padding: conteudoAba ? 0 : PAD, gap: 2 }}>
             {conteudoAba ?? opcoes.map((o) => {
               const ativo = o.valor === valor;
               return (

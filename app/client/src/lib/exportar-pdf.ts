@@ -4,6 +4,9 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
+import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
+import { caixa, intersecta } from "@/lib/tinta/geometria";
+import { LARGURA_COLUNA_PADRAO, type TintaNota, type Traco } from "@/lib/tinta/tipos";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { resolverSrcImagem } from "@/lib/markdown-mini";
 import { A4, DocumentoPdf, limparTexto, medir, type Cor, type Fonte } from "@/lib/pdf-simples";
@@ -84,6 +87,106 @@ async function imagemDoEmoji(emoji: string): Promise<{ bytes: Uint8Array; largur
 
 const EMOJI = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*|[\u{1F1E6}-\u{1F1FF}]{2})/gu;
 const ehEmoji = (s: string) => { const cp = s.codePointAt(0)!; return cp >= 0x2300 || s.includes("️"); };
+
+// ---------------------------------------------------------------- escrita à mão (Modo de escrita)
+
+interface FatiaTinta { bytes: Uint8Array; largura: number; altura: number; ptAltura: number }
+
+/**
+ * A tinta é posicionada por coordenadas sobre a coluna da tela, e o texto do PDF quebra linhas diferente,
+ * então ela não pode ser sobreposta ao texto: vai numa seção própria, desenhada em fatias do tamanho da página.
+ */
+async function fatiasDaTinta(tinta: TintaNota): Promise<FatiaTinta[]> {
+  const tracos = tinta.tracos.filter((t) => !t.apagado_em && t.pontos.length);
+  if (!tracos.length) return [];
+  const larguraCol = tinta.largura_coluna ?? LARGURA_COLUNA_PADRAO;
+  const escala = LARGURA / larguraCol; // px da coluna → pt do PDF
+  const altFatia = (BASE - TOPO) / escala; // altura de uma fatia, em px da coluna
+  const caixas = tracos.map((t) => ({ t, c: caixa(t) }));
+  const fim = Math.max(...caixas.map((x) => x.c.y1)) + 8;
+  const resolucao = 2;
+  const fatias: FatiaTinta[] = [];
+  for (let y0 = 0; y0 < fim; y0 += altFatia) {
+    const janela = { x0: -1e6, y0, x1: 1e6, y1: y0 + altFatia };
+    const dentro = caixas.filter((x) => intersecta(x.c, janela));
+    if (!dentro.length) continue;
+    const altura = Math.min(altFatia, fim - y0);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(larguraCol * resolucao); canvas.height = Math.max(1, Math.round(altura * resolucao));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(resolucao, resolucao); ctx.translate(0, -y0);
+    for (const { t } of dentro) {
+      const p = new Path2D(t.d);
+      const cor = t.cor === "auto" ? "#0f1729" : t.cor;
+      if (t.ferramenta === "caneta") { ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1; ctx.fillStyle = cor; ctx.fill(p); }
+      else { ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = 0.45; ctx.strokeStyle = cor; ctx.lineWidth = t.espessura; ctx.lineCap = t.reta ? "butt" : "round"; ctx.lineJoin = "round"; ctx.stroke(p); }
+    }
+    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/jpeg", 0.9));
+    if (blob) fatias.push({ bytes: new Uint8Array(await blob.arrayBuffer()), largura: canvas.width, altura: canvas.height, ptAltura: altura * escala });
+  }
+  return fatias;
+}
+
+/** Nota com tinta: o texto e a tinta ficam onde a tela os mostra (o texto continua selecionável). */
+interface NotaFiel { layout: LayoutNota; tracos: Traco[]; largura: number; imagens: Map<string, ImagemPronta> }
+
+function corHex(cor: string): Cor {
+  const m = /^#([0-9a-f]{6})$/i.exec(cor);
+  if (!m) return [0.06, 0.09, 0.16];
+  const v = parseInt(m[1], 16);
+  return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255];
+}
+
+/** Cor do texto na tela → cor no papel branco: cinzas viram texto escuro ou cinza, cores vivas ficam (no tema escuro viram o azul de link). */
+function corNoPapel(rgb: [number, number, number], escuro: boolean): Cor {
+  const [r, g, b] = rgb.map((x) => x / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max - min > 0.25) return escuro ? AZUL : [r, g, b];
+  const claridade = (r + g + b) / 3;
+  const forca = escuro ? claridade : 1 - claridade; // 1 = texto principal
+  return forca > 0.7 ? TEXTO : CINZA;
+}
+
+function escreverFiel(e: Escritor, nota: NotaFiel) {
+  const { layout, tracos, largura } = nota;
+  const escala = LARGURA / largura;
+  const topo0 = e.y;
+  const alt1 = BASE - topo0, altN = BASE - TOPO; // espaço útil da 1ª página e das seguintes, em pt
+  const inicioPt = (p: number) => (p === 0 ? 0 : alt1 + (p - 1) * altN);
+  const topoNaPagina = (p: number) => (p === 0 ? topo0 : TOPO);
+  const paginaDe = (ypx: number) => { const pt = ypx * escala; return pt < alt1 ? 0 : 1 + Math.floor((pt - alt1) / altN); };
+  // o editor reserva um vão grande abaixo do texto: vale só até a última palavra/imagem ou traço
+  const fimPx = Math.max(24, ...layout.palavras.map((w) => w.y + w.h), ...layout.imagens.map((i) => i.y + i.h), ...tracos.map((t) => caixa(t).y1)) + 8;
+  const ultima = paginaDe(Math.max(0, fimPx - 1));
+  for (let p = 0; p <= ultima; p++) {
+    if (p > 0) e.pdf.novaPagina();
+    const dy = topoNaPagina(p) - inicioPt(p); // pt a somar ao y em pt da nota
+    for (const im of layout.imagens) {
+      const pronta = nota.imagens.get(im.src);
+      if (pronta && paginaDe(im.y) === p) e.pdf.imagem(pronta.indice, MARGEM_LATERAL + im.x * escala, im.y * escala + dy, im.w * escala, im.h * escala);
+    }
+    for (const w of layout.palavras) {
+      if (paginaDe(w.y) !== p) continue;
+      const fonte: Fonte = w.codigo ? "codigo" : w.negrito ? (w.italico ? "negritoItalico" : "negrito") : w.italico ? "italico" : "normal";
+      const texto = limparTexto(w.t);
+      if (!texto) continue;
+      let tam = w.px * escala;
+      const largAlvo = w.w * escala, largReal = medir(texto, fonte, tam);
+      if (largReal > largAlvo * 1.02) tam *= Math.max(0.6, largAlvo / largReal); // a fonte do PDF é mais larga que a da tela: encolhe para não invadir a próxima palavra
+      e.pdf.texto(texto, MARGEM_LATERAL + w.x * escala, w.y * escala + dy + w.h * escala * 0.78, fonte, tam, corNoPapel(w.rgb, layout.escuro));
+    }
+    const faixa = { x0: -1e6, y0: inicioPt(p) / escala, x1: 1e6, y1: (inicioPt(p) + (p === 0 ? alt1 : altN)) / escala };
+    for (const t of tracos) {
+      if (!intersecta(caixa(t), faixa)) continue;
+      const cor = t.cor === "auto" ? TEXTO : corHex(t.cor);
+      if (t.ferramenta === "caneta") e.pdf.caminho(t.d, escala, MARGEM_LATERAL, dy, { cor, preencher: true });
+      else e.pdf.caminho(t.d, escala, MARGEM_LATERAL, dy, { cor, preencher: false, marca: true, largura: t.espessura, ponta: t.reta ? "reta" : "redonda" });
+    }
+  }
+  e.y = topoNaPagina(ultima) + Math.max(0, fimPx * escala - inicioPt(ultima)) + 6;
+}
 
 // ---------------------------------------------------------------- texto em linhas, com negrito/itálico/emoji
 
@@ -298,13 +401,13 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
   }
 }
 
-function escreverDocumento(e: Escritor, d: Documento, raiz: Element) {
+function escreverDocumento(e: Escritor, d: Documento, raiz: Element | null) {
   e.texto([{ t: d.tipo === "nota" ? "NOTA" : "TAREFA", f: "negrito" }], { tamanho: 8, cor: CINZA, depois: 2 });
   e.texto([{ t: d.titulo, f: "negrito" }], { tamanho: 20, depois: 4 });
   e.texto([{ t: d.meta.join("  ·  "), f: "normal" }], { tamanho: 10, cor: CINZA, depois: 2 });
   if (d.tags.length) e.texto([{ t: d.tags.map((t) => `#${t}`).join("  "), f: "normal" }], { tamanho: 10, cor: AZUL, depois: 2 });
   e.regua();
-  escreverBlocos(e, raiz, d);
+  if (raiz) escreverBlocos(e, raiz, d);
 }
 
 /** Gera um PDF com as notas e tarefas escolhidas (uma por página) e o entrega como download, igual ao .zip. */
@@ -336,10 +439,42 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   for (const d of docs) for (const m of `${d.titulo} ${d.tags.join(" ")}`.matchAll(EMOJI)) if (ehEmoji(m[0]) && !emojis.has(m[0])) registrar(emojis, m[0], imagemDoEmoji(m[0]));
   await Promise.all(pedidos);
 
+  // Tinta das notas. Se medir o texto falhar, a escrita sai numa seção à parte; se a tinta não carregar, sai só o texto.
+  const tintas: { fiel?: NotaFiel; fatias: FatiaTinta[] }[] = await Promise.all(docs.map(async (d) => {
+    if (d.tipo !== "nota") return { fatias: [] };
+    try {
+      const tinta = await notas.tinta.obter(d.id);
+      const tracos = tinta.tracos.filter((t) => !t.apagado_em && t.pontos.length);
+      if (!tracos.length) return { fatias: [] };
+      const largura = tinta.largura_coluna ?? LARGURA_COLUNA_PADRAO;
+      try {
+        const layout = await medirNota(d.corpo, d.id, largura);
+        const imgs = new Map<string, ImagemPronta>();
+        await Promise.all(layout.imagens.map(async (im) => {
+          if (imgs.has(im.src)) return;
+          const r = await imagemDaRede(im.src);
+          if (r) imgs.set(im.src, { indice: pdf.adicionarImagem(r.bytes, r.largura, r.altura), largura: r.largura, altura: r.altura });
+        }));
+        return { fiel: { layout, tracos, largura, imagens: imgs }, fatias: [] };
+      } catch { return { fatias: await fatiasDaTinta(tinta) }; }
+    } catch { return { fatias: [] }; }
+  }));
+
   const e = new Escritor(pdf, imagens, emojis);
   docs.forEach((d, i) => {
     if (i > 0) { pdf.novaPagina(); e.y = TOPO; }
-    escreverDocumento(e, d, raizes[i]);
+    escreverDocumento(e, d, tintas[i].fiel ? null : raizes[i]);
+    if (tintas[i].fiel) escreverFiel(e, tintas[i].fiel!);
+    if (tintas[i].fatias.length) {
+      pdf.novaPagina(); e.y = TOPO;
+      e.texto([{ t: `Escrita à mão · ${d.titulo}`, f: "negrito" }], { tamanho: 8, cor: CINZA, depois: 4 });
+      for (const f of tintas[i].fatias) {
+        const h = f.ptAltura;
+        if (e.y + h > BASE) { pdf.novaPagina(); e.y = TOPO; }
+        pdf.imagem(pdf.adicionarImagem(f.bytes, f.largura, f.altura), MARGEM_LATERAL, e.y, LARGURA, h);
+        e.y += h + 4;
+      }
+    }
   });
   e.espaco(10);
   e.texto([{ t: `Ecos · gerado em ${new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`, f: "normal" }], { tamanho: 8, cor: [0.58, 0.64, 0.72] });

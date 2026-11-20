@@ -22,12 +22,14 @@ export type FerramentaUI = Ferramenta | "borracha" | "laco";
 
 export type ModoBorracha = "traco" | "trecho";
 
-export interface Pincel { ferramenta: FerramentaUI; cor: string; espessura: number; /** Borracha: apaga o traço inteiro ou só o trecho tocado. */ modoBorracha?: ModoBorracha }
+export interface Pincel { ferramenta: FerramentaUI; cor: string; espessura: number; /** Marca-texto com ponta reta. */ reta?: boolean; /** Borracha: diâmetro em px da tela (padrão 20). */ tamanhoBorracha?: number; /** Borracha: apaga o traço inteiro ou só o trecho tocado. */ modoBorracha?: ModoBorracha; /** Borracha: só atinge traços de marca-texto. */ soMarca?: boolean }
 
 interface Props {
   largura: number;
   tracos: readonly Traco[];
   escrevendo: boolean;
+  /** Modo texto no celular: a folha (cor e pautas) aparece como no Modo de escrita, sem ligar a caneta. */
+  folhaPlana?: boolean;
   pincel: Pincel;
   dedoDesenha: boolean;
   onOperacao: (op: Operacao) => void;
@@ -39,6 +41,7 @@ interface Props {
 }
 
 const RAIO_BORRACHA = 10;
+const raioBorracha = (p: Pincel) => (p.tamanhoBorracha ?? 2 * RAIO_BORRACHA) / 2;
 /** Raio (px da tela) da alça de ampliar da seleção e folga da caixa em volta dos traços. */
 const RAIO_ALCA = 14;
 /** Dois cliques no botão da caneta dentro deste intervalo = duplo clique. */
@@ -67,7 +70,7 @@ function corTexto(): { cor: string; escuro: boolean } {
   return { cor: `rgb(${r} ${g} ${b})`, escuro: (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5 };
 }
 
-function desenharTraco(ctx: CanvasRenderingContext2D, t: Pick<Traco, "ferramenta" | "cor" | "espessura" | "d">, tema: { cor: string; escuro: boolean }, p: Path2D) {
+function desenharTraco(ctx: CanvasRenderingContext2D, t: Pick<Traco, "ferramenta" | "cor" | "espessura" | "d" | "reta">, tema: { cor: string; escuro: boolean }, p: Path2D) {
   const cor = t.cor === "auto" ? tema.cor : t.cor;
   if (t.ferramenta === "caneta") {
     ctx.globalCompositeOperation = "source-over";
@@ -80,7 +83,7 @@ function desenharTraco(ctx: CanvasRenderingContext2D, t: Pick<Traco, "ferramenta
     ctx.globalAlpha = tema.escuro ? 0.4 : 0.45;
     ctx.strokeStyle = cor;
     ctx.lineWidth = t.espessura;
-    ctx.lineCap = "round";
+    ctx.lineCap = t.reta ? "butt" : "round";
     ctx.lineJoin = "round";
     ctx.stroke(p);
   }
@@ -102,7 +105,7 @@ type Gesto =
   | { tipo: "escalar"; id: number; ox: number; oy: number; r0: number; fator: number }
   | { tipo: "rolagem"; id: number; x: number; y: number; alvo: HTMLElement | Element; lateral: HTMLElement | null };
 
-export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, onOperacao, onAlternarCaneta, estiloFolha = "lisa", children }: Props) {
+export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, pincel, dedoDesenha, onOperacao, onAlternarCaneta, estiloFolha = "lisa", children }: Props) {
   const fora = useRef<HTMLDivElement>(null);
   const dentro = useRef<HTMLDivElement>(null);
   const tela = useRef<HTMLCanvasElement>(null);
@@ -122,6 +125,24 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
   const espera = useRef({ timer: 0, ancora: { x: 0, y: 0 } });
   /** Botão lateral da caneta: estado anterior e instante do último clique (duplo clique sem tocar a tela). */
   const botaoLateral = useRef({ apertado: false, quando: 0 });
+  /** Último instante em que a caneta apareceu sobre a folha (toque ou pairando). */
+  const ultimaCaneta = useRef(0);
+  const alternarRef = useRef(onAlternarCaneta);
+  alternarRef.current = onAlternarCaneta;
+  // Em tablets Samsung o navegador não informa o botão lateral nos eventos de ponteiro: apertá-lo só tira o foco da janela (blur) por um instante.
+  // Se a caneta estava em uso há pouco, esse blur vale como um clique do botão e alterna caneta ↔ marca-texto.
+  useEffect(() => {
+    if (!escrevendo) return;
+    let ultimo = 0;
+    const clique = () => {
+      const agora = performance.now();
+      if (agora - ultimaCaneta.current > 60000 || agora - ultimo < 800) return;
+      ultimo = agora;
+      alternarRef.current?.();
+    };
+    window.addEventListener("blur", clique);
+    return () => window.removeEventListener("blur", clique);
+  }, [escrevendo]);
   /** Traços selecionados pelo laço. */
   const [selecao, setSelecao] = useState<string[]>([]);
   const [editandoSelecao, setEditandoSelecao] = useState(false);
@@ -195,7 +216,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
       if (apagando?.has(t.id)) {
         // Por trecho: mostra já só o que vai sobrar; por traço: some inteiro.
         if (g?.tipo === "borracha" && g.parcial) {
-          for (const pedaco of cortar(t, g.caminho, RAIO_BORRACHA / s)) desenharTraco(ctx, t, tema.current, new Path2D(gerarD(t.ferramenta, pedaco, t.espessura)));
+          for (const pedaco of cortar(t, g.caminho, raioBorracha(estado.current.pincel) / s)) desenharTraco(ctx, t, tema.current, new Path2D(gerarD(t.ferramenta, pedaco, t.espessura)));
         }
         continue;
       }
@@ -234,7 +255,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
     }
     ctx.setLineDash([]);
     if (g?.tipo === "desenho" && p.ferramenta !== "borracha" && p.ferramenta !== "laco" && g.pontos.length) {
-      desenharTraco(ctx, { ferramenta: p.ferramenta, cor: p.cor, espessura: p.espessura, d: "" }, tema.current, new Path2D(gerarD(p.ferramenta, g.pontos, p.espessura)));
+      desenharTraco(ctx, { ferramenta: p.ferramenta, cor: p.cor, espessura: p.espessura, reta: p.reta, d: "" }, tema.current, new Path2D(gerarD(p.ferramenta, g.pontos, p.espessura)));
     }
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -317,10 +338,10 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
 
   const apagarEm = (g: Extract<Gesto, { tipo: "borracha" }>, e: PointerEvent) => {
     const { x, y } = ponto(e);
-    const raio = RAIO_BORRACHA / estado.current.escala;
+    const raio = raioBorracha(estado.current.pincel) / estado.current.escala;
     const u = g.caminho[g.caminho.length - 1];
     if (!u || Math.hypot(u.x - x, u.y - y) >= raio / 2) g.caminho.push({ x, y });
-    for (const t of estado.current.tracos) if (!t.apagado_em && !g.ids.has(t.id) && atinge(t, x, y, raio)) g.ids.add(t.id);
+    for (const t of estado.current.tracos) if (!t.apagado_em && !g.ids.has(t.id) && (!estado.current.pincel.soMarca || t.ferramenta === "marca-texto") && atinge(t, x, y, raio)) g.ids.add(t.id);
   };
 
   function aoTocar(ev: React.PointerEvent<HTMLCanvasElement>) {
@@ -368,6 +389,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
   function aoMover(ev: React.PointerEvent<HTMLCanvasElement>) {
     const g = gesto.current;
     const e = ev.nativeEvent;
+    if (e.pointerType === "pen") ultimaCaneta.current = performance.now();
     if (!g && escrevendo && e.pointerType === "pen" && !e.pressure) vigiarBotaoLateral(e);
     if (!g || g.id !== e.pointerId) return;
     ev.preventDefault();
@@ -468,20 +490,20 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
       if (r) g.pontos = r.pontos;
     }
     if (g.tipo === "desenho" && !cancelado && g.pontos.length) {
-      const { ferramenta, cor, espessura } = estado.current.pincel;
-      if (ferramenta !== "borracha" && ferramenta !== "laco") onOperacao({ tipo: "adicionar", traco: novoTraco(ferramenta, cor, espessura, g.pontos) });
+      const { ferramenta, cor, espessura, reta } = estado.current.pincel;
+      if (ferramenta !== "borracha" && ferramenta !== "laco") onOperacao({ tipo: "adicionar", traco: novoTraco(ferramenta, cor, espessura, g.pontos, reta) });
     } else if (g.tipo === "borracha" && !cancelado && g.ids.size) {
       const em = new Date().toISOString();
       if (!g.parcial) onOperacao({ tipo: "apagar", ids: [...g.ids], em });
       else {
-        const raio = RAIO_BORRACHA / estado.current.escala;
+        const raio = raioBorracha(estado.current.pincel) / estado.current.escala;
         const ids: string[] = [], novos: Traco[] = [];
         for (const t of estado.current.tracos) {
           if (!g.ids.has(t.id) || t.apagado_em) continue;
           const pedacos = cortar(t, g.caminho, raio);
           if (pedacos.length === 1 && pedacos[0].length === densificar(t.pontos, 2).length) continue; // nada mudou
           ids.push(t.id);
-          for (const pedaco of pedacos) novos.push(novoTraco(t.ferramenta, t.cor, t.espessura, pedaco));
+          for (const pedaco of pedacos) novos.push(novoTraco(t.ferramenta, t.cor, t.espessura, pedaco, t.reta));
         }
         if (ids.length) onOperacao({ tipo: "substituir", ids, novos, em });
       }
@@ -502,8 +524,8 @@ export function ColunaTinta({ largura, tracos, escrevendo, pincel, dedoDesenha, 
   const esquerda = Math.max(0, (larguraFora - largura * escala) / 2);
   const margem = esquerda / escala;
   return (
-    <div ref={fora} className="relative w-full min-w-0 overflow-y-hidden" style={{ ...(escrevendo ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : {}), height: alturaDentro * escala || undefined, overflowX: largura * escala > larguraFora + 1 ? "auto" : "hidden", touchAction: "pan-x pan-y" }} data-coluna-tinta>
-      {escrevendo && estiloFolha !== "lisa" && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ ...desenhoFolha(estiloFolha, escala), backgroundPosition: `${esquerda}px 0` }} />}
+    <div ref={fora} className="relative w-full min-w-0 overflow-y-hidden" style={{ ...(escrevendo || folhaPlana ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : {}), height: alturaDentro * escala || undefined, overflowX: largura * escala > larguraFora + 1 ? "auto" : "hidden", touchAction: "pan-x pan-y" }} data-coluna-tinta>
+      {(escrevendo || folhaPlana) && estiloFolha !== "lisa" && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ ...desenhoFolha(estiloFolha, escala), backgroundPosition: `${esquerda}px 0` }} />}
       <div ref={dentro} className="absolute top-0" style={{ width: largura, minHeight: alturaMinima, left: esquerda, transform: escala !== 1 ? `scale(${escala})` : undefined, transformOrigin: "top left" }}>
         {children}
         {escrevendo && <div aria-hidden style={{ height: ESPACO_ESCRITA }} />}

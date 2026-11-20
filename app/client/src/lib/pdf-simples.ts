@@ -131,6 +131,37 @@ export class DocumentoPdf {
     this.atual().push(`${cor(c)} rg ${n(x)} ${n(A4.altura - y - altura)} ${n(largura)} ${n(altura)} re f`);
   }
 
+  /**
+   * Desenha um caminho SVG (só M, L, Q e Z absolutos, como os da tinta) em vetor. As coordenadas do caminho são multiplicadas
+   * por `escala` e deslocadas por (`ox`, `oy`), medidos do topo esquerdo da página.
+   * `marca` = marca-texto: translúcido e multiplicando com o que está por baixo, como na tela.
+   */
+  caminho(d: string, escala: number, ox: number, oy: number, estilo: { cor: Cor; preencher: boolean; marca?: boolean; largura?: number; ponta?: "redonda" | "reta" }) {
+    const nums = (s: number) => n(s);
+    const T = d.match(/[MLQZ]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+    const X = (x: number) => nums(x * escala + ox);
+    const Y = (y: number) => nums(A4.altura - (y * escala + oy));
+    const ops: string[] = [];
+    let cx = 0, cy = 0, i = 0;
+    const lerNum = () => Number(T[i++]);
+    while (i < T.length) {
+      const c = T[i++];
+      if (c === "M") { cx = lerNum(); cy = lerNum(); ops.push(`${X(cx)} ${Y(cy)} m`); }
+      else if (c === "L") { cx = lerNum(); cy = lerNum(); ops.push(`${X(cx)} ${Y(cy)} l`); }
+      else if (c === "Q") {
+        const qx = lerNum(), qy = lerNum(), x = lerNum(), y = lerNum();
+        ops.push(`${X(cx + (2 / 3) * (qx - cx))} ${Y(cy + (2 / 3) * (qy - cy))} ${X(x + (2 / 3) * (qx - x))} ${Y(y + (2 / 3) * (qy - y))} ${X(x)} ${Y(y)} c`);
+        cx = x; cy = y;
+      } else if (c === "Z") ops.push("h");
+      // número solto: ignora
+    }
+    if (!ops.length) return;
+    const pintura = estilo.preencher
+      ? `${cor(estilo.cor)} rg f`
+      : `${cor(estilo.cor)} RG ${nums((estilo.largura ?? 1) * escala)} w ${estilo.ponta === "reta" ? 0 : 1} J 1 j S`;
+    this.atual().push(`q /${estilo.marca ? "GS1" : "GS0"} gs ${ops.join(" ")} ${pintura} Q`);
+  }
+
   /** Guarda um JPEG para ser desenhado depois (quantas vezes quiser) com `imagem`. Devolve o índice. */
   adicionarImagem(jpeg: Uint8Array, largura: number, altura: number): number {
     this.imagens.push({ jpeg, largura, altura });
@@ -161,7 +192,7 @@ export class DocumentoPdf {
     this.paginas.forEach((comandos, i) => {
       const id = ids[i];
       const fluxo = comandos.join("\n");
-      objeto(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.largura} ${A4.altura}] /Resources << /Font << ${fontes} >>${xobjetos} >> /Contents ${id + 1} 0 R >>`);
+      objeto(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.largura} ${A4.altura}] /Resources << /Font << ${fontes} >> /ExtGState << /GS0 << /ca 1 /CA 1 /BM /Normal >> /GS1 << /ca 0.45 /CA 0.45 /BM /Multiply >> >>${xobjetos} >> /Contents ${id + 1} 0 R >>`);
       objeto(id + 1, `<< /Length ${fluxo.length} >>\nstream\n${fluxo}\nendstream`);
     });
     this.imagens.forEach((im, i) => {

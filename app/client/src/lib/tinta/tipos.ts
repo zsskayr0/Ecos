@@ -22,6 +22,8 @@ export interface Traco {
   /** `"auto"` (cor do texto do tema) ou `#rrggbb`. */
   cor: string;
   espessura: number;
+  /** Marca-texto com ponta reta (corte seco nas pontas); ausente = ponta redonda. */
+  reta?: boolean;
   pontos: PontoTinta[];
   d: string;
   criado_em: string;

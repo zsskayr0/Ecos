@@ -152,9 +152,9 @@ export function novoIdTraco(agora = Date.now()): string {
   return `${agora.toString(36)}${aleatorio}`;
 }
 
-export function novoTraco(ferramenta: Ferramenta, cor: string, espessura: number, pontosBrutos: readonly PontoTinta[]): Traco {
+export function novoTraco(ferramenta: Ferramenta, cor: string, espessura: number, pontosBrutos: readonly PontoTinta[], reta = false): Traco {
   const pontos = simplificar(pontosBrutos).map((p) => ({ x: r1(p.x), y: r1(p.y), pressao: Math.round(Math.min(1, Math.max(0, p.pressao)) * 100) / 100 }));
-  return { id: novoIdTraco(), ferramenta, cor, espessura, pontos, d: gerarD(ferramenta, pontos, espessura), criado_em: new Date().toISOString() };
+  return { id: novoIdTraco(), ferramenta, cor, espessura, pontos, ...(reta && ferramenta === "marca-texto" ? { reta: true } : {}), d: gerarD(ferramenta, pontos, espessura), criado_em: new Date().toISOString() };
 }
 
 /** Interpola pontos para no máximo `passo` px entre vizinhos (pressão também). */
@@ -293,5 +293,5 @@ export function caixaDoConjunto(tracos: readonly Traco[]): Caixa | null {
 /** Cópia do traço movida/ampliada: ponto → `ancora + (ponto − ancora) × fator + (dx, dy)`; a espessura acompanha o fator. */
 export function transformarTraco(t: Traco, ancora: { x: number; y: number }, fator: number, dx: number, dy: number): Traco {
   const pontos = t.pontos.map((p) => ({ x: ancora.x + (p.x - ancora.x) * fator + dx, y: ancora.y + (p.y - ancora.y) * fator + dy, pressao: p.pressao }));
-  return novoTraco(t.ferramenta, t.cor, Math.round(t.espessura * fator * 10) / 10 || t.espessura, pontos);
+  return novoTraco(t.ferramenta, t.cor, Math.round(t.espessura * fator * 10) / 10 || t.espessura, pontos, t.reta);
 }
