@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({
   listarMinhas: vi.fn(),
   feed: vi.fn(),
+  ocultos: vi.fn(),
   notas: vi.fn(),
   tarefas: vi.fn(),
 }));
@@ -14,7 +15,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...original,
     equipes: { ...original.equipes, listarMinhas: api.listarMinhas },
-    feed: { obter: api.feed },
+    feed: { obter: api.feed, ocultos: api.ocultos },
     notas: { ...original.notas, listar: api.notas },
     tarefas: { ...original.tarefas, listar: api.tarefas },
   };
@@ -41,6 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.listarMinhas.mockImplementation(() => new Promise((r) => setTimeout(() => r([{ id: "e1", nome: "Eq", cargo: "dono", tipo: "pessoal", membros: 1 }]), 20)));
   api.feed.mockResolvedValue({ items: [], next_cursor: null });
+  api.ocultos.mockResolvedValue({ itens: [], pastas: [], tags: [] });
   api.notas.mockResolvedValue({ items: [], next_cursor: null });
   api.tarefas.mockResolvedValue({ items: [], next_cursor: null });
 });

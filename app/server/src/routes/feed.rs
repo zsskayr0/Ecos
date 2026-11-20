@@ -34,10 +34,12 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
     // O `feed_item` é global (o job de ranking olha tudo): cada card só sai para quem enxerga o item de origem.
     // Transação vem do Cofre da própria pessoa (`usuario_id` do item é quem o ranking leu).
     let visivel = format!(
-        "((tipo = 'transacao' AND usuario_id = '{}') OR (tipo = 'nota' AND id IN (SELECT n.id FROM nota n WHERE {})) OR (tipo = 'tarefa_encaixada' AND id IN (SELECT t.id FROM tarefa t WHERE {})))",
+        "((tipo = 'transacao' AND usuario_id = '{}') OR (tipo = 'nota' AND id IN (SELECT n.id FROM nota n WHERE {} AND {})) OR (tipo = 'tarefa_encaixada' AND id IN (SELECT t.id FROM tarefa t WHERE {} AND {})))",
         usuario.0.replace('\'', "''"),
-        crate::espacos::visivel_sql("n", &usuario.0),
-        crate::espacos::visivel_sql("t", &usuario.0),
+        crate::espacos::visivel_item_sql("n", &usuario.0),
+        crate::routes::feed_oculto::filtro_sql("n", "nota_tag", "nota_id", &usuario.0),
+        crate::espacos::visivel_item_sql("t", &usuario.0),
+        crate::routes::feed_oculto::filtro_sql("t", "tarefa_tag", "tarefa_id", &usuario.0),
     );
     let limite = limite_efetivo(q.limit);
     let cursor = q.cursor.as_deref().and_then(decodificar);

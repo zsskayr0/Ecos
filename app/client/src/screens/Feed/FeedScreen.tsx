@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { PullToRefresh } from "@/components/common/PullToRefresh";
 import { Rss } from "lucide-react";
 import { feed, notas, tarefas } from "@/lib/api";
+import { ocultoNoFeed } from "@/lib/feed-oculto";
 import { notaDoFeed, notaResumoParaView, tarefaDoFeed, tarefaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAppUI } from "@/lib/ui-context";
@@ -52,10 +53,11 @@ export function FeedScreen() {
       const espaco = intercalarEquipes
         ? (filtroEquipeId ? `equipe:${filtroEquipeId}` : undefined)
         : espacoAtivo;
-      const [pagina, notasRecentes, tarefasRecentes] = await Promise.all([
+      const [pagina, notasRecentes, tarefasRecentes, ocultos] = await Promise.all([
         feed.obter({ espaco, limit: 40 }),
         notas.listar({ espaco, limit: 10 }).catch(() => null),
         tarefas.listar({ espaco, limit: 10 }).catch(() => null),
+        feed.ocultos().catch(() => null),
       ]);
       const mapeados = pagina.items
         .map((item): FeedItem | null => {
@@ -73,7 +75,9 @@ export function FeedScreen() {
         ...(notasRecentes?.items ?? []).filter((n) => recente(n.criado_em) && !noFeed.has(`nota:${n.id}`)).map((n) => notaResumoParaView(n, equipes, perfil)),
         ...(tarefasRecentes?.items ?? []).filter((t) => recente(t.criado_em) && t.status !== "concluida" && !noFeed.has(`tarefa:${t.id}`)).map((t) => tarefaResumoParaView(t, equipes, perfil)),
       ];
-      setItens([...novos, ...mapeados]);
+      // O servidor já tirou do Feed o que a pessoa ocultou; aqui só os "recentes" juntados pelo cliente precisam do mesmo filtro.
+      const visiveis = novos.filter((i) => !ocultoNoFeed(i.tipo === "nota" ? { id: i.id, espaco: i.espaco, pasta: i.pastaId, tags: i.tags } : { id: i.id, espaco: i.espaco, pasta: i.pasta, tags: i.tags }, ocultos));
+      setItens([...visiveis, ...mapeados]);
     } catch (e) {
       setErro(mensagemDeErro(e, "Não consegui falar com o servidor. Confira o endereço e sua conexão."));
       setItens([]);
