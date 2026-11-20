@@ -1035,7 +1035,7 @@ export function ArquivosScreen() {
             if (e.detail > 0) e.currentTarget.blur();
             void alternarTarefa(l);
           }}
-          className={`absolute inset-0 flex items-center justify-center rounded-full border-[1.5px] border-current opacity-0 outline-none transition-[opacity,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none group-hover/marc:opacity-100 group-focus-within/marc:opacity-100 focus-visible:ring-2 focus-visible:ring-current ${feita ? "bg-current" : "bg-transparent hover:bg-current/15"}`}>
+          className={`absolute inset-0 flex items-center justify-center rounded-full border-[1.5px] border-current opacity-0 outline-none transition-[opacity,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none group-hover/marc:opacity-100 group-focus-within/marc:opacity-100 focus-visible:ring-2 focus-visible:ring-current ${feita ? "bg-current" : "bg-transparent hover:bg-[color-mix(in_srgb,currentColor_15%,transparent)]"}`}>
           {/* O risco do "ok" se desenha ao marcar (e some ao desmarcar). */}
           <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
             className={`stroke-base [stroke-dasharray:14] transition-[stroke-dashoffset] duration-200 ease-out motion-reduce:transition-none ${feita ? "[stroke-dashoffset:0]" : "[stroke-dashoffset:14] group-hover/marc:opacity-0"}`}>
@@ -1061,9 +1061,9 @@ export function ArquivosScreen() {
       case "status": {
         if (!a?.tipo || (a.tipo === "nota" && a.status !== "arquivada")) return <span role="gridcell" />;
         const st = a.status ?? "pendente";
-        const cor = st === "concluida" ? "bg-success text-success" : st === "arquivada" ? "bg-text-muted text-text-muted" : "bg-cyan text-cyan";
+        const cor = st === "concluida" ? "bg-success text-success bg-success/10" : st === "arquivada" ? "bg-text-muted text-text-muted bg-text-muted/10" : "bg-cyan text-cyan bg-cyan/10";
         return <span role="gridcell" className="flex min-w-0">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${cor.split(" ")[1]} bg-current/10`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${cor.split(" ")[1]} ${cor.split(" ")[2]}`}>
             {st === "arquivada" ? <Archive size={11} aria-hidden className="text-text-muted" /> : <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${cor.split(" ")[0]}`} />}
             <span className="text-text-secondary">{ROTULO_STATUS[st]}</span>
           </span>
