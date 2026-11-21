@@ -12,7 +12,11 @@
  *
  * Recurso novo de Markdown = um caso novo aqui.
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { carregarKatex } from "@/lib/matematica";
+
+// KaTeX chega sob demanda; aqui ele já vem carregado para a leitura renderizar na hora.
+beforeAll(() => carregarKatex());
 import { render } from "@testing-library/react";
 import { createRef } from "react";
 import { EditorVivo, type AreaLike } from "./EditorVivo";

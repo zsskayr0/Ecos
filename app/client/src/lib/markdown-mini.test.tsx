@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { carregarKatex } from "@/lib/matematica";
+
+// KaTeX chega sob demanda; aqui ele já vem carregado para a leitura renderizar na hora.
+beforeAll(() => carregarKatex());
 import { render } from "@testing-library/react";
 import { MarkdownPreview } from "@/lib/markdown-mini";
 
