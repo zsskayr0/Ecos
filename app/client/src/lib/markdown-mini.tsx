@@ -13,6 +13,8 @@ import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
 import { media, notas, tarefas } from "@/lib/api";
 import { Wikilink } from "@/components/common/Wikilink";
+import { lerAltImagem, remarkCallouts } from "@/lib/markdown-blocos";
+import { DiagramaMermaid } from "@/lib/mermaid-sob-demanda";
 
 /**
  * Real Markdown rendering (section 3.6 preview + Nota read mode) — used to
@@ -109,9 +111,15 @@ const remarkMarcas: Plugin<[], Root> = () => (tree) => { percorrerMarcas(tree as
 /** HTML inline só por lista branca: nada de script, style ou atributos de evento. */
 const esquemaSanitize: OpcoesSanitize = {
   ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), "mark", "ecos-wikilink"],
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark", "u", "ecos-wikilink"],
   attributes: {
     ...defaultSchema.attributes,
+    div: [...(defaultSchema.attributes?.div ?? []), ["className", /^ecos-callout/], "dataCallout", ["align", "center", "left", "right"]],
+    details: [...(defaultSchema.attributes?.details ?? []), ["className", /^ecos-callout/], "dataCallout", "open"],
+    summary: [["className", /^ecos-callout/]],
+    span: [["className", /^ecos-callout/], "ariaHidden"],
+    p: [["align", "center", "left", "right"]],
+    img: [...(defaultSchema.attributes?.img ?? []), "title", "width"],
     "ecos-wikilink": ["dataInterno", "dataApelido"],
     code: [["className", /^language-./, "math-inline", "math-display"]],
   },
@@ -189,12 +197,24 @@ export function resolverSrcImagem(src: string | undefined, itemId: string | unde
   return src;
 }
 
+function Figura({ src, alt, title, itemId, tipo, width }: { src?: string; alt?: string; title?: string; itemId?: string; tipo: "nota" | "tarefa"; width?: string | number }) {
+  const { alt: texto, largura, alinhar } = lerAltImagem(alt);
+  const w = largura ?? (width ? `${width}px` : undefined);
+  return (
+    <span className="ecos-figura" data-alinhar={alinhar} >
+      {/* eslint-disable-next-line jsx-a11y/alt-text -- alt vem do próprio Markdown */}
+      <img src={resolverSrcImagem(src, itemId, tipo)} alt={texto} className="max-w-full rounded-xl" style={w ? { width: w } : undefined} loading="lazy" />
+      {title && <span className="ecos-legenda">{title}</span>}
+    </span>
+  );
+}
+
 export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarChecklist }: Props) {
   let proximoCheckbox = 0;
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas, remarkCallouts]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], rehypeKatex, [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",
@@ -202,10 +222,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
         }}
         components={{
           ...({ "ecos-wikilink": (p: { "data-interno"?: string; "data-apelido"?: string }) => <Wikilink interno={p["data-interno"] ?? ""} apelido={p["data-apelido"]} origem={itemId ? { tipo, id: itemId } : undefined} /> } as object),
-          img: ({ src, alt }) => (
-            // eslint-disable-next-line jsx-a11y/alt-text -- alt vem do próprio Markdown (![alt](src))
-            <img src={resolverSrcImagem(typeof src === "string" ? src : undefined, itemId, tipo)} alt={alt ?? ""} className="max-w-full rounded-xl" loading="lazy" />
-          ),
+          img: ({ src, alt, title, width }) => <Figura src={typeof src === "string" ? src : undefined} alt={alt} title={title} width={width} itemId={itemId} tipo={tipo} />,
           a: ({ href, children, node: _n, ...resto }) => {
             // Âncora interna (rodapé `[^1]` ↔ nota): mesma página, sem nova aba.
             const interno = href?.startsWith("#");
@@ -240,6 +257,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           pre: ({ node, children, ...p }) => {
             const codigo = node?.children.find((c) => c.type === "element" && c.tagName === "code") as { properties?: { className?: string[] }; type: string; children?: unknown[] } | undefined;
             const linguagem = codigo?.properties?.className?.find((c) => c.startsWith("language-"))?.slice("language-".length);
+            if (linguagem === "mermaid") return <DiagramaMermaid texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]} />;
             return <BlocoCodigo linguagem={linguagem} texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]}>{children}</BlocoCodigo>;
           },
           ol: ({ children, ...p }) => <ol data-linha={(p as LinhaProp)["data-linha"]} start={(p as { start?: number }).start} className="ml-5 list-decimal">{children}</ol>,
