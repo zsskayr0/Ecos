@@ -9,7 +9,7 @@ import { PastasGrade } from "@/components/views/PastasGrade";
 import { ViewModeToggle, useModoVisualizacao } from "@/components/common/ViewModeToggle";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
-import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
+import { BotaoImportarNotas, SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useAppUI } from "@/lib/ui-context";
 import { caminhoPastaNaRota } from "@/lib/pasta-contexto";
@@ -58,6 +58,7 @@ export function NotesRootScreen() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-text-primary">Notas</h1>
         <div className="flex items-center gap-2">
+          <BotaoImportarNotas />
           <button type="button" onClick={() => navigate("/notas/links-quebrados")} title="Links [[...]] sem nota de destino" className="rounded-lg px-2 py-1.5 text-xs font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary">Links quebrados</button>
           <ViewModeToggle modo={modo} onMudar={setModo} />
         </div>
