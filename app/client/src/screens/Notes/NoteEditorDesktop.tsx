@@ -132,6 +132,15 @@ export function NoteEditorDesktop() {
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   useEffect(() => { valorRef.current = valor; }, [valor]);
   useEffect(() => { salvoRef.current = salvo; }, [salvo]);
+  const painelLateral = modoFocus && !!montagemPainel;
+  // Clique numa chamada `[^n]`/`[@x]` no editor: abre o menu lateral onde as notas ficam.
+  const painelAbertoRef = useRef(painelFocus.aberto);
+  painelAbertoRef.current = painelFocus.aberto;
+  useEffect(() => {
+    const abrir = () => { if (painelLateral) { if (!painelAbertoRef.current) painelFocus.alternar(); } else setDetalhesAbertos(true); };
+    window.addEventListener(EVENTO_IR_NOTA, abrir);
+    return () => window.removeEventListener(EVENTO_IR_NOTA, abrir);
+  }, [painelLateral, painelFocus]);
 
   useEffect(() => {
     if (!id) return;
@@ -387,15 +396,6 @@ export function NoteEditorDesktop() {
       </div>
     );
   }
-  const painelLateral = modoFocus && !!montagemPainel;
-  // Clique numa chamada `[^n]`/`[@x]` no editor: abre o menu lateral onde as notas ficam.
-  const painelAbertoRef = useRef(painelFocus.aberto);
-  painelAbertoRef.current = painelFocus.aberto;
-  useEffect(() => {
-    const abrir = () => { if (painelLateral) { if (!painelAbertoRef.current) painelFocus.alternar(); } else setDetalhesAbertos(true); };
-    window.addEventListener(EVENTO_IR_NOTA, abrir);
-    return () => window.removeEventListener(EVENTO_IR_NOTA, abrir);
-  }, [painelLateral, painelFocus]);
   if (!nota || !valor) return <div className="ecos-detail-content"><SkeletonNotaDetalhe rotulo="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);
