@@ -12,7 +12,7 @@ import { notas as notasApi, pastas as pastasApi, type NotaResumo } from "@/lib/a
 import { notaResumoParaView } from "@/lib/adapters";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { useAuth } from "@/lib/auth-context";
-import { SoltarMarkdown } from "@/components/common/SoltarMarkdown";
+import { BotaoImportarNotas, SoltarMarkdown } from "@/components/common/SoltarMarkdown";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { TituloJanelaContext } from "@/lib/documento-popup";
 import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
@@ -71,7 +71,7 @@ export function FolderScreen() {
           {nomeExibicao}
           {pastaAtual && <button type="button" onClick={() => setEditando(true)} aria-label="Editar esta pasta" title="Editar esta pasta" className="ml-0.5 rounded-lg p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface-2 hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-60"><MoreHorizontal size={18} /></button>}
         </h1>
-        <ViewModeToggle modo={modo} onMudar={setModo} />
+        <div className="flex items-center gap-2"><BotaoImportarNotas /><ViewModeToggle modo={modo} onMudar={setModo} /></div>
       </div>
 
       {editando && pastaAtual && <EditarPasta pasta={pastaAtual} tipo="nota" espaco={espaco} aoFechar={() => setEditando(false)} aoSalvar={(novo) => { if (novo !== caminhoOriginalNoPainel && caminhoAtualRef.current === caminhoOriginalNoPainel) navigate(`/notas/pasta/${caminhoPastaNaRota(novo)}`, { replace: true }); }} />}

@@ -404,7 +404,7 @@ export function NoteEditorDesktop() {
   const aoMudarEscrita = (v: boolean) => { setEscrevendo(v); if (!v) setDetalhesAbertos(false); };
   const noPainel = modoFocus && !!montagemPainel;
   const exportarPdfDaNota = () => { if (id) void exportarDocumentosEmPdf([{ tipo: "nota", id }]).catch((e) => avisar(mensagemDeErro(e, "Não foi possível exportar o PDF."), "erro")); };
-  const opcoesNota = (classeBotao: string) => <OpcoesNota criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onExportarPdf={exportarPdfDaNota} onHistorico={() => setHistoricoAberto(true)} classeBotao={classeBotao}
+  const opcoesNota = (classeBotao: string) => <OpcoesNota notaId={id} criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onExportarPdf={exportarPdfDaNota} onHistorico={() => setHistoricoAberto(true)} classeBotao={classeBotao}
     anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />} />;
   const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (

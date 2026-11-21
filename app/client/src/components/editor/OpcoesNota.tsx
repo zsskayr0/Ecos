@@ -4,6 +4,9 @@ import { CheckCircle2, Ellipsis, X, FileDown, History } from "lucide-react";
 import { useEscFecha } from "@/components/common/Dialog";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { formatDataHoraCompleta } from "@/lib/format";
+import { FORMATOS_EXPORTACAO, exportarNota, type FormatoExportacao } from "@/lib/exportar-nota";
+import { avisar } from "@/lib/toast";
+import { mensagemDeErro } from "@/lib/erros";
 
 interface Props {
   criadoEm: string;
@@ -15,6 +18,8 @@ interface Props {
   onRevisar: () => void;
   /** Gera o PDF da nota (abre a impressão do sistema). */
   onExportarPdf?: () => void;
+  /** Id da nota: mostra "Exportar como" (.md, .html, .docx, .tex). */
+  notaId?: string;
   /** Abre o painel "Histórico" (versões anteriores guardadas pelo servidor). */
   onHistorico?: () => void;
   /** Anexos da nota. Fica montado mesmo com o painel fechado, para um envio em andamento não ser cancelado. */
@@ -25,8 +30,12 @@ interface Props {
   classeBotao: string;
 }
 
+async function exportarComo(id: string, formato: FormatoExportacao) {
+  try { await exportarNota(id, formato); } catch (e) { avisar(mensagemDeErro(e, "Não foi possível exportar a nota."), "erro"); }
+}
+
 /** Menu "⋯" da nota: anexos e informações (criação, edição, estado), que antes ficavam soltos abaixo do editor. */
-export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revisada, onRevisar, onExportarPdf, onHistorico, anexos, acoes, classeBotao }: Props) {
+export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revisada, onRevisar, onExportarPdf, notaId, onHistorico, anexos, acoes, classeBotao }: Props) {
   const [aberto, setAberto] = useState(false);
   const titulo = useId();
   useEscFecha(aberto, () => setAberto(false));
@@ -63,6 +72,12 @@ export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revis
           <p>Editada <TempoEdicao iso={atualizadoEm} /></p>
           <p aria-live="polite" className={erro ? "text-error" : "text-text-muted"}>{estado}</p>
           {onExportarPdf && <button type="button" onClick={() => { setAberto(false); onExportarPdf(); }} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><FileDown size={16} />Exportar PDF</button>}
+          {notaId && <div role="group" aria-label="Exportar como" className="space-y-1.5 pt-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Exportar como</p>
+            <div className="flex flex-wrap gap-2">{FORMATOS_EXPORTACAO.map(({ formato, rotulo }) => <button key={formato} type="button" title={rotulo}
+              onClick={() => { setAberto(false); void exportarComo(notaId, formato); }}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-border px-3 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><FileDown size={15} />.{formato}</button>)}</div>
+          </div>}
           {onHistorico && <button type="button" onClick={() => { setAberto(false); onHistorico(); }} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><History size={16} />Histórico</button>}
           {!revisada && <button type="button" onClick={() => { onRevisar(); setAberto(false); }} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-steel-300 transition-colors hover:bg-surface-2 hover:text-text-primary"><CheckCircle2 size={16} />Marcar revisada</button>}
         </section>
