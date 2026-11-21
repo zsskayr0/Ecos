@@ -9,6 +9,7 @@ import { remarkMatematicaBloco } from "@/lib/matematica";
 import { imagemDaFormula } from "@/lib/formula-imagem";
 import rehypeRaw from "rehype-raw";
 import { lerAltImagem } from "@/lib/markdown-blocos";
+import { comBibliografia } from "./notas-rodape";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
 import { caixa, intersecta } from "@/lib/tinta/geometria";
@@ -30,7 +31,7 @@ async function carregar(a: ItemExportavel): Promise<Documento | null> {
   if (!a.id) return null;
   if (a.tipo === "nota") {
     const n = await notas.obter(a.id);
-    return { id: a.id, titulo: n.titulo, tipo: "nota", corpo: n.corpo, tags: n.tags, meta: [`Atualizada em ${dataBr(n.atualizado_em)}`] };
+    return { id: a.id, titulo: n.titulo, tipo: "nota", corpo: comBibliografia(n.corpo), tags: n.tags, meta: [`Atualizada em ${dataBr(n.atualizado_em)}`] };
   }
   if (a.tipo === "tarefa") {
     const t = await tarefas.obter(a.id);

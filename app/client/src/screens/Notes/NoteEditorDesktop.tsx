@@ -15,6 +15,8 @@ import { guardarRascunhoNota, lerRascunhoNota, removerRascunhoNota, type Rascunh
 import { cabeNoKeepalive, lerConflito, quedaSuspeita, type NotaNoServidor } from "@/lib/nota-sincronia";
 import { ConflitoNota } from "@/components/editor/ConflitoNota";
 import { HistoricoNota } from "@/components/editor/HistoricoNota";
+import { NotasLaterais } from "@/components/editor/NotasLaterais";
+import { EVENTO_IR_NOTA } from "@/lib/notas-rodape";
 import { OpcoesNota } from "@/components/editor/OpcoesNota";
 import { formatDataHoraCompleta } from "@/lib/format";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
@@ -384,6 +386,15 @@ export function NoteEditorDesktop() {
       </div>
     );
   }
+  const painelLateral = modoFocus && !!montagemPainel;
+  // Clique numa chamada `[^n]`/`[@x]` no editor: abre o menu lateral onde as notas ficam.
+  const painelAbertoRef = useRef(painelFocus.aberto);
+  painelAbertoRef.current = painelFocus.aberto;
+  useEffect(() => {
+    const abrir = () => { if (painelLateral) { if (!painelAbertoRef.current) painelFocus.alternar(); } else setDetalhesAbertos(true); };
+    window.addEventListener(EVENTO_IR_NOTA, abrir);
+    return () => window.removeEventListener(EVENTO_IR_NOTA, abrir);
+  }, [painelLateral, painelFocus]);
   if (!nota || !valor) return <div className="ecos-detail-content"><SkeletonNotaDetalhe rotulo="Carregando…" /></div>;
 
   const noTexto = descriptionTags(valor.corpo);
@@ -414,6 +425,7 @@ export function NoteEditorDesktop() {
         <aside aria-label="Opções da nota" className="flex min-w-0 flex-col gap-6">
           <h2 className="font-display text-lg font-semibold text-text-primary">Opções</h2>
           <MiniGrafo itemId={id} />
+          <div className="border-t border-border pt-6 empty:hidden"><NotasLaterais corpo={valor.corpo} /></div>
           <section className="space-y-4 border-t border-border pt-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
             <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
@@ -472,6 +484,7 @@ export function NoteEditorDesktop() {
               </div>
               <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
               <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
+              <NotasLaterais corpo={valor.corpo} />
               <p className="text-xs text-text-muted">{valor.corpo.trim() ? valor.corpo.trim().split(/\s+/).length : 0} palavras · {valor.corpo.length} caracteres</p>
               <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
             </aside>

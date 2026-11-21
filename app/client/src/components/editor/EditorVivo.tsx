@@ -16,6 +16,7 @@ import { matematica, temaMatematica } from "./matematica-widget";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
 import { contadorTexto } from "./ContadorTexto";
 import { autocompletarEmoji } from "./SeletorEmoji";
+import { bibliotecaDoCorpo, citacaoCurta, extrairNotas, irParaNota } from "@/lib/notas-rodape";
 
 /** O que a barra de formatação precisa de um campo de texto (a mesma interface de um `<textarea>`). */
 export interface AreaLike {
@@ -144,6 +145,29 @@ class Caixa extends WidgetType {
 }
 
 const ocultar = Decoration.replace({});
+
+class Citacao extends WidgetType {
+  constructor(readonly texto: string, readonly titulo: string, readonly chave: string) { super(); }
+  eq(o: Citacao) { return o.texto === this.texto && o.titulo === this.titulo; }
+  toDOM() {
+    const s = document.createElement("span");
+    s.className = "cm-cita";
+    s.textContent = this.texto;
+    s.title = this.titulo;
+    s.dataset.cita = this.chave;
+    return s;
+  }
+  ignoreEvent() { return false; }
+}
+
+let cacheNotas: { doc: unknown; notas: Map<string, { texto: string }>; bib: Map<string, ReturnType<typeof bibliotecaDoCorpo>[number]> } | null = null;
+function dadosNotas(state: EditorState) {
+  if (cacheNotas?.doc !== state.doc) {
+    const texto = state.doc.toString();
+    cacheNotas = { doc: state.doc, notas: new Map(extrairNotas(texto).map((n) => [n.rotulo, n])), bib: new Map(bibliotecaDoCorpo(texto).map((r) => [r.chave, r])) };
+  }
+  return cacheNotas;
+}
 const ESTILO_TITULO = ["", "cm-h1", "cm-h2", "cm-h3", "cm-h4", "cm-h5", "cm-h6"];
 const REALCE = /==(?=\S)([^=\n]*?\S)==/g;
 const NOTA_DEF = /^\[\^[^\]\s]+\]:\s?/;
@@ -185,6 +209,9 @@ function montarDecoracoes(view: EditorView): DecorationSet {
     if (ate > de) decos.push(Decoration.mark({ class: classe }).range(de, ate));
   };
   const linha = (pos: number, classe: string) => decos.push(Decoration.line({ class: classe }).range(state.doc.lineAt(pos).from));
+
+  // Notas `[^n]` e referências BibTeX: só relidas quando o texto muda.
+  const { notas, bib } = dadosNotas(state);
 
   // Rótulos de `[ref]: url` do documento, para saber se `[x]` é link de referência.
   const referencias = new Set<string>();
@@ -289,8 +316,17 @@ function montarDecoracoes(view: EditorView): DecorationSet {
           if (rotulo.startsWith("^") && marcas[1].to === no.to) {
             const def = no.from === state.doc.lineAt(no.from).from && state.sliceDoc(no.to, no.to + 1) === ":";
             if (def) { marcar(no.from, no.to, "cm-nota-marca"); return false; }
-            marcar(marcas[0].to + 1, marcas[1].from, "cm-nota-ref");
+            const n = notas.get(rotulo.slice(1));
+            decos.push(Decoration.mark({ class: "cm-nota-ref", attributes: { title: n?.texto || "Nota sem texto", "data-nota": rotulo.slice(1) } }).range(marcas[0].to + 1, marcas[1].from));
             if (!tocaCursor(no.from, no.to)) { esconder(marcas[0].from, marcas[0].to + 1); esconder(marcas[1].from, marcas[1].to); }
+            return false;
+          }
+          // Citação `[@chave]`: vira (Autor, ano) fora do cursor; passar o mouse mostra a referência completa.
+          if (/^@[\w:.\-/]+$/.test(rotulo) && marcas[1].to === no.to) {
+            const r = bib.get(rotulo.slice(1));
+            const titulo = r ? [r.campos.author, r.campos.title, r.campos.year].filter(Boolean).join(" — ") : "Referência não encontrada nos blocos bibtex";
+            if (tocaCursor(no.from, no.to)) decos.push(Decoration.mark({ class: "cm-cita", attributes: { title: titulo } }).range(no.from, no.to));
+            else decos.push(Decoration.replace({ widget: new Citacao(`(${citacaoCurta(r, rotulo.slice(1))})`, titulo, rotulo.slice(1)) }).range(no.from, no.to));
             return false;
           }
           // Só é link com endereço (`[x](url)`) ou com referência definida (`[x][ref]`, `[x]`); `[1]`, `[TOC]` ficam como texto.
@@ -391,6 +427,8 @@ const tema = EditorView.theme({
   ".cm-h6": { fontSize: "0.9286em", color: "rgb(var(--ecos-text-secondary-rgb))", textTransform: "uppercase", letterSpacing: "0.04em" },
   ".cm-realce": { background: "rgb(250 204 21 / 0.3)", borderRadius: "3px", padding: "0 2px" },
   ".cm-nota-ref": { verticalAlign: "super", fontSize: "0.75em", lineHeight: "0", color: "rgb(var(--ecos-steel-300-rgb))" },
+  ".cm-nota-ref[data-nota]": { cursor: "pointer" },
+  ".cm-cita": { color: "rgb(var(--ecos-steel-300-rgb))", cursor: "help" },
   ".cm-nota-def": { fontSize: "0.93em", color: "rgb(var(--ecos-text-secondary-rgb))" },
   ".cm-nota-marca": { color: "rgb(var(--ecos-steel-300-rgb))" },
   ".cm-bloco-topo": { lineHeight: "24px" },
@@ -492,6 +530,9 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
             return false;
           },
           click(e, v) {
+            // Chamada de nota `[^n]` ou citação: leva ao item no menu lateral.
+            const alvo = (e.target as HTMLElement | null)?.closest?.("[data-nota], [data-cita]") as HTMLElement | null;
+            if (alvo && e.button === 0 && !e.ctrlKey && !e.metaKey) { irParaNota(alvo.dataset.nota ? alvo.dataset.nota : `@${alvo.dataset.cita}`); return false; }
             // Link web: `[texto](url)` ou endereço solto. Clique simples abre em outra aba (sem seleção em andamento).
             if (e.button !== 0 || !v.state.selection.main.empty) return false;
             const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }, false);
