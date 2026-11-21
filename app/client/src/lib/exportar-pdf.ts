@@ -11,6 +11,8 @@ import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { resolverSrcImagem } from "@/lib/markdown-mini";
 import { A4, DocumentoPdf, limparTexto, medir, type Cor, type Fonte } from "@/lib/pdf-simples";
 import { obterAccessToken } from "@/lib/server-config";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { MARGENS, PAPEIS, QUEBRA_PAGINA } from "@/lib/tipografia-nota";
 
 const semWikilink = (texto: string) => texto.replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, alvo: string, apelido?: string) => apelido || alvo);
 const dataBr = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("pt-BR");
@@ -198,10 +200,20 @@ type Ficha =
   | { k: "emoji"; e: string; w: number }
   | { k: "quebra" };
 
-const MARGEM_LATERAL = 54;
-const TOPO = 58;
-const BASE = A4.altura - 58;
-const LARGURA = A4.largura - MARGEM_LATERAL * 2;
+// Página e margens: A4 com margens fixas, ou o papel e as margens do modo página (Configurações > Editor e escrita).
+let MARGEM_LATERAL = 54;
+let TOPO = 58;
+let BASE = A4.altura - 58;
+let LARGURA = A4.largura - MARGEM_LATERAL * 2;
+function definirPagina(papel: { largura: number; altura: number }, margem: number | null) {
+  MARGEM_LATERAL = margem ?? 54;
+  TOPO = margem ?? 58;
+  BASE = papel.altura - (margem ?? 58);
+  LARGURA = papel.largura - MARGEM_LATERAL * 2;
+}
+/** Marca da linha `---pagebreak`, trocada antes do Markdown virar HTML. */
+const MARCA_QUEBRA = "ECOSQUEBRADEPAGINA";
+const marcarQuebras = (corpo: string) => corpo.split("\n").map((l) => (QUEBRA_PAGINA.test(l) ? `\n${MARCA_QUEBRA}\n` : l)).join("\n");
 const CINZA: Cor = [0.39, 0.45, 0.55];
 const TEXTO: Cor = [0.06, 0.09, 0.16];
 const AZUL: Cor = [0.15, 0.39, 0.92];
@@ -315,7 +327,7 @@ class Escritor {
 
   regua() {
     this.garantir(8);
-    this.pdf.linha(MARGEM_LATERAL, this.y + 3, A4.largura - MARGEM_LATERAL, this.y + 3, LINHA, 0.75);
+    this.pdf.linha(MARGEM_LATERAL, this.y + 3, this.pdf.papel.largura - MARGEM_LATERAL, this.y + 3, LINHA, 0.75);
     this.y += 9;
   }
 }
@@ -396,6 +408,7 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
       }
       e.espaco(4);
     } else if (tag === "IMG") e.figura(no as HTMLImageElement, doc);
+    else if (tag === "P" && no.textContent?.trim() === MARCA_QUEBRA) { e.pdf.novaPagina(); e.y = TOPO; }
     else if (tag === "DIV" || tag === "SECTION") escreverBlocos(e, no, doc);
     else escreverPartes(e, inline(no, "normal", doc));
   }
@@ -416,12 +429,15 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks] }, semWikilink(d.corpo)));
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks] }, marcarQuebras(semWikilink(d.corpo))));
     return new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
   });
 
   // Imagens do texto e emojis: baixa/desenha tudo antes de montar as páginas.
-  const pdf = new DocumentoPdf();
+  const prefs = lerPreferenciasAplicativo();
+  const papel = prefs.notaPapel === "desligado" ? A4 : PAPEIS[prefs.notaPapel];
+  definirPagina(papel, prefs.notaPapel === "desligado" ? null : MARGENS[prefs.notaMargem]);
+  const pdf = new DocumentoPdf(papel);
   const imagens: Imagens = new Map();
   const emojis: Imagens = new Map();
   const pedidos: Promise<void>[] = [];

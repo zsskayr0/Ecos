@@ -12,6 +12,7 @@ import { ativos, LARGURA_COLUNA_PADRAO } from "@/lib/tinta/tipos";
 import type { ModoVisualNota } from "@/lib/modo-visual-nota";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
+import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, usePreferenciasNota } from "@/lib/tipografia-nota";
 import { CLASSE_TEXTO_COLUNA, ColunaTinta } from "./ColunaTinta";
 
 const NADA = () => {};
@@ -20,6 +21,7 @@ const FONTE_FLUIDA = { "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" 
 
 export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: string; corpo: string; modo: ModoVisualNota; aoCarregar?: (temTinta: boolean) => void }) {
   const tinta = useTinta(notaId);
+  const prefsNota = usePreferenciasNota();
   const area = useRef<AreaLike | null>(null);
   const raiz = useRef<HTMLDivElement>(null);
   const [folha] = useFolha(notaId);
@@ -51,12 +53,12 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
       resolverImagem={(src) => resolverSrcImagem(src, notaId, "nota")} aoAbrirWikilink={abrirWikilink} />
   );
   return (
-    <div ref={raiz} className="min-w-0" style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? {} : FONTE_FLUIDA) }}>
+    <div ref={raiz} className="min-w-0" style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? {} : { ...FONTE_FLUIDA, ...estiloTextoNota(prefsNota, 16) }) }}>
       {!tinta.carregado
         ? <div aria-hidden className="min-h-24" />
         : temTinta || modo === "pagina"
         ? <ColunaTinta largura={tinta.largura ?? LARGURA_COLUNA_PADRAO} tracos={tinta.tracos} escrevendo={false} folhaPlana pincel={PINCEL} dedoDesenha={false} onOperacao={NADA} estiloFolha={folha.estilo}>{editor}</ColunaTinta>
-        : editor}
+        : <div style={{ ...estiloColunaNota(prefsNota), ...estiloFolhaPagina(prefsNota) }}>{editor}</div>}
     </div>
   );
 }

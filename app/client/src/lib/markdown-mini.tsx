@@ -189,6 +189,9 @@ export function resolverSrcImagem(src: string | undefined, itemId: string | unde
   return src;
 }
 
+/** `---pagebreak` vira uma régua na leitura (a quebra real só vale no PDF). */
+const semQuebrasDePagina = (corpo: string) => corpo.replace(/^[ \t]*---pagebreak[ \t]*$/gim, "\n---\n");
+
 export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarChecklist }: Props) {
   let proximoCheckbox = 0;
   return (
@@ -258,7 +261,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           ),
         }}
       >
-        {corpo}
+        {semQuebrasDePagina(corpo)}
       </ReactMarkdown>
     </div>
   );

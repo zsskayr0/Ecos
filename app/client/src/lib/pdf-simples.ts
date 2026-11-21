@@ -108,6 +108,8 @@ function emBinario(bytes: Uint8Array): string {
 interface ImagemJpeg { jpeg: Uint8Array; largura: number; altura: number }
 
 export class DocumentoPdf {
+  /** Tamanho da página em pt (A4 por padrão; Carta pelo modo página). */
+  constructor(readonly papel: { largura: number; altura: number } = A4) {}
   private paginas: string[][] = [[]];
   private imagens: ImagemJpeg[] = [];
 
@@ -120,15 +122,15 @@ export class DocumentoPdf {
   /** `y` é a linha de base do texto, medida do topo da página. */
   texto(texto: string, x: number, y: number, fonte: Fonte, tamanho: number, c: Cor = [0.06, 0.09, 0.16]) {
     if (!texto) return;
-    this.atual().push(`BT /${NOME_DA_FONTE[fonte]} ${n(tamanho)} Tf ${cor(c)} rg ${n(x)} ${n(A4.altura - y)} Td (${codificar(texto)}) Tj ET`);
+    this.atual().push(`BT /${NOME_DA_FONTE[fonte]} ${n(tamanho)} Tf ${cor(c)} rg ${n(x)} ${n(this.papel.altura - y)} Td (${codificar(texto)}) Tj ET`);
   }
 
   linha(x1: number, y1: number, x2: number, y2: number, c: Cor, espessura = 0.75) {
-    this.atual().push(`${cor(c)} RG ${n(espessura)} w ${n(x1)} ${n(A4.altura - y1)} m ${n(x2)} ${n(A4.altura - y2)} l S`);
+    this.atual().push(`${cor(c)} RG ${n(espessura)} w ${n(x1)} ${n(this.papel.altura - y1)} m ${n(x2)} ${n(this.papel.altura - y2)} l S`);
   }
 
   retangulo(x: number, y: number, largura: number, altura: number, c: Cor) {
-    this.atual().push(`${cor(c)} rg ${n(x)} ${n(A4.altura - y - altura)} ${n(largura)} ${n(altura)} re f`);
+    this.atual().push(`${cor(c)} rg ${n(x)} ${n(this.papel.altura - y - altura)} ${n(largura)} ${n(altura)} re f`);
   }
 
   /**
@@ -140,7 +142,7 @@ export class DocumentoPdf {
     const nums = (s: number) => n(s);
     const T = d.match(/[MLQZ]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
     const X = (x: number) => nums(x * escala + ox);
-    const Y = (y: number) => nums(A4.altura - (y * escala + oy));
+    const Y = (y: number) => nums(this.papel.altura - (y * escala + oy));
     const ops: string[] = [];
     let cx = 0, cy = 0, i = 0;
     const lerNum = () => Number(T[i++]);
@@ -170,7 +172,7 @@ export class DocumentoPdf {
 
   /** `y` é o topo da imagem, medido do topo da página. */
   imagem(indice: number, x: number, y: number, largura: number, altura: number) {
-    this.atual().push(`q ${n(largura)} 0 0 ${n(altura)} ${n(x)} ${n(A4.altura - y - altura)} cm /Im${indice} Do Q`);
+    this.atual().push(`q ${n(largura)} 0 0 ${n(altura)} ${n(x)} ${n(this.papel.altura - y - altura)} cm /Im${indice} Do Q`);
   }
 
   gerar(): Blob {
@@ -192,7 +194,7 @@ export class DocumentoPdf {
     this.paginas.forEach((comandos, i) => {
       const id = ids[i];
       const fluxo = comandos.join("\n");
-      objeto(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.largura} ${A4.altura}] /Resources << /Font << ${fontes} >> /ExtGState << /GS0 << /ca 1 /CA 1 /BM /Normal >> /GS1 << /ca 0.45 /CA 0.45 /BM /Multiply >> >>${xobjetos} >> /Contents ${id + 1} 0 R >>`);
+      objeto(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.papel.largura} ${this.papel.altura}] /Resources << /Font << ${fontes} >> /ExtGState << /GS0 << /ca 1 /CA 1 /BM /Normal >> /GS1 << /ca 0.45 /CA 0.45 /BM /Multiply >> >>${xobjetos} >> /Contents ${id + 1} 0 R >>`);
       objeto(id + 1, `<< /Length ${fluxo.length} >>\nstream\n${fluxo}\nendstream`);
     });
     this.imagens.forEach((im, i) => {

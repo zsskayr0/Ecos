@@ -32,6 +32,10 @@ export type ReduzirMovimento = "sistema" | "ligado" | "desligado";
 
 /** Modo de escrita: quando um traço à mão vira figura geométrica (linha, círculo, retângulo, triângulo). */
 export type FormasEscrita = "segurar" | "ao-soltar" | "desligado";
+export type FonteNota = "padrao" | "serifa" | "sistema" | "mono";
+export type LarguraNota = "padrao" | "estreita" | "media" | "larga";
+export type PapelNota = "desligado" | "a4" | "carta";
+export type MargemPagina = "estreita" | "normal" | "larga";
 
 export interface PreferenciasAplicativo {
   /** Modo de escrita: reconhecimento de figuras ao segurar a caneta parada, ao soltar, ou desligado. */
@@ -139,6 +143,16 @@ export interface PreferenciasAplicativo {
   silencioAtivo: boolean;
   silencioInicio: string;
   silencioFim: string;
+  /** Tipografia do texto das notas (fora do Modo de escrita, onde a coluna é fixa para a tinta alinhar). */
+  notaFonte: FonteNota;
+  /** Tamanho do texto em px; 0 = automático (14 no computador, 16 no celular). */
+  notaTamanho: number;
+  /** Entrelinha (multiplicador do tamanho); 0 = automática. */
+  notaEntrelinha: number;
+  notaLargura: LarguraNota;
+  /** Modo página: mostra a nota como folha A4/Carta, com quebras `---pagebreak`, e o PDF usa o mesmo papel e margens. */
+  notaPapel: PapelNota;
+  notaMargem: MargemPagina;
 }
 
 export const CHAVE_PREFERENCIAS_APLICATIVO = "ecos:preferencias-aplicativo:v1";
@@ -204,6 +218,12 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   silencioAtivo: false,
   silencioInicio: "22:00",
   silencioFim: "07:00",
+  notaFonte: "padrao",
+  notaTamanho: 0,
+  notaEntrelinha: 0,
+  notaLargura: "padrao",
+  notaPapel: "desligado",
+  notaMargem: "normal",
 };
 
 export function lerPreferenciasAplicativo(): PreferenciasAplicativo {

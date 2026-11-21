@@ -26,6 +26,7 @@ import { PaletaFlutuante } from "@/components/tinta/PaletaFlutuante";
 import { BarraFormatacao, type ComandoFormatacao } from "@/components/tinta/BarraFormatacao";
 import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type ModoBorracha, type Pincel } from "@/components/tinta/ColunaTinta";
 import { useTinta } from "@/lib/tinta/use-tinta";
+import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, usePreferenciasNota } from "@/lib/tipografia-nota";
 import { ativos, LARGURA_COLUNA_PADRAO, type Ferramenta } from "@/lib/tinta/tipos";
 
 interface Props {
@@ -148,6 +149,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   const editorRef = useRef<AreaLike | null>(null);
   const alvo = (): AreaLike | null => (layout === "document" ? editorRef.current : areaRef.current);
   const ehMobile = useIsMobile();
+  const prefsNota = usePreferenciasNota();
   const barraCompacta = !useIsDesktop();
   /** No celular, os botões de modo (escrever, pré-visualizar) vão para o cabeçalho da página, se ele tiver o espaço. */
   const [slotModo, setSlotModo] = useState<HTMLElement | null>(null);
@@ -523,7 +525,11 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     </>;
     // Celular e tablet (até 1023px), nota sem escrita à mão: texto de 16px, igual ao da leitura (14px é pequeno na tela do telefone). Com tinta a coluna é fixa e o texto não pode mudar de tamanho, senão a escrita desalinha.
     const fonteMaior = usaPaleta && !colunaFixa;
-    return <div ref={raizRef} className="min-w-0" data-corpo-editor style={fonteMaior ? ({ "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" } as React.CSSProperties) : undefined}>
+    // Preferências de tipografia (Configurações > Editor e escrita): só em notas na coluna fluida; com tinta a coluna é fixa.
+    const tipografia = tipo === "nota" && !colunaFixa;
+    const estiloRaiz = tipografia ? estiloTextoNota(prefsNota, fonteMaior ? 16 : 14) : fonteMaior ? ({ "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" } as React.CSSProperties) : undefined;
+    const estiloColuna = tipografia && !escrevendo ? { ...estiloColunaNota(prefsNota), ...(preview ? {} : estiloFolhaPagina(prefsNota)) } : undefined;
+    return <div ref={raizRef} className="min-w-0" data-corpo-editor data-modo-pagina={tipografia && prefsNota.notaPapel !== "desligado" ? prefsNota.notaPapel : undefined} style={estiloRaiz}>
       {slotOpcoes && createPortal(conteudoMenu, slotOpcoes)}
       {barraCompacta && !tintaNotaId && (slotModo ? createPortal(controlesModo, slotModo) : !escrevendo && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>)}
       <div style={escrevendo || folhaPlana ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : undefined} className={semBorda || escrevendo || folhaPlana ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
@@ -590,11 +596,11 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
               className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
           </ColunaTinta>
         : preview
-        ? <div className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
-        : <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
+        ? <div style={estiloColuna} className={`min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
+        : <div style={estiloColuna} className="min-w-0"><EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
-            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />}
-      {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} className="px-2 pb-1 text-right" />}
+            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} /></div>}
+      {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} paginas={tipo === "nota"} className="px-2 pb-1 text-right" />}
       {ajudaAberta && <FolhaAtalhosEditor aoFechar={() => { setAjudaAberta(false); editorRef.current?.focus(); }} />}
       </div>
     </div>;
