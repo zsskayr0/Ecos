@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
+import { remarkMatematicaBloco } from "@/lib/matematica";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as OpcoesSanitize } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
@@ -194,7 +195,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkMatematicaBloco, remarkBreaks, remarkWikilink, remarkMarcas]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], rehypeKatex, [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",

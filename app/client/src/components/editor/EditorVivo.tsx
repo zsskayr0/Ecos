@@ -11,6 +11,7 @@ import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
 import { tabelas } from "./tabela-widget";
+import { matematica, temaMatematica } from "./matematica-widget";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
 import { contadorTexto } from "./ContadorTexto";
 import { autocompletarEmoji } from "./SeletorEmoji";
@@ -475,6 +476,8 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         EditorView.theme({ ".cm-content": { minHeight: alturaMinima } }),
         plugin,
         tabelas,
+        matematica,
+        temaMatematica,
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : autocompletarEmoji(),
         colarMarkdown(),
         Prec.highest(keymap.of([atalhoColarTextoSimples])),
