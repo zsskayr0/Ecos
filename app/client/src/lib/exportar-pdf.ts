@@ -4,8 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { lerAltImagem, remarkCallouts } from "@/lib/markdown-blocos";
-import { mermaidEmImagem } from "@/lib/mermaid-sob-demanda";
+import { lerAltImagem } from "@/lib/markdown-blocos";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
 import { caixa, intersecta } from "@/lib/tinta/geometria";
@@ -400,15 +399,7 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
       const tamanho = ({ H1: 16, H2: 14, H3: 12.5 } as Record<string, number>)[tag] ?? 11.5;
       escreverPartes(e, inline(no, "negrito", doc), { tamanho, antes: 8, depois: 4 });
     } else if (tag === "UL" || tag === "OL") escreverLista(e, no, 0, doc);
-    else if (no.classList.contains("ecos-callout")) {
-      // Callout: título em negrito e corpo com a barra lateral; dobrável sai sempre aberto.
-      const titulo = no.querySelector(":scope > .ecos-callout-titulo");
-      const corpo = no.querySelector(":scope > .ecos-callout-corpo");
-      e.espaco(2);
-      if (titulo) escreverPartes(e, inline(titulo, "negrito", doc), { recuo: 14, barra: true, depois: 2 });
-      if (corpo) for (const filho of Array.from(corpo.children)) escreverPartes(e, inline(filho, "normal", doc), { recuo: 14, barra: true, depois: 2 });
-      e.espaco(6);
-    } else if (tag === "DETAILS") {
+    else if (tag === "DETAILS") {
       for (const filho of Array.from(no.children)) {
         if (filho.tagName === "SUMMARY") escreverPartes(e, inline(filho, "negrito", doc), { depois: 3 });
         else escreverBlocos(e, wrapper(filho), doc);
@@ -458,23 +449,13 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks, remarkCallouts], rehypePlugins: [rehypeRaw] }, semWikilink(d.corpo)));
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks], rehypePlugins: [rehypeRaw] }, semWikilink(d.corpo)));
     const corpo = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
     // Só texto e formatação seguem para o PDF: nada de script/estilo vindo do HTML da nota.
     corpo.querySelectorAll("script,style,iframe,object,embed").forEach((x) => x.remove());
     return corpo;
   });
 
-  // Diagramas Mermaid viram imagens antes de baixar as imagens.
-  await Promise.all(raizes.flatMap((raiz) => Array.from(raiz.querySelectorAll("pre > code.language-mermaid")).map(async (codigo) => {
-    const pre = codigo.parentElement!;
-    const png = await mermaidEmImagem(codigo.textContent ?? "");
-    if (!png) return;
-    const img = raiz.ownerDocument.createElement("img");
-    img.setAttribute("src", png.url);
-    img.setAttribute("alt", `Diagrama|${Math.round(png.largura)}|centro`);
-    pre.replaceWith(img);
-  })));
 
   // Imagens do texto e emojis: baixa/desenha tudo antes de montar as páginas.
   const pdf = new DocumentoPdf();

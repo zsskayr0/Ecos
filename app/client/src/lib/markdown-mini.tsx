@@ -13,8 +13,7 @@ import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
 import { media, notas, tarefas } from "@/lib/api";
 import { Wikilink } from "@/components/common/Wikilink";
-import { lerAltImagem, remarkCallouts } from "@/lib/markdown-blocos";
-import { DiagramaMermaid } from "@/lib/mermaid-sob-demanda";
+import { lerAltImagem } from "@/lib/markdown-blocos";
 
 /**
  * Real Markdown rendering (section 3.6 preview + Nota read mode) — used to
@@ -114,10 +113,8 @@ const esquemaSanitize: OpcoesSanitize = {
   tagNames: [...(defaultSchema.tagNames ?? []), "mark", "u", "ecos-wikilink"],
   attributes: {
     ...defaultSchema.attributes,
-    div: [...(defaultSchema.attributes?.div ?? []), ["className", /^ecos-callout/], "dataCallout", ["align", "center", "left", "right"]],
-    details: [...(defaultSchema.attributes?.details ?? []), ["className", /^ecos-callout/], "dataCallout", "open"],
-    summary: [["className", /^ecos-callout/]],
-    span: [["className", /^ecos-callout/], "ariaHidden"],
+    div: [...(defaultSchema.attributes?.div ?? []), ["align", "center", "left", "right"]],
+    details: [...(defaultSchema.attributes?.details ?? []), "open"],
     p: [["align", "center", "left", "right"]],
     img: [...(defaultSchema.attributes?.img ?? []), "title", "width"],
     "ecos-wikilink": ["dataInterno", "dataApelido"],
@@ -214,7 +211,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas, remarkCallouts]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], rehypeKatex, [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",
@@ -257,7 +254,6 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           pre: ({ node, children, ...p }) => {
             const codigo = node?.children.find((c) => c.type === "element" && c.tagName === "code") as { properties?: { className?: string[] }; type: string; children?: unknown[] } | undefined;
             const linguagem = codigo?.properties?.className?.find((c) => c.startsWith("language-"))?.slice("language-".length);
-            if (linguagem === "mermaid") return <DiagramaMermaid texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]} />;
             return <BlocoCodigo linguagem={linguagem} texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]}>{children}</BlocoCodigo>;
           },
           ol: ({ children, ...p }) => <ol data-linha={(p as LinhaProp)["data-linha"]} start={(p as { start?: number }).start} className="ml-5 list-decimal">{children}</ol>,

@@ -55,34 +55,10 @@
 .ecos-markdown .ecos-legenda { display: block; margin-top: 0.35rem; font-size: 0.85em; color: var(--color-text-secondary, inherit); text-align: center; }
 
 /* <details> dobrável. */
-.ecos-markdown details:not(.ecos-callout) {
+.ecos-markdown details {
   border: 1px solid var(--color-border, rgb(127 127 127 / 0.3));
   border-radius: 0.75rem;
   padding: 0.4rem 0.75rem;
 }
-.ecos-markdown details:not(.ecos-callout) > summary { font-weight: 600; }
-.ecos-markdown details[open]:not(.ecos-callout) > summary { margin-bottom: 0.35rem; }
-
-/* Callouts: > [!nota] Título */
-.ecos-markdown .ecos-callout {
-  --cor-callout: 74 143 224;
-  border-left: 3px solid rgb(var(--cor-callout));
-  background: rgb(var(--cor-callout) / 0.09);
-  border-radius: 0.6rem;
-  padding: 0.5rem 0.8rem;
-}
-.ecos-markdown .ecos-callout-titulo { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; }
-.ecos-markdown summary.ecos-callout-titulo { cursor: pointer; list-style: none; }
-.ecos-markdown summary.ecos-callout-titulo::-webkit-details-marker { display: none; }
-.ecos-markdown summary.ecos-callout-titulo::after { content: "›"; margin-left: auto; transition: transform 0.15s; }
-.ecos-markdown details[open] > summary.ecos-callout-titulo::after { transform: rotate(90deg); }
-.ecos-markdown .ecos-callout-icone { color: rgb(var(--cor-callout)); width: 1.1em; text-align: center; }
-.ecos-markdown .ecos-callout-corpo { margin-top: 0.3rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.ecos-markdown .ecos-callout-info { --cor-callout: 42 161 179; }
-.ecos-markdown .ecos-callout-dica { --cor-callout: 63 163 107; }
-.ecos-markdown .ecos-callout-sucesso { --cor-callout: 63 163 107; }
-.ecos-markdown .ecos-callout-aviso { --cor-callout: 210 139 38; }
-.ecos-markdown .ecos-callout-perigo { --cor-callout: 229 83 75; }
-.ecos-markdown .ecos-callout-pergunta { --cor-callout: 138 127 212; }
-.ecos-markdown .ecos-callout-citacao { --cor-callout: 139 148 158; }
-.ecos-markdown .ecos-mermaid svg { max-width: 100%; height: auto; }
+.ecos-markdown details > summary { font-weight: 600; }
+.ecos-markdown details[open] > summary { margin-bottom: 0.35rem; }
