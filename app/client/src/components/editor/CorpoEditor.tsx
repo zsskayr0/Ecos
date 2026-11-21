@@ -12,6 +12,7 @@ import { ContadorTexto } from "./ContadorTexto";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
 import { GRUPOS_ATALHOS } from "@/screens/Settings/AtalhosScreen";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
+import { OutlineTitulos } from "./OutlineTitulos";
 import { useIsDesktop, useIsMobile } from "@/lib/use-viewport";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
@@ -594,6 +595,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         : <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
             className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />}
+      {tipo === "nota" && !escrevendo && <OutlineTitulos corpo={corpo} view={preview ? null : viewContador} raiz={raizRef} />}
       {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} className="px-2 pb-1 text-right" />}
       {ajudaAberta && <FolhaAtalhosEditor aoFechar={() => { setAjudaAberta(false); editorRef.current?.focus(); }} />}
       </div>

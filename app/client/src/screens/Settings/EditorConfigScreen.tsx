@@ -1,4 +1,4 @@
-import { Globe2, Link2, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
+import { Globe2, ListOrdered, Link2, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import type { FormasEscrita } from "@/lib/preferencias-aplicativo";
@@ -36,6 +36,12 @@ export function EditorConfigScreen() {
       <Secao titulo="Modo Focus">
         <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus (tarefas e notas) o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
           <Toggle checked={prefs.focusPainelRecolhido} onChange={(focusPainelRecolhido) => alterar({ focusPainelRecolhido })} label="Painel lateral do Focus recolhido" />
+        </Linha>
+      </Secao>
+
+      <Secao titulo="Títulos">
+        <Linha Icone={ListOrdered} titulo="Numerar títulos" descricao="Mostra 1, 1.1, 1.1.1 antes dos títulos das notas, no editor, na leitura, no sumário [TOC] e no PDF. O texto da nota não muda.">
+          <Toggle checked={prefs.numerarTitulos} onChange={(numerarTitulos) => alterar({ numerarTitulos })} label="Numerar títulos" />
         </Linha>
       </Secao>
 

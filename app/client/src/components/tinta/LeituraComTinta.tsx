@@ -3,7 +3,9 @@
  * nada na tela: Fluido (texto que reflui, 16px) ou Página (coluna A4 ajustada à largura, onde a tinta cai no lugar).
  * Nota com tinta é sempre Página.
  */
-import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import type { EditorView } from "@codemirror/view";
+import { OutlineTitulos } from "@/components/editor/OutlineTitulos";
 import { EditorVivo, type AreaLike } from "@/components/editor/EditorVivo";
 import { resolverSrcImagem } from "@/lib/markdown-mini";
 import { corDoFundo, useFolha } from "@/lib/tinta/folha";
@@ -22,6 +24,7 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
   const tinta = useTinta(notaId);
   const area = useRef<AreaLike | null>(null);
   const raiz = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<EditorView | null>(null);
   const [folha] = useFolha(notaId);
   const abrirDestino = useAbrirDestino();
   const temTinta = tinta.carregado && ativos(tinta.tracos).length > 0;
@@ -47,7 +50,7 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
   }
 
   const editor = (
-    <EditorVivo corpo={corpo} onCorpoChange={NADA} areaRef={area} ariaLabel="Conteúdo da nota" placeholder="Nota vazia." alturaMinima="6rem" className={CLASSE_TEXTO_COLUNA} somenteLeitura
+    <EditorVivo aoCriarView={setView} corpo={corpo} onCorpoChange={NADA} areaRef={area} ariaLabel="Conteúdo da nota" placeholder="Nota vazia." alturaMinima="6rem" className={CLASSE_TEXTO_COLUNA} somenteLeitura
       resolverImagem={(src) => resolverSrcImagem(src, notaId, "nota")} aoAbrirWikilink={abrirWikilink} />
   );
   return (
@@ -57,6 +60,7 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
         : temTinta || modo === "pagina"
         ? <ColunaTinta largura={tinta.largura ?? LARGURA_COLUNA_PADRAO} tracos={tinta.tracos} escrevendo={false} folhaPlana pincel={PINCEL} dedoDesenha={false} onOperacao={NADA} estiloFolha={folha.estilo}>{editor}</ColunaTinta>
         : editor}
+      <OutlineTitulos corpo={corpo} view={view} raiz={raiz} />
     </div>
   );
 }

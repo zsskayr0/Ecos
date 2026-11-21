@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
@@ -114,6 +115,7 @@ const esquemaSanitize: OpcoesSanitize = {
     ...defaultSchema.attributes,
     "ecos-wikilink": ["dataInterno", "dataApelido"],
     code: [["className", /^language-./, "math-inline", "math-display"]],
+    ul: [["className", "contains-task-list", "ecos-sumario"]],
   },
 };
 
@@ -194,7 +196,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas, remarkSumario({ numerar: numerarTitulosLigado() })]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], rehypeKatex, [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",
@@ -209,6 +211,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           a: ({ href, children, node: _n, ...resto }) => {
             // Âncora interna (rodapé `[^1]` ↔ nota): mesma página, sem nova aba.
             const interno = href?.startsWith("#");
+            const titulo = href?.startsWith("#user-content-ecos-titulo-");
             const extra = resto as Record<string, unknown>;
             return (
               <a
@@ -219,7 +222,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
                 data-footnote-ref={extra["data-footnote-ref"] as string | undefined}
                 data-footnote-backref={extra["data-footnote-backref"] as string | undefined}
                 className="text-steel-300 underline underline-offset-2"
-                {...(interno ? { onClick: (e: EventoMouse) => e.stopPropagation() } : { target: "_blank", rel: "noreferrer" })}
+                {...(titulo ? { onClick: (e: EventoMouse) => { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLElement).closest(".ecos-markdown")?.querySelector(`[id="${href!.slice(1)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }); } } : interno ? { onClick: (e: EventoMouse) => e.stopPropagation() } : { target: "_blank", rel: "noreferrer" })}
               >
                 {children}
               </a>
@@ -234,16 +237,16 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           h1: ({ children, className, ...p }) => <h1 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`font-display text-xl text-text-primary ${className ?? ""}`}>{children}</h1>,
           h2: ({ children, className, ...p }) => <h2 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`font-display text-lg text-text-primary ${className ?? ""}`}>{children}</h2>,
           h3: ({ children, className, ...p }) => <h3 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`font-display text-base font-semibold text-text-primary ${className ?? ""}`}>{children}</h3>,
-          h4: ({ children, className, ...p }) => <h4 data-linha={(p as LinhaProp)["data-linha"]} className={`text-[0.95rem] font-semibold text-text-primary ${className ?? ""}`}>{children}</h4>,
-          h5: ({ children, className, ...p }) => <h5 data-linha={(p as LinhaProp)["data-linha"]} className={`text-sm font-semibold text-text-secondary ${className ?? ""}`}>{children}</h5>,
-          h6: ({ children, className, ...p }) => <h6 data-linha={(p as LinhaProp)["data-linha"]} className={`text-xs font-semibold uppercase tracking-wide text-text-secondary ${className ?? ""}`}>{children}</h6>,
+          h4: ({ children, className, ...p }) => <h4 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`text-[0.95rem] font-semibold text-text-primary ${className ?? ""}`}>{children}</h4>,
+          h5: ({ children, className, ...p }) => <h5 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`text-sm font-semibold text-text-secondary ${className ?? ""}`}>{children}</h5>,
+          h6: ({ children, className, ...p }) => <h6 id={(p as { id?: string }).id} data-linha={(p as LinhaProp)["data-linha"]} className={`text-xs font-semibold uppercase tracking-wide text-text-secondary ${className ?? ""}`}>{children}</h6>,
           pre: ({ node, children, ...p }) => {
             const codigo = node?.children.find((c) => c.type === "element" && c.tagName === "code") as { properties?: { className?: string[] }; type: string; children?: unknown[] } | undefined;
             const linguagem = codigo?.properties?.className?.find((c) => c.startsWith("language-"))?.slice("language-".length);
             return <BlocoCodigo linguagem={linguagem} texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]}>{children}</BlocoCodigo>;
           },
           ol: ({ children, ...p }) => <ol data-linha={(p as LinhaProp)["data-linha"]} start={(p as { start?: number }).start} className="ml-5 list-decimal">{children}</ol>,
-          ul: ({ children, className, ...p }) => <ul data-linha={(p as LinhaProp)["data-linha"]} className={className?.includes("contains-task-list") ? "" : "ml-5 list-disc"}>{children}</ul>,
+          ul: ({ children, className, ...p }) => <ul data-linha={(p as LinhaProp)["data-linha"]} className={className?.includes("ecos-sumario") ? "ecos-sumario flex flex-col gap-0.5 rounded-xl border border-border bg-surface-2 px-4 py-3 [&_ul]:!ml-4 [&_ul]:!list-none [&_ul]:mt-0.5 [&_a]:no-underline hover:[&_a]:underline" : className?.includes("contains-task-list") ? "" : "ml-5 list-disc"}>{children}</ul>,
           blockquote: ({ children, ...p }) => <blockquote data-linha={(p as LinhaProp)["data-linha"]} className="border-l-2 border-border pl-3 text-text-secondary">{children}</blockquote>,
           table: ({ children, ...p }) => (
             <div data-linha={(p as LinhaProp)["data-linha"]} className="max-w-full overflow-x-auto">

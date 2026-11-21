@@ -41,3 +41,6 @@
 .ecos-markdown .hljs-tag, .ecos-markdown .hljs-name, .ecos-markdown .hljs-meta { color: #8a7fd4; }
 .ecos-markdown .hljs-deletion { color: #e5534b; }
 .ecos-markdown .hljs-addition { color: #3fa36b; }
+
+/* Numeração opcional dos títulos no editor vivo (a leitura e o PDF já recebem o número no texto). */
+html[data-numerar-titulos] .cm-line[data-num]::before { content: attr(data-num) "\00a0"; color: var(--color-text-muted, #8a8f98); font-weight: 500; }

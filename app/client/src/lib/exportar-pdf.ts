@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
 import { caixa, intersecta } from "@/lib/tinta/geometria";
@@ -416,7 +417,7 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks] }, semWikilink(d.corpo)));
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })] }, semWikilink(d.corpo)));
     return new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
   });
 

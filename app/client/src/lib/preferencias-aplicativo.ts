@@ -94,6 +94,8 @@ export interface PreferenciasAplicativo {
   tarefaAbreEditando: boolean;
   /** No modo Focus o painel lateral "Opções" começa recolhido (padrão) ou aberto. */
   focusPainelRecolhido: boolean;
+  /** Numera os títulos das notas (1, 1.1, 1.1.1) no editor, na leitura e no PDF. */
+  numerarTitulos: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
   mostrarConcluidas: boolean;
   /** Concluídas aparecem só riscadas ou riscadas e em verde. */
@@ -177,6 +179,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   notaModoEdicao: "fluido",
   tarefaAbreEditando: true,
   focusPainelRecolhido: true,
+  numerarTitulos: false,
   mostrarConcluidas: false,
   concluidasEstilo: "riscada",
   visualizacaoTarefasDesktop: "tabela",
@@ -226,6 +229,7 @@ export function aplicarPreferenciasAplicativo(preferencias = lerPreferenciasApli
   raiz.style.fontSize = preferencias.escalaInterface === 100 ? "" : `${preferencias.escalaInterface}%`;
   const movimento = preferencias.reduzirMovimento === "ligado" || (preferencias.reduzirMovimento === "sistema" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   if (movimento) raiz.setAttribute("data-reduzir-movimento", "true"); else raiz.removeAttribute("data-reduzir-movimento");
+  if (preferencias.numerarTitulos) raiz.setAttribute("data-numerar-titulos", "true"); else raiz.removeAttribute("data-numerar-titulos");
 }
 
 export function salvarPreferenciasAplicativo(preferencias: PreferenciasAplicativo) {

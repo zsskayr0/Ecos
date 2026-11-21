@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range } from "@codemirror/state";
+import { sumarioEditor } from "./sumario-editor";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { deleteMarkupBackward, insertNewlineContinueMarkup, markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -474,6 +475,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         placeholder ? placeholderExt(placeholder) : [],
         EditorView.theme({ ".cm-content": { minHeight: alturaMinima } }),
         plugin,
+        sumarioEditor,
         tabelas,
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : autocompletarEmoji(),
         colarMarkdown(),
