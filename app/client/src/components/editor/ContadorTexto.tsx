@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { EditorView, ViewPlugin } from "@codemirror/view";
+import { estimarPaginas, usePreferenciasNota } from "@/lib/tipografia-nota";
 
 export interface Contagem { palavras: number; caracteres: number; minutosLeitura: number }
 
@@ -33,8 +34,9 @@ export const contadorTexto = ViewPlugin.define(() => ({
 
 const fmt = new Intl.NumberFormat("pt-BR");
 
-type Props = { view: EditorView | null; texto?: never; selecao?: never; className?: string }
-  | { view?: never; texto: string; selecao?: string; className?: string };
+/** `paginas`: mostra também as páginas, quando o modo página está ligado. */
+type Props = { view: EditorView | null; texto?: never; selecao?: never; className?: string; paginas?: boolean }
+  | { view?: never; texto: string; selecao?: string; className?: string; paginas?: boolean };
 
 /** Rodapé discreto: palavras · caracteres · tempo de leitura. Com seleção, mostra os números da seleção. */
 export function ContadorTexto(props: Props) {
@@ -53,10 +55,12 @@ export function ContadorTexto(props: Props) {
   const selecao = view ? lido?.selecao ?? "" : props.selecao ?? "";
   const c = contarTexto(selecao || texto);
   const leitura = c.minutosLeitura === 0 ? "" : ` · ${c.minutosLeitura} min de leitura`;
+  const prefs = usePreferenciasNota();
+  const paginas = props.paginas && !selecao ? estimarPaginas(texto, prefs) : null;
   return (
     <div className={`text-xs text-text-muted tabular-nums ${props.className ?? ""}`} aria-live="polite">
       {selecao ? "Seleção: " : ""}
-      {fmt.format(c.palavras)} {c.palavras === 1 ? "palavra" : "palavras"} · {fmt.format(c.caracteres)} {c.caracteres === 1 ? "caractere" : "caracteres"}{leitura}
+      {fmt.format(c.palavras)} {c.palavras === 1 ? "palavra" : "palavras"} · {fmt.format(c.caracteres)} {c.caracteres === 1 ? "caractere" : "caracteres"}{leitura}{paginas ? ` · ${paginas} ${paginas === 1 ? "página" : "páginas"} ${prefs.notaPapel === "carta" ? "Carta" : "A4"}` : ""}
     </div>
   );
 }

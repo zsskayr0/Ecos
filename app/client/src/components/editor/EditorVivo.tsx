@@ -15,6 +15,7 @@ import { tabelas } from "./tabela-widget";
 import { matematica, temaMatematica } from "./matematica-widget";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
 import { contadorTexto } from "./ContadorTexto";
+import { QUEBRA_PAGINA } from "@/lib/tipografia-nota";
 import { autocompletarEmoji } from "./SeletorEmoji";
 import { bibliotecaDoCorpo, citacaoCurta, extrairNotas, irParaNota } from "@/lib/notas-rodape";
 
@@ -369,6 +370,7 @@ function montarDecoracoes(view: EditorView): DecorationSet {
     if (!l.length && n > 1 && !state.doc.line(n - 1).length && !ativas.has(n) && !emCodigo.has(n) && n < state.doc.lines) decos.push(Decoration.line({ class: "cm-vazia" }).range(l.from));
     if (emCodigo.has(n)) continue;
     if (NOTA_DEF.test(l.text)) linha(l.from, "cm-nota-def");
+    if (QUEBRA_PAGINA.test(l.text)) linha(l.from, ativas.has(n) ? "cm-quebra-pagina cm-quebra-ativa" : "cm-quebra-pagina");
     if (l.text.includes("==")) {
       REALCE.lastIndex = 0;
       let r: RegExpExecArray | null;
@@ -411,6 +413,9 @@ const tema = EditorView.theme({
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "var(--ecos-linha-nota, 20px)", overflow: "visible" },
   ".cm-content": { padding: "0", caretColor: "rgb(var(--ecos-cyan-rgb))" },
   ".cm-line": { padding: "0" },
+  ".cm-quebra-pagina": { position: "relative", color: "transparent", borderTop: "1px dashed rgb(var(--ecos-text-muted-rgb))", marginTop: "10px", paddingTop: "2px" },
+  ".cm-quebra-pagina::after": { content: '"Quebra de página"', position: "absolute", left: "50%", top: "-0.75em", transform: "translateX(-50%)", padding: "0 8px", fontSize: "11px", lineHeight: "1.5", color: "rgb(var(--ecos-text-muted-rgb))", background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" },
+  ".cm-quebra-ativa": { color: "rgb(var(--ecos-text-muted-rgb))" },
   ".cm-vazia": { height: "8px", lineHeight: "8px", overflow: "hidden" },
   ".cm-cursor": { borderLeftColor: "rgb(var(--ecos-cyan-rgb))" },
   ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { background: "rgb(var(--ecos-steel-500-rgb) / 0.4)" },

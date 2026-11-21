@@ -1,7 +1,7 @@
-import { Globe2, ListOrdered, Link2, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
+import { ALargeSmall, Columns3, FileText, Globe2, Link2, ListOrdered, Rows3, Scan, Type, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
-import type { FormasEscrita } from "@/lib/preferencias-aplicativo";
+import type { FonteNota, FormasEscrita, LarguraNota, MargemPagina, PapelNota } from "@/lib/preferencias-aplicativo";
 import { Cabecalho, Linha, Secao, Segmentado, Seletor, usePreferencias } from "./campos-config";
 import { IDIOMAS } from "./idiomas";
 
@@ -19,6 +19,26 @@ const FORMATOS_LINK = [
   { valor: "absoluto", rotulo: "Caminho completo", icone: Link2, cor: TOM.violeta },
 ] as const;
 
+const FONTES = [
+  { valor: "padrao", rotulo: "Padrão do app", icone: Type, cor: TOM.aco },
+  { valor: "serifa", rotulo: "Serifada", icone: Type, cor: TOM.ciano },
+  { valor: "sistema", rotulo: "Do sistema", icone: Type, cor: TOM.violeta },
+  { valor: "mono", rotulo: "Monoespaçada", icone: Type, cor: TOM.aco },
+] as const satisfies readonly { valor: FonteNota; rotulo: string; icone: typeof Type; cor: string }[];
+const TAMANHOS = [
+  { valor: "0", rotulo: "Automático", icone: ALargeSmall, cor: TOM.aco },
+  ...[13, 14, 15, 16, 18, 20, 22].map((n) => ({ valor: String(n), rotulo: `${n} px`, icone: ALargeSmall, cor: TOM.ciano })),
+] as const;
+const ENTRELINHAS = [{ id: "0", rotulo: "Auto" }, { id: "1.3", rotulo: "Justa" }, { id: "1.6", rotulo: "Média" }, { id: "2", rotulo: "Dupla" }] as const;
+const LARGURAS = [
+  { valor: "padrao", rotulo: "Toda a largura", icone: Columns3, cor: TOM.aco },
+  { valor: "estreita", rotulo: "Estreita (640 px)", icone: Columns3, cor: TOM.ciano },
+  { valor: "media", rotulo: "Média (760 px)", icone: Columns3, cor: TOM.ciano },
+  { valor: "larga", rotulo: "Larga (960 px)", icone: Columns3, cor: TOM.violeta },
+] as const satisfies readonly { valor: LarguraNota; rotulo: string; icone: typeof Type; cor: string }[];
+const PAPEIS = [{ id: "desligado", rotulo: "Desligado" }, { id: "a4", rotulo: "A4" }, { id: "carta", rotulo: "Carta" }] as const satisfies readonly { id: PapelNota; rotulo: string }[];
+const MARGENS = [{ id: "estreita", rotulo: "Estreita" }, { id: "normal", rotulo: "Normal" }, { id: "larga", rotulo: "Larga" }] as const satisfies readonly { id: MargemPagina; rotulo: string }[];
+
 /** O ato de escrever, em notas e em tarefas: captura rápida, modo Focus, ortografia, links e caneta. */
 export function EditorConfigScreen() {
   const [prefs, alterar] = usePreferencias();
@@ -31,6 +51,32 @@ export function EditorConfigScreen() {
         <Linha Icone={Zap} titulo="Enter cria" descricao="Na captura rápida do Feed. Ctrl+Enter cria o outro tipo e Shift+Enter quebra a linha.">
           <Segmentado valor={prefs.capturaEnter} opcoes={[{ id: "nota", rotulo: "Nota", Icone: StickyNote }, { id: "tarefa", rotulo: "Tarefa", Icone: ListChecks }]} onChange={(capturaEnter) => alterar({ capturaEnter })} label="O que o Enter cria" />
         </Linha>
+      </Secao>
+
+      <Secao titulo="Texto das notas">
+        <Linha Icone={Type} titulo="Fonte" descricao="Fonte do texto das notas. Notas com escrita à mão mantêm a fonte padrão, para a tinta continuar alinhada.">
+          <Seletor valor={prefs.notaFonte} opcoes={FONTES} onChange={(notaFonte) => alterar({ notaFonte })} label="Fonte das notas" />
+        </Linha>
+        <Linha Icone={ALargeSmall} titulo="Tamanho do texto" descricao="Automático usa 14 px no computador e 16 px no celular.">
+          <Seletor valor={String(prefs.notaTamanho) as (typeof TAMANHOS)[number]["valor"]} opcoes={TAMANHOS} onChange={(v) => alterar({ notaTamanho: Number(v) })} label="Tamanho do texto" />
+        </Linha>
+        <Linha Icone={Rows3} titulo="Entrelinha" descricao="Espaço entre as linhas do texto.">
+          <Segmentado valor={(ENTRELINHAS.find((e) => Number(e.id) === prefs.notaEntrelinha)?.id ?? "0") as (typeof ENTRELINHAS)[number]["id"]} opcoes={ENTRELINHAS} onChange={(v) => alterar({ notaEntrelinha: Number(v) })} label="Entrelinha" />
+        </Linha>
+        <Linha Icone={Columns3} titulo="Largura da coluna" descricao="Limita a largura do texto para linhas mais confortáveis de ler. Vale no modo comum e no Focus.">
+          <Seletor valor={prefs.notaLargura} opcoes={LARGURAS} onChange={(notaLargura) => alterar({ notaLargura })} label="Largura da coluna" />
+        </Linha>
+      </Secao>
+
+      <Secao titulo="Modo página">
+        <Linha Icone={FileText} titulo="Papel" descricao="Mostra a nota como uma folha, com a linha onde cada página termina, e o PDF exportado usa o mesmo papel e margens. Uma linha só com ---pagebreak começa uma página nova no PDF. Sem cabeçalho nem rodapé: palavras e páginas ficam no painel lateral.">
+          <Segmentado valor={prefs.notaPapel} opcoes={PAPEIS} onChange={(notaPapel) => alterar({ notaPapel })} label="Papel do modo página" />
+        </Linha>
+        {prefs.notaPapel !== "desligado" && (
+          <Linha Icone={Scan} titulo="Margens" descricao="Estreita 1,27 cm, normal 2,5 cm, larga 3,5 cm.">
+            <Segmentado valor={prefs.notaMargem} opcoes={MARGENS} onChange={(notaMargem) => alterar({ notaMargem })} label="Margens da página" />
+          </Linha>
+        )}
       </Secao>
 
       <Secao titulo="Modo Focus">
@@ -69,7 +115,7 @@ export function EditorConfigScreen() {
       </Secao>
 
       <Secao titulo="Escrita à mão">
-        <Linha Icone={Shapes} titulo="Reconhecer figuras" descricao="Transforma traços em linha reta, círculo, elipse, triângulo ou retângulo. “Ao segurar” só encaixa se você parar a caneta no fim do traço; “Automático” tenta ao soltar, e pode mexer em letras que lembrem uma figura.">
+        <Linha Icone={Shapes} titulo="Reconhecer figuras" descricao="Transforma traços em linha reta, círculo, elipse, triângulo ou retângulo. â€œAo segurarâ€ só encaixa se você parar a caneta no fim do traço; â€œAutomáticoâ€ tenta ao soltar, e pode mexer em letras que lembrem uma figura.">
           <Seletor valor={prefs.escritaFormas} opcoes={FORMAS_ESCRITA} onChange={(escritaFormas) => alterar({ escritaFormas })} label="Reconhecer figuras" />
         </Linha>
         {prefs.escritaFormas === "segurar" && (

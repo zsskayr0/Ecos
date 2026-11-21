@@ -207,6 +207,9 @@ function Figura({ src, alt, title, itemId, tipo, width }: { src?: string; alt?: 
   );
 }
 
+/** `---pagebreak` vira uma régua na leitura (a quebra real só vale no PDF). */
+const semQuebrasDePagina = (corpo: string) => corpo.replace(/^[ \t]*---pagebreak[ \t]*$/gim, "\n---\n");
+
 export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarChecklist }: Props) {
   let proximoCheckbox = 0;
   // KaTeX fica fora do pacote principal: só baixa quando o texto tem `$`, e redesenha ao chegar.
@@ -283,7 +286,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           ),
         }}
       >
-        {corpo}
+        {semQuebrasDePagina(corpo)}
       </ReactMarkdown>
     </div>
   );

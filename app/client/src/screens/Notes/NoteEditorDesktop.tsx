@@ -24,6 +24,7 @@ import { descriptionTags } from "@/lib/task-fields";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { AttachmentsField } from "@/components/editor/AttachmentsField";
 import { CorpoEditor } from "@/components/editor/CorpoEditor";
+import { ContadorTexto } from "@/components/editor/ContadorTexto";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
 import { Conexoes } from "@/components/common/Conexoes";
@@ -485,7 +486,7 @@ export function NoteEditorDesktop() {
               <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
               <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
               <NotasLaterais corpo={valor.corpo} />
-              <p className="text-xs text-text-muted">{valor.corpo.trim() ? valor.corpo.trim().split(/\s+/).length : 0} palavras · {valor.corpo.length} caracteres</p>
+              <ContadorTexto texto={valor.corpo} paginas />
               <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />
             </aside>
           )}
