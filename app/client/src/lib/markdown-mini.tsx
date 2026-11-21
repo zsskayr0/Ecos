@@ -3,12 +3,11 @@ import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
+import { carregarKatex, katexCarregado, rehypeKatexSobDemanda, remarkMatematicaBloco } from "@/lib/matematica";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as OpcoesSanitize } from "rehype-sanitize";
-import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
-import { useState, type MouseEvent as EventoMouse, type ReactNode } from "react";
-import "katex/dist/katex.min.css";
+import { useEffect, useState, type MouseEvent as EventoMouse, type ReactNode } from "react";
 import "./markdown-leitura.css";
 import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
@@ -193,11 +192,20 @@ export function resolverSrcImagem(src: string | undefined, itemId: string | unde
 
 export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarChecklist }: Props) {
   let proximoCheckbox = 0;
+  // KaTeX fica fora do pacote principal: só baixa quando o texto tem `$`, e redesenha ao chegar.
+  const [katex, setKatex] = useState(katexCarregado);
+  const temDolar = corpo.includes("$");
+  useEffect(() => {
+    if (!temDolar || katex) return;
+    let vivo = true;
+    void carregarKatex().then((k) => { if (vivo) setKatex(() => k); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [temDolar, katex]);
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkBreaks, remarkWikilink, remarkMarcas, remarkSumario({ numerar: numerarTitulosLigado() })]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], rehypeKatex, [rehypeHighlight, { detect: false }], rehypeLinhas]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkMatematicaBloco, remarkBreaks, remarkWikilink, remarkMarcas, remarkSumario({ numerar: numerarTitulosLigado() })]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], [rehypeKatexSobDemanda, { katex }], [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",
           footnoteBackLabel: (i: number, r: number) => `Voltar à referência ${i + 1}${r > 1 ? `-${r}` : ""}`,

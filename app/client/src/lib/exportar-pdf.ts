@@ -4,6 +4,9 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
+import remarkMath from "remark-math";
+import { remarkMatematicaBloco } from "@/lib/matematica";
+import { imagemDaFormula } from "@/lib/formula-imagem";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
 import { caixa, intersecta } from "@/lib/tinta/geometria";
@@ -191,15 +194,19 @@ function escreverFiel(e: Escritor, nota: NotaFiel) {
 
 // ---------------------------------------------------------------- texto em linhas, com negrito/itálico/emoji
 
-interface Trecho { t: string; f: Fonte; cor?: Cor }
+interface Trecho { t: string; f: Fonte; cor?: Cor; mat?: string }
 type Parte = Trecho | { img: HTMLImageElement; doc: Documento };
 type Ficha =
   | { k: "palavra"; t: string; f: Fonte; cor?: Cor; w: number }
   | { k: "espaco"; f: Fonte; w: number }
   | { k: "emoji"; e: string; w: number }
+  | { k: "formula"; chave: string; w: number; h: number }
   | { k: "quebra" };
 
 const MARGEM_LATERAL = 54;
+/** `imagemDaFormula` desenha a 20px com resolução 3x. */
+const ESCALA_FORMULA = 3;
+const chaveFormula = (tex: string, bloco: boolean) => `${bloco ? "B" : "I"}:${tex.trim()}`;
 const TOPO = 58;
 const BASE = A4.altura - 58;
 const LARGURA = A4.largura - MARGEM_LATERAL * 2;
@@ -208,9 +215,16 @@ const TEXTO: Cor = [0.06, 0.09, 0.16];
 const AZUL: Cor = [0.15, 0.39, 0.92];
 const LINHA: Cor = [0.89, 0.91, 0.94];
 
-function fichasDe(trechos: Trecho[], tamanho: number, emojis: Imagens): Ficha[] {
+function fichasDe(trechos: Trecho[], tamanho: number, emojis: Imagens, formulas: Imagens): Ficha[] {
   const fichas: Ficha[] = [];
   for (const tr of trechos) {
+    if (tr.mat) {
+      const im = formulas.get(tr.mat);
+      const fonte = limparTexto(tr.mat.slice(2));
+      if (im) { const esc = tamanho / (20 * ESCALA_FORMULA); fichas.push({ k: "formula", chave: tr.mat, w: im.largura * esc, h: im.altura * esc }); }
+      else fichas.push({ k: "palavra", t: fonte, f: "codigo", cor: tr.cor, w: medir(fonte, "codigo", tamanho) });
+      continue;
+    }
     const partes = tr.t.split(EMOJI);
     for (const parte of partes) {
       if (!parte) continue;
@@ -269,13 +283,14 @@ interface OpcoesParagrafo { cor?: Cor; tamanho?: number; recuo?: number; antes?:
 /** Cursor de escrita: posiciona o texto de cima para baixo e vira a página quando acaba o espaço. */
 class Escritor {
   y = TOPO;
+  formulas: Imagens = new Map();
   constructor(readonly pdf: DocumentoPdf, readonly imagens: Imagens, readonly emojis: Imagens) {}
 
   garantir(altura: number) { if (this.y + altura > BASE) { this.pdf.novaPagina(); this.y = TOPO; } }
   espaco(pt: number) { this.y += pt; }
 
   texto(trechos: Trecho[], { cor = TEXTO, tamanho = 10.5, recuo = 0, antes = 0, depois = 5, barra = false, prefixo = "" }: OpcoesParagrafo = {}) {
-    const fichas = fichasDe(trechos, tamanho, this.emojis);
+    const fichas = fichasDe(trechos, tamanho, this.emojis, this.formulas);
     if (!fichas.some((f) => f.k !== "espaco" && f.k !== "quebra") && !prefixo) return;
     const x = MARGEM_LATERAL + recuo;
     const larguraPrefixo = prefixo ? 16 : 0;
@@ -283,7 +298,7 @@ class Escritor {
     this.y += antes;
     linhas.forEach((linha, i) => {
       const comEmoji = linha.some((f) => f.k === "emoji");
-      const altura = Math.max(tamanho * 1.45, comEmoji ? tamanho * 1.7 : 0);
+      const altura = Math.max(tamanho * 1.45, comEmoji ? tamanho * 1.7 : 0, ...linha.map((f) => (f.k === "formula" ? f.h + tamanho * 0.35 : 0)));
       this.garantir(altura);
       if (barra) this.pdf.linha(x - 8, this.y - 1, x - 8, this.y + altura - 3, [0.8, 0.84, 0.89], 2);
       if (i === 0 && prefixo) this.pdf.texto(limparTexto(prefixo), x, this.y + tamanho, "normal", tamanho, cor);
@@ -293,7 +308,7 @@ class Escritor {
         else if (f.k === "emoji") {
           const im = this.emojis.get(f.e)!;
           this.pdf.imagem(im.indice, cursor, this.y + tamanho - f.w * 0.82, f.w, f.w);
-        }
+        } else if (f.k === "formula") this.pdf.imagem(this.formulas.get(f.chave)!.indice, cursor, this.y + (altura - f.h) / 2 - tamanho * 0.1, f.w, f.h);
         if (f.k !== "quebra") cursor += f.w;
       }
       this.y += altura;
@@ -311,6 +326,18 @@ class Escritor {
     if (h > maximo) { h = maximo; w = (h * pronta.largura) / pronta.altura; }
     this.garantir(h);
     this.pdf.imagem(pronta.indice, MARGEM_LATERAL, this.y, w, h);
+    this.y += h + 8;
+  }
+
+  /** Fórmula em bloco (`$$...$$`): centralizada; sem imagem, sai o código. */
+  formula(chave: string) {
+    const im = this.formulas.get(chave);
+    if (!im) { this.texto([{ t: chave.slice(2), f: "codigo" }], { tamanho: 9, recuo: 8, depois: 6 }); return; }
+    const esc = 11 / (20 * ESCALA_FORMULA);
+    let w = im.largura * esc, h = im.altura * esc;
+    if (w > LARGURA) { h *= LARGURA / w; w = LARGURA; }
+    this.garantir(h + 8);
+    this.pdf.imagem(im.indice, MARGEM_LATERAL + (LARGURA - w) / 2, this.y + 2, w, h);
     this.y += h + 8;
   }
 
@@ -338,6 +365,7 @@ function inline(no: Node, f: Fonte, doc: Documento, cor?: Cor, saida: Parte[] = 
     else if (tag === "IMG") saida.push({ img: el as HTMLImageElement, doc });
     else if (tag === "STRONG" || tag === "B") inline(el, negrito(f), doc, cor, saida);
     else if (tag === "EM" || tag === "I") inline(el, italico(f), doc, cor, saida);
+    else if (tag === "CODE" && el.classList.contains("math-inline")) saida.push({ t: "", f, cor, mat: chaveFormula(el.textContent ?? "", false) });
     else if (tag === "CODE") inline(el, "codigo", doc, cor, saida);
     else if (tag === "A") inline(el, f, doc, AZUL, saida);
     else { inline(el, f, doc, cor, saida); if (tag === "P" && i < todos.length - 1) saida.push({ t: "\n", f, cor }); }
@@ -388,6 +416,7 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
       escreverPartes(e, inline(no, "negrito", doc), { tamanho, antes: 8, depois: 4 });
     } else if (tag === "UL" || tag === "OL") escreverLista(e, no, 0, doc);
     else if (tag === "BLOCKQUOTE") escreverPartes(e, inline(no, "italico", doc, CINZA), { cor: CINZA, recuo: 14, barra: true, depois: 6 });
+    else if (tag === "PRE" && no.querySelector("code.math-display")) e.formula(chaveFormula(no.textContent ?? "", true));
     else if (tag === "PRE") e.texto([{ t: textoSimples(no), f: "codigo" }], { tamanho: 9, recuo: 8, depois: 6 });
     else if (tag === "HR") e.regua();
     else if (tag === "TABLE") {
@@ -417,7 +446,7 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })] }, semWikilink(d.corpo)));
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkMatematicaBloco, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })] }, semWikilink(d.corpo)));
     return new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
   });
 
@@ -425,6 +454,7 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   const pdf = new DocumentoPdf();
   const imagens: Imagens = new Map();
   const emojis: Imagens = new Map();
+  const formulas: Imagens = new Map();
   const pedidos: Promise<void>[] = [];
   const registrar = (mapa: Imagens, chave: string, quando: Promise<{ bytes: Uint8Array; largura: number; altura: number } | null>) => {
     mapa.set(chave, null);
@@ -434,6 +464,11 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
     raiz.querySelectorAll("img").forEach((img) => {
       const src = resolverSrcImagem(img.getAttribute("src") ?? undefined, docs[i].id, docs[i].tipo);
       if (src && !imagens.has(src)) registrar(imagens, src, imagemDaRede(src));
+    });
+    raiz.querySelectorAll("code.math-inline, code.math-display").forEach((c) => {
+      const bloco = c.classList.contains("math-display");
+      const chave = chaveFormula(c.textContent ?? "", bloco);
+      if (!formulas.has(chave)) registrar(formulas, chave, imagemDaFormula(chave.slice(2), bloco));
     });
     for (const m of (raiz.textContent ?? "").matchAll(EMOJI)) if (ehEmoji(m[0]) && !emojis.has(m[0])) registrar(emojis, m[0], imagemDoEmoji(m[0]));
   });
@@ -462,6 +497,7 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   }));
 
   const e = new Escritor(pdf, imagens, emojis);
+  e.formulas = formulas;
   docs.forEach((d, i) => {
     if (i > 0) { pdf.novaPagina(); e.y = TOPO; }
     escreverDocumento(e, d, tintas[i].fiel ? null : raizes[i]);

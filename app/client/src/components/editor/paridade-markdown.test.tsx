@@ -12,7 +12,11 @@
  *
  * Recurso novo de Markdown = um caso novo aqui.
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { carregarKatex } from "@/lib/matematica";
+
+// KaTeX chega sob demanda; aqui ele já vem carregado para a leitura renderizar na hora.
+beforeAll(() => carregarKatex());
 import { render } from "@testing-library/react";
 import { createRef } from "react";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
@@ -46,7 +50,7 @@ const CASOS: Caso[] = [
   // Lacunas conhecidas do editor ao vivo (a leitura já suporta).
   { nome: "H~2~O subscrito", md: "H~2~O", editor: tem("sub, .cm-sub"), leitura: tem("sub", "2"), estado: "falta-editor" },
   { nome: "x^2^ sobrescrito", md: "x^2^", editor: tem("sup, .cm-sup"), leitura: tem("sup", "2"), estado: "falta-editor" },
-  { nome: "matemática $$", md: "$$\\int_0^1 x^2 dx$$", editor: tem(".katex, .cm-math"), leitura: tem(".katex"), estado: "falta-editor" },
+  { nome: "matemática $$", md: "$$\\int_0^1 x^2 dx$$", editor: tem(".katex, .cm-mat-bloco"), leitura: tem(".katex"), estado: "ok" },
   { nome: "<kbd> inline", md: "<kbd>Ctrl</kbd>", editor: tem("kbd, .cm-kbd"), leitura: tem("kbd", "Ctrl"), estado: "falta-editor" },
 ];
 
