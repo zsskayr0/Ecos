@@ -7,6 +7,8 @@ import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import remarkMath from "remark-math";
 import { remarkMatematicaBloco } from "@/lib/matematica";
 import { imagemDaFormula } from "@/lib/formula-imagem";
+import rehypeRaw from "rehype-raw";
+import { lerAltImagem } from "@/lib/markdown-blocos";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
 import { caixa, intersecta } from "@/lib/tinta/geometria";
@@ -278,7 +280,7 @@ function empacotar(fichas: Ficha[], largura: number, tamanho: number): Ficha[][]
   return linhas;
 }
 
-interface OpcoesParagrafo { cor?: Cor; tamanho?: number; recuo?: number; antes?: number; depois?: number; barra?: boolean; prefixo?: string }
+interface OpcoesParagrafo { cor?: Cor; tamanho?: number; recuo?: number; antes?: number; depois?: number; barra?: boolean; prefixo?: string; alinhar?: "centro" | "direita" }
 
 /** Cursor de escrita: posiciona o texto de cima para baixo e vira a página quando acaba o espaço. */
 class Escritor {
@@ -289,7 +291,7 @@ class Escritor {
   garantir(altura: number) { if (this.y + altura > BASE) { this.pdf.novaPagina(); this.y = TOPO; } }
   espaco(pt: number) { this.y += pt; }
 
-  texto(trechos: Trecho[], { cor = TEXTO, tamanho = 10.5, recuo = 0, antes = 0, depois = 5, barra = false, prefixo = "" }: OpcoesParagrafo = {}) {
+  texto(trechos: Trecho[], { cor = TEXTO, tamanho = 10.5, recuo = 0, antes = 0, depois = 5, barra = false, prefixo = "", alinhar }: OpcoesParagrafo = {}) {
     const fichas = fichasDe(trechos, tamanho, this.emojis, this.formulas);
     if (!fichas.some((f) => f.k !== "espaco" && f.k !== "quebra") && !prefixo) return;
     const x = MARGEM_LATERAL + recuo;
@@ -303,6 +305,11 @@ class Escritor {
       if (barra) this.pdf.linha(x - 8, this.y - 1, x - 8, this.y + altura - 3, [0.8, 0.84, 0.89], 2);
       if (i === 0 && prefixo) this.pdf.texto(limparTexto(prefixo), x, this.y + tamanho, "normal", tamanho, cor);
       let cursor = x + larguraPrefixo;
+      if (alinhar) {
+        const usada = linha.reduce((soma, f) => soma + (f.k === "quebra" ? 0 : f.w), 0);
+        const sobra = Math.max(0, LARGURA - recuo - larguraPrefixo - usada);
+        cursor += alinhar === "centro" ? sobra / 2 : sobra;
+      }
       for (const f of linha) {
         if (f.k === "palavra") this.pdf.texto(f.t, cursor, this.y + tamanho, f.f, tamanho, f.cor ?? cor);
         else if (f.k === "emoji") {
@@ -319,14 +326,20 @@ class Escritor {
   figura(img: HTMLImageElement, doc: Documento) {
     const src = resolverSrcImagem(img.getAttribute("src") ?? undefined, doc.id, doc.tipo);
     const pronta = src ? this.imagens.get(src) : null;
-    if (!pronta) { this.texto([{ t: `[imagem${img.alt ? `: ${img.alt}` : ""}]`, f: "italico" }], { cor: CINZA }); return; }
-    let w = Math.min(LARGURA, pronta.largura * 0.75);
+    const { alt, largura, alinhar } = lerAltImagem(img.getAttribute("alt") ?? "");
+    const legenda = img.getAttribute("title");
+    if (!pronta) { this.texto([{ t: `[imagem${alt ? `: ${alt}` : ""}]`, f: "italico" }], { cor: CINZA }); return; }
+    // Largura pedida no alt (px de tela ≈ 0,75 pt; % da coluna).
+    const pedida = largura ? (largura.endsWith("%") ? (LARGURA * parseFloat(largura)) / 100 : parseFloat(largura) * 0.75) : pronta.largura * 0.75;
+    let w = Math.min(LARGURA, pedida);
     let h = (w * pronta.altura) / pronta.largura;
     const maximo = BASE - TOPO;
     if (h > maximo) { h = maximo; w = (h * pronta.largura) / pronta.altura; }
     this.garantir(h);
-    this.pdf.imagem(pronta.indice, MARGEM_LATERAL, this.y, w, h);
-    this.y += h + 8;
+    const x = MARGEM_LATERAL + (alinhar === "centro" ? (LARGURA - w) / 2 : alinhar === "direita" ? LARGURA - w : 0);
+    this.pdf.imagem(pronta.indice, x, this.y, w, h);
+    this.y += h + (legenda ? 3 : 8);
+    if (legenda) this.texto([{ t: legenda, f: "italico" }], { tamanho: 9, cor: CINZA, alinhar: "centro", depois: 6 });
   }
 
   /** Fórmula em bloco (`$$...$$`): centralizada; sem imagem, sai o código. */
@@ -415,6 +428,19 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
       const tamanho = ({ H1: 16, H2: 14, H3: 12.5 } as Record<string, number>)[tag] ?? 11.5;
       escreverPartes(e, inline(no, "negrito", doc), { tamanho, antes: 8, depois: 4 });
     } else if (tag === "UL" || tag === "OL") escreverLista(e, no, 0, doc);
+    else if (tag === "DETAILS") {
+      for (const filho of Array.from(no.children)) {
+        if (filho.tagName === "SUMMARY") escreverPartes(e, inline(filho, "negrito", doc), { depois: 3 });
+        else escreverBlocos(e, wrapper(filho), doc);
+      }
+      // Texto solto direto dentro do <details> (sem parágrafo).
+      const solto = Array.from(no.childNodes).filter((n) => n.nodeType === 3 && n.textContent?.trim()).map((n) => n.textContent!.trim()).join(" ");
+      if (solto) e.texto([{ t: solto, f: "normal" }]);
+    } else if ((tag === "P" || tag === "DIV") && (no.getAttribute("align") === "center" || no.getAttribute("align") === "right")) {
+      const alinhar = no.getAttribute("align") === "center" ? "centro" : "direita";
+      if (tag === "DIV" && no.children.length) for (const filho of Array.from(no.children)) escreverPartes(e, inline(filho, "normal", doc), { alinhar });
+      else escreverPartes(e, inline(no, "normal", doc), { alinhar });
+    }
     else if (tag === "BLOCKQUOTE") escreverPartes(e, inline(no, "italico", doc, CINZA), { cor: CINZA, recuo: 14, barra: true, depois: 6 });
     else if (tag === "PRE" && no.querySelector("code.math-display")) e.formula(chaveFormula(no.textContent ?? "", true));
     else if (tag === "PRE") e.texto([{ t: textoSimples(no), f: "codigo" }], { tamanho: 9, recuo: 8, depois: 6 });
@@ -429,6 +455,13 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
     else if (tag === "DIV" || tag === "SECTION") escreverBlocos(e, no, doc);
     else escreverPartes(e, inline(no, "normal", doc));
   }
+}
+
+/** Embrulha um elemento para reusar `escreverBlocos`, que percorre os filhos. */
+function wrapper(el: Element): Element {
+  const caixa = el.ownerDocument.createElement("div");
+  caixa.appendChild(el.cloneNode(true));
+  return caixa;
 }
 
 function escreverDocumento(e: Escritor, d: Documento, raiz: Element | null) {
@@ -446,9 +479,13 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkMatematicaBloco, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })] }, semWikilink(d.corpo)));
-    return new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkMatematicaBloco, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })], rehypePlugins: [rehypeRaw] }, semWikilink(d.corpo)));
+    const corpo = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
+    // Só texto e formatação seguem para o PDF: nada de script/estilo vindo do HTML da nota.
+    corpo.querySelectorAll("script,style,iframe,object,embed").forEach((x) => x.remove());
+    return corpo;
   });
+
 
   // Imagens do texto e emojis: baixa/desenha tudo antes de montar as páginas.
   const pdf = new DocumentoPdf();

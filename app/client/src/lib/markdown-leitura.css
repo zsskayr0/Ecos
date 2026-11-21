@@ -44,3 +44,24 @@
 
 /* Numeração opcional dos títulos no editor vivo (a leitura e o PDF já recebem o número no texto). */
 html[data-numerar-titulos] .cm-line[data-num]::before { content: attr(data-num) "\00a0"; color: var(--color-text-muted, #8a8f98); font-weight: 500; }
+
+/* Alinhamento de parágrafo via HTML permitido: <p align="center">. */
+.ecos-markdown [align="center"] { text-align: center; }
+.ecos-markdown [align="right"] { text-align: right; }
+.ecos-markdown u { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Imagem com legenda/largura/alinhamento: ![alt|300|centro](src "legenda"). */
+.ecos-markdown .ecos-figura { display: block; }
+.ecos-markdown .ecos-figura[data-alinhar="centro"] { text-align: center; }
+.ecos-markdown .ecos-figura[data-alinhar="direita"] { text-align: right; }
+.ecos-markdown .ecos-figura img { display: inline-block; }
+.ecos-markdown .ecos-legenda { display: block; margin-top: 0.35rem; font-size: 0.85em; color: var(--color-text-secondary, inherit); text-align: center; }
+
+/* <details> dobrável. */
+.ecos-markdown details {
+  border: 1px solid var(--color-border, rgb(127 127 127 / 0.3));
+  border-radius: 0.75rem;
+  padding: 0.4rem 0.75rem;
+}
+.ecos-markdown details > summary { font-weight: 600; }
+.ecos-markdown details[open] > summary { margin-bottom: 0.35rem; }

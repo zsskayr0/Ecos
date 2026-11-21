@@ -5,6 +5,7 @@ import { Prec, type Extension } from "@codemirror/state";
 import { links, notas } from "@/lib/api";
 import { normalizarTexto } from "@/lib/texto-busca";
 import { carregarNotas, invalidarSugestoesDeNotas, sugerir, tituloExiste, type NotaSugestao } from "./wikilink-sugestoes";
+import { fonteBlocos, linhaBloco } from "./blocos-barra";
 import "@/styles/wikilink-menu.css";
 
 const ATRASO_DIGITACAO_MS = 90;
@@ -159,12 +160,12 @@ export function autocompletarWikilink(opcoes: () => OpcoesWikilink | undefined):
   let consultaAtual = "";
   return [
     autocompletion({
-      override: [(ctx) => { consultaAtual = ctx.matchBefore(ABERTURA)?.text.slice(2) ?? ""; return fonte(opcoes)(ctx); }, fonteEmoji],
+      override: [(ctx) => { consultaAtual = ctx.matchBefore(ABERTURA)?.text.slice(2) ?? ""; return fonte(opcoes)(ctx); }, fonteEmoji, fonteBlocos],
       icons: false,
       activateOnTyping: true,
       closeOnBlur: true,
       maxRenderedOptions: LIMITE + 1,
-      addToOptions: [{ render: (c) => (c.type === "emoji" ? null : desenharLinha(c, consultaAtual) as HTMLElement), position: 10 }],
+      addToOptions: [{ render: (c) => (c.type === "emoji" ? null : c.type === "bloco" ? linhaBloco(c) : desenharLinha(c, consultaAtual) as HTMLElement), position: 10 }],
     }),
     Prec.highest(keymap.of([{ key: "Tab", run: acceptCompletion }])),
     fecharPar,

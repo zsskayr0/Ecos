@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fonteBlocos, linhaBloco } from "./blocos-barra";
 import { autocompletion, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
 import { normalizarTexto } from "@/lib/texto-busca";
@@ -149,5 +150,5 @@ export const fonteEmoji: CompletionSource = (ctx: CompletionContext): Completion
 
 /** Extensão própria — use só quando o editor NÃO tiver o autocompletar de wikilink (ver doc de integração). */
 export function autocompletarEmoji(): Extension {
-  return autocompletion({ override: [fonteEmoji], icons: false, activateOnTyping: true });
+  return autocompletion({ override: [fonteEmoji, fonteBlocos], icons: false, addToOptions: [{ render: (c) => (c.type === "bloco" ? linhaBloco(c) : null), position: 10 }], activateOnTyping: true });
 }
