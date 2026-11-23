@@ -1,7 +1,7 @@
 import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { acharMatematica, carregarKatex, katexCarregado, renderizarFormula } from "@/lib/matematica";
+import { acharMatematica, carregarKatex, katexCarregado, renderizarFormula, temMatematica } from "@/lib/matematica";
 
 /**
  * Fórmulas no editor vivo: fora do cursor, `$...$` e `$$...$$` aparecem desenhadas pelo KaTeX;
@@ -26,7 +26,7 @@ class FormulaWidget extends WidgetType {
     }
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
-      view.dispatch({ selection: { anchor: this.de + (this.bloco ? 2 : 1) } });
+      view.dispatch({ selection: { anchor: this.de + (/^\s*(\$\$|\\)/.test(view.state.sliceDoc(this.de, this.de + 4)) ? 2 : 1) } });
       view.focus();
     });
     return el;
@@ -45,11 +45,17 @@ function emCodigo(state: EditorState, de: number, ate: number) {
   return achou;
 }
 
-function montar(state: EditorState, focado: boolean): DecorationSet {
+type Trechos = ReturnType<typeof acharMatematica>;
+
+/** Varre o texto atrás de fórmulas. Caro: só roda quando o texto muda. */
+function achar(state: EditorState): Trechos {
   const texto = state.doc.toString();
-  if (!texto.includes("$")) return Decoration.none;
-  ensureSyntaxTree(state, state.doc.length, 250);
-  const trechos = acharMatematica(texto, (de, ate) => emCodigo(state, de, ate));
+  if (!temMatematica(texto)) return [];
+  ensureSyntaxTree(state, state.doc.length, 50);
+  return acharMatematica(texto, (de, ate) => emCodigo(state, de, ate));
+}
+
+function montar(state: EditorState, focado: boolean, trechos: Trechos): DecorationSet {
   if (!trechos.length) return Decoration.none;
   const decos: Range<Decoration>[] = [];
   for (const m of trechos) {
@@ -61,19 +67,22 @@ function montar(state: EditorState, focado: boolean): DecorationSet {
       else decos.push(Decoration.mark({ class: "cm-mat-fonte" }).range(m.de, m.ate));
       continue;
     }
-    decos.push(Decoration.replace({ widget: new FormulaWidget(m.tex, m.bloco, m.de), block: m.bloco }).range(m.de, m.ate));
+    decos.push(Decoration.replace({ widget: new FormulaWidget(m.tex, m.bloco || !!m.exibicao, m.de), block: m.bloco }).range(m.de, m.ate));
   }
   return Decoration.set(decos, true);
 }
 
 /** Decoração de bloco precisa vir de um StateField (um ViewPlugin não pode substituir linhas inteiras). */
-export const matematica = StateField.define<{ focado: boolean; decos: DecorationSet }>({
-  create: (state) => ({ focado: false, decos: montar(state, false) }),
+export const matematica = StateField.define<{ focado: boolean; trechos: Trechos; decos: DecorationSet }>({
+  create: (state) => { const trechos = achar(state); return { focado: false, trechos, decos: montar(state, false, trechos) }; },
   update(v, tr) {
     let focado = v.focado, chegou = false;
     for (const e of tr.effects) { if (e.is(focoEfeito)) focado = e.value; if (e.is(katexChegou)) chegou = true; }
     if (!tr.docChanged && !tr.selection && focado === v.focado && !chegou) return v;
-    return { focado, decos: montar(tr.state, focado) };
+    const trechos = tr.docChanged || chegou ? achar(tr.state) : v.trechos;
+    // Sem fórmula na nota, mexer o cursor não custa nada.
+    if (!tr.docChanged && !chegou && !trechos.length && focado === v.focado) return v;
+    return { focado, trechos, decos: montar(tr.state, focado, trechos) };
   },
   provide: (f) => [
     EditorView.decorations.from(f, (v) => v.decos),

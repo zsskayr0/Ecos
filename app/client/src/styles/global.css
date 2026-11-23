@@ -653,13 +653,12 @@ body::-webkit-scrollbar {
   inset:0;
   z-index:0;
   background:rgb(0 0 0 / 0);
-  backdrop-filter:blur(0);
-  -webkit-backdrop-filter:blur(0);
   content:"";
   opacity:0;
   pointer-events:none;
-  transition:opacity 360ms cubic-bezier(.22,1,.36,1), background-color 360ms ease, backdrop-filter 420ms cubic-bezier(.22,1,.36,1), -webkit-backdrop-filter 420ms cubic-bezier(.22,1,.36,1);
-  will-change:opacity,backdrop-filter;
+  /* Sem `backdrop-filter`/`will-change` em repouso: um backdrop-filter permanente em toda camada de documento custa
+     quadros ao compositor mesmo a zero (medido). O blur só existe no modo Slide e entra/sai junto com a opacidade. */
+  transition:opacity 360ms cubic-bezier(.22,1,.36,1), background-color 360ms ease;
 }
 .ecos-documento-camada:has([data-modo-slide])::before {
   background:rgb(0 0 0 / .16);
@@ -669,6 +668,30 @@ body::-webkit-scrollbar {
   pointer-events:auto;
 }
 .ecos-documento-camada > * { z-index:1; }
+/* Painel modal (mapa de conexões) aberto sobre o Focus: o véu do painel já desfoca tudo, então o do Focus larga o blur dele. */
+html[data-veu-modal] .ecos-focus-veu { backdrop-filter:none; -webkit-backdrop-filter:none; }
+/* Entrada/saída do painel modal: mesma família do Focus (sobe e assenta com a curva suave; sai mais rápido e sem blur
+   animado). Só opacity e transform, que rodam no compositor. Sem `forwards` na entrada: ao terminar volta ao transform inline. */
+@keyframes ecos-painel-entra { from { opacity:0; transform:translateZ(0) translateY(16px); } to { opacity:1; transform:translateZ(0); } }
+@keyframes ecos-painel-sai { to { opacity:0; transform:translateZ(0) translateY(10px) scale(.98); } }
+.ecos-painel-entrando { transform-origin:50% 45%; animation:ecos-painel-entra 260ms cubic-bezier(.22,1,.36,1) backwards; }
+.ecos-painel-saindo { transform-origin:50% 45%; pointer-events:none; animation:ecos-painel-sai 200ms cubic-bezier(.4,0,1,1) forwards; }
+.ecos-veu-entrando { animation:ecos-backdrop-in 260ms cubic-bezier(.22,1,.36,1) both; }
+.ecos-veu-saindo { animation:ecos-backdrop-out 200ms ease-in both; }
+/* Mapa de conexões: cada linha se desenha da origem ao destino (pathLength=1) e o ponto "encaixa" ao chegar. */
+@keyframes ecos-linha-desenha { from { stroke-dashoffset:1; } to { stroke-dashoffset:0; } }
+@keyframes ecos-linha-ponto { from { opacity:0; transform:scale(.2); } }
+.ecos-linha-desenha { animation:ecos-linha-desenha 560ms cubic-bezier(.45,0,.2,1) backwards; }
+.ecos-linha-ponto { transform-box:fill-box; transform-origin:center; animation:ecos-linha-ponto 220ms cubic-bezier(.34,1.56,.64,1) backwards; }
+/* O cartão só existe quando a linha chega nele (o atraso vem inline; `backwards` o mantém invisível até lá). */
+@keyframes ecos-no-nasce { from { opacity:0; transform:scale(.94); } }
+.ecos-no-nasce { animation:ecos-no-nasce 260ms cubic-bezier(.22,1,.36,1) backwards; }
+@media (prefers-reduced-motion:reduce) {
+  .ecos-linha-desenha, .ecos-linha-ponto, .ecos-no-nasce { animation:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .ecos-painel-entrando, .ecos-painel-saindo, .ecos-veu-entrando, .ecos-veu-saindo { animation:none; }
+}
 @media (prefers-reduced-motion:reduce) {
   .ecos-documento-camada::before { transition:none; }
 }
@@ -1139,22 +1162,11 @@ body::-webkit-scrollbar {
 }
 
 
-/* Modo de escrita: a página toda abaixo do cabeçalho é a mesma folha cinza, de borda a borda. */
+/* Modo de escrita: mesma página do modo teclado (fundo e margens). Só uma cor de folha escolhida
+   no menu pinta a página, a área que rola e a janela (feito no CorpoEditor/LeituraComTinta). */
 .ecos-detail-page[data-escrevendo],
-.ecos-detail-page[data-folha-plana] {
-  min-height: 100dvh;
-  background: var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)));
-}
+.ecos-detail-page[data-folha-plana] { min-height: 100dvh; }
 
-/* Sem faixas: a área que rola e a janela que envolve a nota têm o mesmo tom da folha. */
-:has(> .ecos-detail-page[data-escrevendo]),
-:has(> * > .ecos-detail-page[data-escrevendo]),
-:has(> .ecos-detail-page[data-folha-plana]),
-:has(> * > .ecos-detail-page[data-folha-plana]) {
-  background-color: var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)));
-}
-
-.ecos-detail-page[data-escrevendo] .ecos-detail-content,
 .ecos-detail-page[data-folha-plana] .ecos-detail-content {
   padding: 0 !important;
 }

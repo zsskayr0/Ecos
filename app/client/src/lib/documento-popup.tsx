@@ -16,6 +16,8 @@ export const FecharDocumentoContext = createContext<(() => void) | null>(null);
 export const ModoFocusDocumentoContext = createContext(false);
 /** Área independente, ao lado da tarefa Focus, onde o planejamento é montado. */
 export const PainelFocusTarefaContext = createContext<HTMLElement | null>(null);
+/** Painel esquerdo do Focus (espelho do painel direito), onde a nota monta o sumário. */
+export const PainelFocusEsquerdoContext = createContext<HTMLElement | null>(null);
 /** Espaço no cabeçalho da camada Focus (ao lado do X) onde a tarefa coloca suas ações: concluir, apagar, recolher painel. */
 export const AcoesFocusContext = createContext<HTMLElement | null>(null);
 /** Espaço no cabeçalho da janela flutuante (ao lado de "Fixar como aba") onde a tela coloca ações próprias. */

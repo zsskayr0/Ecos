@@ -68,3 +68,19 @@ html[data-numerar-titulos] .cm-line[data-num]::before { content: attr(data-num) 
 
 /* Sumário gerado por [TOC] (o visual vem das classes utilitárias em markdown-mini.tsx). */
 .ecos-markdown .ecos-sumario { list-style: none; }
+
+/* Faixa própria do trilho de tracinhos (OutlineTitulos): a nota inteira (título junto) anda
+   32px (= MARGEM_TRILHO) e os tracinhos ficam fora da coluna, na margem. */
+@media (min-width: 640px) {
+  .ecos-detail-content:has([data-trilho]) { padding-left: calc(max(32px, calc(var(--ecos-safe-left) + 16px)) + 32px); }
+  [data-trilho]:not(.ecos-detail-content [data-trilho]) { padding-left: 32px; }
+}
+
+/* Respiro antes dos títulos (sem tinta: com escrita à mão a altura das linhas não pode mudar).
+   Mais espaço acima que abaixo, para o título abrir a seção seguinte em vez de colar no parágrafo anterior. */
+.ecos-respiro-titulos .cm-line.cm-h1, .ecos-respiro-titulos .cm-line.cm-h2 { padding-top: 18px; padding-bottom: 4px; }
+.ecos-respiro-titulos .cm-line.cm-h3 { padding-top: 12px; padding-bottom: 2px; }
+.ecos-respiro-titulos .cm-line.cm-h4, .ecos-respiro-titulos .cm-line.cm-h5, .ecos-respiro-titulos .cm-line.cm-h6 { padding-top: 8px; }
+.ecos-respiro-titulos .ecos-markdown > :is(h1, h2):not(:first-child) { margin-top: 14px; }
+.ecos-respiro-titulos .ecos-markdown > h3:not(:first-child) { margin-top: 8px; }
+.ecos-respiro-titulos .ecos-markdown > :is(h4, h5, h6):not(:first-child) { margin-top: 4px; }

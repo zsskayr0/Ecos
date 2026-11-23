@@ -85,6 +85,7 @@ const MediaScreen = carregar(() => import("@/screens/Media/MediaScreen"), "Media
 const ArquivosScreen = carregar(() => import("@/screens/Files/ArquivosScreen"), "ArquivosScreen");
 const FileViewerScreen = carregar(() => import("@/screens/Media/FileViewerScreen"), "FileViewerScreen");
 const GraficoConfigScreen = carregar(() => import("@/screens/Settings/GraficoConfigScreen"), "GraficoConfigScreen");
+const ConexoesScreen = carregar(() => import("@/screens/Conexoes/ConexoesScreen"), "ConexoesScreen");
 const GraficoScreen = carregar(() => import("@/screens/Grafico/GraficoScreen"), "GraficoScreen");
 const TrashScreen = carregar(() => import("@/screens/Trash/TrashScreen"), "TrashScreen");
 
@@ -118,6 +119,7 @@ export const screenRoutes = (
     <Route path="/nota/:id" element={<RedirecionarNota />} />
 
     <Route path="/grafico" element={tela(GraficoScreen)} />
+    <Route path="/conexoes/:tipo/:id" element={tela(ConexoesScreen)} />
 
     <Route path="/busca" element={tela(SearchScreen, <SkeletonBusca />)} />
 

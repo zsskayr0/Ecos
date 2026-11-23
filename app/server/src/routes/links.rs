@@ -4,7 +4,7 @@
 use axum::extract::{Query, State};
 use axum::{Extension, Json};
 use ecos_core::wikilink::{self, Candidato, TipoItem};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -38,6 +38,7 @@ type Lado = Vec<(String, String, &'static str)>;
 
 /// Entrada e saída de links de um item (já validado como visível), só com itens visíveis, ordenados por título.
 pub async fn links_do_item(state: &AppState, uid: &str, tipo: TipoItem, id: &str) -> AppResult<Value> {
+    let id_str = id;
     let (uid, id, tipo) = (uid.to_string(), id.to_string(), tipo.como_str());
     let (entrada, saida): (Lado, Lado) = state
         .db
@@ -64,7 +65,23 @@ pub async fn links_do_item(state: &AppState, uid: &str, tipo: TipoItem, id: &str
         })
         .await?;
     let json_de = |v: Lado| v.into_iter().map(|(id, titulo, tipo)| json!({ "id": id, "titulo": titulo, "tipo": tipo })).collect::<Vec<_>>();
-    Ok(json!({ "entrada": json_de(entrada), "saida": json_de(saida) }))
+    let externos = externos_do_item(state, tipo, id_str).await;
+    Ok(json!({ "entrada": json_de(entrada), "saida": json_de(saida), "externos": externos }))
+}
+
+/// Links `http(s)` do corpo do arquivo do item. Lidos do próprio arquivo (a fonte de verdade), sem tabela no índice;
+/// se o arquivo não puder ser lido a lista vem vazia — as conexões internas não dependem disto.
+async fn externos_do_item(state: &AppState, tipo: &str, id: &str) -> Vec<Value> {
+    let (tabela, id) = (if tipo == "tarefa" { "tarefa" } else { "nota" }, id.to_string());
+    let caminho: Option<String> = state
+        .db
+        .with_read(move |conn| conn.query_row(&format!("SELECT caminho_arquivo FROM {tabela} WHERE id = ?1"), [&id], |r| r.get(0)).optional())
+        .await
+        .ok()
+        .flatten();
+    let Some(caminho) = caminho else { return Vec::new() };
+    let Ok(bruto) = tokio::fs::read_to_string(state.config.notes_root.join(&caminho)).await else { return Vec::new() };
+    ecos_core::links_externos::extrair(&bruto).into_iter().map(|l| json!({ "url": l.url, "texto": l.texto })).collect()
 }
 
 #[derive(Debug, Deserialize)]

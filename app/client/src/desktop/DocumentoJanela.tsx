@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { List, Maximize2, Minimize2, Pin, Presentation, X } from "lucide-react";
+import { List, Pin, Presentation, X } from "lucide-react";
 import { screenRoutes } from "@/routes/screen-routes";
-import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
+import { MARGEM_TRILHO, useSumarioLateralAberto } from "@/components/editor/sumario-lateral-estado";
+import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelFocusEsquerdoContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
 import { moduloDaRota, tituloDaRota } from "./modules";
 import { DURACAO_SAIDA_JANELA_MS, reduzMovimento } from "./movimento";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
@@ -50,19 +51,28 @@ function retanguloInicial(ordem: number, retrato = false, proporcional = false):
   };
 }
 
-function layoutFocus(painelAberto = true): { principal: Retangulo; painel: Retangulo } {
+function layoutFocus(painelAberto = true, esquerdoAberto = false, extra = 0, reservarEsquerdo = esquerdoAberto): { principal: Retangulo; painel: Retangulo; esquerdo: Retangulo } {
   // O calendário e seus controles precisam de uma largura confortável; em telas menores o painel encolhe antes da tarefa.
   const painelIdeal = Math.min(LARGURA_PAINEL_FOCUS, Math.max(320, Math.round(window.innerWidth * 0.30)));
   const painelW = Math.min(painelIdeal, Math.max(240, window.innerWidth - MARGEM_FOCUS_X * 2 - ESPACO_FOCUS - LARGURA_MIN));
   const totalDisponivel = window.innerWidth - MARGEM_FOCUS_X * 2 - ESPACO_FOCUS - painelW;
-  // Ocupa quase toda a largura (sobra só uma moldura para o blur); recolher o painel não muda a largura da tarefa, só a recentraliza.
-  const principalW = Math.min(1560, Math.max(240, totalDisponivel));
-  const conjuntoW = principalW + ESPACO_FOCUS + painelW;
-  const xConjunto = Math.max(MARGEM_FOCUS_X, Math.round((window.innerWidth - conjuntoW) / 2));
-  const x = painelAberto ? xConjunto : Math.max(MARGEM_FOCUS_X, Math.round((window.innerWidth - principalW) / 2));
+  // Sumário (esquerdo) tem a mesma largura do painel de opções: o conjunto fica simétrico na tela.
+  const esquerdoW = painelW;
+  // Tela estreita (tablet): sem reservar o lugar do sumário fechado, senão a nota fica minúscula.
+  if (totalDisponivel - esquerdoW - ESPACO_FOCUS < 900) reservarEsquerdo = esquerdoAberto;
+  const reservaEsq = esquerdoAberto ? esquerdoW + ESPACO_FOCUS : 0;
+  // A largura conta com o painel esquerdo sempre que ele pode existir (notas e tarefas): abrir ou
+  // fechar o sumário só desliza a janela, sem mudar a largura (mudar refaz o layout e trava).
+  const base = Math.min(1560, Math.max(240, totalDisponivel - (reservarEsquerdo ? esquerdoW + ESPACO_FOCUS : 0)));
+  const larguraDireita = painelAberto ? ESPACO_FOCUS + painelW : 0;
+  // `extra`: a faixa dos tracinhos; a janela alarga nessa medida se couber (contando sempre com o painel direito).
+  const folga = window.innerWidth - MARGEM_FOCUS_X * 2 - ((reservarEsquerdo ? esquerdoW + ESPACO_FOCUS : 0) + base + ESPACO_FOCUS + painelW);
+  const principalW = base + Math.max(0, Math.min(extra, folga));
+  const x0 = Math.max(MARGEM_FOCUS_X, Math.round((window.innerWidth - (reservaEsq + principalW + larguraDireita)) / 2));
+  const x = x0 + reservaEsq;
   const h = Math.max(ALTURA_MIN, Math.min(960, window.innerHeight - MARGEM_FOCUS * 2));
   const y = Math.max(MARGEM_FOCUS, Math.round((window.innerHeight - h) / 2));
-  return { principal: { x, y, w: principalW, h }, painel: { x: xConjunto + principalW + ESPACO_FOCUS, y, w: painelW, h } };
+  return { principal: { x, y, w: principalW, h }, painel: { x: x + principalW + ESPACO_FOCUS, y, w: painelW, h }, esquerdo: { x: x0, y, w: esquerdoW, h } };
 }
 
 /** Tamanho com que uma janela comum (Configurações, notas…) nasce; o painel de configurações do Cofre usa o mesmo, por consistência. */
@@ -144,6 +154,9 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [saindo, setSaindo] = useState(false);
   const fechandoRef = useRef(false);
   const janelaDeConfiguracoes = path.startsWith("/configuracoes");
+  // Mapa de conexões: painel grande e fixo no centro (não arrasta nem redimensiona), com um véu desfocado por cima de tudo.
+  const painelModal = path.startsWith("/conexoes");
+  const janelaModal = janelaDeConfiguracoes || painelModal;
   // Toda saída (X, Esc, "voltar", salvar/apagar) anima antes de a janela deixar de existir.
   const aoFechar = useCallback(() => {
     if (fechandoRef.current) return;
@@ -153,29 +166,42 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       return;
     }
     setSaindo(true);
-    window.setTimeout(aoFecharDeVez, janelaDeConfiguracoes ? 240 : DURACAO_SAIDA_JANELA_MS);
-  }, [aoFecharDeVez, janelaDeConfiguracoes]);
+    window.setTimeout(aoFecharDeVez, painelModal ? 200 : janelaModal ? 240 : DURACAO_SAIDA_JANELA_MS);
+  }, [aoFecharDeVez, janelaModal, painelModal]);
 
-  const [rect, setRect] = useState(() => retanguloInicial(ordem, path.startsWith("/cofre/transacao"), path.startsWith("/configuracoes")));
+  const [rect, setRect] = useState(() => retanguloInicial(painelModal ? 0 : ordem, path.startsWith("/cofre/transacao"), janelaModal));
+  // Painel fixo: acompanha o tamanho da janela do app em vez de ficar onde nasceu.
+  useEffect(() => {
+    if (!painelModal) return;
+    const recentrar = () => setRect(retanguloInicial(0, false, true));
+    window.addEventListener("resize", recentrar);
+    return () => window.removeEventListener("resize", recentrar);
+  }, [painelModal]);
+  // Avisa o resto do app (ex.: o mini gráfico por baixo) que há um painel modal cobrindo a tela, para pausar animações ocultas.
+  useEffect(() => {
+    if (!painelModal || saindo) return;
+    document.documentElement.setAttribute("data-painel-modal", "");
+    return () => document.documentElement.removeAttribute("data-painel-modal");
+  }, [painelModal, saindo]);
+  // Um blur só: o véu do painel desfoca tudo (a nota do Focus inclusive); quando ele termina de entrar, o véu do Focus
+  // larga o blur dele (`html[data-veu-modal]`, em global.css). Assim há uma única passada de backdrop-filter na tela.
+  useEffect(() => {
+    if (!painelModal || saindo) return;
+    const t = window.setTimeout(() => { document.documentElement.dataset.veuModal = ""; }, reduzMovimento() ? 0 : 260);
+    return () => { window.clearTimeout(t); delete document.documentElement.dataset.veuModal; };
+  }, [painelModal, saindo]);
   const tarefa = path.startsWith("/tarefa/");
   const podeFocus = tarefa || path.startsWith("/notas/nota/");
-  // Janela de criação (Nova nota/Nova tarefa): o formulário guarda o rascunho em si mesmo, então só pode existir uma cópia dele.
-  // Por isso ela pode nascer maximizada (preferência), mas sair do Focus fecha a criação (o que foi escrito é salvo ao fechar).
+  // Janela de criação (Nova nota/Nova tarefa): o formulário guarda o rascunho em si mesmo (o que foi escrito é salvo ao fechar).
   const captura = !!conteudo && (path === "/tarefas" || path === "/notas");
-  // Modo Slide: só para a tarefa que está na lista que a tela mostra; ao sair, a janela recarrega o que foi editado lá.
+  // Modo Slide: só para a tarefa que está na lista que a tela mostra; ao sair, o documento recarrega o que foi editado lá.
   const tarefasDaLista = useTarefasDoSlide();
   const idDaTarefa = tarefa ? path.split("/")[2] : undefined;
   const podeSlide = !!idDaTarefa && tarefasDaLista.some((t) => t.id === idDaTarefa);
   const [emSlide, setEmSlide] = useState(false);
-  // Com a preferência ligada a tarefa (ou a nota) já abre maximizada (modo Focus).
-  const [emFocus, setEmFocus] = useState(() => {
-    const prefs = lerPreferenciasAplicativo();
-    if (captura) return path === "/tarefas" ? prefs.tarefaNovaMaximizada : prefs.notaNovaMaximizada;
-    return tarefa ? prefs.tarefaMaximizada : path.startsWith("/notas/nota/") && prefs.notaMaximizada;
-  });
-  /** Animação de saída da camada Focus (a janela normal só volta a aparecer inteira depois dela). */
-  const [saindoFocus, setSaindoFocus] = useState(false);
-  /** Muda ao sair do Focus: a janela normal recarrega o documento já com o que foi editado na camada Focus. */
+  // Notas e tarefas (abertas ou em criação) só existem no modo Focus; a janela flutuante fica para o resto (Configurações, anexos…).
+  const emFocus = podeFocus || captura;
+  /** Muda ao sair do Modo Slide: o documento recarrega já com o que foi editado lá. */
   const [chaveJanela, setChaveJanela] = useState(0);
   const [, setVersaoLayout] = useState(0);
   const janelaFocusRef = useRef<HTMLDivElement>(null);
@@ -185,7 +211,6 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     return captura ? (path === "/tarefas" ? prefs.tarefaNovaPainelAberto : prefs.notaNovaPainelAberto) : !prefs.focusPainelRecolhido;
   });
   const painelFocusAbertoRef = useRef(painelFocusAberto);
-  const saindoDoFocus = useRef(false);
   const [arrastando, setArrastando] = useState(false);
   const [ajustando, setAjustando] = useState(false);
   const [tituloDinamico, setTituloDinamico] = useState("");
@@ -196,6 +221,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [larguraConteudo, setLarguraConteudo] = useState(0);
   const [montagem, setMontagem] = useState<HTMLElement | null>(null);
   const [montagemFocus, setMontagemFocus] = useState<HTMLElement | null>(null);
+  const [montagemEsquerda, setMontagemEsquerda] = useState<HTMLElement | null>(null);
+  const sumarioAberto = useSumarioLateralAberto();
   const [acoesFocus, setAcoesFocus] = useState<HTMLElement | null>(null);
   const [acoesJanela, setAcoesJanela] = useState<HTMLElement | null>(null);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
@@ -209,41 +236,16 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
 
   useEffect(() => janelaRef.current?.focus(), []);
 
-  const sairDoFocus = useCallback(() => {
-    if (!emFocus || saindoDoFocus.current) return emFocus;
-    if (captura) { aoFechar(); return true; }
-    saindoDoFocus.current = true;
-    setSaindoFocus(true);
-    // A janela de trás recarrega já agora, escondida pela camada que ainda está saindo: sem piscar o "Carregando…".
-    setChaveJanela((k) => k + 1);
-    window.setTimeout(() => {
-      setEmFocus(false); setSaindoFocus(false); saindoDoFocus.current = false;
-    }, reduzMovimento() ? 0 : 170);
-    return true;
-  }, [emFocus, captura, aoFechar]);
   const alternarPainelFocus = useCallback(() => {
     const novo = !painelFocusAbertoRef.current;
     painelFocusAbertoRef.current = novo;
     setPainelFocusAberto(novo);
   }, []);
   const controlePainelFocus = useMemo(() => ({ aberto: painelFocusAberto, alternar: alternarPainelFocus }), [painelFocusAberto, alternarPainelFocus]);
-  const alternarFocus = useCallback(() => {
-    if (emFocus) { sairDoFocus(); return; }
-    saindoDoFocus.current = false;
-    // O painel lateral começa como a preferência pede (recolhido por padrão: o texto em primeiro plano).
-    const aberto = !lerPreferenciasAplicativo().focusPainelRecolhido;
-    painelFocusAbertoRef.current = aberto;
-    setPainelFocusAberto(aberto);
-    setEmFocus(true);
-  }, [emFocus, sairDoFocus]);
-  // A camada Focus nasce com o foco do teclado dentro dela.
-  const estavaEmFocus = useRef(false);
+  // A camada Focus nasce com o foco do teclado dentro dela; ao sair do Modo Slide ele volta para ela.
   useEffect(() => {
-    if (emFocus) janelaFocusRef.current?.focus();
-    // Ao voltar, a janela normal (que estava inerte) recebe o foco de novo: o Esc já funciona sem clicar nela.
-    else if (estavaEmFocus.current) janelaRef.current?.focus();
-    estavaEmFocus.current = emFocus;
-  }, [emFocus]);
+    if (emFocus && !emSlide) janelaFocusRef.current?.focus();
+  }, [emFocus, emSlide]);
 
   // Formulário de lançamento: a altura natural do conteúdo é o mínimo da janela e a altura inicial (sem barra de rolagem).
   const alturaMinRef = useRef(ALTURA_MIN);
@@ -285,11 +287,11 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
       if (dentro) return; // o onKeyDown da própria janela já trata
       if (foco && foco !== document.body) return; // foco em outra parte da interface
       const frente = [...janelasAbertas].sort((a, b) => b.z() - a.z())[0];
-      if (frente === registro && !modoSlideAtivo(janelaRef.current)) registro.escapar();
+      if (frente === registro && !modoSlideAtivo(janelaRef.current) && !document.querySelector("[data-modo-slide]")) registro.escapar();
     }
     window.addEventListener("keydown", aoTeclar);
     return () => { janelasAbertas.delete(registro); window.removeEventListener("keydown", aoTeclar); };
-  }, [sairDoFocus]);
+  }, []);
 
   // Janela do app encolheu: a janela flutuante nunca fica maior que ela.
   useEffect(() => {
@@ -417,12 +419,12 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
     <div className="ecos-documento-camada pointer-events-none fixed inset-0" style={{ zIndex: 50 + z }}>
       {/* Configurações (do Ecos e do Cofre) desfocam o fundo; o painel antigo do Cofre tinha este véu e foi unificado aqui. */}
       {janelaDeConfiguracoes && <div aria-hidden onPointerDown={(e) => e.stopPropagation()} className="pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[6px] transition-opacity duration-200" style={{ opacity: saindo ? 0 : 1 }} />}
+      {painelModal && <div aria-hidden onClick={aoFechar} onPointerDown={(e) => e.stopPropagation()} className={`ecos-veu-modal pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[10px] ${saindo ? "ecos-veu-saindo" : "ecos-veu-entrando"}`} />}
       {/* `transform` faz os elementos `fixed` das telas (botão flutuante de salvar) ancorarem na janela, não no app. */}
-      <div
+      {!emFocus && <div
         ref={janelaRef}
         role="dialog"
-        aria-hidden={emFocus || undefined}
-        {...(emFocus || emSlide ? ({ inert: "" } as object) : {})}
+        {...(emSlide ? ({ inert: "" } as object) : {})}
         aria-label={tituloDinamico || titulo || tituloDaRota(path)}
         tabIndex={-1}
         onPointerDownCapture={aoFocar}
@@ -432,16 +434,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
         onPointerCancel={cabecalhoNoConteudo ? encerrar : undefined}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !modoSlideAtivo(janelaRef.current)) { e.preventDefault(); aoFechar(); }
-          if (e.key === "Tab" && emFocus) {
-            const seletor = 'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
-            const focaveis = [...Array.from(janelaRef.current?.querySelectorAll<HTMLElement>(seletor) ?? []), ...Array.from(montagemFocus?.querySelectorAll<HTMLElement>(seletor) ?? [])].filter((el) => !el.closest("[inert]"));
-            if (!focaveis.length) return;
-            const atual = document.activeElement as HTMLElement;
-            const indice = focaveis.indexOf(atual);
-            if (indice === -1 || (e.shiftKey ? indice === 0 : indice === focaveis.length - 1)) { e.preventDefault(); focaveis[e.shiftKey ? focaveis.length - 1 : 0].focus(); }
-          }
         }}
-        className={`${saindo ? (janelaDeConfiguracoes ? "ecos-configuracoes-saindo" : "ecos-janela-saindo") : "ecos-janela-entrando"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
+        className={`${saindo ? (painelModal ? "ecos-painel-saindo" : janelaModal ? "ecos-configuracoes-saindo" : "ecos-janela-saindo") : painelModal ? "ecos-painel-entrando" : "ecos-janela-entrando"} pointer-events-auto absolute flex flex-col rounded-2xl border bg-base shadow-nav outline-none ${
           arrastando ? "border-cyan/60" : "border-border"
         }`}
         style={{
@@ -449,21 +443,19 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           top: rect.y,
           width: rect.w,
           height: rect.h,
-          // No Focus a janela normal passa para trás (menor e mais escura) e a camada Focus aparece na frente dela.
-          transform: emFocus && !saindoFocus ? "translateZ(0) scale(0.965)" : "translateZ(0)",
-          filter: emFocus && !saindoFocus ? "brightness(0.7)" : undefined,
-          transition: [(ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : animandoPainel ? "left 450ms cubic-bezier(.22,1,.36,1), width 450ms cubic-bezier(.22,1,.36,1)" : undefined), "transform 320ms cubic-bezier(.22,1,.36,1), filter 320ms ease"].filter(Boolean).join(", "),
+          transform: "translateZ(0)",
+          transition: ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : animandoPainel ? "left 450ms cubic-bezier(.22,1,.36,1), width 450ms cubic-bezier(.22,1,.36,1)" : undefined,
         }}
       >
         {!cabecalhoNoConteudo&&<header
           onPointerDown={(e) => {
-            if (!(e.target as HTMLElement).closest("button")) iniciar(e, "mover");
+            if (!painelModal && !(e.target as HTMLElement).closest("button")) iniciar(e, "mover");
           }}
           onPointerMove={mover}
           onPointerUp={encerrar}
           onPointerCancel={encerrar}
           className={`flex shrink-0 touch-none select-none items-center gap-2 rounded-t-2xl border-b border-border bg-surface-1 pl-3.5 pr-1.5 ${
-            arrastando ? "cursor-grabbing" : "cursor-grab"
+            painelModal ? "" : arrastando ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{ height: ALTURA_TITULO }}
         >
@@ -474,7 +466,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-secondary">
             {tituloDinamico || titulo || tituloDaRota(path)}
           </span>
-          {!emFocus && <div
+          {!painelModal && <div
             className={`flex min-w-0 items-center overflow-hidden transition-[max-width,opacity,transform] duration-300 ease-out motion-reduce:transition-none ${acoesAbertas ? "max-w-56 translate-x-0 opacity-100" : "max-w-0 translate-x-3 opacity-0"}`}
             aria-hidden={!acoesAbertas}
           >
@@ -489,28 +481,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
             >
               <Pin size={14} strokeWidth={1.75} />
             </button>}
-            {podeSlide && <button
-              type="button"
-              title="Abrir em Modo Slide"
-              aria-label="Abrir em Modo Slide"
-              tabIndex={acoesAbertas ? 0 : -1}
-              onClick={() => setEmSlide(true)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
-            >
-              <Presentation size={14} strokeWidth={1.75} />
-            </button>}
-            {podeFocus && <button
-              type="button"
-              title="Abrir em modo Focus"
-              aria-label="Abrir em modo Focus"
-              tabIndex={acoesAbertas ? 0 : -1}
-              onClick={alternarFocus}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"
-            >
-              <Maximize2 size={14} strokeWidth={1.75} />
-            </button>}
           </div>}
-          {!emFocus && <button
+          {!painelModal && <button
             type="button"
             title={acoesAbertas ? "Ocultar ações" : "Mostrar ações"}
             aria-label={acoesAbertas ? "Ocultar ações" : "Mostrar ações"}
@@ -531,7 +503,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           </button>
         </header>}
 
-        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : janelaDeConfiguracoes ? "rounded-b-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
+        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : janelaDeConfiguracoes || painelModal ? "rounded-b-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
           <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
           <TituloJanelaContext.Provider value={setTituloDinamico}>
           <FecharDocumentoContext.Provider value={aoFechar}>
@@ -540,10 +512,10 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <AcoesJanelaContext.Provider value={acoesJanela}>
             {cabecalhoNoConteudo ? (
               <>
-                <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}><Fragment key={chaveJanela}>{captura && emFocus ? null : corpo}</Fragment></div>
+                <div className="h-full min-w-0" style={painelPx ? { width: larguraConteudo, flex: "none" } : { flex: "1 1 auto" }}>{corpo}</div>
                 <div ref={setMontagem} aria-hidden={!painelPx} className="h-full min-w-0 overflow-hidden border-border bg-surface-1" style={{ flex: painelPx ? "1 1 0" : "0 0 0", borderLeftWidth: painelPx ? 1 : 0 }} />
               </>
-            ) : <Fragment key={chaveJanela}>{captura && emFocus ? null : corpo}</Fragment>}
+            ) : corpo}
           </AcoesJanelaContext.Provider>
           </PainelJanelaContext.Provider>
           </ModoFocusDocumentoContext.Provider>
@@ -552,7 +524,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           </AjusteJanelaContext.Provider>
         </div>
 
-        {ALCAS.map(({ dir, classe }) => (
+        {!painelModal && ALCAS.map(({ dir, classe }) => (
           <div
             key={dir}
             aria-hidden
@@ -563,32 +535,48 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
             className={`absolute z-40 touch-none ${classe}`}
           />
         ))}
-      </div>
+      </div>}
 
       {emSlide && <ModoSlideTarefas tarefas={tarefasDaLista} inicial={idDaTarefa} aoFechar={() => { setEmSlide(false); setChaveJanela((k) => k + 1); }} />}
 
       {emFocus && (() => {
-        const camadaSaindo = saindoFocus || saindo;
-        const { principal } = layoutFocus(painelFocusAberto);
-        const posPainel = layoutFocus(true).painel; // fechado, o painel só some no lugar: não desliza nem se espreme
+        const camadaSaindo = saindo;
+        // Nota e tarefa têm painel esquerdo (sumário).
+        const temEsquerdo = path.startsWith("/notas/") || path.startsWith("/tarefa/");
+        const esquerdoAberto = sumarioAberto && temEsquerdo;
+        const extraTrilho = path.startsWith("/notas/") || path.startsWith("/tarefa/") ? MARGEM_TRILHO : 0;
+        const { principal } = layoutFocus(painelFocusAberto, esquerdoAberto, extraTrilho, temEsquerdo);
+        const posEsquerdo = layoutFocus(painelFocusAberto, true, extraTrilho, temEsquerdo).esquerdo;
+        // Painéis deslizam junto com a janela: abertos ficam ao lado dela; fechados recolhem para
+        // trás da borda da janela (que fica por cima) enquanto somem, em vez de só piscar.
+        const abertoDireito = layoutFocus(true, esquerdoAberto, extraTrilho, temEsquerdo).painel;
+        // Fechado, o painel recolhe para trás da janela enquanto some.
+        const posPainel = painelFocusAberto ? abertoDireito : { ...abertoDireito, x: principal.x + principal.w - abertoDireito.w };
+        const posEsquerdoFinal = esquerdoAberto ? posEsquerdo : { ...posEsquerdo, x: principal.x };
+        const MOVIMENTO = "left 280ms cubic-bezier(.22,1,.36,1), opacity 220ms ease, visibility 280ms";
         const Icone = moduloDaRota(path).icone;
         const aoTeclar = (e: React.KeyboardEvent) => {
           if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); aoFechar(); return; }
           if (e.key !== "Tab") return;
           const seletor = 'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
-          const focaveis = [...Array.from(janelaFocusRef.current?.querySelectorAll<HTMLElement>(seletor) ?? []), ...Array.from(montagemFocus?.querySelectorAll<HTMLElement>(seletor) ?? [])].filter((el) => !el.closest("[inert]"));
+          const focaveis = [...Array.from(janelaFocusRef.current?.querySelectorAll<HTMLElement>(seletor) ?? []), ...Array.from(montagemFocus?.querySelectorAll<HTMLElement>(seletor) ?? []), ...Array.from(montagemEsquerda?.querySelectorAll<HTMLElement>(seletor) ?? [])].filter((el) => !el.closest("[inert]"));
           if (!focaveis.length) return;
           const indice = focaveis.indexOf(document.activeElement as HTMLElement);
           if (indice === -1 || (e.shiftKey ? indice === 0 : indice === focaveis.length - 1)) { e.preventDefault(); focaveis[e.shiftKey ? focaveis.length - 1 : 0].focus(); }
         };
-        return <div onKeyDown={aoTeclar} className="pointer-events-none absolute inset-0">
+        return <div onKeyDown={aoTeclar} onPointerDownCapture={aoFocar} className="pointer-events-none absolute inset-0" {...(emSlide ? ({ inert: "" } as object) : {})}>
           {/* Mesmo padrão dos modais do Cofre: véu com blur por cima da janela normal; clicar nele volta. */}
-          <div aria-hidden onClick={aoFechar} className={`pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[10px] ${camadaSaindo ? "ecos-backdrop-out" : "ecos-backdrop-in"}`} />
+          <div aria-hidden onClick={aoFechar} className={`ecos-focus-veu pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[10px] ${camadaSaindo ? "ecos-backdrop-out" : "ecos-backdrop-in"}`} />
           <div aria-hidden={!painelFocusAberto || undefined} {...(painelFocusAberto ? {} : ({ inert: "" } as object))}
-            className={`pointer-events-auto absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav transition-[opacity,transform,visibility] duration-300 ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
-            style={{ left: posPainel.x, top: posPainel.y, width: posPainel.w, height: posPainel.h, opacity: painelFocusAberto ? 1 : 0, visibility: painelFocusAberto ? "visible" : "hidden", pointerEvents: painelFocusAberto ? "auto" : "none", transform: painelFocusAberto ? "none" : "translateX(12px)" }}>
+            className={`pointer-events-auto absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
+            style={{ left: posPainel.x, top: posPainel.y, width: posPainel.w, height: posPainel.h, opacity: painelFocusAberto ? 1 : 0, visibility: painelFocusAberto ? "visible" : "hidden", pointerEvents: painelFocusAberto ? "auto" : "none", transition: MOVIMENTO }}>
             <div ref={setMontagemFocus} />
           </div>
+          {temEsquerdo && <div aria-hidden={!esquerdoAberto || undefined}
+            className={`absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
+            style={{ left: posEsquerdoFinal.x, top: posEsquerdoFinal.y, width: posEsquerdoFinal.w, height: posEsquerdoFinal.h, opacity: esquerdoAberto ? 1 : 0, visibility: esquerdoAberto ? "visible" : "hidden", pointerEvents: esquerdoAberto ? "auto" : "none", transition: MOVIMENTO }}>
+            <div ref={setMontagemEsquerda} />
+          </div>}
           <div ref={janelaFocusRef} role="dialog" aria-modal="true" aria-label={tituloDinamico || titulo || tituloDaRota(path)} tabIndex={-1}
             className={`pointer-events-auto absolute flex flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav outline-none ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: principal.x, top: principal.y, width: principal.w, height: principal.h, transition: "left 280ms cubic-bezier(.22,1,.36,1)" }}>
@@ -596,8 +584,10 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
               <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />
               <span className="flex-1" aria-hidden />
               <div ref={setAcoesFocus} className="flex items-center gap-0.5" />
-              <button type="button" title="Sair do modo Focus" aria-label="Sair do modo Focus" onClick={alternarFocus}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><Minimize2 size={14} strokeWidth={1.75} /></button>
+              {podeSlide && <button type="button" title="Abrir em Modo Slide" aria-label="Abrir em Modo Slide" onClick={() => setEmSlide(true)}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><Presentation size={14} strokeWidth={1.75} /></button>}
+              {aoFixar && !captura && <button type="button" title="Fixar como aba" aria-label="Fixar como aba" onClick={() => aoFixar()}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><Pin size={14} strokeWidth={1.75} /></button>}
               <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={aoFechar}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} strokeWidth={1.75} /></button>
             </header>
@@ -607,11 +597,13 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
               <FecharDocumentoContext.Provider value={aoFechar}>
               <ModoFocusDocumentoContext.Provider value={true}>
               <PainelFocusTarefaContext.Provider value={montagemFocus}>
+              <PainelFocusEsquerdoContext.Provider value={montagemEsquerda}>
               <PainelFocusControleContext.Provider value={controlePainelFocus}>
               <AcoesFocusContext.Provider value={acoesFocus}>
-                {corpo}
+                <Fragment key={chaveJanela}>{corpo}</Fragment>
               </AcoesFocusContext.Provider>
               </PainelFocusControleContext.Provider>
+              </PainelFocusEsquerdoContext.Provider>
               </PainelFocusTarefaContext.Provider>
               </ModoFocusDocumentoContext.Provider>
               </FecharDocumentoContext.Provider>

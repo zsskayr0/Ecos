@@ -1,4 +1,4 @@
-import { FileText, Maximize2, Pencil, PanelRight, ScrollText } from "lucide-react";
+import { FileText, Pencil, PanelRight, ScrollText } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { Cabecalho, Linha, Secao, Segmentado, usePreferencias } from "./campos-config";
@@ -14,9 +14,6 @@ export function NotasConfigScreen() {
       <Cabecalho titulo="Notas" />
 
       <Secao titulo="Ao abrir uma nota">
-        <Linha Icone={Maximize2} titulo="Abrir notas maximizadas" descricao="A nota já abre no modo Focus. O botão de maximizar na janela continua alternando.">
-          <Toggle checked={prefs.notaMaximizada} onChange={(notaMaximizada) => alterar({ notaMaximizada })} label="Abrir notas maximizadas" />
-        </Linha>
         <Linha Icone={Pencil} titulo="Abrir notas em edição" descricao="Ao abrir uma nota existente, o texto já fica editável. Desligado, ela abre em visualização e você alterna quando quiser.">
           <Toggle checked={prefs.notaAbreEditando} onChange={(notaAbreEditando) => alterar({ notaAbreEditando })} label="Abrir notas em edição" />
         </Linha>
@@ -36,10 +33,7 @@ export function NotasConfigScreen() {
           tags={prefs.notaNovaTags} aoMudarTags={(notaNovaTags) => alterar({ notaNovaTags })} />
         {desktop && (
           <>
-            <Linha Icone={Maximize2} titulo="Criar maximizada" descricao="A janela de criação já abre no modo Focus. Sair do Focus fecha a criação, salvando o que foi escrito.">
-              <Toggle checked={prefs.notaNovaMaximizada} onChange={(notaNovaMaximizada) => alterar({ notaNovaMaximizada })} label="Criar notas maximizadas" />
-            </Linha>
-            <Linha Icone={PanelRight} titulo="Barra lateral aberta na criação" descricao="Na criação maximizada, o painel de opções (equipe, pasta, tags e anexos) já começa aberto.">
+            <Linha Icone={PanelRight} titulo="Barra lateral aberta na criação" descricao="Na criação, o painel de opções (equipe, pasta, tags e anexos) já começa aberto.">
               <Toggle checked={prefs.notaNovaPainelAberto} onChange={(notaNovaPainelAberto) => alterar({ notaNovaPainelAberto })} label="Barra lateral aberta na criação" />
             </Linha>
           </>

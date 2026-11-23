@@ -5,7 +5,34 @@
 import type katexTipo from "katex";
 import { fromHtmlIsomorphic } from "hast-util-from-html-isomorphic";
 
-export interface TrechoMatematica { de: number; ate: number; tex: string; bloco: boolean }
+export interface TrechoMatematica { de: number; ate: number; tex: string; bloco: boolean; exibicao?: boolean }
+
+/**
+ * Leitura/PDF: troca `\(x\)` por `$x$` e `\[x\]` por `$$x$$` antes do markdown (que comeria a barra
+ * como escape). Fora de código. Só para desenhar: o arquivo da nota não muda.
+ */
+export function normalizarDelimitadores(texto: string): string {
+  if (!texto.includes("\\(") && !texto.includes("\\[")) return texto;
+  const codigo: [number, number][] = [];
+  for (const m of texto.matchAll(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^\1[^\n]*$|(?![\s\S]))|`[^`\n]+`/gm)) codigo.push([m.index!, m.index! + m[0].length]);
+  const emCodigo = (de: number, ate: number) => codigo.some(([a, b]) => de < b && a < ate);
+  let saida = "", pos = 0;
+  for (const m of acharMatematica(texto, emCodigo)) {
+    const orig = texto.slice(m.de, m.ate);
+    if (orig.trimStart().startsWith("$")) continue;
+    const novo = m.bloco ? orig.match(/^\s*/)![0] + "$$" + m.tex + "$$" : m.exibicao ? `$$${m.tex}$$` : `$${m.tex}$`;
+    saida += texto.slice(pos, m.de) + novo; pos = m.ate;
+  }
+  return saida + texto.slice(pos);
+}
+
+/** `\(x\)`: delimitador do LaTeX para fórmula na linha (o ChatGPT gera assim). */
+const INLINE_PAREN = /\\\(([\s\S]+?)\\\)/g;
+/** `\[x\]` numa linha com texto em volta. */
+const INLINE_COLCH = /\\\[([\s\S]+?)\\\]/g;
+
+/** Tem algum delimitador de fórmula? (atalho barato antes de varrer) */
+export const temMatematica = (texto: string) => texto.includes("$") || texto.includes("\\(") || texto.includes("\\[");
 
 /** `$x$`: abre seguido de não-espaço, fecha precedido de não-espaço e sem dígito logo depois (`$5 e $10` não é fórmula). */
 const INLINE = /(?<![\\$])\$(?!\$)(?=\S)((?:\\.|[^$\\\n])*?\S)\$(?![\d$])/g;
@@ -33,15 +60,16 @@ export function acharMatematica(texto: string, ignorar: (de: number, ate: number
     const l = linhas[i];
     const ini = pos;
     const t = l.trim();
-    if (t.startsWith("$$") && !ignorar(ini, ini + l.length)) {
-      // `$$ ... $$` numa linha só
-      if (t.length > 4 && t.endsWith("$$")) {
+    // Bloco: `$$ ... $$` ou `\[ ... \]` (numa linha ou em várias).
+    const fecha = t.startsWith("$$") ? "$$" : t.startsWith("\\[") ? "\\]" : null;
+    if (fecha && !ignorar(ini, ini + l.length)) {
+      if (t.length > 4 && t.endsWith(fecha)) {
         achados.push({ de: ini, ate: ini + l.length, tex: t.slice(2, -2).trim(), bloco: true });
         pos += l.length + 1;
         continue;
       }
       let j = i + 1, p = pos + l.length + 1;
-      while (j < linhas.length && !linhas[j].trim().endsWith("$$")) { p += linhas[j].length + 1; j++; }
+      while (j < linhas.length && !linhas[j].trim().endsWith(fecha)) { p += linhas[j].length + 1; j++; }
       if (j < linhas.length) {
         const fim = p + linhas[j].length;
         const corpo = texto.slice(ini, fim).trim();
@@ -50,14 +78,18 @@ export function acharMatematica(texto: string, ignorar: (de: number, ate: number
         continue;
       }
     }
-    if (l.includes("$")) {
-      INLINE.lastIndex = 0;
+    const naLinha: TrechoMatematica[] = [];
+    for (const [re, marca, exibicao] of [[INLINE, "$", false], [INLINE_PAREN, "\\(", false], [INLINE_COLCH, "\\[", true]] as const) {
+      if (!l.includes(marca)) continue;
+      re.lastIndex = 0;
       let m: RegExpExecArray | null;
-      while ((m = INLINE.exec(l))) {
+      while ((m = re.exec(l))) {
         const de = ini + m.index, ate = de + m[0].length;
-        if (!ignorar(de, ate)) achados.push({ de, ate, tex: m[1], bloco: false });
+        const tex = re === INLINE ? m[1] : m[1].trim();
+        if (tex && !ignorar(de, ate) && !naLinha.some((x) => x.de < ate && de < x.ate)) naLinha.push({ de, ate, tex, bloco: false, ...(exibicao ? { exibicao } : {}) });
       }
     }
+    achados.push(...naLinha.sort((a, b) => a.de - b.de));
     pos += l.length + 1;
   }
   return achados;

@@ -13,6 +13,7 @@ import { GFM } from "@lezer/markdown";
 import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
 import { tabelas } from "./tabela-widget";
 import { matematica, temaMatematica } from "./matematica-widget";
+import { blocosEscrita, temaEscrita } from "./escrita-widget";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
 import { contadorTexto } from "./ContadorTexto";
 import { QUEBRA_PAGINA } from "@/lib/tipografia-nota";
@@ -523,6 +524,8 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         tabelas,
         matematica,
         temaMatematica,
+        blocosEscrita,
+        temaEscrita,
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : autocompletarEmoji(),
         colarMarkdown(),
         Prec.highest(keymap.of([atalhoColarTextoSimples])),

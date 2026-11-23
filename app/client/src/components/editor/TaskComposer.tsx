@@ -176,7 +176,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   // Tarefa nova começa sem o bloco de anexos: arrastar um arquivo sobre o formulário abre "Mais opções" para recebê-lo.
   const abrirAoArrastarArquivo = (e: DragEvent<HTMLDivElement>) => { if (simples && Array.from(e.dataTransfer.types).includes("Files")) setMaisOpcoes(true); };
   const anexosNoPainel = focusMode && !!painelFocus;
-  const anexosCampo = <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} disabled={saving} escopoRef={raizComposer} estilo={anexosNoPainel ? "grade" : "lista"} compact />;
+  const anexosCampo = <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} escopoRef={raizComposer} estilo={anexosNoPainel ? "grade" : "lista"} compact />;
   const secaoSubtarefas = (classe: string) => (
     <section id={`${id}-subtasks`} aria-label="Subtarefas" className={classe}>
       <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={`${id}-subtask`} className="text-sm font-semibold text-text-primary">Subtarefas</label><span className="text-sm text-text-secondary" aria-live="polite">{value.subtarefas.length ? `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length} concluídas` : "Opcional"}</span></div>
@@ -222,9 +222,9 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
       {titleActions}
     </div>
     {organizacaoCompacta && camposOrganizacao}
-    {showPriority && <TaskPriority value={value.prioridade} onChange={(prioridade) => onChange({ prioridade })} disabled={saving} />}
+    {showPriority && <TaskPriority value={value.prioridade} onChange={(prioridade) => onChange({ prioridade })} />}
     {simples && <div className="flex flex-col gap-4" data-task-simples>
-      <label className="flex min-w-0 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} disabled={saving} /></label>
+      <label className="flex min-w-0 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} /></label>
       <button type="button" aria-expanded={false} onClick={() => setMaisOpcoes(true)} className="flex min-h-11 w-fit items-center gap-2 text-sm font-medium text-steel-300 hover:underline">
         <SlidersHorizontal size={16} aria-hidden />Mais opções<span className="font-normal text-text-muted">{organizacaoCompacta ? "descrição, anexos, duração e subtarefas" : "descrição, anexos, duração, pasta, tags e subtarefas"}</span>
       </button>
@@ -256,26 +256,25 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         {painelExtra}
         <section className={`space-y-3 ${painelExtra ? "border-t border-border pt-6" : ""}`}>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Planejamento</h2>
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="flex min-w-[190px] flex-1 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} disabled={saving} /></label>
+          <div className="flex flex-wrap items-start gap-4">
+            <label className="flex min-w-[190px] flex-1 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} /></label>
             <div ref={durationMenuRef} className="relative flex flex-col gap-2 text-sm text-text-secondary"><span id={`${id}-duration-label`}>Duração estimada</span><button type="button" aria-haspopup="listbox" aria-expanded={durationMenuOpen} aria-labelledby={`${id}-duration-label`} onClick={() => setDurationMenuOpen((open) => !open)} className="flex h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 font-mono-value text-sm text-text-primary hover:bg-surface-3"><Clock size={15} className="text-steel-300" />{`${Math.floor(value.duracao / 60)}h ${String(value.duracao % 60).padStart(2, "0")}m`}</button>{durationMenuOpen && <div role="listbox" aria-labelledby={`${id}-duration-label`} className="absolute right-0 top-full z-30 mt-1 max-h-56 w-28 overflow-y-auto rounded-lg border border-border bg-surface-1 p-1 shadow-nav">{Array.from({ length: 49 }, (_, index) => index * 15).map((minutes) => <button key={minutes} type="button" role="option" aria-selected={value.duracao === minutes} onClick={() => { onChange({ duracao: Math.max(1, minutes) }); setDurationMenuOpen(false); }} className={`flex min-h-9 w-full items-center rounded-md px-2 font-mono-value text-xs ${value.duracao === minutes ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`}</button>)}</div>}</div>
           </div>
+          {timePanel && <div aria-label="Tempo dedicado" className="pt-1">{timePanel}</div>}
         </section>
-        {timePanel && <section className="border-t border-border pt-6" aria-label="Tempo dedicado">{timePanel}</section>}
-        {editing && itemId && <div className="border-t border-border pt-6"><Conexoes tipo="tarefa" id={itemId} versao={editedAt} compacto /></div>}
         <section className="space-y-4 border-t border-border pt-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
-          <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} disabled={saving} />
+          <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} />
           <div ref={folderMenuRef} className="relative flex flex-col gap-2 text-sm text-text-secondary">
             <span id={`${id}-folder-label`}>Pasta</span>
             <button type="button" aria-haspopup="menu" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}><Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} /></button>
             {folderMenuOpen && <div role="menu" aria-labelledby={`${id}-folder-label`} className="absolute top-full z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p><ArvorePastas opcoes={[{ valor: "", rotulo: "Nenhuma pasta" }, ...folders.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(value.pasta && !folders.some((p) => p.caminho === value.pasta) ? [{ valor: value.pasta, rotulo: value.pasta, pasta: true }] : [])]} valores={[value.pasta ?? ""]} onSelect={(pasta) => { onChange({ pasta: pasta || null }); setFolderMenuOpen(false); }} />{folderError && <p role="alert" className="px-3 text-xs text-error">{folderError}</p>}<div className="mt-1 flex gap-2 border-t border-border p-2"><input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarPasta(); } }} placeholder={value.pasta ? "Nova subpasta" : "Nova pasta"} aria-label="Nome da nova pasta" className={FIELD} /><button type="button" onClick={() => void criarPasta()} disabled={!newFolder.trim() || creatingFolder} className={`${ACTION} shrink-0 disabled:opacity-40`} aria-label="Criar pasta"><Plus size={18} /></button></div></div>}
           </div>
-          <div><label htmlFor={`${id}-tag`} className="mb-2 block text-sm text-text-secondary">Tags</label><div className="flex gap-2"><input id={`${id}-tag`} list={`${id}-tags`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} className={FIELD} placeholder="Tag e Enter" /><button type="button" onClick={addTag} className={`${ACTION} shrink-0`} aria-label="Adicionar tag"><Plus size={18} /></button></div></div>
-          <div className="flex flex-wrap gap-2" aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}</div>
+          <div><span id={`${id}-tags-rotulo`} className="mb-2 block text-sm text-text-secondary">Tags</span><div className="flex flex-wrap items-center gap-2" aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}<input id={`${id}-tag`} list={`${id}-tags`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} aria-label="Adicionar tag" placeholder="+ tag" className="h-8 w-20 rounded-lg border border-dashed border-border bg-transparent px-2.5 text-sm text-text-primary outline-none transition-[width,border-color] duration-200 placeholder:text-text-muted focus:w-40 focus:border-solid focus:border-steel-400" /></div></div>
         </section>
         {!simples && <section className="border-t border-border pt-6" aria-label="Anexos">{anexosCampo}</section>}
         {secaoSubtarefas("space-y-3 border-t border-border pt-6")}
+        {editing && itemId && <div className="border-t border-border pt-6"><Conexoes tipo="tarefa" id={itemId} versao={editedAt} compacto /></div>}
         <section className="space-y-2 border-t border-border pt-6" aria-label="Informações">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
           {informacoes}
@@ -285,14 +284,14 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         <section className="space-y-4">
           <h2 className="font-semibold text-text-primary">Planejamento</h2>
           <div className="flex flex-wrap items-end gap-4">
-            <label className="flex min-w-[190px] flex-1 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} disabled={saving} /></label>
+            <label className="flex min-w-[190px] flex-1 flex-col gap-2 text-sm text-text-secondary">Data e horário<TaskDateTimePicker data={value.data} horario={value.horario} onChange={(data, horario) => onChange({ data, horario })} /></label>
             <div ref={durationMenuRef} className="relative flex flex-col gap-2 text-sm text-text-secondary"><span id={`${id}-duration-label`}>Duração estimada</span><button type="button" aria-haspopup="listbox" aria-expanded={durationMenuOpen} aria-labelledby={`${id}-duration-label`} onClick={() => setDurationMenuOpen((open) => !open)} className="flex h-10 items-center gap-2 rounded-lg bg-surface-2 px-3 font-mono-value text-sm text-text-primary hover:bg-surface-3"><Clock size={15} className="text-steel-300" />{`${Math.floor(value.duracao / 60)}h ${String(value.duracao % 60).padStart(2, "0")}m`}</button>{durationMenuOpen && <div role="listbox" aria-labelledby={`${id}-duration-label`} className="absolute right-0 top-full z-30 mt-1 max-h-56 w-28 overflow-y-auto rounded-lg border border-border bg-surface-1 p-1 shadow-nav">{Array.from({ length: 49 }, (_, index) => index * 15).map((minutes) => <button key={minutes} type="button" role="option" aria-selected={value.duracao === minutes} onClick={() => { onChange({ duracao: Math.max(1, minutes) }); setDurationMenuOpen(false); }} className={`flex min-h-9 w-full items-center rounded-md px-2 font-mono-value text-xs ${value.duracao === minutes ? "bg-steel-700/40 text-text-primary" : "text-text-secondary hover:bg-surface-2"}`}>{`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`}</button>)}</div>}</div>
           </div>
         </section>
         {timePanel && <section className="mt-6 border-t border-border pt-6" aria-label="Tempo dedicado">{timePanel}</section>}
         <section className="mt-6 space-y-4 border-t border-border pt-6">
           <h2 className="font-semibold text-text-primary">Organização</h2>
-          <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} disabled={saving} />
+          <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} />
           {!organizacaoCompacta && camposOrganizacao}
         </section>
       </aside>}

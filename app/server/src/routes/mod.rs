@@ -28,6 +28,7 @@ pub mod feed_oculto;
 pub mod grafico;
 pub mod health;
 pub mod links;
+pub mod links_titulo;
 pub mod renomear;
 pub mod media;
 pub mod media_revisao;
@@ -139,6 +140,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/links/resolver", post(links::resolver))
         .route("/links/sugestoes", get(links::sugestoes))
         .route("/links/pendentes", get(links::pendentes))
+        .route("/links/titulos", post(links_titulo::titulos))
         .route("/notas/:id/tinta", get(tinta::obter).put(tinta::salvar).layer(DefaultBodyLimit::max(tinta::TAMANHO_MAXIMO_BYTES)))
         .route("/notas/:id/anexos", post(notas::enviar_anexo).layer(DefaultBodyLimit::max(anexos_comuns::TAMANHO_MAXIMO_MULTIPART_BYTES)))
         .route("/notas/:id/anexos/:nome_arquivo", get(notas::obter_anexo))

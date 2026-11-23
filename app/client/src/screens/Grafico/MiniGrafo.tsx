@@ -43,7 +43,7 @@ const EXEMPLO: GraficoDados = {
  * Mini gráfico local do modo Focus: só o item aberto e as conexões próximas. Aparência (cores, forças) segue o Gráfico;
  * ligar/desligar, profundidade, altura e tags vêm de Configurações › Gráfico › Mini gráfico.
  */
-export function MiniGrafo({ itemId, semTitulo = false, previa = false }: { itemId: string; semTitulo?: boolean; previa?: boolean }) {
+export function MiniGrafo({ itemId, semTitulo = false, previa = false, ocultarVazio = false }: { itemId: string; semTitulo?: boolean; previa?: boolean; /** Sem conexões (ou carregando), não mostra nada em vez do aviso. */ ocultarVazio?: boolean }) {
   const navigate = useNavigate();
   const { versao } = useRefreshBus();
   const [prefs] = usePreferenciasGrafico();
@@ -81,7 +81,14 @@ export function MiniGrafo({ itemId, semTitulo = false, previa = false }: { itemI
       onHover: () => {},
     }, prefsMini);
     motor.current = m;
-    return () => { m.destruir(); motor.current = null; };
+    // Com o mapa de conexões (painel modal) aberto por cima, este canvas fica atrás de um desfoque: redesenhá-lo a cada
+    // quadro obriga o navegador a refazer o blur, então o laço para enquanto o painel estiver aberto.
+    const raiz = document.documentElement;
+    const seguirPainel = () => { if (raiz.hasAttribute("data-painel-modal")) m.pausar(); else m.retomar(); };
+    seguirPainel();
+    const obs = typeof MutationObserver !== "undefined" ? new MutationObserver(seguirPainel) : null;
+    obs?.observe(raiz, { attributes: true, attributeFilter: ["data-painel-modal"] });
+    return () => { obs?.disconnect(); m.destruir(); motor.current = null; };
     // O motor nasce uma vez por item; dados e prefs entram pelos efeitos abaixo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.miniGrafo, previa, temConexoes, itemId]);
@@ -90,6 +97,7 @@ export function MiniGrafo({ itemId, semTitulo = false, previa = false }: { itemI
   useEffect(() => { motor.current?.definirPrefs(prefsMini); }, [prefsMini]);
 
   if (!prefs.miniGrafo && !previa) return null;
+  if (ocultarVazio && !temConexoes) return null;
 
   return (
     <section aria-label="Conexões" className="space-y-2">

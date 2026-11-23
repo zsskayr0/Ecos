@@ -25,6 +25,7 @@ const BLOCOS: Bloco[] = [
   { rotulo: "Sobrescrito", dica: "<sup>", chaves: "sobrescrito expoente superscript", texto: "<sup>«texto»</sup>" },
   { rotulo: "Subscrito", dica: "<sub>", chaves: "subscrito indice subscript", texto: "<sub>«texto»</sub>" },
   { rotulo: "Realce", dica: "==", chaves: "realce destaque marca", texto: "==«texto»==" },
+  { rotulo: "Bloco de escrita", dica: "à mão", chaves: "escrita mao caneta desenho quadriculado exercicio rascunho", texto: "```escrita 240\n```\n§", bloco: true },
   { rotulo: "Fórmula", dica: "$$", chaves: "formula matematica latex equacao", texto: "$$\n«x^2»\n$$", bloco: true },
 ];
 

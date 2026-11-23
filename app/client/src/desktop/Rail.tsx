@@ -39,6 +39,8 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
   useEffect(() => { try { localStorage.setItem(CHAVE_EXPANDIDA, expandida ? "1" : "0"); } catch { /* cache indisponível */ } }, [expandida]);
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
+      // Com uma nota/tarefa (Focus) ou outro diálogo por cima, Ctrl+B é do documento (negrito), não da barra lateral escondida atrás.
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setExpandida((v) => !v);

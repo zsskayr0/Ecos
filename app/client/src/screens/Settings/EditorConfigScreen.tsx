@@ -1,4 +1,4 @@
-import { ALargeSmall, Columns3, FileText, Globe2, Link2, ListOrdered, Rows3, Scan, Type, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
+import { ALargeSmall, Columns3, FileText, Globe2, Link2, ListOrdered, ListTree, Rows3, Scan, Type, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import type { FonteNota, FormasEscrita, LarguraNota, MargemPagina, PapelNota } from "@/lib/preferencias-aplicativo";
@@ -30,12 +30,6 @@ const TAMANHOS = [
   ...[13, 14, 15, 16, 18, 20, 22].map((n) => ({ valor: String(n), rotulo: `${n} px`, icone: ALargeSmall, cor: TOM.ciano })),
 ] as const;
 const ENTRELINHAS = [{ id: "0", rotulo: "Auto" }, { id: "1.3", rotulo: "Justa" }, { id: "1.6", rotulo: "Média" }, { id: "2", rotulo: "Dupla" }] as const;
-const LARGURAS = [
-  { valor: "padrao", rotulo: "Toda a largura", icone: Columns3, cor: TOM.aco },
-  { valor: "estreita", rotulo: "Estreita (640 px)", icone: Columns3, cor: TOM.ciano },
-  { valor: "media", rotulo: "Média (760 px)", icone: Columns3, cor: TOM.ciano },
-  { valor: "larga", rotulo: "Larga (960 px)", icone: Columns3, cor: TOM.violeta },
-] as const satisfies readonly { valor: LarguraNota; rotulo: string; icone: typeof Type; cor: string }[];
 const PAPEIS = [{ id: "desligado", rotulo: "Desligado" }, { id: "a4", rotulo: "A4" }, { id: "carta", rotulo: "Carta" }] as const satisfies readonly { id: PapelNota; rotulo: string }[];
 const MARGENS = [{ id: "estreita", rotulo: "Estreita" }, { id: "normal", rotulo: "Normal" }, { id: "larga", rotulo: "Larga" }] as const satisfies readonly { id: MargemPagina; rotulo: string }[];
 
@@ -63,9 +57,6 @@ export function EditorConfigScreen() {
         <Linha Icone={Rows3} titulo="Entrelinha" descricao="Espaço entre as linhas do texto.">
           <Segmentado valor={(ENTRELINHAS.find((e) => Number(e.id) === prefs.notaEntrelinha)?.id ?? "0") as (typeof ENTRELINHAS)[number]["id"]} opcoes={ENTRELINHAS} onChange={(v) => alterar({ notaEntrelinha: Number(v) })} label="Entrelinha" />
         </Linha>
-        <Linha Icone={Columns3} titulo="Largura da coluna" descricao="Limita a largura do texto para linhas mais confortáveis de ler. Vale no modo comum e no Focus.">
-          <Seletor valor={prefs.notaLargura} opcoes={LARGURAS} onChange={(notaLargura) => alterar({ notaLargura })} label="Largura da coluna" />
-        </Linha>
       </Secao>
 
       <Secao titulo="Modo página">
@@ -83,11 +74,17 @@ export function EditorConfigScreen() {
         <Linha Icone={PanelRight} titulo="Painel lateral do Focus recolhido" descricao="No modo Focus (tarefas e notas) o painel de opções começa fechado, com o texto em primeiro plano. Desligue para ele já abrir. O botão no cabeçalho alterna a qualquer momento.">
           <Toggle checked={prefs.focusPainelRecolhido} onChange={(focusPainelRecolhido) => alterar({ focusPainelRecolhido })} label="Painel lateral do Focus recolhido" />
         </Linha>
+        <Linha Icone={ListTree} titulo="Sumário aberto ao abrir" descricao="O painel do sumário (à esquerda, com os títulos da nota ou tarefa) já aparece ao abrir. Desligado, ele começa oculto; o botão de lista no cabeçalho abre e fecha a qualquer momento.">
+          <Toggle checked={prefs.sumarioAbertoAoAbrir} onChange={(sumarioAbertoAoAbrir) => alterar({ sumarioAbertoAoAbrir })} label="Sumário aberto ao abrir" />
+        </Linha>
       </Secao>
 
       <Secao titulo="Títulos">
-        <Linha Icone={ListOrdered} titulo="Numerar títulos" descricao="Mostra 1, 1.1, 1.1.1 antes dos títulos das notas, no editor, na leitura, no sumário [TOC] e no PDF. O texto da nota não muda.">
+        <Linha Icone={ListOrdered} titulo="Numerar títulos" descricao="Mostra 1, 1.1, 1.1.1 antes dos títulos das notas, no editor, na leitura, no sumário e no PDF. O texto da nota não muda.">
           <Toggle checked={prefs.numerarTitulos} onChange={(numerarTitulos) => alterar({ numerarTitulos })} label="Numerar títulos" />
+        </Linha>
+        <Linha Icone={ListTree} titulo="Sumário no PDF" descricao="Coloca a lista de títulos no início do PDF da nota. É gerado na hora da exportação; nada é escrito na nota.">
+          <Toggle checked={prefs.sumarioNoPdf} onChange={(sumarioNoPdf) => alterar({ sumarioNoPdf })} label="Sumário no PDF" />
         </Linha>
       </Secao>
 

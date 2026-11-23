@@ -33,7 +33,7 @@ export type ReduzirMovimento = "sistema" | "ligado" | "desligado";
 /** Modo de escrita: quando um traço à mão vira figura geométrica (linha, círculo, retângulo, triângulo). */
 export type FormasEscrita = "segurar" | "ao-soltar" | "desligado";
 export type FonteNota = "padrao" | "serifa" | "sistema" | "mono";
-export type LarguraNota = "padrao" | "estreita" | "media" | "larga";
+export type LarguraNota = "padrao" | "estreita" | "media" | "larga" | "toda";
 export type PapelNota = "desligado" | "a4" | "carta";
 export type MargemPagina = "estreita" | "normal" | "larga";
 
@@ -84,10 +84,6 @@ export interface PreferenciasAplicativo {
   tarefaPrioridade: PrioridadePadrao;
   /** Duração estimada (minutos) que uma tarefa nova já traz. */
   tarefaDuracaoMin: number;
-  /** Tarefas abrem já no modo Focus (maximizadas), em vez da janela flutuante. */
-  tarefaMaximizada: boolean;
-  /** Notas abrem já no modo Focus (maximizadas), em vez da janela flutuante. */
-  notaMaximizada: boolean;
   /** Notas existentes abrem já em edição (desligado: em visualização). */
   notaAbreEditando: boolean;
   /** No celular, a nota aberta para leitura usa Fluido (texto que reflui) ou Página (folha A4 com zoom). Notas com escrita à mão ficam sempre em Página. */
@@ -98,8 +94,12 @@ export interface PreferenciasAplicativo {
   tarefaAbreEditando: boolean;
   /** No modo Focus o painel lateral "Opções" começa recolhido (padrão) ou aberto. */
   focusPainelRecolhido: boolean;
+  /** O painel do sumário (à esquerda) já começa aberto ao abrir uma nota ou tarefa. */
+  sumarioAbertoAoAbrir: boolean;
   /** Numera os títulos das notas (1, 1.1, 1.1.1) no editor, na leitura e no PDF. */
   numerarTitulos: boolean;
+  /** Põe um sumário com os títulos no início do PDF da nota (gerado na hora; nada vai para o .md). */
+  sumarioNoPdf: boolean;
   /** As listas de tarefas abrem mostrando também as concluídas. */
   mostrarConcluidas: boolean;
   /** Concluídas aparecem só riscadas ou riscadas e em verde. */
@@ -121,9 +121,6 @@ export interface PreferenciasAplicativo {
   tarefaNovaPastaFixa: string;
   notaNovaPasta: PastaNovoItem;
   notaNovaPastaFixa: string;
-  /** A janela de criação já abre maximizada (modo Focus). Sair do Focus fecha a criação, salvando o que foi escrito. */
-  tarefaNovaMaximizada: boolean;
-  notaNovaMaximizada: boolean;
   /** Na criação maximizada de tarefa, o painel de opções já começa aberto. */
   tarefaNovaPainelAberto: boolean;
   /** Na criação maximizada de nota, o painel de opções (organização e anexos) já começa aberto. */
@@ -186,14 +183,14 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   formatoData: "dmy",
   tarefaPrioridade: "baixa",
   tarefaDuracaoMin: 5,
-  tarefaMaximizada: false,
-  notaMaximizada: false,
   notaAbreEditando: false,
   notaModoLeitura: "fluido",
   notaModoEdicao: "fluido",
   tarefaAbreEditando: true,
   focusPainelRecolhido: true,
+  sumarioAbertoAoAbrir: false,
   numerarTitulos: false,
+  sumarioNoPdf: false,
   mostrarConcluidas: false,
   concluidasEstilo: "riscada",
   visualizacaoTarefasDesktop: "tabela",
@@ -206,8 +203,6 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   tarefaNovaPastaFixa: "",
   notaNovaPasta: "contexto",
   notaNovaPastaFixa: "",
-  tarefaNovaMaximizada: false,
-  notaNovaMaximizada: false,
   tarefaNovaPainelAberto: true,
   notaNovaPainelAberto: true,
   tarefaNovaTagsModo: "hierarquia",
@@ -257,3 +252,4 @@ export function salvarPreferenciasAplicativo(preferencias: PreferenciasAplicativ
   aplicarPreferenciasAplicativo(preferencias);
   window.dispatchEvent(new CustomEvent("ecos:preferencias-aplicativo", { detail: preferencias }));
 }
+

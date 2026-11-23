@@ -1,11 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
+import { escritaEmImagens, urlComImagemEmbutida } from "@/lib/escrita-bloco";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import remarkMath from "remark-math";
-import { remarkMatematicaBloco } from "@/lib/matematica";
+import { normalizarDelimitadores, remarkMatematicaBloco } from "@/lib/matematica";
 import { imagemDaFormula } from "@/lib/formula-imagem";
 import rehypeRaw from "rehype-raw";
 import { lerAltImagem } from "@/lib/markdown-blocos";
@@ -336,6 +337,88 @@ class Escritor {
     this.y += depois;
   }
 
+  /**
+   * Tabela de verdade: colunas com largura proporcional ao conteúdo (cabendo na coluna do texto),
+   * texto quebrando dentro da célula, cabeçalho em negrito com fundo, bordas finas e alinhamento
+   * por coluna (`:---:`). Se a tabela vira a página, o cabeçalho se repete no topo.
+   */
+  tabela(el: Element, doc: Documento) {
+    const TAM = 9;
+    const PAD = 5;
+    const ALT_LINHA = TAM * 1.4;
+    const BORDA: Cor = [0.82, 0.85, 0.89];
+    const FUNDO_CAB: Cor = [0.95, 0.96, 0.98];
+    const linhasHtml = Array.from(el.querySelectorAll("tr"));
+    if (!linhasHtml.length) return;
+    const linhas = linhasHtml.map((tr) => Array.from(tr.children).map((c) => {
+      const cab = c.tagName === "TH";
+      const partes = inline(c, cab ? "negrito" : "normal", doc).filter((x): x is Trecho => !("img" in x));
+      if (partes.length) { partes[0] = { ...partes[0], t: partes[0].t.replace(/^\s+/, "") }; partes[partes.length - 1] = { ...partes[partes.length - 1], t: partes[partes.length - 1].t.replace(/\s+$/, "") }; }
+      const alin = (c.getAttribute("align") ?? (c as HTMLElement).style?.textAlign ?? "") as string;
+      return { cab, fichas: fichasDe(partes, TAM, this.emojis, this.formulas), alinhar: alin === "center" ? "centro" : alin === "right" ? "direita" : "" };
+    }));
+    const ncol = Math.max(...linhas.map((l) => l.length));
+    const larguraTexto = (fs: Ficha[]) => fs.reduce((soma, f) => soma + (f.k === "quebra" ? 0 : f.w), 0);
+    const maiorPalavra = (fs: Ficha[]) => Math.max(0, ...fs.map((f) => (f.k === "palavra" ? f.w : 0)));
+    // Largura natural (texto numa linha) e mínima (maior palavra) de cada coluna.
+    const natural = Array.from({ length: ncol }, (_, c) => Math.max(24, ...linhas.map((l) => (l[c] ? larguraTexto(l[c].fichas) : 0))) + PAD * 2);
+    const minima = Array.from({ length: ncol }, (_, c) => Math.min(LARGURA / ncol, Math.max(24, ...linhas.map((l) => (l[c] ? maiorPalavra(l[c].fichas) : 0))) + PAD * 2));
+    const somaNat = natural.reduce((a, b) => a + b, 0);
+    let larguras: number[];
+    if (somaNat <= LARGURA) larguras = natural.map((w) => (w * LARGURA) / somaNat);
+    else {
+      // Não cabe: cada coluna fica com a mínima e o resto é repartido pela sobra de conteúdo.
+      const somaMin = minima.reduce((a, b) => a + b, 0);
+      const resto = Math.max(0, LARGURA - somaMin);
+      const excesso = natural.map((w, i) => Math.max(0, w - minima[i]));
+      const somaEx = excesso.reduce((a, b) => a + b, 0) || 1;
+      larguras = minima.map((m, i) => (somaMin > LARGURA ? (m * LARGURA) / somaMin : m + (resto * excesso[i]) / somaEx));
+    }
+    const xs = larguras.reduce<number[]>((acc, w, i) => [...acc, acc[i] + w], [MARGEM_LATERAL]);
+    const quebrar = (l: (typeof linhas)[number]) => Array.from({ length: ncol }, (_, c) => (l[c] ? empacotar(l[c].fichas, larguras[c] - PAD * 2, TAM) : []));
+    const alturaDe = (q: Ficha[][][]) => Math.max(1, ...q.map((ls) => ls.length)) * ALT_LINHA + PAD * 2;
+
+    const desenhar = (l: (typeof linhas)[number], q: Ficha[][][], h: number) => {
+      const cab = l.some((c) => c.cab);
+      if (cab) this.pdf.retangulo(MARGEM_LATERAL, this.y, LARGURA, h, FUNDO_CAB);
+      q.forEach((ls, c) => {
+        ls.forEach((linhaF, k) => {
+          const usada = linhaF.reduce((soma, f) => soma + (f.k === "quebra" ? 0 : f.w), 0);
+          const sobra = Math.max(0, larguras[c] - PAD * 2 - usada);
+          let cursor = xs[c] + PAD + (l[c]?.alinhar === "centro" ? sobra / 2 : l[c]?.alinhar === "direita" ? sobra : 0);
+          const base = this.y + PAD + k * ALT_LINHA + TAM;
+          for (const f of linhaF) {
+            if (f.k === "palavra") this.pdf.texto(f.t, cursor, base, f.f, TAM, f.cor ?? TEXTO);
+            else if (f.k === "emoji") this.pdf.imagem(this.emojis.get(f.e)!.indice, cursor, base - f.w * 0.82, f.w, f.w);
+            else if (f.k === "formula") this.pdf.imagem(this.formulas.get(f.chave)!.indice, cursor, base - f.h + TAM * 0.2, f.w, f.h);
+            if (f.k !== "quebra") cursor += f.w;
+          }
+        });
+      });
+      // Bordas: topo da linha e verticais; a base fica com o topo da próxima (ou o fecho da tabela).
+      this.pdf.linha(MARGEM_LATERAL, this.y, MARGEM_LATERAL + LARGURA, this.y, BORDA, 0.6);
+      for (const x of xs) this.pdf.linha(x, this.y, x, this.y + h, BORDA, 0.6);
+      this.y += h;
+      this.pdf.linha(MARGEM_LATERAL, this.y, MARGEM_LATERAL + LARGURA, this.y, BORDA, 0.6);
+    };
+
+    const cabecalho = linhas[0].some((c) => c.cab) ? linhas[0] : null;
+    const qCab = cabecalho ? quebrar(cabecalho) : null;
+    const hCab = qCab ? alturaDe(qCab) : 0;
+    this.y += 2;
+    linhas.forEach((l, i) => {
+      const q = quebrar(l);
+      const h = alturaDe(q);
+      if (this.y + h > BASE) {
+        this.pdf.novaPagina();
+        this.y = TOPO;
+        if (cabecalho && qCab && i > 0) desenhar(cabecalho, qCab, hCab);
+      }
+      desenhar(l, q, h);
+    });
+    this.y += 8;
+  }
+
   figura(img: HTMLImageElement, doc: Documento) {
     const src = resolverSrcImagem(img.getAttribute("src") ?? undefined, doc.id, doc.tipo);
     const pronta = src ? this.imagens.get(src) : null;
@@ -458,13 +541,7 @@ function escreverBlocos(e: Escritor, raiz: Element, doc: Documento) {
     else if (tag === "PRE" && no.querySelector("code.math-display")) e.formula(chaveFormula(no.textContent ?? "", true));
     else if (tag === "PRE") e.texto([{ t: textoSimples(no), f: "codigo" }], { tamanho: 9, recuo: 8, depois: 6 });
     else if (tag === "HR") e.regua();
-    else if (tag === "TABLE") {
-      for (const linha of Array.from(no.querySelectorAll("tr"))) {
-        const celulas = Array.from(linha.children).map((c) => textoSimples(c));
-        e.texto([{ t: celulas.join("   |   "), f: linha.querySelector("th") ? "negrito" : "normal" }], { depois: 2 });
-      }
-      e.espaco(4);
-    } else if (tag === "IMG") e.figura(no as HTMLImageElement, doc);
+    else if (tag === "TABLE") e.tabela(no, doc); else if (tag === "IMG") e.figura(no as HTMLImageElement, doc);
     else if (tag === "P" && no.textContent?.trim() === MARCA_QUEBRA) { e.pdf.novaPagina(); e.y = TOPO; }
     else if (tag === "DIV" || tag === "SECTION") escreverBlocos(e, no, doc);
     else escreverPartes(e, inline(no, "normal", doc));
@@ -493,7 +570,7 @@ export async function exportarDocumentosEmPdf(itens: ItemExportavel[]): Promise<
   if (!docs.length) throw new Error("Não há notas ou tarefas na seleção para exportar.");
 
   const raizes = docs.map((d) => {
-    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkMatematicaBloco, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado() })], rehypePlugins: [rehypeRaw] }, marcarQuebras(semWikilink(d.corpo))));
+    const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkMatematicaBloco, remarkBreaks, remarkSumario({ numerar: numerarTitulosLigado(), sumario: lerPreferenciasAplicativo().sumarioNoPdf })], rehypePlugins: [rehypeRaw], urlTransform: urlComImagemEmbutida }, marcarQuebras(semWikilink(escritaEmImagens(normalizarDelimitadores(d.corpo))))));
     const corpo = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
     // Só texto e formatação seguem para o PDF: nada de script/estilo vindo do HTML da nota.
     corpo.querySelectorAll("script,style,iframe,object,embed").forEach((x) => x.remove());

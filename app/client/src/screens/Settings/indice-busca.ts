@@ -46,7 +46,6 @@ const INDICE: Record<string, Entrada[]> = {
   [`${C}/tarefas`]: [
     ["Visualização padrão", "tabela grade kanban matriz feed lista agrupada tarefas"],
     ["Mostrar concluídas ao abrir", "feitas finalizadas pendentes"],
-    ["Abrir tarefas maximizadas", "focus tela cheia"],
     ["Abrir tarefas em edição", "editar visualização leitura"],
     ["Prioridade padrão", "nova tarefa baixa média alta"],
     ["Duração padrão", "nova tarefa tempo estimado minutos"],
@@ -54,15 +53,12 @@ const INDICE: Record<string, Entrada[]> = {
     ["Horário padrão", "nova tarefa hora agenda"],
     ["Pasta", "nova tarefa onde guardar pasta fixa atual"],
     ["Tags padrão", "nova tarefa etiquetas hierarquia manual"],
-    ["Criar maximizada", "nova tarefa focus"],
     ["Barra lateral aberta na criação", "nova tarefa painel"],
   ],
   [`${C}/notas`]: [
-    ["Abrir notas maximizadas", "focus tela cheia"],
     ["Abrir notas em edição", "editar visualização leitura"],
     ["Pasta", "nova nota onde guardar pasta fixa atual"],
     ["Tags padrão", "nova nota etiquetas hierarquia manual"],
-    ["Criar maximizada", "nova nota focus"],
   ],
   [`${C}/editor`]: [
     ["Enter cria", "captura rápida feed nota tarefa"],

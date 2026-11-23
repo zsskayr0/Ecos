@@ -38,7 +38,6 @@ const CASOS: Caso[] = [
   { nome: "código inline", md: "use `x`", editor: tem(".cm-cod"), leitura: tem("code", "x"), estado: "ok" },
   { nome: "link com URL", md: "[site](https://ecos.test)", editor: tem(".cm-link", "site"), leitura: tem("a[href='https://ecos.test']", "site"), estado: "ok" },
   { nome: "[1] não é link", md: "ver [1]", editor: (r) => naoTem(".cm-link")(r) && textoContem("[1]")(r), leitura: (r) => naoTem("a")(r) && textoContem("[1]")(r), estado: "ok" },
-  { nome: "[TOC] vira sumário", md: "[TOC]\n\n# Um\n\n## Dois", editor: tem(".cm-sumario-item", "Dois"), leitura: tem("ul.ecos-sumario a", "Dois"), estado: "ok" },
   { nome: "nota de rodapé", md: "Texto[^1]\n\n[^1]: nota", editor: (r) => tem(".cm-nota-ref")(r) && tem(".cm-nota-def")(r), leitura: tem("sup a[data-footnote-ref]"), estado: "ok" },
   { nome: "lista numerada mantém números", md: "1. a\n2. b\n3. c", editor: textoContem("2."), leitura: tem("ol.list-decimal"), estado: "ok" },
   { nome: "título nível 4", md: "#### Quarto", editor: tem(".cm-h4"), leitura: tem("h4", "Quarto"), estado: "ok" },

@@ -7,9 +7,9 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
-import { AlertTriangle, Archive, ArchiveRestore, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2, FileDown, PanelRight, X } from "lucide-react";
+import { AlertTriangle, Archive, ArchiveRestore, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2, FileDown, PanelRight, X, ListTree } from "lucide-react";
+import { alternarSumarioLateral, reiniciarSumarioLateral, useSumarioLateralAberto } from "@/components/editor/sumario-lateral-estado";
 import { AcoesFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
-import { MiniGrafo } from "@/screens/Grafico/MiniGrafo";
 import { ApiError, lixeira, notas, type AtualizarNotaPayload } from "@/lib/api";
 import { guardarRascunhoNota, lerRascunhoNota, removerRascunhoNota, type RascunhoNota } from "@/lib/offline-store";
 import { cabeNoKeepalive, lerConflito, quedaSuspeita, type NotaNoServidor } from "@/lib/nota-sincronia";
@@ -132,6 +132,9 @@ export function NoteEditorDesktop() {
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   useEffect(() => { valorRef.current = valor; }, [valor]);
   useEffect(() => { salvoRef.current = salvo; }, [salvo]);
+  const sumarioAberto = useSumarioLateralAberto();
+  // Cada nota/tarefa aberta começa com o sumário como pede a preferência (oculto por padrão).
+  useEffect(() => { reiniciarSumarioLateral(); }, [id]);
   const painelLateral = modoFocus && !!montagemPainel;
   // Clique numa chamada `[^n]`/`[@x]` no editor: abre o menu lateral onde as notas ficam.
   const painelAbertoRef = useRef(painelFocus.aberto);
@@ -325,14 +328,18 @@ export function NoteEditorDesktop() {
   async function alternarArquivada() {
     if (!id || !nota) return;
     const arquivada = !nota.arquivada;
+    // Otimista: a tela muda na hora; se o servidor recusar, volta e avisa.
+    setNota((n) => (n ? { ...n, arquivada } : n));
+    avisar(arquivada ? "Nota arquivada." : "Nota desarquivada.", "sucesso");
     try {
       const r = await notas.arquivar(id, arquivada) as { versao?: number };
       // Arquivar soma versão no servidor: sem atualizar a base, o próximo autosave daria conflito falso.
       baseVersaoRef.current = typeof r?.versao === "number" ? r.versao : (await notas.obter(id).catch(() => null))?.versao ?? baseVersaoRef.current;
-      setNota((n) => (n ? { ...n, arquivada } : n));
       notificar();
-      avisar(arquivada ? "Nota arquivada." : "Nota desarquivada.", "sucesso");
-    } catch (e) { avisar(mensagemDeErro(e, "Não foi possível arquivar a nota."), "erro"); }
+    } catch (e) {
+      setNota((n) => (n ? { ...n, arquivada: !arquivada } : n));
+      avisar(mensagemDeErro(e, "Não foi possível arquivar a nota."), "erro");
+    }
   }
 
   async function marcarRevisado() {
@@ -348,17 +355,18 @@ export function NoteEditorDesktop() {
 
   async function excluir() {
     if (!id) return;
-    setSalvando(true);
+    // Otimista: a nota fecha na hora e a exclusão segue em segundo plano; se falhar, avisa.
+    const titulo = nota?.titulo ?? "";
+    editouRef.current = false;
+    setConfirmandoDelete(false);
+    navigate(-1);
     try {
       await notas.excluir(id);
-      avisarExcluido("nota", nota?.titulo ?? "", notificar);
+      avisarExcluido("nota", titulo, notificar);
       void removerRascunhoNota(id);
-      editouRef.current = false;
       notificar();
-      navigate(-1);
     } catch (e) {
-      setErro(mensagemDeErro(e, "Não foi possível apagar."));
-      setSalvando(false);
+      avisar(mensagemDeErro(e, "Não foi possível apagar a nota."), "erro");
     }
   }
 
@@ -404,19 +412,26 @@ export function NoteEditorDesktop() {
   const aoMudarEscrita = (v: boolean) => { setEscrevendo(v); if (!v) setDetalhesAbertos(false); };
   const noPainel = modoFocus && !!montagemPainel;
   const exportarPdfDaNota = () => { if (id) void exportarDocumentosEmPdf([{ tipo: "nota", id }]).catch((e) => avisar(mensagemDeErro(e, "Não foi possível exportar o PDF."), "erro")); };
-  const opcoesNota = (classeBotao: string) => <OpcoesNota notaId={id} criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onExportarPdf={exportarPdfDaNota} onHistorico={() => setHistoricoAberto(true)} classeBotao={classeBotao}
-    anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} compact />} />;
+  const opcoesNota = (classeBotao: string) => <OpcoesNota notaId={id} criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : estado} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onExportarPdf={exportarPdfDaNota} onHistorico={() => setHistoricoAberto(true)} classeBotao={classeBotao} menu
+    semRodape={noPainel}
+    acoes={modoFocus ? (fechar) => <>
+      <BotaoCopiarCaminho variante="linha" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
+      <button type="button" onClick={() => { fechar(); void duplicar(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={16} />Duplicar nota</button>
+      <button type="button" onClick={() => { fechar(); void alternarArquivada(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={16} /> : <Archive size={16} />}{nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"}</button>
+    </> : undefined}
+    anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} compact />} />;
+  const rotuloSumario = sumarioAberto ? "Fechar sumário" : "Abrir sumário";
   const rotuloPainel = painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral";
   return (
     <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>
       {!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />, acoesJanela)}
       {modoFocus && acoesFocus && createPortal(
         <>
-          <BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
-          <button type="button" onClick={exportarPdfDaNota} aria-label="Exportar PDF" title="Exportar PDF" className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary"><FileDown size={15} /></button>
+          <span aria-live="polite" title={estado} className={`mr-1 max-w-40 truncate text-[11px] ${erro || conflito ? "text-error" : "text-text-muted"}`}>{enviandoAnexo ? "Enviando anexo…" : estado}</span>
           {opcoesNota("flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary")}
-          <button type="button" disabled={salvando} onClick={() => void alternarArquivada()} aria-pressed={!!nota?.arquivada} aria-label={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} title={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={15} /> : <Archive size={15} />}</button>
-          <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
+          <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
+          <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+          <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary aria-pressed:text-text-primary"><ListTree size={15} /></button>
           <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
           <span aria-hidden className="mx-1 h-4 w-px bg-border" />
         </>,
@@ -425,28 +440,20 @@ export function NoteEditorDesktop() {
       {noPainel && id && createPortal(
         <aside aria-label="Opções da nota" className="flex min-w-0 flex-col gap-6">
           <h2 className="font-display text-lg font-semibold text-text-primary">Opções</h2>
-          <MiniGrafo itemId={id} />
           <div className="border-t border-border pt-6 empty:hidden"><NotasLaterais corpo={valor.corpo} /></div>
           <section className="space-y-4 border-t border-border pt-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
-            <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
-            <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
+            <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} />
+            <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} />
           </section>
           <section className="border-t border-border pt-6" aria-label="Anexos">
-            <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} disabled={salvando} escopoRef={raizNota} estilo="grade" compact />
+            <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} escopoRef={raizNota} estilo="grade" compact />
           </section>
+          <div className="border-t border-border pt-6"><Conexoes tipo="nota" id={id} versao={nota.atualizado_em} compacto /></div>
           <section aria-label="Informações" className="space-y-2 border-t border-border pt-6 text-sm text-text-secondary">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
             <p>Criada em {formatDataHoraCompleta(nota.criado_em)}</p>
             <p>Editada <TempoEdicao iso={nota.atualizado_em} /></p>
-            <p aria-live="polite" className={erro ? "text-error" : "text-text-muted"}>{enviandoAnexo ? "Enviando anexo…" : estado}</p>
-          </section>
-          <section className="space-y-3 border-t border-border pt-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Ações</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" disabled={salvando} onClick={() => void duplicar()} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={16} />Duplicar nota</button>
-              {!nota.ultima_revisao_em && <button type="button" onClick={marcarRevisado} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-3 text-sm text-steel-300 transition-colors hover:bg-surface-2 hover:text-text-primary"><CheckCircle2 size={16} />Marcar revisada</button>}
-            </div>
           </section>
         </aside>,
         montagemPainel!,
@@ -461,18 +468,19 @@ export function NoteEditorDesktop() {
         {id && <HistoricoNota notaId={id} aberto={historicoAberto} onFechar={() => setHistoricoAberto(false)} onRestaurada={aoRestaurarVersao} />}
 
         <div ref={raizNota} className="flex min-w-0 flex-col gap-4">
-          <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""} ${escrevendo && modoFocus ? "px-6 pt-4" : ""}`}>
+          <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
             <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
             {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />}
             {!modoFocus && escrevendo && !noPainel && <button type="button" onClick={() => setDetalhesAbertos((v) => !v)} aria-pressed={detalhesAbertos} aria-label="Detalhes da nota" title="Detalhes: pasta, tags, equipe e conexões" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><PanelRight size={17} /></button>}
+            {!modoFocus && <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><ListTree size={17} /></button>}
             {!modoFocus && opcoesNota("flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary")}
-            {!modoFocus && <button type="button" disabled={salvando} onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
-            {!modoFocus && <button type="button" disabled={salvando} onClick={() => void alternarArquivada()} aria-pressed={!!nota?.arquivada} aria-label={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} title={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={17} /> : <Archive size={17} />}</button>}
-            {!modoFocus && <button type="button" disabled={salvando} onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
+            {!modoFocus && <button type="button" onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
+            {!modoFocus && <button type="button" onClick={() => void alternarArquivada()} aria-pressed={!!nota?.arquivada} aria-label={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} title={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={17} /> : <Archive size={17} />}</button>}
+            {!modoFocus && <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
           </div>
 
-          {!noPainel && !escrevendo && <div className="flex min-w-0 flex-col gap-4"><NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
-            <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} /></div>}
+          {!noPainel && !escrevendo && <div className="flex min-w-0 flex-col gap-4"><NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} />
+            <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} /></div>}
 
           <CorpoEditor tipo="nota" itemId={id} espaco={valor.espaco} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} rows={modoFocus ? 18 : 14} layout="document" semBorda={modoFocus} placeholder="Escreva sua nota… Use #tags e [[links]] para conectar ideias." initialPreview={!lerPreferenciasAplicativo().notaAbreEditando} tintaNotaId={id} aoMudarEscrita={aoMudarEscrita} />
 
@@ -483,8 +491,8 @@ export function NoteEditorDesktop() {
                 <h2 className="font-display text-base font-semibold text-text-primary">Detalhes</h2>
                 <button type="button" onClick={() => setDetalhesAbertos(false)} aria-label="Fechar detalhes" className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3 hover:text-text-primary"><X size={16} /></button>
               </div>
-              <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} disabled={salvando && !sujo} />
-              <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} disabled={salvando} />
+              <NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} />
+              <EquipeSelector espaco={valor.espaco} onChange={(espaco) => mudar({ espaco, pasta: null })} />
               <NotasLaterais corpo={valor.corpo} />
               <ContadorTexto texto={valor.corpo} paginas />
               <Conexoes tipo="nota" id={id} versao={nota.atualizado_em} />

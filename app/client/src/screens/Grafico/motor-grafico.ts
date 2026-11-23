@@ -302,6 +302,18 @@ export class MotorGrafico {
     this.ajustar();
   }
 
+  /** Para o laço de desenho (o canvas fica como está). Usado quando algo opaco/desfocado cobre o gráfico. */
+  pausar() {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+  }
+
+  retomar() {
+    if (this.raf) return;
+    this.ultimo = 0;
+    this.raf = requestAnimationFrame(this.quadro);
+  }
+
   destruir() {
     cancelAnimationFrame(this.raf);
     this.sim.stop();

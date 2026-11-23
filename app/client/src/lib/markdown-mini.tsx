@@ -1,13 +1,14 @@
 import ReactMarkdown from "react-markdown";
+import { alturaNaLinguagem, lerBlocoEscrita, svgEscrita } from "@/lib/escrita-bloco";
 import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
-import { carregarKatex, katexCarregado, rehypeKatexSobDemanda, remarkMatematicaBloco } from "@/lib/matematica";
+import { normalizarDelimitadores, temMatematica, carregarKatex, katexCarregado, rehypeKatexSobDemanda, remarkMatematicaBloco } from "@/lib/matematica";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as OpcoesSanitize } from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
-import { useEffect, useState, type MouseEvent as EventoMouse, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as EventoMouse, type ReactNode } from "react";
 import "./markdown-leitura.css";
 import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
@@ -130,6 +131,12 @@ function textoHast(no: { type: string; value?: string; children?: unknown[] } | 
   return ((no.children ?? []) as { type: string }[]).map((c) => textoHast(c)).join("");
 }
 
+/** Bloco de escrita à mão na leitura: SVG na cor do texto, sobre o quadriculado. */
+function EscritaLeitura({ altura, texto, linha }: { altura: number; texto: string; linha?: number }) {
+  const svg = useMemo(() => svgEscrita(lerBlocoEscrita(`\`\`\`escrita ${altura}\n${texto}`), { corTinta: "currentColor", grade: "currentColor" }), [altura, texto]);
+  return <div data-linha={linha} className="overflow-hidden rounded-xl border border-border text-text-primary [&>svg]:block [&>svg]:h-auto [&>svg]:w-full" role="img" aria-label="Escrita à mão" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
 function BlocoCodigo({ linguagem, texto, children, linha }: { linguagem?: string; texto: string; children: ReactNode; linha?: number }) {
   const [copiado, setCopiado] = useState(false);
   return (
@@ -214,7 +221,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
   let proximoCheckbox = 0;
   // KaTeX fica fora do pacote principal: só baixa quando o texto tem `$`, e redesenha ao chegar.
   const [katex, setKatex] = useState(katexCarregado);
-  const temDolar = corpo.includes("$");
+  const temDolar = temMatematica(corpo);
   useEffect(() => {
     if (!temDolar || katex) return;
     let vivo = true;
@@ -268,6 +275,8 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           pre: ({ node, children, ...p }) => {
             const codigo = node?.children.find((c) => c.type === "element" && c.tagName === "code") as { properties?: { className?: string[] }; type: string; children?: unknown[] } | undefined;
             const linguagem = codigo?.properties?.className?.find((c) => c.startsWith("language-"))?.slice("language-".length);
+            const escrita = linguagem?.match(/^escrita(?:-(\d+))?$/);
+            if (escrita) return <EscritaLeitura altura={Number(escrita[1] ?? 240)} texto={textoHast(codigo)} linha={(p as LinhaProp)["data-linha"]} />;
             return <BlocoCodigo linguagem={linguagem} texto={textoHast(codigo).replace(/\n$/, "")} linha={(p as LinhaProp)["data-linha"]}>{children}</BlocoCodigo>;
           },
           ol: ({ children, ...p }) => <ol data-linha={(p as LinhaProp)["data-linha"]} start={(p as { start?: number }).start} className="ml-5 list-decimal">{children}</ol>,
@@ -286,7 +295,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           ),
         }}
       >
-        {semQuebrasDePagina(corpo)}
+        {alturaNaLinguagem(normalizarDelimitadores(semQuebrasDePagina(corpo)))}
       </ReactMarkdown>
     </div>
   );

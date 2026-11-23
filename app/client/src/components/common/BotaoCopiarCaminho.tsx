@@ -8,7 +8,7 @@ interface Props extends Omit<EntradaCaminho, "equipes"> {
   className?: string;
 }
 
-const ROTULO = { nota: "Copiar caminho da nota", tarefa: "Copiar caminho da tarefa", evento: "Copiar caminho do evento" } as const;
+const ROTULO = { nota: "Copiar caminho", tarefa: "Copiar caminho", evento: "Copiar caminho" } as const;
 
 /** Copia o caminho completo do item (espaço / tipo / pastas / título) para a área de transferência. */
 export function BotaoCopiarCaminho({ variante, className = "", ...item }: Props) {

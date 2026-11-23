@@ -1,4 +1,4 @@
-import { CalendarDays, CheckSquare, Clock3, Columns3, Eye, Flag, LayoutList, Maximize2, PanelRight, Pencil, Timer } from "lucide-react";
+import { CalendarDays, CheckSquare, Clock3, Columns3, Eye, Flag, LayoutList, PanelRight, Pencil, Timer } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import { limparEscolhaDeVisualizacao } from "@/components/common/ViewModeToggle";
@@ -67,9 +67,6 @@ export function TarefasConfigScreen() {
       </Secao>
 
       <Secao titulo="Ao abrir uma tarefa">
-        <Linha Icone={Maximize2} titulo="Abrir tarefas maximizadas" descricao="A tarefa já abre no modo Focus, com o painel lateral. O botão de maximizar na janela continua alternando.">
-          <Toggle checked={prefs.tarefaMaximizada} onChange={(tarefaMaximizada) => alterar({ tarefaMaximizada })} label="Abrir tarefas maximizadas" />
-        </Linha>
         <Linha Icone={Pencil} titulo="Abrir tarefas em edição" descricao="Ao abrir uma tarefa existente, a descrição já fica editável. Desligado, ela abre em visualização e você alterna quando quiser.">
           <Toggle checked={prefs.tarefaAbreEditando} onChange={(tarefaAbreEditando) => alterar({ tarefaAbreEditando })} label="Abrir tarefas em edição" />
         </Linha>
@@ -98,10 +95,7 @@ export function TarefasConfigScreen() {
           tags={prefs.tarefaNovaTags} aoMudarTags={(tarefaNovaTags) => alterar({ tarefaNovaTags })} />
         {desktop && (
           <>
-            <Linha Icone={Maximize2} titulo="Criar maximizada" descricao="A janela de criação já abre no modo Focus. Sair do Focus fecha a criação, salvando o que foi escrito.">
-              <Toggle checked={prefs.tarefaNovaMaximizada} onChange={(tarefaNovaMaximizada) => alterar({ tarefaNovaMaximizada })} label="Criar tarefas maximizadas" />
-            </Linha>
-            <Linha Icone={PanelRight} titulo="Barra lateral aberta na criação" descricao="Na criação maximizada, o painel de opções (data, pasta, tags, duração) já começa aberto.">
+            <Linha Icone={PanelRight} titulo="Barra lateral aberta na criação" descricao="Na criação, o painel de opções (data, pasta, tags, duração) já começa aberto.">
               <Toggle checked={prefs.tarefaNovaPainelAberto} onChange={(tarefaNovaPainelAberto) => alterar({ tarefaNovaPainelAberto })} label="Barra lateral aberta na criação" />
             </Linha>
           </>

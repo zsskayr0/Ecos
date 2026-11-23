@@ -190,3 +190,23 @@ async fn links_pendentes_listam_e_somem_ao_criar_a_nota() {
     let (st, _) = e.chamar("GET", "/api/v1/links/pendentes", None, None).await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn links_externos_vem_do_corpo_sem_repetir_e_sem_codigo() {
+    let e = nova();
+    let (_, a) = e.admin("ana").await;
+    let corpo = "Veja [Docs](https://exemplo.com/a) e https://b.org/x, de novo https://exemplo.com/a.\n`https://inline.com`\n![img](https://img.com/a.png)\n[[Nada]]";
+    let n = criar(&e, "/api/v1/notas", &a, json!({ "titulo": "Referências", "corpo": corpo })).await;
+    let t = criar(&e, "/api/v1/tarefas", &a, json!({ "titulo": "Ler", "corpo": "<https://c.net/y>" })).await;
+    let (_, r) = e.chamar("GET", &format!("/api/v1/notas/{n}/links"), Some(&a), None).await;
+    let urls: Vec<_> = r["externos"].as_array().unwrap().iter().map(|x| x["url"].as_str().unwrap().to_string()).collect();
+    assert_eq!(urls, ["https://exemplo.com/a", "https://b.org/x"]);
+    assert_eq!(r["externos"][0]["texto"], "Docs");
+    assert!(r["externos"][1]["texto"].is_null());
+    let (_, r) = e.chamar("GET", &format!("/api/v1/tarefas/{t}/links"), Some(&a), None).await;
+    assert_eq!(r["externos"][0]["url"], "https://c.net/y");
+    // Título: só http(s); endereço interno nunca é acessado (volta `null`, sem erro).
+    let (st, r) = e.chamar("POST", "/api/v1/links/titulos", Some(&a), Some(json!({ "urls": ["http://127.0.0.1:1/x", "ftp://a.com/b", "http://192.168.0.1/"] }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert!(r["titulos"].as_object().unwrap().values().all(|v| v.is_null()), "{r}");
+}

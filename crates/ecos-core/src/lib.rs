@@ -12,6 +12,7 @@ pub mod credenciais;
 pub mod errors;
 pub mod frontmatter;
 pub mod ids;
+pub mod links_externos;
 pub mod naming;
 pub mod ranking;
 pub mod tags;

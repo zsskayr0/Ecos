@@ -17,7 +17,7 @@ describe("tipografia da nota", () => {
   });
   it("limita a largura da coluna e vira folha no modo página", () => {
     expect(estiloColunaNota(P)).toBeUndefined();
-    expect(estiloColunaNota({ ...P, notaLargura: "estreita" })?.maxWidth).toBe("640px");
+    expect(estiloColunaNota({ ...P, notaLargura: "estreita" })).toBeUndefined(); // a coluna vai pela página (--ecos-coluna-leitura)
     expect(estiloColunaNota({ ...P, notaPapel: "carta" })?.maxWidth).toBe("816px");
   });
 });

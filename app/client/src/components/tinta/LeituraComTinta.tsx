@@ -3,9 +3,11 @@
  * nada na tela: Fluido (texto que reflui, 16px) ou Página (coluna A4 ajustada à largura, onde a tinta cai no lugar).
  * Nota com tinta é sempre Página.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { extrairEstrutura } from "@/lib/sumario";
 import type { EditorView } from "@codemirror/view";
 import { OutlineTitulos } from "@/components/editor/OutlineTitulos";
+import { IrParaTrecho } from "@/components/editor/IrParaTrecho";
 import { EditorVivo, type AreaLike } from "@/components/editor/EditorVivo";
 import { resolverSrcImagem } from "@/lib/markdown-mini";
 import { corDoFundo, useFolha } from "@/lib/tinta/folha";
@@ -24,6 +26,7 @@ const FONTE_FLUIDA = { "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" 
 export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: string; corpo: string; modo: ModoVisualNota; aoCarregar?: (temTinta: boolean) => void }) {
   const tinta = useTinta(notaId);
   const prefsNota = usePreferenciasNota();
+  const temTrilho = useMemo(() => extrairEstrutura(corpo).length >= 2, [corpo]);
   const area = useRef<AreaLike | null>(null);
   const raiz = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<EditorView | null>(null);
@@ -39,8 +42,8 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
     const cor = document.documentElement.getAttribute("data-theme") === "light" ? null : corDoFundo(folha.fundo);
     const alvos = [pagina, pagina.parentElement, pagina.parentElement?.parentElement].filter((x): x is HTMLElement => !!x);
     pagina.setAttribute("data-folha-plana", "");
-    if (cor) alvos.forEach((x) => x.style.setProperty("--ecos-folha", cor));
-    return () => { pagina.removeAttribute("data-folha-plana"); alvos.forEach((x) => x.style.removeProperty("--ecos-folha")); };
+    if (cor) alvos.forEach((x) => { x.style.setProperty("--ecos-folha", cor); x.style.backgroundColor = cor; });
+    return () => { pagina.removeAttribute("data-folha-plana"); alvos.forEach((x) => { x.style.removeProperty("--ecos-folha"); x.style.removeProperty("background-color"); }); };
   }, [folha.fundo]);
 
   function abrirWikilink(interno: string, clique: MouseEvent) {
@@ -56,13 +59,14 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
       resolverImagem={(src) => resolverSrcImagem(src, notaId, "nota")} aoAbrirWikilink={abrirWikilink} />
   );
   return (
-    <div ref={raiz} className="min-w-0" style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? {} : { ...FONTE_FLUIDA, ...estiloTextoNota(prefsNota, 16) }) }}>
+    <div ref={raiz} className="min-w-0" data-trilho={temTrilho ? "" : undefined} style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? {} : { ...FONTE_FLUIDA, ...estiloTextoNota(prefsNota, 16) }) }}>
+      <OutlineTitulos corpo={corpo} view={view} raiz={raiz} />
+      <IrParaTrecho itemId={notaId} corpo={corpo} view={view} raiz={raiz} />
       {!tinta.carregado
         ? <div aria-hidden className="min-h-24" />
         : temTinta || modo === "pagina"
         ? <ColunaTinta largura={tinta.largura ?? LARGURA_COLUNA_PADRAO} tracos={tinta.tracos} escrevendo={false} folhaPlana pincel={PINCEL} dedoDesenha={false} onOperacao={NADA} estiloFolha={folha.estilo}>{editor}</ColunaTinta>
         : <div style={{ ...estiloColunaNota(prefsNota), ...estiloFolhaPagina(prefsNota) }}>{editor}</div>}
-      <OutlineTitulos corpo={corpo} view={view} raiz={raiz} />
     </div>
   );
 }

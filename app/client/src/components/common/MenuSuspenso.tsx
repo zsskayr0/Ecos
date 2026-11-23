@@ -88,9 +88,14 @@ export function MenuSuspenso<T extends string>({ valor, opcoes, onChange, ariaLa
       setPosicao(posicaoSubmenu(raiz.current!, opcoes.length * ALTURA_ITEM + 10 + (buscar ? 48 : 0)));
     } else if (fixo) {
       const r = raiz.current!.getBoundingClientRect();
-      // Um ancestral com `transform` (as janelas do Ecos) vira o referencial do `fixed`: converte as coordenadas para ele.
+      // Um ancestral com `transform`, `filter` ou `backdrop-filter` (as janelas do Ecos, a barra de formatação
+      // com desfoque) vira o referencial do `fixed`: converte as coordenadas para ele.
+      const criaReferencial = (el: HTMLElement) => {
+        const c = getComputedStyle(el);
+        return c.transform !== "none" || c.filter !== "none" || (c.backdropFilter && c.backdropFilter !== "none") || c.perspective !== "none" || /paint|layout|strict|content/.test(c.contain);
+      };
       let ref: HTMLElement | null = raiz.current!.parentElement;
-      while (ref && getComputedStyle(ref).transform === "none") ref = ref.parentElement;
+      while (ref && !criaReferencial(ref)) ref = ref.parentElement;
       const o = ref?.getBoundingClientRect() ?? { left: 0, top: 0, bottom: window.innerHeight, width: window.innerWidth };
       // Altura realmente visível (a janela pode estar menor que `innerHeight`, ex.: painéis do app).
       const altura = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight, window.visualViewport?.height ?? Infinity);

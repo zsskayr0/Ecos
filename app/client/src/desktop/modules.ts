@@ -80,6 +80,8 @@ export function moduloDaRota(path: string): Modulo {
   switch (primeiro) {
     case "tarefa":
       return MODULOS.agenda;
+    case "conexoes":
+      return MODULOS.grafico;
     default:
       return MODULOS[primeiro as ModuloId] ?? MODULOS.feed;
   }
@@ -121,6 +123,7 @@ export function tituloDaRota(path: string): string {
     if (pasta) return pasta.split("/").filter(Boolean).pop() ?? "Arquivos";
   }
   if (primeiro === "tarefa") return "Tarefa";
+  if (primeiro === "conexoes") return "Conexões";
   if (primeiro === "cofre" && segundo === "transacao") return "Transação";
   if (primeiro === "equipe") return segundo === "nova" ? "Nova equipe" : "Equipe";
   if (primeiro === "perfil" && segundo === "editar") return "Editar perfil";

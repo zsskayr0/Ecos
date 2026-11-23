@@ -1,0 +1,9 @@
+/* Trecho destacado ao chegar pelo mapa de conexões ("ver onde está"): um brilho que some sozinho. */
+@keyframes ecos-ir-destaque {
+  0% { background-color: color-mix(in srgb, var(--ecos-steel-300, #8fb4e8) 38%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ecos-steel-300, #8fb4e8) 38%, transparent); }
+  100% { background-color: transparent; box-shadow: 0 0 0 4px transparent; }
+}
+.ecos-ir-destaque { animation: ecos-ir-destaque 2.4s ease-out; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .ecos-ir-destaque { animation-duration: 0.01s; }
+}

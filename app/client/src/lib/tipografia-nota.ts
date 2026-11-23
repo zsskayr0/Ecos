@@ -12,7 +12,7 @@ const FAMILIAS = {
   mono: "\"JetBrains Mono\", \"IBM Plex Mono\", monospace",
 } as const;
 
-const LARGURAS = { padrao: undefined, estreita: "640px", media: "760px", larga: "960px" } as const;
+// "padrao" = coluna de leitura (~80 caracteres por linha); "toda" = ocupa a janela inteira.
 
 /** Papel em pontos PDF (1/72 pol). */
 export const PAPEIS: Record<Exclude<PapelNota, "desligado">, { largura: number; altura: number; rotulo: string }> = {
@@ -40,8 +40,8 @@ export function estiloColunaNota(p: PreferenciasAplicativo): CSSProperties | und
     const margem = MARGENS[p.notaMargem] * PX_POR_PT;
     return { maxWidth: `${papel.largura * PX_POR_PT}px`, marginInline: "auto", paddingInline: `min(${margem}px, 8vw)`, paddingBlock: `min(${margem}px, 8vw)` };
   }
-  const largura = LARGURAS[p.notaLargura];
-  return largura ? { maxWidth: largura, marginInline: "auto" } : undefined;
+  // Fora do modo página, o texto ocupa a largura toda da nota.
+  return undefined;
 }
 
 /** Altura útil da folha em px (para desenhar a régua de página no modo página). */

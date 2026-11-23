@@ -954,6 +954,8 @@ export interface FeedOcultos {
 export interface ConexoesItem {
   entrada: { id: string; titulo: string; tipo?: "nota" | "tarefa" }[];
   saida: { id: string; titulo: string; tipo?: "nota" | "tarefa" }[];
+  /** Links `http(s)` do corpo, sem repetição. Ausente em servidor antigo. */
+  externos?: { url: string; texto: string | null }[];
 }
 
 export interface SugestaoLink {
@@ -969,6 +971,8 @@ export const links = {
     req<SugestaoLink[]>(`/links/sugestoes${qs(params)}`, sinal ? { signal: sinal } : undefined),
   de: (tipo: "nota" | "tarefa", id: string) => get<ConexoesItem>(`/${tipo === "tarefa" ? "tarefas" : "notas"}/${id}/links`),
   pendentes: () => get<LinkPendente[]>("/links/pendentes"),
+  /** Título das páginas dos links externos (buscado pelo servidor; `null` = não achou). */
+  titulos: (urls: string[]) => post<{ titulos: Record<string, string | null> }>("/links/titulos", { urls }),
   resolver: (titulos: string[], origem?: { tipo: "nota" | "tarefa"; id: string }) =>
     post<{ resolvidos: Record<string, { tipo: "nota" | "tarefa"; id: string; titulo: string } | null> }>("/links/resolver", { titulos, origem }),
 };

@@ -29,6 +29,32 @@ export function extrairTitulos(corpo: string): TituloNota[] {
   return saida;
 }
 
+const NEGRITO = /^\s{0,3}(\*\*|__)(?!\s)(.+?)\1\s*:?\s*$/;
+
+/**
+ * Estrutura para navegar (trilho e painel do sumário): os títulos e também as linhas que são
+ * só negrito (`**Seção**`), que entram como o nível mais baixo (7). A numeração usa só títulos.
+ */
+export function extrairEstrutura(corpo: string): TituloNota[] {
+  const saida: TituloNota[] = [];
+  let cerca: string | null = null;
+  corpo.split("\n").forEach((l, i) => {
+    const c = CERCA.exec(l);
+    if (c) { if (!cerca) cerca = c[1][0]; else if (c[1][0] === cerca) cerca = null; return; }
+    if (cerca) return;
+    const t = TITULO.exec(l);
+    if (t && t[2]) { saida.push({ nivel: t[1].length, texto: textoDoTitulo(t[2]), linha: i + 1 }); return; }
+    const n = NEGRITO.exec(l);
+    if (n) saida.push({ nivel: 7, texto: textoDoTitulo(n[2]), linha: i + 1 });
+  });
+  // Rótulos em negrito que se repetem (ex.: "Evidência.", "Como corrigir." em cada item) não
+  // ajudam a navegar: com 3 ou mais iguais, saem da estrutura.
+  const chave = (t: string) => t.toLowerCase().replace(/[.:;!?\s]+$/, "").trim();
+  const contagem = new Map<string, number>();
+  for (const t of saida) if (t.nivel === 7) contagem.set(chave(t.texto), (contagem.get(chave(t.texto)) ?? 0) + 1);
+  return saida.filter((t) => t.nivel !== 7 || (contagem.get(chave(t.texto)) ?? 0) < 3);
+}
+
 /** Numeração hierárquica (1, 1.1, 1.1.1) relativa ao menor nível presente na nota. */
 export function numerarTitulos(titulos: { nivel: number }[]): string[] {
   const base = Math.min(...titulos.map((t) => t.nivel));
@@ -57,10 +83,10 @@ function textoMd(no: NoMd): string {
 export const idTitulo = (linha: number) => `ecos-titulo-${linha}`;
 
 /**
- * Plugin remark: numera os títulos (se `numerar`) e troca um parágrafo só com `[TOC]`
- * por uma lista com os títulos da nota. Mantém as posições, então `data-linha` segue certo.
+ * Plugin remark: numera os títulos (se `numerar`) e, se `sumario`, põe no início uma lista
+ * com os títulos da nota (usado no PDF; nada é escrito no .md).
  */
-export function remarkSumario(opcoes: { numerar?: boolean; ancoraPrefixo?: string } = {}) {
+export function remarkSumario(opcoes: { numerar?: boolean; sumario?: boolean; ancoraPrefixo?: string } = {}) {
   return () => (arvore: NoMd) => {
     const filhos = arvore.children ?? [];
     const titulos = filhos.filter((n) => n.type === "heading");
@@ -71,24 +97,21 @@ export function remarkSumario(opcoes: { numerar?: boolean; ancoraPrefixo?: strin
       t.data = { ...t.data, hProperties: { ...((t.data?.hProperties as object) ?? {}), id: idTitulo(linha) } };
       if (opcoes.numerar) t.children = [{ type: "text", value: `${numeros[i]} ` }, ...(t.children ?? [])];
     });
-    arvore.children = filhos.map((n) => {
-      if (n.type !== "paragraph" || textoMd(n).trim().toUpperCase() !== "[TOC]") return n;
-      if (!itens.length) return { type: "paragraph", position: n.position, children: [] };
-      const base = Math.min(...itens.map((i) => i.nivel));
-      // Monta listas aninhadas a partir dos níveis.
-      const raiz: NoMd = { type: "list", children: [], data: { hProperties: { className: ["ecos-sumario"] } } };
-      const pilha: { nivel: number; lista: NoMd }[] = [{ nivel: base, lista: raiz }];
-      for (const it of itens) {
-        while (pilha.length > 1 && it.nivel < pilha[pilha.length - 1].nivel) pilha.pop();
-        let topo = pilha[pilha.length - 1];
-        if (it.nivel > topo.nivel) {
-          const pai = topo.lista.children!.at(-1);
-          if (pai) { const sub: NoMd = { type: "list", children: [] }; pai.children!.push(sub); topo = { nivel: it.nivel, lista: sub }; pilha.push(topo); }
-        }
-        const rotulo = `${opcoes.numerar ? `${it.numero} ` : ""}${it.texto}`;
-        topo.lista.children!.push({ type: "listItem", children: [{ type: "paragraph", children: [{ type: "link", url: `#${opcoes.ancoraPrefixo ?? "user-content-"}${idTitulo(it.linha)}`, children: [{ type: "text", value: rotulo }] }] }] });
+    if (!opcoes.sumario || itens.length < 2) return;
+    const base = Math.min(...itens.map((i) => i.nivel));
+    // Monta listas aninhadas a partir dos níveis.
+    const raiz: NoMd = { type: "list", children: [], data: { hProperties: { className: ["ecos-sumario"] } } };
+    const pilha: { nivel: number; lista: NoMd }[] = [{ nivel: base, lista: raiz }];
+    for (const it of itens) {
+      while (pilha.length > 1 && it.nivel < pilha[pilha.length - 1].nivel) pilha.pop();
+      let topo = pilha[pilha.length - 1];
+      if (it.nivel > topo.nivel) {
+        const pai = topo.lista.children!.at(-1);
+        if (pai) { const sub: NoMd = { type: "list", children: [] }; pai.children!.push(sub); topo = { nivel: it.nivel, lista: sub }; pilha.push(topo); }
       }
-      return { ...raiz, position: n.position };
-    });
+      const rotulo = `${opcoes.numerar ? `${it.numero} ` : ""}${it.texto}`;
+      topo.lista.children!.push({ type: "listItem", children: [{ type: "paragraph", children: [{ type: "link", url: `#${opcoes.ancoraPrefixo ?? "user-content-"}${idTitulo(it.linha)}`, children: [{ type: "text", value: rotulo }] }] }] });
+    }
+    arvore.children = [raiz, ...filhos];
   };
 }

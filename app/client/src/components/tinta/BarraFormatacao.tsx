@@ -34,7 +34,7 @@ export function BarraFormatacao({ estilo, onEstilo, grupos, extras, ehMobile, ve
         classeGatilho={classeGatilho}
         gatilho={({ aberto }) => vertical
           ? <AtualIcone size={17} strokeWidth={1.75} aria-hidden />
-          : <><span>{atual.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} aria-hidden /></>} />
+          : <><span className="whitespace-nowrap">{atual.rotulo}</span><ChevronDown size={14} className={`text-text-muted transition-transform duration-150 ${aberto ? "rotate-180" : ""}`} aria-hidden /></>} />
       {grupos.map((grupo, i) => (
         <div key={i} className={`flex items-center gap-0.5 ${vertical ? "flex-col" : ""}`}>
           {separador(`s${i}`)}

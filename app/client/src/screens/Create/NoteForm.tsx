@@ -18,6 +18,8 @@ interface Props {
   onSalvar: () => void;
   salvando?: boolean;
   embedded?: boolean;
+  /** Id da nota depois do primeiro salvamento automático: libera o Modo de escrita. */
+  notaId?: string;
 }
 
 /** Mesmos campos de título da nota existente (ver `NoteEditorDesktop`). */
@@ -28,7 +30,7 @@ const CAMPO_TITULO = "ecos-input min-w-0 !rounded-lg border border-border !py-3 
  * Nova nota, no mesmo padrão da edição. Maximizada (Focus): título grande com divisória, editor sem moldura e as opções
  * (equipe, pasta, tags, anexos) no painel lateral; na janela comum e no mobile, tudo fica à mão acima do editor.
  */
-export function NoteForm({ draft, setDraft, salvando, embedded = false }: Props) {
+export function NoteForm({ draft, setDraft, salvando, embedded = false, notaId }: Props) {
   const { espacoAtivo } = useAppUI();
   const focoDocumento = useContext(ModoFocusDocumentoContext);
   const modoFocus = embedded && focoDocumento;
@@ -95,6 +97,8 @@ export function NoteForm({ draft, setDraft, salvando, embedded = false }: Props)
         rows={modoFocus ? 18 : 10}
         layout="document"
         semBorda={modoFocus}
+        itemId={notaId}
+        tintaNotaId={notaId}
       />
 
       {!noPainel && <p className="flex items-center gap-2 text-sm text-text-secondary"><Cloud size={16} className="text-steel-300" />{enviandoAnexo || salvando ? "Sincronizando…" : "Salva automaticamente enquanto você edita."}</p>}

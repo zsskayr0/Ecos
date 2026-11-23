@@ -29,6 +29,7 @@ export function Wikilink({ interno, apelido, origem }: Props) {
     <button
       type="button"
       title={dica}
+      data-wikilink={titulo}
       disabled={semDestino}
       onClick={(e) => { e.stopPropagation(); if (destino) abrir(destino, e); }}
       className={`inline cursor-pointer rounded px-0.5 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 disabled:cursor-default ${semDestino ? "text-text-muted underline decoration-dashed decoration-1 underline-offset-4" : "text-steel-300 hover:bg-surface-3 hover:underline hover:underline-offset-4"}`}

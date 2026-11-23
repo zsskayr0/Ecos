@@ -14,6 +14,7 @@ import { Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { atinge, caixa, caixaDoConjunto, cortar, densificar, gerarD, intersecta, novoTraco, reconhecerForma, selecionadosPeloLaco, transformarTraco } from "@/lib/tinta/geometria";
 import type { Operacao } from "@/lib/tinta/historico";
+import { iniciarArrasto, pararInercia, type Arrasto } from "@/lib/tinta/inercia";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import type { Ferramenta, PontoTinta, Traco } from "@/lib/tinta/tipos";
 import { desenhoFolha, type EstiloFolha } from "@/lib/tinta/folha";
@@ -103,7 +104,7 @@ type Gesto =
   | { tipo: "laco"; id: number; pontos: { x: number; y: number }[] }
   | { tipo: "mover"; id: number; x0: number; y0: number; dx: number; dy: number }
   | { tipo: "escalar"; id: number; ox: number; oy: number; r0: number; fator: number }
-  | { tipo: "rolagem"; id: number; x: number; y: number; alvo: HTMLElement | Element; lateral: HTMLElement | null };
+  | { tipo: "rolagem"; id: number; arrasto: Arrasto };
 
 export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, pincel, dedoDesenha, onOperacao, onAlternarCaneta, estiloFolha = "lisa", children }: Props) {
   const fora = useRef<HTMLDivElement>(null);
@@ -348,6 +349,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
     if (!escrevendo) return;
     const e = ev.nativeEvent;
     if (gesto.current) return;
+    pararInercia();
     const toque = e.pointerType === "touch";
     if (toque && (penAtiva.current || e.width * e.height > 1600)) return; // palma
     if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 2) return;
@@ -355,7 +357,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
     ev.currentTarget.setPointerCapture(e.pointerId);
     if (toque && !dedoDesenha) {
       const f = fora.current;
-      gesto.current = { tipo: "rolagem", id: e.pointerId, x: e.clientX, y: e.clientY, alvo: rolavel(f), lateral: f && f.scrollWidth > f.clientWidth ? f : null };
+      gesto.current = { tipo: "rolagem", id: e.pointerId, arrasto: iniciarArrasto(e.clientX, e.clientY, rolavel(f), f && f.scrollWidth > f.clientWidth ? f : null) };
       return;
     }
     if (e.pointerType === "pen") penAtiva.current = true;
@@ -404,9 +406,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
       return;
     }
     if (g.tipo === "rolagem") {
-      g.lateral?.scrollBy({ left: g.x - e.clientX });
-      g.alvo.scrollBy({ top: g.y - e.clientY });
-      g.x = e.clientX; g.y = e.clientY;
+      g.arrasto.mover(e.clientX, e.clientY);
       return;
     }
     if (g.tipo === "laco" || g.tipo === "mover" || g.tipo === "escalar") {
@@ -464,6 +464,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
     const e = ev.nativeEvent;
     if (!g || g.id !== e.pointerId) return;
     gesto.current = null;
+    if (g.tipo === "rolagem" && e.type !== "pointercancel") g.arrasto.soltar();
     window.clearTimeout(espera.current.timer);
     espera.current.timer = 0;
     if (e.pointerType === "pen") penAtiva.current = false;
@@ -524,7 +525,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
   const esquerda = Math.max(0, (larguraFora - largura * escala) / 2);
   const margem = esquerda / escala;
   return (
-    <div ref={fora} className="relative w-full min-w-0 overflow-y-hidden" style={{ ...(escrevendo || folhaPlana ? { background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))" } : {}), height: alturaDentro * escala || undefined, overflowX: largura * escala > larguraFora + 1 ? "auto" : "hidden", touchAction: "pan-x pan-y" }} data-coluna-tinta>
+    <div ref={fora} className="relative w-full min-w-0 overflow-y-hidden" style={{ ...(escrevendo || folhaPlana ? { background: "var(--ecos-folha, transparent)" } : {}), height: alturaDentro * escala || undefined, overflowX: largura * escala > larguraFora + 1 ? "auto" : "hidden", touchAction: "pan-x pan-y" }} data-coluna-tinta>
       {(escrevendo || folhaPlana) && estiloFolha !== "lisa" && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ ...desenhoFolha(estiloFolha, escala), backgroundPosition: `${esquerda}px 0` }} />}
       <div ref={dentro} className="absolute top-0" style={{ width: largura, minHeight: alturaMinima, left: esquerda, transform: escala !== 1 ? `scale(${escala})` : undefined, transformOrigin: "top left" }}>
         {children}

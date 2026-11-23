@@ -1,9 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
+import { escritaEmImagens, urlComImagemEmbutida } from "@/lib/escrita-bloco";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { normalizarDelimitadores } from "@/lib/matematica";
 import { notas } from "@/lib/api";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { resolverSrcImagem } from "@/lib/markdown-mini";
@@ -27,7 +29,7 @@ const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 
 /** HTML do corpo, como o app desenha (GFM, quebras simples e fórmulas marcadas). */
 export function corpoEmDom(corpo: string): HTMLElement {
-  const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkBreaks] }, semWikilink(corpo)));
+  const html = renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkMath, remarkBreaks] , urlTransform: urlComImagemEmbutida }, semWikilink(escritaEmImagens(normalizarDelimitadores(corpo)))));
   return new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
 }
 

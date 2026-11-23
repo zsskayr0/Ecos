@@ -80,12 +80,16 @@ export function esquecerWikilinksResolvidos() { entradas.clear(); }
  * Abre um destino como o resto do app: janela flutuante no desktop (Ctrl/Cmd+clique = aba), navegação no mobile.
  * Não exige Router (testes e telas soltas): sem ele, simplesmente não navega.
  */
-export function useAbrirDestino() {
+export function useAbrirCaminho() {
   const abrirNaJanela = useContext(DocumentoPopupContext);
   const navigator = useContext(UNSAFE_NavigationContext)?.navigator;
-  return useCallback((destino: { tipo: TipoItem; id: string }, clique?: { ctrlKey: boolean; metaKey: boolean }) => {
-    const caminho = caminhoDe(destino.tipo, destino.id);
+  return useCallback((caminho: string, clique?: { ctrlKey: boolean; metaKey: boolean }) => {
     if (abrirNaJanela) abrirNaJanela(caminho, !!clique && (clique.ctrlKey || clique.metaKey));
     else navigator?.push(caminho);
   }, [abrirNaJanela, navigator]);
+}
+
+export function useAbrirDestino() {
+  const abrir = useAbrirCaminho();
+  return useCallback((destino: { tipo: TipoItem; id: string }, clique?: { ctrlKey: boolean; metaKey: boolean }) => abrir(caminhoDe(destino.tipo, destino.id), clique), [abrir]);
 }

@@ -42,6 +42,8 @@ function useAtalhosGlobais(alternarPaleta: (global?: boolean) => void) {
     function aoTeclar(e: KeyboardEvent) {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
+      // Nota/tarefa (Focus) ou diálogo aberto por cima: os atalhos são dele, não das abas escondidas atrás.
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       const tecla = e.key.toLowerCase();
 
       if (tecla === "k") {
@@ -93,6 +95,7 @@ function useNavegacaoGlobal() {
     };
     const tecla = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       const alvo = e.target as HTMLElement | null;
       if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName))) return;
       e.preventDefault();
@@ -226,6 +229,8 @@ export function documentoDoLinkDireto(pathname: string): string | null {
   if (nota) return `/notas/nota/${nota[1]}`;
   const tarefa = /^\/tarefa\/([^/]+)\/?$/.exec(pathname);
   if (tarefa) return `/tarefa/${tarefa[1]}`;
+  const conexoes = /^\/conexoes\/(nota|tarefa)\/([^/]+)\/?$/.exec(pathname);
+  if (conexoes) return `/conexoes/${conexoes[1]}/${conexoes[2]}`;
   return null;
 }
 
