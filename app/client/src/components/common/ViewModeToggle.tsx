@@ -1,3 +1,4 @@
+import { GrupoDeslizante } from "@/components/common/GrupoDeslizante";
 import { Columns3, Grid2x2, LayoutGrid, List, ListTree, Table2 } from "lucide-react";
 import { useState } from "react";
 import { useIsDesktop } from "@/lib/use-viewport";
@@ -72,7 +73,7 @@ export function ViewModeToggle({ modo, onMudar, tarefas = false }: { modo: ModoV
 
   if (desktop) {
     return (
-      <div className="flex rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label="Visualização">
+      <GrupoDeslizante className="flex rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label="Visualização">
         {[...(tarefas ? OPCOES_DESKTOP.filter((o) => o.id !== "cards") : OPCOES_DESKTOP), ...(tarefas ? OPCOES_TAREFAS : [])].map(({ id, Icone, rotulo }) => (
           <button
             key={id}
@@ -81,43 +82,43 @@ export function ViewModeToggle({ modo, onMudar, tarefas = false }: { modo: ModoV
             aria-label={`Ver em ${rotulo.toLowerCase()}`}
             aria-pressed={atual === id}
             onClick={() => onMudar(id)}
-            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${
-              atual === id ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-secondary"
+            className={`relative z-10 flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              atual === id ? "text-text-primary" : "text-text-muted hover:text-text-secondary"
             }`}
           >
             <Icone size={15} strokeWidth={1.75} />
             {rotulo}
           </button>
         ))}
-      </div>
+      </GrupoDeslizante>
     );
   }
 
   return (
-    <div className="flex items-center rounded-pill bg-surface-2 p-1">
+    <GrupoDeslizante className="flex items-center rounded-pill bg-surface-2 p-1" classeRealce="rounded-pill bg-steel-700">
       <button
         onClick={() => onMudar("cards")}
-        aria-label="Ver em cards"
-        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "cards" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
+        aria-label="Ver em cards" aria-pressed={atual === "cards"}
+        className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-pill transition-colors ${atual === "cards" ? "text-on-steel" : "text-text-muted"}`}
       >
         <LayoutGrid size={14} strokeWidth={1.75} />
       </button>
       <button
         onClick={() => onMudar("lista")}
-        aria-label="Ver em lista"
-        className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "lista" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
+        aria-label="Ver em lista" aria-pressed={atual === "lista"}
+        className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-pill transition-colors ${atual === "lista" ? "text-on-steel" : "text-text-muted"}`}
       >
         <List size={14} strokeWidth={1.75} />
       </button>
       {tarefas && (
         <button
           onClick={() => onMudar("agrupada")}
-          aria-label="Ver agrupada"
-          className={`flex h-7 w-7 items-center justify-center rounded-pill ${atual === "agrupada" ? "bg-steel-700 text-on-steel" : "text-text-muted"}`}
+          aria-label="Ver agrupada" aria-pressed={atual === "agrupada"}
+          className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-pill transition-colors ${atual === "agrupada" ? "text-on-steel" : "text-text-muted"}`}
         >
           <ListTree size={14} strokeWidth={1.75} />
         </button>
       )}
-    </div>
+    </GrupoDeslizante>
   );
 }

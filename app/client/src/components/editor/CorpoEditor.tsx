@@ -5,8 +5,8 @@ import { Maximize, Printer } from "lucide-react";
 import { SeletorVisualizacao } from "./SeletorVisualizacao";
 import { lembrarModoDaNota, modoInicialDaNota, renovarModoDaNota, type ModoVisualNota } from "@/lib/modo-visual-nota";
 import { Toggle } from "@/components/common/Toggle";
-import { corDoFundo, ESTILOS_FOLHA, FUNDOS_FOLHA, useFolha } from "@/lib/tinta/folha";
-import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Keyboard, Link, Link2, List, ListChecks, ListOrdered, Minus, NotebookPen, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
+import { corDoFundo, desenhoFolha, ESTILOS_FOLHA, FUNDOS_FOLHA, useFolha } from "@/lib/tinta/folha";
+import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Contrast, Ellipsis, Eye, Heading1, Heading2, Heading3, Italic, Keyboard, Link, Link2, List, ListChecks, ListOrdered, Minus, NotebookPen, Pencil, PenLine, Quote, RemoveFormatting, Smile, Strikethrough, Type } from "lucide-react";
 import { SeletorEmoji } from "./SeletorEmoji";
 import { ContadorTexto } from "./ContadorTexto";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
@@ -32,7 +32,7 @@ import { PaletaFlutuante } from "@/components/tinta/PaletaFlutuante";
 import { BarraFormatacao, type ComandoFormatacao } from "@/components/tinta/BarraFormatacao";
 import { CLASSE_TEXTO_COLUNA, ColunaTinta, type FerramentaUI, type ModoBorracha, type Pincel } from "@/components/tinta/ColunaTinta";
 import { useTinta } from "@/lib/tinta/use-tinta";
-import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, usePreferenciasNota } from "@/lib/tipografia-nota";
+import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, linhaDaNota, usePreferenciasNota } from "@/lib/tipografia-nota";
 import { ativos, LARGURA_COLUNA_PADRAO, type Ferramenta } from "@/lib/tinta/tipos";
 
 interface Props {
@@ -245,13 +245,13 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
   }, []);
   const corFolha = temaClaro ? null : corDoFundo(folha.fundo);
   useLayoutEffect(() => {
-    if (!(escrevendo || folhaPlana) || !corFolha) return;
+    if (!(escrevendo || folhaPlana || semBorda) || !corFolha) return;
     const pagina = raizRef.current?.closest<HTMLElement>(".ecos-detail-page") ?? null;
     // A área que rola e a janela em volta pintam com a mesma cor (ver `global.css`), então a variável vale nelas também.
     const alvos = [pagina, pagina?.parentElement, pagina?.parentElement?.parentElement].filter((x): x is HTMLElement => !!x);
     alvos.forEach((x) => { x.style.setProperty("--ecos-folha", corFolha); x.style.backgroundColor = corFolha; });
     return () => { alvos.forEach((x) => { x.style.removeProperty("--ecos-folha"); x.style.removeProperty("background-color"); }); };
-  }, [escrevendo, folhaPlana, corFolha]);
+  }, [escrevendo, folhaPlana, semBorda, corFolha]);
   // Itens da escrita (folha, fundo, dedo, limpar…) entram no menu "⋯" da nota, que é renderizado no cabeçalho da página.
   useLayoutEffect(() => { setSlotOpcoes(tintaNotaId ? document.querySelector<HTMLElement>("[data-slot-opcoes-escrita]") : null); }, [tintaNotaId, escrevendo, tinta.carregado]);
   const [cursor, setCursor] = useState(0);
@@ -544,7 +544,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     // No desktop o "⋯" é um menu suspenso compacto (linhas de 32px); no celular, o painel com alvos de 44px.
     const compacto = !!slotOpcoes?.hasAttribute("data-compacto");
     const rotuloMenu = compacto ? "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-text-muted" : "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted";
-    const itemMenu = compacto ? "flex min-h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary" : "flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary";
+    const itemMenu = compacto ? "ecos-menu-item flex min-h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary" : "ecos-menu-item flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary";
     const conteudoMenu = <div className={compacto ? "flex flex-col gap-0.5" : "space-y-4"}>
       <div className={compacto ? "px-2.5 py-1.5" : ""}>
         <span className={rotuloMenu}>Estilo da folha</span>
@@ -557,27 +557,32 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         <span className={rotuloMenu}>Cor de fundo</span>
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Cor de fundo">
           {FUNDOS_FOLHA.map((f) => <button key={f.id} type="button" role="radio" aria-checked={folha.fundo === f.id} aria-label={f.rotulo} title={f.rotulo} onClick={() => alterarFolha({ fundo: f.id })}
-            className={`${compacto ? "h-6 w-6" : "h-9 w-9"} rounded-full border-2 transition-transform ${folha.fundo === f.id ? "scale-110 border-steel-400" : "border-border"}`} style={{ background: f.cor ?? "rgb(var(--ecos-surface-1-rgb))" }} />)}
+            className={`${compacto ? "h-6 w-6" : "h-9 w-9"} rounded-full border-2 ${f.cor ? "ecos-vidro" : "transition-transform"} ${folha.fundo === f.id ? "scale-110 border-steel-400" : "border-border"}`} style={{ background: f.cor ?? "rgb(var(--ecos-surface-1-rgb))", "--cor": f.cor ?? "transparent" } as React.CSSProperties}>{f.cor === null && <Contrast size={compacto ? 14 : 18} strokeWidth={2} className="mx-auto text-text-secondary" aria-hidden />}</button>)}
         </div>
       </div>}
       {usaPaleta && <SeletorVisualizacao modo={modoNota} travado={comTinta || escrevendo} aoEscolher={escolherModoNota} />}
       {escrevendo && <label className="flex min-h-[44px] items-center justify-between gap-3 text-sm text-text-secondary">Desenhar com o dedo<Toggle checked={dedoDesenha} onChange={setDedoDesenha} label="Desenhar com o dedo" /></label>}
-      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); }}><Maximize size={compacto ? 15 : 16} />Tela cheia</button>
-      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); window.setTimeout(() => window.print(), 350); }}><Printer size={compacto ? 15 : 16} />Imprimir</button>
+      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); }}><Maximize size={compacto ? 15 : 16} className="ecos-menu-icone" />Tela cheia</button>
+      <button type="button" className={itemMenu} onClick={() => { fecharMenu(); window.setTimeout(() => window.print(), 350); }}><Printer size={compacto ? 15 : 16} className="ecos-menu-icone" />Imprimir</button>
       {tracosAtivos.length > 0 && <button type="button" className={compacto ? "flex min-h-8 w-full items-center rounded-md px-2.5 text-left text-[13px] text-error transition-colors hover:bg-error/10" : "flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-error/40 px-3 text-sm text-error transition-colors hover:bg-error/10"} onClick={() => { fecharMenu(); setConfirmarLimpar(true); }}>Limpar anotações</button>}
     </div>;
     // Celular e tablet (até 1023px), nota sem escrita à mão: texto de 16px, igual ao da leitura (14px é pequeno na tela do telefone). Com tinta a coluna é fixa e o texto não pode mudar de tamanho, senão a escrita desalinha.
     const fonteMaior = usaPaleta && !colunaFixa;
     // Preferências de tipografia (Configurações > Editor e escrita): só em notas na coluna fluida; com tinta a coluna é fixa.
     const tipografia = tipo === "nota" && !colunaFixa;
-    const estiloRaiz = tipografia ? estiloTextoNota(prefsNota, fonteMaior ? 16 : 14) : fonteMaior ? ({ "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" } as React.CSSProperties) : undefined;
+    // Tudo na nota se mede em linhas (o número central, configurável): texto, títulos, imagens e a grade da folha.
+    const linhaPx = linhaDaNota(prefsNota, fonteMaior ? 16 : 14);
+    const linhaCentral = { "--ecos-linha-nota": `${linhaPx}px` } as React.CSSProperties;
+    const estiloRaiz = tipografia ? estiloTextoNota(prefsNota, fonteMaior ? 16 : 14) : fonteMaior ? ({ "--ecos-fonte-nota": "16px", ...linhaCentral } as React.CSSProperties) : linhaCentral;
+    // Modo Focus: o estilo da folha (pautada, quadriculada, pontilhada) também vale no texto corrido, em cima da mesma linha da nota.
+    const estiloGrade = (() => { const { deslocamentoY, ...d } = desenhoFolha(folha.estilo, 1, linhaPx); return { ...d, backgroundPosition: `0px ${deslocamentoY}` } as React.CSSProperties; })();
     const estiloColuna = tipografia && !escrevendo ? { ...estiloColunaNota(prefsNota), ...(preview ? {} : estiloFolhaPagina(prefsNota)) } : undefined;
-    return <div ref={raizRef} className="min-w-0" data-corpo-editor data-escrevendo={escrevendo ? "" : undefined} data-trilho={temTrilho ? "" : undefined} data-modo-pagina={tipografia && prefsNota.notaPapel !== "desligado" ? prefsNota.notaPapel : undefined} style={estiloRaiz}>
+    return <div ref={raizRef} className="min-w-0 ecos-grade" data-corpo-editor data-escrevendo={escrevendo ? "" : undefined} data-trilho={temTrilho ? "" : undefined} data-modo-pagina={tipografia && prefsNota.notaPapel !== "desligado" ? prefsNota.notaPapel : undefined} style={estiloRaiz}>
       {!escrevendo && <OutlineTitulos corpo={corpo} view={preview ? null : viewContador} raiz={raizRef} />}
       <IrParaTrecho itemId={itemId} corpo={corpo} view={preview ? null : viewContador} raiz={raizRef} />
       {slotOpcoes && createPortal(conteudoMenu, slotOpcoes)}
       {barraCompacta && !tintaNotaId && (slotModo ? createPortal(controlesModo, slotModo) : !escrevendo && <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Modo do editor">{controlesModo}</div>)}
-      <div style={escrevendo || folhaPlana ? { background: "var(--ecos-folha, transparent)" } : undefined} className={semBorda || escrevendo || folhaPlana ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
+      <div style={escrevendo || folhaPlana || semBorda ? { background: "var(--ecos-folha, transparent)" } : undefined} className={semBorda || escrevendo || folhaPlana ? "min-w-0" : "min-w-0 rounded-xl border border-border bg-surface-1"}>
       {(escrevendo || paletaSaindo) && <PaletaFlutuante saindo={!escrevendo} aoSair={alternarEscrita}>
         {({ vertical, alinhar, embaixo }) => <BarraTinta pincel={pincel} onPincel={escolherFerramenta} onCor={(cor) => setPincel((p) => ({ ...p, cor }))} onEspessura={(espessura) => setPincel((p) => ({ ...p, espessura }))} onReta={(reta) => setPincel((p) => ({ ...p, reta }))} onTamanhoBorracha={(tamanhoBorracha) => setPincel((p) => ({ ...p, tamanhoBorracha }))} onModoBorracha={(modoBorracha: ModoBorracha) => setPincel((p) => ({ ...p, modoBorracha }))} onSoMarca={(soMarca) => setPincel((p) => ({ ...p, soMarca }))}
           podeDesfazer={tinta.podeDesfazer} podeRefazer={tinta.podeRefazer} onDesfazer={tinta.desfazer} onRefazer={tinta.refazer}
@@ -649,16 +654,16 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
       {tintaNotaId && !tinta.carregado
         ? <div aria-hidden className={semBorda ? "min-h-[60vh]" : "min-h-40"} />
         : colunaFixa
-        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} folhaPlana={folhaPlana} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo}>
+        ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} folhaPlana={folhaPlana} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo} linhaPx={linhaPx}>
             <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
               alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
               className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
           </ColunaTinta>
         : preview
         ? <div style={estiloColuna} className={`ecos-respiro-titulos min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
-        : <div style={estiloColuna} className="ecos-respiro-titulos min-w-0"><EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
+        : <div style={semBorda && folha.estilo !== "lisa" ? { ...estiloColuna, ...estiloGrade } : estiloColuna} className="ecos-respiro-titulos min-w-0"><EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
-            className={semBorda ? "px-0.5 py-2" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} /></div>}
+            className={semBorda ? "px-0.5 py-[var(--ecos-linha-nota)]" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} /></div>}
       {!escrevendo && <SumarioLateral aberto={sumarioLateral} corpo={corpo} view={preview ? null : viewContador} raiz={raizRef} aoFechar={() => alternarSumarioLateral(false)} />}
       {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} paginas={tipo === "nota"} className="px-2 pb-1 text-right" />}
       {ajudaAberta && <FolhaAtalhosEditor aoFechar={() => { setAjudaAberta(false); editorRef.current?.focus(); }} />}

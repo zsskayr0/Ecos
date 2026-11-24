@@ -5,7 +5,7 @@ import { atinge } from "@/lib/tinta/geometria";
 import { iniciarArrasto, type Arrasto } from "@/lib/tinta/inercia";
 import type { PontoTinta } from "@/lib/tinta/tipos";
 import {
-  ALTURA_ESCRITA_MAX, ALTURA_ESCRITA_MIN, LARGURA_ESCRITA, PASSO_GRADE,
+  ALTURA_ESCRITA_MAX, ALTURA_ESCRITA_MIN, LARGURA_ESCRITA, passoGrade,
   criarTracoEscrita, desenharEscrita, ehLinguagemEscrita, escreverBlocoEscrita, lerBlocoEscrita, type BlocoEscrita,
 } from "@/lib/escrita-bloco";
 
@@ -125,7 +125,7 @@ class EscritaWidget extends WidgetType {
       escala = w / LARGURA_ESCRITA;
       const h = bloco.altura * escala;
       folha.style.height = `${h}px`;
-      folha.style.backgroundSize = `${PASSO_GRADE * escala}px ${PASSO_GRADE * escala}px`;
+      folha.style.backgroundSize = `${passoGrade() * escala}px ${passoGrade() * escala}px`;
       const dpr = window.devicePixelRatio || 1;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
         canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);

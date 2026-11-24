@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { List, Pin, Presentation, X } from "lucide-react";
 import { screenRoutes } from "@/routes/screen-routes";
 import { MARGEM_TRILHO, useSumarioLateralAberto } from "@/components/editor/sumario-lateral-estado";
-import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelFocusEsquerdoContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
+import { AjusteJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, AcoesFocusContext, AcoesEsquerdaFocusContext, AcoesJanelaContext, PainelFocusControleContext, PainelFocusTarefaContext, PainelFocusEsquerdoContext, PainelJanelaContext, TituloJanelaContext, type AjusteDeJanela } from "@/lib/documento-popup";
 import { moduloDaRota, tituloDaRota } from "./modules";
 import { DURACAO_SAIDA_JANELA_MS, reduzMovimento } from "./movimento";
 import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
@@ -157,6 +157,8 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   // Mapa de conexões: painel grande e fixo no centro (não arrasta nem redimensiona), com um véu desfocado por cima de tudo.
   const painelModal = path.startsWith("/conexoes");
   const janelaModal = janelaDeConfiguracoes || painelModal;
+  /** Sem a barra de título: só um X flutuando (painel de Conexões e, em teste, a janela da nota). */
+  const semCabecalho = painelModal || path.startsWith("/notas/nota/");
   // Toda saída (X, Esc, "voltar", salvar/apagar) anima antes de a janela deixar de existir.
   const aoFechar = useCallback(() => {
     if (fechandoRef.current) return;
@@ -224,6 +226,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
   const [montagemEsquerda, setMontagemEsquerda] = useState<HTMLElement | null>(null);
   const sumarioAberto = useSumarioLateralAberto();
   const [acoesFocus, setAcoesFocus] = useState<HTMLElement | null>(null);
+  const [acoesEsquerdaFocus, setAcoesEsquerdaFocus] = useState<HTMLElement | null>(null);
   const [acoesJanela, setAcoesJanela] = useState<HTMLElement | null>(null);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   const [animandoPainel, setAnimandoPainel] = useState(false);
@@ -447,7 +450,13 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           transition: ajustando ? "left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease" : animandoPainel ? "left 450ms cubic-bezier(.22,1,.36,1), width 450ms cubic-bezier(.22,1,.36,1)" : undefined,
         }}
       >
-        {!cabecalhoNoConteudo&&<header
+        {semCabecalho && (
+          <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={aoFechar}
+            className="absolute right-3 top-3 z-30 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-2/90 text-text-muted shadow-lg transition-colors hover:bg-surface-3 hover:text-text-primary">
+            <X size={15} strokeWidth={1.75} />
+          </button>
+        )}
+        {!cabecalhoNoConteudo&&!semCabecalho&&<header
           onPointerDown={(e) => {
             if (!painelModal && !(e.target as HTMLElement).closest("button")) iniciar(e, "mover");
           }}
@@ -503,7 +512,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           </button>
         </header>}
 
-        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : janelaDeConfiguracoes || painelModal ? "rounded-b-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
+        <div className={`min-h-0 flex-1 ${cabecalhoNoConteudo ? "flex rounded-2xl overflow-hidden" : painelModal ? "rounded-2xl overflow-hidden" : semCabecalho ? "rounded-2xl overflow-y-auto" : janelaDeConfiguracoes ? "rounded-b-2xl overflow-hidden" : "rounded-b-2xl overflow-y-auto"}`}>
           <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
           <TituloJanelaContext.Provider value={setTituloDinamico}>
           <FecharDocumentoContext.Provider value={aoFechar}>
@@ -568,20 +577,22 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           {/* Mesmo padrão dos modais do Cofre: véu com blur por cima da janela normal; clicar nele volta. */}
           <div aria-hidden onClick={aoFechar} className={`ecos-focus-veu pointer-events-auto absolute inset-0 bg-black/45 backdrop-blur-[10px] ${camadaSaindo ? "ecos-backdrop-out" : "ecos-backdrop-in"}`} />
           <div aria-hidden={!painelFocusAberto || undefined} {...(painelFocusAberto ? {} : ({ inert: "" } as object))}
-            className={`pointer-events-auto absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
+            className={`pointer-events-auto no-scrollbar absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: posPainel.x, top: posPainel.y, width: posPainel.w, height: posPainel.h, opacity: painelFocusAberto ? 1 : 0, visibility: painelFocusAberto ? "visible" : "hidden", pointerEvents: painelFocusAberto ? "auto" : "none", transition: MOVIMENTO }}>
             <div ref={setMontagemFocus} />
           </div>
           {temEsquerdo && <div aria-hidden={!esquerdoAberto || undefined}
-            className={`absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
+            className={`no-scrollbar absolute overflow-y-auto rounded-2xl border border-border bg-base p-5 shadow-nav ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: posEsquerdoFinal.x, top: posEsquerdoFinal.y, width: posEsquerdoFinal.w, height: posEsquerdoFinal.h, opacity: esquerdoAberto ? 1 : 0, visibility: esquerdoAberto ? "visible" : "hidden", pointerEvents: esquerdoAberto ? "auto" : "none", transition: MOVIMENTO }}>
             <div ref={setMontagemEsquerda} />
           </div>}
           <div ref={janelaFocusRef} role="dialog" aria-modal="true" aria-label={tituloDinamico || titulo || tituloDaRota(path)} tabIndex={-1}
             className={`pointer-events-auto absolute flex flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav outline-none ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: principal.x, top: principal.y, width: principal.w, height: principal.h, transition: "left 280ms cubic-bezier(.22,1,.36,1)" }}>
-            <header className="flex shrink-0 select-none items-center gap-2 border-b border-border bg-surface-1 pl-3.5 pr-1.5" style={{ height: ALTURA_TITULO }}>
-              <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />
+            {/* Nota: sem a "aba" de cima (fundo e linha) — só os botões flutuando; as ações continuam no mesmo lugar. */}
+            <header className={`flex shrink-0 select-none items-center gap-2 pl-3.5 pr-1.5 ${path.startsWith("/notas/nota/") ? "" : "border-b border-border bg-surface-1"}`} style={{ height: ALTURA_TITULO }}>
+              {path.startsWith("/notas/nota/") ? null : <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />}
+              <div ref={setAcoesEsquerdaFocus} className="flex min-w-0 items-center empty:hidden" />
               <span className="flex-1" aria-hidden />
               <div ref={setAcoesFocus} className="flex items-center gap-0.5" />
               {podeSlide && <button type="button" title="Abrir em Modo Slide" aria-label="Abrir em Modo Slide" onClick={() => setEmSlide(true)}
@@ -591,7 +602,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
               <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={aoFechar}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} strokeWidth={1.75} /></button>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="rolagem-recuada min-h-0 flex-1 overflow-y-auto">
               <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
               <TituloJanelaContext.Provider value={setTituloDinamico}>
               <FecharDocumentoContext.Provider value={aoFechar}>
@@ -600,7 +611,9 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
               <PainelFocusEsquerdoContext.Provider value={montagemEsquerda}>
               <PainelFocusControleContext.Provider value={controlePainelFocus}>
               <AcoesFocusContext.Provider value={acoesFocus}>
+              <AcoesEsquerdaFocusContext.Provider value={acoesEsquerdaFocus}>
                 <Fragment key={chaveJanela}>{corpo}</Fragment>
+              </AcoesEsquerdaFocusContext.Provider>
               </AcoesFocusContext.Provider>
               </PainelFocusControleContext.Provider>
               </PainelFocusEsquerdoContext.Provider>

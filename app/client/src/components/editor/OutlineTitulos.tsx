@@ -196,7 +196,7 @@ export function SumarioLateral({ corpo, view, raiz, aoFechar, aberto }: Props & 
     <aside aria-label="Sumário" className="flex min-w-0 flex-col gap-6">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-lg font-semibold text-text-primary">Sumário</h2>
-        {!emFocus && <button type="button" onClick={aoFechar} aria-label="Fechar sumário" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>}
+        <button type="button" onClick={aoFechar} aria-label="Fechar sumário" title="Fechar sumário" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>
       </div>
       {titulos.length ? (
         <ul className="flex flex-col gap-0.5">

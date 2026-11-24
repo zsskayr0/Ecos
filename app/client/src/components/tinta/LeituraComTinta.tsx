@@ -16,12 +16,11 @@ import { ativos, LARGURA_COLUNA_PADRAO } from "@/lib/tinta/tipos";
 import type { ModoVisualNota } from "@/lib/modo-visual-nota";
 import { analisarWikilink, resolverWikilink, useAbrirDestino } from "@/lib/wikilinks";
 import { avisar } from "@/lib/toast";
-import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, usePreferenciasNota } from "@/lib/tipografia-nota";
+import { estiloColunaNota, estiloFolhaPagina, estiloTextoNota, linhaDaNota, usePreferenciasNota } from "@/lib/tipografia-nota";
 import { CLASSE_TEXTO_COLUNA, ColunaTinta } from "./ColunaTinta";
 
 const NADA = () => {};
 const PINCEL = { ferramenta: "caneta" as const, cor: "auto", espessura: 2.5 };
-const FONTE_FLUIDA = { "--ecos-fonte-nota": "16px", "--ecos-linha-nota": "24px" } as CSSProperties;
 
 export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: string; corpo: string; modo: ModoVisualNota; aoCarregar?: (temTinta: boolean) => void }) {
   const tinta = useTinta(notaId);
@@ -54,18 +53,20 @@ export function LeituraComTinta({ notaId, corpo, modo, aoCarregar }: { notaId: s
     });
   }
 
+  // Tudo mede em linhas (o número central das preferências), com ou sem escrita à mão.
+  const linhaPx = linhaDaNota(prefsNota, 16);
   const editor = (
     <EditorVivo aoCriarView={setView} corpo={corpo} onCorpoChange={NADA} areaRef={area} ariaLabel="Conteúdo da nota" placeholder="Nota vazia." alturaMinima="6rem" className={CLASSE_TEXTO_COLUNA} somenteLeitura
       resolverImagem={(src) => resolverSrcImagem(src, notaId, "nota")} aoAbrirWikilink={abrirWikilink} />
   );
   return (
-    <div ref={raiz} className="min-w-0" data-trilho={temTrilho ? "" : undefined} style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? {} : { ...FONTE_FLUIDA, ...estiloTextoNota(prefsNota, 16) }) }}>
+    <div ref={raiz} className="min-w-0 ecos-grade" data-trilho={temTrilho ? "" : undefined} style={{ background: "var(--ecos-folha, rgb(var(--ecos-surface-1-rgb)))", ...(temTinta || modo === "pagina" ? { "--ecos-linha-nota": `${linhaPx}px` } as CSSProperties : estiloTextoNota(prefsNota, 16)) }}>
       <OutlineTitulos corpo={corpo} view={view} raiz={raiz} />
       <IrParaTrecho itemId={notaId} corpo={corpo} view={view} raiz={raiz} />
       {!tinta.carregado
         ? <div aria-hidden className="min-h-24" />
         : temTinta || modo === "pagina"
-        ? <ColunaTinta largura={tinta.largura ?? LARGURA_COLUNA_PADRAO} tracos={tinta.tracos} escrevendo={false} folhaPlana pincel={PINCEL} dedoDesenha={false} onOperacao={NADA} estiloFolha={folha.estilo}>{editor}</ColunaTinta>
+        ? <ColunaTinta largura={tinta.largura ?? LARGURA_COLUNA_PADRAO} tracos={tinta.tracos} escrevendo={false} folhaPlana pincel={PINCEL} dedoDesenha={false} onOperacao={NADA} estiloFolha={folha.estilo} linhaPx={linhaPx}>{editor}</ColunaTinta>
         : <div style={{ ...estiloColunaNota(prefsNota), ...estiloFolhaPagina(prefsNota) }}>{editor}</div>}
     </div>
   );

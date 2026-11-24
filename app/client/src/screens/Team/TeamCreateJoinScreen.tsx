@@ -1,3 +1,4 @@
+import { GrupoDeslizante } from "@/components/common/GrupoDeslizante";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle, ScanLine } from "lucide-react";
@@ -70,14 +71,14 @@ export function TeamCreateJoinScreen() {
 
       <h1 className="mb-6 font-display text-2xl text-text-primary">Criar ou entrar numa Equipe</h1>
 
-      <div className="mb-6 flex rounded-pill bg-surface-2 p-1">
-        <button onClick={() => setModo("criar")} className={`flex-1 rounded-pill py-2 text-sm font-medium ${modo === "criar" ? "bg-surface-3 text-text-primary" : "text-text-muted"}`}>
+      <GrupoDeslizante className="mb-6 flex rounded-pill bg-surface-2 p-1" classeRealce="rounded-pill bg-surface-3">
+        <button aria-pressed={modo === "criar"} onClick={() => setModo("criar")} className={`relative z-10 flex-1 rounded-pill py-2 text-sm font-medium transition-colors ${modo === "criar" ? "text-text-primary" : "text-text-muted"}`}>
           Criar
         </button>
-        <button onClick={() => setModo("entrar")} className={`flex-1 rounded-pill py-2 text-sm font-medium ${modo === "entrar" ? "bg-surface-3 text-text-primary" : "text-text-muted"}`}>
+        <button aria-pressed={modo === "entrar"} onClick={() => setModo("entrar")} className={`relative z-10 flex-1 rounded-pill py-2 text-sm font-medium transition-colors ${modo === "entrar" ? "text-text-primary" : "text-text-muted"}`}>
           Entrar com código
         </button>
-      </div>
+      </GrupoDeslizante>
 
       {modo === "criar" ? (
         <div className="flex flex-col gap-5">

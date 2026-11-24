@@ -3,6 +3,7 @@
  * Fica por Nota, só neste aparelho (localStorage): não muda o `tinta.svg` nem as coordenadas dos traços.
  */
 import { useCallback, useState } from "react";
+import { LINHA_NOTA_PADRAO } from "@/lib/linha-nota";
 
 export type EstiloFolha = "lisa" | "pautada" | "quadriculada" | "pontilhada";
 
@@ -52,12 +53,17 @@ export function useFolha(notaId?: string): [Folha, (parcial: Partial<Folha>) => 
   return [folha, alterar];
 }
 
-/** Desenho da folha (linhas, quadrados ou pontos) como `background`, em px da coluna multiplicados por `escala`. */
-export function desenhoFolha(estilo: EstiloFolha, escala: number): { backgroundImage?: string; backgroundSize?: string } {
+/**
+ * Desenho da folha (linhas, quadrados ou pontos) como `background`, em px da coluna multiplicados por `escala`.
+ * O passo é sempre UMA linha da nota (`linha`, por padrão o número central): a pauta, o quadrado e a distância
+ * entre pontos são iguais à altura da linha do texto. `deslocamentoY` põe a linha (ou o ponto) na base de cada
+ * linha de texto, onde a caneta apoia, em vez de no topo.
+ */
+export function desenhoFolha(estilo: EstiloFolha, escala: number, linha: number = LINHA_NOTA_PADRAO): { backgroundImage?: string; backgroundSize?: string; deslocamentoY: string } {
   const cor = "rgb(var(--ecos-text-primary-rgb) / 0.09)";
-  const passo = (n: number) => `${n * escala}px`;
-  if (estilo === "pautada") return { backgroundImage: `linear-gradient(${cor} 1px, transparent 1px)`, backgroundSize: `100% ${passo(32)}` };
-  if (estilo === "quadriculada") return { backgroundImage: `linear-gradient(${cor} 1px, transparent 1px), linear-gradient(90deg, ${cor} 1px, transparent 1px)`, backgroundSize: `${passo(28)} ${passo(28)}` };
-  if (estilo === "pontilhada") return { backgroundImage: `radial-gradient(circle, rgb(var(--ecos-text-primary-rgb) / 0.22) 1.2px, transparent 1.6px)`, backgroundSize: `${passo(28)} ${passo(28)}` };
-  return {};
+  const passo = `${linha * escala}px`;
+  if (estilo === "pautada") return { backgroundImage: `linear-gradient(${cor} 1px, transparent 1px)`, backgroundSize: `100% ${passo}`, deslocamentoY: `${(linha - 1) * escala}px` };
+  if (estilo === "quadriculada") return { backgroundImage: `linear-gradient(${cor} 1px, transparent 1px), linear-gradient(90deg, ${cor} 1px, transparent 1px)`, backgroundSize: `${passo} ${passo}`, deslocamentoY: `${(linha - 1) * escala}px` };
+  if (estilo === "pontilhada") return { backgroundImage: `radial-gradient(circle, rgb(var(--ecos-text-primary-rgb) / 0.22) 1.2px, transparent 1.6px)`, backgroundSize: `${passo} ${passo}`, deslocamentoY: `${(linha / 2) * escala}px` };
+  return { deslocamentoY: "0px" };
 }

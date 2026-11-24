@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Columns3, FileType2, Flag, Folder, FolderCog, FolderTree, LayoutGrid, Paperclip, Rows3, Shapes, SquareCheck, Trash2 } from "lucide-react";
+import { ChevronRight, Columns3, FileText, FileType2, Flag, Folder, FolderCog, FolderTree, LayoutGrid, Paperclip, Rows3, Shapes, SquareCheck, Trash2 } from "lucide-react";
 import { COLUNAS_ARQUIVOS, colunasValidas } from "@/lib/colunas-arquivos";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
@@ -24,6 +24,13 @@ const MARCAS_ARQUIVO = [
 ] as const satisfies readonly { valor: MarcaArquivo; rotulo: string; icone: typeof FileType2; cor: string }[];
 
 const ESTILOS = [{ id: "grade", rotulo: "Grade", Icone: LayoutGrid }, { id: "compacta", rotulo: "Menor", Icone: Rows3 }] as const;
+
+const MINIATURAS = [
+  { id: "desligada", rotulo: "Sem" },
+  { id: "pequena", rotulo: "Pequena" },
+  { id: "media", rotulo: "Média" },
+  { id: "grande", rotulo: "Grande" },
+] as const;
 
 const ANEXOS = [
   { valor: "perguntar", rotulo: "Perguntar sempre", icone: Paperclip, cor: TOM.aco },
@@ -100,6 +107,9 @@ export function PastasArquivosScreen() {
               );
             })}
           </div>
+        </Linha>
+        <Linha Icone={FileText} titulo="Miniatura na grade" descricao="Na grade de Arquivos, notas e tarefas aparecem como uma página A4 com o começo do texto. Escolha o tamanho ou desligue para ver só o ícone.">
+          <Segmentado valor={prefs.arquivosMiniatura} opcoes={MINIATURAS} onChange={(arquivosMiniatura) => alterar({ arquivosMiniatura })} label="Tamanho da miniatura" />
         </Linha>
         <Linha Icone={SquareCheck} titulo="Checkbox nas tarefas" descricao="Na lista de Arquivos, ao passar o mouse sobre o ícone da tarefa, ele vira uma caixa para concluir ou reabrir direto na linha.">
           <Toggle checked={prefs.exploradorCheckboxTarefa} onChange={(exploradorCheckboxTarefa) => alterar({ exploradorCheckboxTarefa })} label="Checkbox nas tarefas" />

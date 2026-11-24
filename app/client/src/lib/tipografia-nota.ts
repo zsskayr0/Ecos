@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { lerPreferenciasAplicativo, type MargemPagina, type PapelNota, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
+import { linhaDasPreferencias } from "@/lib/linha-nota";
 
 /** Linha que força nova página no modo página e no PDF. Fica sozinha na linha. */
 export const QUEBRA_PAGINA = /^[ \t]*---pagebreak[ \t]*$/i;
@@ -24,9 +25,14 @@ export const MARGENS: Record<MargemPagina, number> = { estreita: 36, normal: 70.
 const PX_POR_PT = 96 / 72;
 
 /** Variáveis CSS do texto da nota (fonte, tamanho, entrelinha) e a largura da coluna. `base` é o tamanho automático. */
+export function linhaDaNota(p: PreferenciasAplicativo, base: number): number {
+  // A entrelinha é sempre o número central (uma linha); só cresce se o texto for tão grande que não caberia nela.
+  return Math.max(linhaDasPreferencias(p), Math.ceil((p.notaTamanho || base) * 1.3));
+}
+
 export function estiloTextoNota(p: PreferenciasAplicativo, base: number): CSSProperties {
   const tamanho = p.notaTamanho || base;
-  const linha = Math.round(tamanho * (p.notaEntrelinha || (base >= 16 ? 1.5 : 1.43)));
+  const linha = linhaDaNota(p, base);
   const estilo: Record<string, string> = { "--ecos-fonte-nota": `${tamanho}px`, "--ecos-linha-nota": `${linha}px` };
   const familia = FAMILIAS[p.notaFonte];
   if (familia) estilo.fontFamily = familia;
@@ -79,7 +85,7 @@ export function estimarPaginas(texto: string, p: PreferenciasAplicativo): number
   const papel = PAPEIS[p.notaPapel];
   const margem = MARGENS[p.notaMargem];
   const tamanhoPt = (p.notaTamanho || 14) * 0.75;
-  const linhaPt = tamanhoPt * (p.notaEntrelinha || 1.43);
+  const linhaPt = Math.max(linhaDasPreferencias(p), Math.ceil((p.notaTamanho || 14) * 1.3)) * 0.75;
   const linhasPorPagina = Math.max(1, Math.floor((papel.altura - 2 * margem) / linhaPt));
   const caracteresPorLinha = Math.max(10, Math.floor((papel.largura - 2 * margem) / (tamanhoPt * 0.5)));
   let paginas = 0;

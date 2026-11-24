@@ -1,5 +1,5 @@
 /* Tabela GFM renderizada no editor ao vivo (tabela-widget.ts). */
-.cm-editor .cm-tabela-bloco { position: relative; margin: 4px 0; padding-top: 30px; }
+.cm-editor .cm-tabela-bloco { position: relative; margin: 4px 0; padding-top: 30px; width: fit-content; max-width: 100%; margin-left: -32px; padding-left: 32px; }
 .cm-editor .cm-tabela-rolagem { overflow-x: auto; cursor: text; }
 .cm-editor .cm-tabela {
   width: auto; max-width: 100%; border-collapse: separate; border-spacing: 0;
@@ -30,9 +30,10 @@
 }
 .cm-editor .cm-tabela img.cm-tabela-img { max-height: 4em; max-width: 12em; vertical-align: middle; border-radius: 4px; }
 .cm-editor .cm-tabela-barra {
-  position: absolute; top: 0; left: 0; display: flex; gap: 4px; opacity: 0; transition: opacity 0.12s;
+  position: absolute; top: 0; right: 0; display: flex; gap: 4px; opacity: var(--o-barra, 0); pointer-events: none; transition: opacity 0.1s;
 }
-.cm-editor .cm-tabela-bloco:hover .cm-tabela-barra,
+.cm-editor .cm-tabela-bloco[data-barra] .cm-tabela-barra,
+.cm-editor .cm-tabela-bloco:focus-within .cm-tabela-barra { pointer-events: auto; }
 .cm-editor .cm-tabela-bloco:focus-within .cm-tabela-barra { opacity: 1; }
 .cm-editor .cm-tabela-barra button {
   font: inherit; font-size: 12px; line-height: 1; padding: 5px 8px; border-radius: 6px; cursor: pointer;
@@ -40,3 +41,49 @@
   border: 1px solid rgb(var(--ecos-border-rgb));
 }
 .cm-editor .cm-tabela-barra button:hover { color: rgb(var(--ecos-text-primary-rgb)); border-color: rgb(var(--ecos-steel-500-rgb)); }
+
+/* Comandos sobre a tabela: alças de largura e botões "+" que aparecem ao passar o mouse. */
+.cm-editor .cm-tabela-sobre { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.cm-editor .cm-tabela-alca { position: absolute; top: 0; width: 8px; cursor: col-resize; pointer-events: auto; border-radius: 4px; background: transparent; transition: background 0.12s; }
+.cm-editor .cm-tabela-alca:hover { background: rgb(var(--ecos-steel-500-rgb) / 0.45); }
+.cm-editor .cm-tabela-mais {
+  position: absolute; width: 18px; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center;
+  font: inherit; font-size: 14px; line-height: 1; border-radius: 50%; cursor: pointer;
+  color: rgb(var(--ecos-text-secondary-rgb)); background: rgb(var(--ecos-surface-2-rgb)); border: 1px solid rgb(var(--ecos-border-rgb));
+  opacity: var(--o, 0); transform: scale(calc(0.6 + 0.4 * var(--o, 0))); pointer-events: none;
+  transition: opacity 0.1s ease, transform 0.12s ease-out, border-color 0.12s, color 0.12s;
+}
+.cm-editor .cm-tabela-mais:hover { transform: scale(1.15); color: rgb(var(--ecos-text-primary-rgb)); border-color: rgb(var(--ecos-steel-500-rgb)); }
+.cm-editor .cm-tabela-mais-fim {
+  position: absolute; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center;
+  font: inherit; font-size: 12px; line-height: 1; border-radius: 6px; cursor: pointer;
+  color: rgb(var(--ecos-text-muted-rgb)); background: transparent; border: 1px dashed rgb(var(--ecos-border-rgb));
+  opacity: var(--o, 0); pointer-events: none; transition: opacity 0.1s ease, color 0.12s, border-color 0.12s, background 0.12s;
+}
+.cm-editor .cm-tabela-mais-fim:hover { color: rgb(var(--ecos-text-primary-rgb)); border-color: rgb(var(--ecos-steel-500-rgb)); background: rgb(var(--ecos-steel-500-rgb) / 0.12); }
+
+.cm-editor .cm-tabela-menos { font-size: 15px; }
+.cm-editor .cm-tabela-menos:hover { color: rgb(var(--ecos-error-rgb, 239 68 68)); border-color: rgb(var(--ecos-error-rgb, 239 68 68)); }
+
+/* Só o símbolo, sem bolinha: "+" verde adiciona, "×" vermelho exclui. */
+.cm-editor .cm-tabela-mais {
+  width: 20px; height: 20px; background: transparent; border: 0; border-radius: 0;
+  font-size: 22px; font-weight: 300; line-height: 1;
+  color: rgb(var(--ecos-success-rgb)); text-shadow: 0 0 2px rgb(var(--ecos-surface-1-rgb));
+}
+.cm-editor .cm-tabela-mais:hover { color: rgb(var(--ecos-success-rgb)); border-color: transparent; transform: scale(1.3); filter: brightness(1.2); }
+.cm-editor .cm-tabela-menos { font-size: 20px; color: rgb(var(--ecos-error-rgb)); }
+.cm-editor .cm-tabela-menos:hover { color: rgb(var(--ecos-error-rgb)); border-color: transparent; }
+
+.cm-editor .cm-tabela-mais { z-index: 5; }
+.cm-editor .cm-tabela-sobre { z-index: 5; }
+
+/* Símbolos desenhados com traços finos (a fonte não tem peso leve): "+" e "×" de 1,5px. */
+.cm-editor .cm-tabela-mais { font-size: 0; text-shadow: none; filter: drop-shadow(0 0 1px rgb(var(--ecos-surface-1-rgb))); }
+.cm-editor .cm-tabela-mais::before, .cm-editor .cm-tabela-mais::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 1.5px; border-radius: 1px; background: currentColor;
+  transform: translate(-50%, -50%);
+}
+.cm-editor .cm-tabela-mais::after { transform: translate(-50%, -50%) rotate(90deg); }
+.cm-editor .cm-tabela-menos::before { width: 11px; transform: translate(-50%, -50%) rotate(45deg); }
+.cm-editor .cm-tabela-menos::after { width: 11px; transform: translate(-50%, -50%) rotate(-45deg); }

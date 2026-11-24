@@ -72,6 +72,8 @@ export interface PreferenciasAplicativo {
   exploradorCheckboxTarefa: boolean;
   /** Tela de Arquivos: a barra de endereço mostra sugestões de pastas enquanto você digita. */
   arquivosSugestoesCaminho: boolean;
+  /** Miniatura (página A4 com o começo do texto) de notas e tarefas na grade de Arquivos. */
+  arquivosMiniatura: "desligada" | "pequena" | "media" | "grande";
   /** `sistema` segue `prefers-contrast: more` do sistema operacional. */
   altoContraste: AltoContraste;
   /** Calendários (Agenda, seletores de data) começam a semana na segunda em vez do domingo. */
@@ -146,8 +148,10 @@ export interface PreferenciasAplicativo {
   notaFonte: FonteNota;
   /** Tamanho do texto em px; 0 = automático (14 no computador, 16 no celular). */
   notaTamanho: number;
-  /** Entrelinha (multiplicador do tamanho); 0 = automática. */
+  /** Entrelinha (multiplicador do tamanho); 0 = automática. Substituída por `notaLinha`; só a estimativa de páginas ainda lê. */
   notaEntrelinha: number;
+  /** A altura de uma linha da nota, em px; 0 = padrão (24). Tudo na nota (texto, títulos, imagens, grade) se mede em linhas. */
+  notaLinha: number;
   notaLargura: LarguraNota;
   /** Modo página: mostra a nota como folha A4/Carta, com quebras `---pagebreak`, e o PDF usa o mesmo papel e margens. */
   notaPapel: PapelNota;
@@ -178,6 +182,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   exploradorColunas: ["tipo", "tamanho", "modificado"],
   exploradorCheckboxTarefa: true,
   arquivosSugestoesCaminho: true,
+  arquivosMiniatura: "media",
   altoContraste: "sistema",
   semanaComecaSegunda: false,
   formatoData: "dmy",
@@ -219,6 +224,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   notaFonte: "padrao",
   notaTamanho: 0,
   notaEntrelinha: 0,
+  notaLinha: 0,
   notaLargura: "padrao",
   notaPapel: "desligado",
   notaMargem: "normal",

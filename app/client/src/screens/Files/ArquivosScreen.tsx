@@ -17,6 +17,7 @@ import { ESTADO_VAZIO, PASTAS_INDEXADAS, PESO_PRIORIDADE, estadoInicial, filtrar
 import { MenuExplorador, type ItemMenuExplorador } from "@/desktop/MenuExplorador";
 import { MoverExplorador, type ItemParaMover } from "@/desktop/MoverExplorador";
 import { RevisarMidias } from "@/components/files/RevisarMidias";
+import { LARGURA_MINIATURA, MiniaturaItem } from "@/components/files/MiniaturaItem";
 import { anexoComoArquivo, BadgeAnexos, rotaDoAnexo } from "@/components/files/Anexos";
 import { extensaoDe, IconeArquivo, IconePasta, selo, useMarcasArquivo } from "@/lib/icones-arquivo";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -300,8 +301,10 @@ export function ArquivosScreen() {
   const [comSugestoes, setComSugestoes] = useState(() => lerPreferenciasAplicativo().arquivosSugestoesCaminho);
   const [padraoTarefas, setPadraoTarefas] = useState(() => estadoInicial(true));
   const [concluidaVerde, setConcluidaVerde] = useState(() => lerPreferenciasAplicativo().concluidasEstilo === "riscada-verde");
+  const [miniatura, setMiniatura] = useState(() => lerPreferenciasAplicativo().arquivosMiniatura);
   useEffect(() => {
     const atualizar = () => {
+      setMiniatura(lerPreferenciasAplicativo().arquivosMiniatura);
       setConcluidaVerde(lerPreferenciasAplicativo().concluidasEstilo === "riscada-verde");
       setComSugestoes(lerPreferenciasAplicativo().arquivosSugestoesCaminho);
       setPadraoTarefas(estadoInicial(true));
@@ -1366,9 +1369,10 @@ export function ArquivosScreen() {
               )}
 
               {desktop && vista.vista === "grade" ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-1.5 p-2">
-                  {visiveis.map((linha) => {
+                (() => {
+                  const celula = (linha: Linha, emFaixa: boolean) => {
                     const selecionada = selecao.has(linha.caminho);
+                    const comMiniatura = miniatura !== "desligada" && !!linha.arquivo?.id && (linha.arquivo.tipo === "nota" || linha.arquivo.tipo === "tarefa");
                     const s = !linha.pasta && !linha.arquivo?.tipo && linha.arquivo?.categoria !== "markdown" && (marca === "ambos" || marca === "selo") ? selo(linha.arquivo!) : null;
                     return (
                       <div
@@ -1384,19 +1388,29 @@ export function ArquivosScreen() {
                         onContextMenu={(e) => abrirMenuCtx(linha, e)}
                         onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
                         tabIndex={0}
-                        className={`group relative flex min-h-[112px] cursor-default select-none flex-col items-center gap-2 rounded-xl px-2 pb-2 pt-4 text-center focus-visible:outline-none ${selecionada ? "bg-steel-500/20 ring-2 ring-steel-400" : ""} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                        className={`group relative flex cursor-default select-none rounded-xl text-center ${emFaixa ? "h-10 max-w-[220px] shrink-0 flex-row items-center gap-2 border border-border bg-surface-2 pl-3 pr-9 text-left" : `min-h-[112px] flex-col items-center gap-2 px-2 pb-2 ${comMiniatura ? "pt-2" : "pt-4"}`} focus-visible:outline-none ${selecionada ? "bg-steel-500/20 ring-2 ring-steel-400" : ""} ${linha.pasta ? realce(linha.caminho) : ""}`}
                         {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                       >
                         <span className={`absolute right-1 top-1 ${selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}`}>{acoes(linha)}</span>
-                        {iconeDaLinha(linha, 38)}
-                        {editandoNome(linha) ? campoDeNome(linha, true) : <span className={`line-clamp-2 w-full break-words text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${estiloDoNome(linha)}`}>{nomeExibido(linha)}</span>}
-                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-text-muted">{arquivada(linha) && <Archive size={10} aria-hidden />}{arquivada(linha) ? "Arquivada" : s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>
+                        {comMiniatura
+                          ? <MiniaturaItem tipo={linha.arquivo!.tipo!} id={linha.arquivo!.id!} versao={linha.arquivo!.modificado_em ?? ""} titulo={nomeExibido(linha)} />
+                          : iconeDaLinha(linha, emFaixa ? 20 : 38)}
+                        {editandoNome(linha) ? campoDeNome(linha, true) : <span title={emFaixa ? nomeExibido(linha) : undefined} className={`${emFaixa ? "min-w-0 truncate" : "line-clamp-2 w-full break-words"} text-[13px] leading-snug ${linha.arquivo?.fora_do_padrao ? "text-error" : "text-text-primary"} ${estiloDoNome(linha)}`}>{nomeExibido(linha)}</span>}
+                        {!emFaixa && <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-text-muted">{arquivada(linha) && <Archive size={10} aria-hidden />}{arquivada(linha) ? "Arquivada" : s ?? (linha.pasta ? "Pasta" : linha.arquivo?.tipo ? rotuloDe(linha) : "")}</span>}
                         {visaoCombinada && <span className="w-full truncate text-xs text-text-muted" title={linha.caminho}>{pai(linha.caminho) || "Raiz"}</span>}
                         {!!linha.arquivo?.anexos?.length && <span className="absolute left-1 top-1"><BadgeAnexos quantidade={linha.arquivo.anexos.length} aberto={false} aoAlternar={() => abrir(linha)} /></span>}
                       </div>
                     );
-                  })}
-                </div>
+                  };
+                  const pastasGrade = visiveis.filter((l) => l.pasta);
+                  const demais = visiveis.filter((l) => !l.pasta);
+                  return (
+                    <>
+                      {pastasGrade.length > 0 && <div className="flex flex-wrap gap-1.5 p-2 pb-0">{pastasGrade.map((l) => celula(l, true))}</div>}
+                      {demais.length > 0 && <div className="grid gap-1.5 p-2" style={{ gridTemplateColumns: `repeat(auto-fill,minmax(${miniatura === "desligada" ? 132 : LARGURA_MINIATURA[miniatura]}px,1fr))` }}>{demais.map((l) => celula(l, false))}</div>}
+                    </>
+                  );
+                })()
               ) : visiveis.map((linha) => {
                 const selecionada = selecao.has(linha.caminho);
                 const vermelho = linha.arquivo?.fora_do_padrao;

@@ -6,6 +6,7 @@
 .ecos-menu[data-saindo="true"] { animation: ecos-menu-sai 110ms ease-in both; pointer-events: none; }
 .ecos-menu-item { transition: background-color 120ms ease, color 120ms ease, transform 120ms ease; }
 .ecos-menu-item:hover, .ecos-menu-item:focus-visible { transform: translateX(2px); }
+.ecos-menu-item:active { transform: translateX(2px) scale(0.97); transition-duration: 70ms; }
 .ecos-menu-icone { transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1); }
 .ecos-menu-item:hover .ecos-menu-icone, .ecos-menu-item:focus-visible .ecos-menu-icone { transform: rotate(-14deg) scale(1.25); }
 .ecos-menu-item:active .ecos-menu-icone { transform: rotate(360deg) scale(0.9); transition-duration: 600ms; }

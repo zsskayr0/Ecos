@@ -61,17 +61,31 @@ export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revis
     el.addEventListener("touchmove", travar, { passive: false });
     return () => { el.removeEventListener("wheel", travar); el.removeEventListener("touchmove", travar); };
   }, [aberto, menu]);
-  // Menu (desktop): clicar fora fecha. Menus e diálogos abertos de dentro (em portal) não contam como fora.
+  // Menu (desktop): qualquer interação fora fecha (clique, toque, botão direito, roda do mouse, rolagem, digitar, Esc, redimensionar).
+  // Menus e diálogos abertos de dentro (em portal) e a rolagem do próprio menu não contam como fora.
   useEffect(() => {
     if (!menu || !aberto) return;
-    const fora = (e: MouseEvent) => {
-      const t = e.target as Element;
-      if (caixa.current?.contains(t) || botao.current?.contains(t)) return;
-      if (t.closest?.("[role=menu],[role=listbox],[role=dialog]")) return;
-      setAberto(false);
+    const dentro = (t: EventTarget | null) => {
+      if (!(t instanceof Element)) return !!(t instanceof Node && caixa.current?.contains(t));
+      if (caixa.current?.contains(t) || botao.current?.contains(t)) return true;
+      // Menus e diálogos abertos de dentro (em portal) contam como dentro; a janela da nota (que contém o botão) não.
+      const outro = t.closest("[role=menu],[role=listbox],[role=dialog]");
+      return !!outro && !(botao.current && outro.contains(botao.current));
     };
-    document.addEventListener("mousedown", fora);
-    return () => document.removeEventListener("mousedown", fora);
+    const fora = (e: Event) => { if (!dentro(e.target)) setAberto(false); };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape" || (!["Shift", "Control", "Alt", "Meta"].includes(e.key) && !dentro(e.target))) setAberto(false); };
+    const fechar = () => setAberto(false);
+    const eventos = ["mousedown", "touchstart", "contextmenu", "wheel", "scroll"] as const;
+    eventos.forEach((n) => document.addEventListener(n, fora, { capture: true, passive: true }));
+    document.addEventListener("keydown", tecla, true);
+    window.addEventListener("resize", fechar);
+    window.addEventListener("blur", fechar);
+    return () => {
+      eventos.forEach((n) => document.removeEventListener(n, fora, { capture: true }));
+      document.removeEventListener("keydown", tecla, true);
+      window.removeEventListener("resize", fechar);
+      window.removeEventListener("blur", fechar);
+    };
   }, [menu, aberto]);
   // Itens que o editor da nota coloca aqui (ex.: "Limpar anotações") fecham o menu antes de abrir o próprio diálogo.
   useEffect(() => {
@@ -102,9 +116,9 @@ export function OpcoesNota({ criadoEm, atualizadoEm, estado, erro = false, revis
         className={`ecos-menu fixed z-[900] max-h-[80vh] w-72 overflow-y-auto rounded-xl border border-border bg-surface-1 p-1.5 shadow-nav ${pos ? "" : "invisible"}`}
         style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}>
         {acoes && <div className="flex flex-col [&>*]:!min-h-8 [&>*]:!gap-2.5 [&>*]:!rounded-md [&>*]:!border-0 [&>*]:!px-2.5 [&>*]:!text-[13px]">{acoes(() => setAberto(false))}</div>}
-        {onHistorico && <button type="button" onClick={() => { setAberto(false); onHistorico(); }} className={linha}><History size={15} />Histórico de versões</button>}
-        {!revisada && <button type="button" onClick={() => { onRevisar(); setAberto(false); }} className={linha}><CheckCircle2 size={15} />Marcar como revisada</button>}
-        <button type="button" onClick={() => { setAberto(false); window.dispatchEvent(new Event("ecos:atalhos-editor")); }} className={linha}><Keyboard size={15} />Atalhos do teclado</button>
+        {onHistorico && <button type="button" onClick={() => { setAberto(false); onHistorico(); }} className={linha}><History size={15} className="ecos-menu-icone" />Histórico de versões</button>}
+        {!revisada && <button type="button" onClick={() => { onRevisar(); setAberto(false); }} className={linha}><CheckCircle2 size={15} className="ecos-menu-icone" />Marcar como revisada</button>}
+        <button type="button" onClick={() => { setAberto(false); window.dispatchEvent(new Event("ecos:atalhos-editor")); }} className={linha}><Keyboard size={15} className="ecos-menu-icone" />Atalhos do teclado</button>
         {(onExportarPdf || notaId) && <>{separador}<div className="px-2.5 py-1.5">
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Exportar como</p>
           <div className="flex flex-wrap gap-1">

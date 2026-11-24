@@ -76,11 +76,62 @@ html[data-numerar-titulos] .cm-line[data-num]::before { content: attr(data-num) 
   [data-trilho]:not(.ecos-detail-content [data-trilho]) { padding-left: 32px; }
 }
 
-/* Respiro antes dos títulos (sem tinta: com escrita à mão a altura das linhas não pode mudar).
-   Mais espaço acima que abaixo, para o título abrir a seção seguinte em vez de colar no parágrafo anterior. */
-.ecos-respiro-titulos .cm-line.cm-h1, .ecos-respiro-titulos .cm-line.cm-h2 { padding-top: 18px; padding-bottom: 4px; }
-.ecos-respiro-titulos .cm-line.cm-h3 { padding-top: 12px; padding-bottom: 2px; }
-.ecos-respiro-titulos .cm-line.cm-h4, .ecos-respiro-titulos .cm-line.cm-h5, .ecos-respiro-titulos .cm-line.cm-h6 { padding-top: 8px; }
-.ecos-respiro-titulos .ecos-markdown > :is(h1, h2):not(:first-child) { margin-top: 14px; }
-.ecos-respiro-titulos .ecos-markdown > h3:not(:first-child) { margin-top: 8px; }
-.ecos-respiro-titulos .ecos-markdown > :is(h4, h5, h6):not(:first-child) { margin-top: 4px; }
+/* ─── Medidas por LINHA (editor vivo) ────────────────────────────────────────────────────────────
+   O número central é `--ecos-linha-nota` (px; vem de LINHA_NOTA_PADRAO em lib/linha-nota.ts). Aqui nada é em px:
+   cada coisa ocupa um número inteiro de linhas, então tudo fica sempre no mesmo compasso da grade da folha
+   (pautada, quadriculada, pontilhada). Só vale em `.ecos-grade`; nota que já tinha escrita à mão ao abrir
+   guarda as medidas antigas (a tinta está desenhada sobre elas). */
+.ecos-grade .cm-scroller { line-height: var(--ecos-linha-nota); }
+/* Título: a própria linha tem 1 linha de altura e há exatamente 1 linha de respiro acima (nenhuma abaixo). */
+.ecos-grade .cm-line:is(.cm-h1, .cm-h2, .cm-h3, .cm-h4, .cm-h5, .cm-h6) { line-height: var(--ecos-linha-nota); padding-top: var(--ecos-linha-nota); padding-bottom: 0; }
+.ecos-grade .cm-line:first-child:is(.cm-h1, .cm-h2, .cm-h3, .cm-h4, .cm-h5, .cm-h6) { padding-top: 0; }
+/* Enter em branco = uma linha inteira, sempre (antes a 2ª linha vazia seguida encolhia para 8px). */
+.ecos-grade .cm-line.cm-vazia { height: auto; line-height: var(--ecos-linha-nota); overflow: visible; }
+/* Bloco de código: a abertura e o fecho valem uma linha cada. */
+.ecos-grade .cm-line.cm-bloco-topo, .ecos-grade .cm-line.cm-bloco-fim { height: var(--ecos-linha-nota); line-height: var(--ecos-linha-nota); overflow: hidden; }
+.ecos-grade .cm-cod-copiar { line-height: calc(var(--ecos-linha-nota) - 4px); }
+/* Quebra de página: o tracejado vira fundo (não ocupa altura) e a linha continua sendo 1 linha. */
+.ecos-grade .cm-line.cm-quebra-pagina { margin-top: 0; padding-top: 0; border-top: 0; background: repeating-linear-gradient(90deg, rgb(var(--ecos-text-muted-rgb)) 0 6px, transparent 6px 10px) top left / 100% 1px no-repeat; }
+/* Imagem: sem margem; a altura é arredondada para cima em linhas por EditorVivo (padding-bottom). */
+.ecos-grade .cm-imagem { margin: 0; box-sizing: content-box; }
+/* Citação: 1 linha de ar acima e 1 abaixo. É padding (nunca margem: o CodeMirror erra a altura das linhas com margem vertical
+   e o cursor pula linhas nas setas); a barra lateral vira um fundo que começa e termina só no texto citado. */
+.ecos-grade .cm-line.cm-citacao { border-left: 0; padding-left: 15px; background: linear-gradient(rgb(var(--ecos-steel-500-rgb)), rgb(var(--ecos-steel-500-rgb))) 0 var(--cit-t, 0px) / 3px calc(100% - var(--cit-t, 0px) - var(--cit-b, 0px)) no-repeat; }
+.ecos-grade .cm-line.cm-citacao-topo { --cit-t: var(--ecos-linha-nota); padding-top: var(--ecos-linha-nota); }
+.ecos-grade .cm-line.cm-citacao-fim { --cit-b: var(--ecos-linha-nota); padding-bottom: var(--ecos-linha-nota); }
+.ecos-grade .cm-line.cm-citacao-topo:first-child { --cit-t: 0px; padding-top: 0; }
+/* Bloco de escrita à mão: sem margem. */
+.ecos-grade .cm-escrita { margin: 0; }
+/* Tabela: cada linha da tabela = 1 linha da nota (o texto quebrado ocupa as linhas que precisar), centrado na vertical
+   (as bordas viram sombra interna, que não soma altura). */
+.ecos-grade .cm-editor .cm-tabela-bloco { margin: 0 0 0 -32px; padding-top: var(--ecos-linha-nota); padding-bottom: var(--ecos-linha-nota); }
+.ecos-grade .cm-editor .cm-tabela { line-height: var(--ecos-linha-nota); border: 0; outline: 1px solid rgb(var(--ecos-border-rgb)); outline-offset: -1px; }
+.ecos-grade .cm-editor .cm-tabela th, .ecos-grade .cm-editor .cm-tabela td { padding: 0 12px; height: var(--ecos-linha-nota); vertical-align: middle; border-bottom: 0; box-shadow: inset 0 -1px 0 rgb(var(--ecos-border-rgb)); }
+.ecos-grade .cm-editor .cm-tabela tbody tr:last-child td { box-shadow: none; }
+.ecos-grade .cm-editor .cm-tabela .cm-celula-ativa { box-shadow: inset 0 0 0 2px rgb(var(--ecos-steel-500-rgb)); }
+.ecos-grade .cm-editor .cm-tabela-entrada { height: var(--ecos-linha-nota); line-height: var(--ecos-linha-nota); }
+
+/* Leitura em HTML (MarkdownPreview) também em linhas: nada de px. Entre um bloco e outro vai 1 linha (a linha em branco
+   do Markdown); o título tem 1 linha acima e nada abaixo, como no editor. As imagens são encaixadas por lib/imagem-linha.ts. */
+.ecos-grade .ecos-markdown { gap: 0; line-height: var(--ecos-linha-nota); }
+.ecos-grade .ecos-markdown :where(p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, summary, pre, code, figcaption) { line-height: var(--ecos-linha-nota); }
+.ecos-grade .ecos-markdown > * { margin: 0; }
+.ecos-grade .ecos-markdown > * + * { margin-top: var(--ecos-linha-nota); }
+.ecos-grade .ecos-markdown > :is(h1, h2, h3, h4, h5, h6) + * { margin-top: 0; }
+.ecos-grade .ecos-markdown :is(ul, ol) :is(ul, ol) { margin: 0; }
+.ecos-grade .ecos-markdown > hr { height: var(--ecos-linha-nota); border: 0; background: linear-gradient(rgb(var(--ecos-border-rgb)), rgb(var(--ecos-border-rgb))) center / 100% 1px no-repeat; }
+/* Bloco de código: faixa de cima (rótulo e Copiar) = 1 linha; o miolo em linhas; o fecho = 1 linha. */
+.ecos-grade .ecos-markdown [data-bloco-codigo] { border: 0; outline: 1px solid rgb(var(--ecos-border-rgb)); outline-offset: -1px; }
+.ecos-grade .ecos-markdown [data-bloco-codigo] > div:first-child { height: var(--ecos-linha-nota); padding-block: 0; border-bottom: 0; display: flex; align-items: center; line-height: 1; }
+.ecos-grade .ecos-markdown [data-bloco-codigo] > pre { padding: 0 12px var(--ecos-linha-nota); line-height: var(--ecos-linha-nota); }
+.ecos-grade .ecos-markdown [data-bloco-codigo] code { padding: 0; line-height: var(--ecos-linha-nota); }
+.ecos-grade .ecos-markdown code { line-height: 1; }
+/* Tabela: 1 linha da nota por linha da tabela, centrada (as bordas viram sombra interna, que não soma altura). */
+.ecos-grade .ecos-markdown :is(th, td) { padding: 0 14px; vertical-align: middle; border-bottom: 0; box-shadow: inset 0 -1px 0 rgb(var(--ecos-border-rgb)); }
+.ecos-grade .ecos-markdown tbody tr:last-child :is(td) { box-shadow: none; }
+.ecos-grade .ecos-markdown table { line-height: var(--ecos-linha-nota); }
+/* Figura: sem margens; a legenda ocupa 1 linha. */
+.ecos-grade .ecos-markdown .ecos-figura img { display: block; margin: 0; box-sizing: content-box; }
+.ecos-grade .ecos-markdown .ecos-figura[data-alinhar="centro"] img { margin-inline: auto; }
+.ecos-grade .ecos-markdown .ecos-figura[data-alinhar="direita"] img { margin-left: auto; }
+.ecos-grade .ecos-markdown .ecos-legenda { margin: 0; line-height: var(--ecos-linha-nota); }

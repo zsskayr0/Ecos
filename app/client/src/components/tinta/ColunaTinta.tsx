@@ -38,6 +38,8 @@ interface Props {
   onAlternarCaneta?: () => void;
   /** Desenho da folha atrás da tinta (só no Modo de escrita). */
   estiloFolha?: EstiloFolha;
+  /** Altura de uma linha da nota em px (o passo da grade). Padrão: o número central. Notas antigas com tinta usam 20. */
+  linhaPx?: number;
   children: ReactNode;
 }
 
@@ -50,8 +52,9 @@ const DUPLO_CLIQUE_MS = 500;
 /** Estabilizador: fração do caminho até a ponta da caneta que cada ponto novo percorre (1 = sem filtro). */
 const SUAVIDADE = 0.7;
 
-/** Recuo do texto dentro da coluna: igual em toda tela (editor, Focus, leitura no celular), senão a tinta desalinha. */
-export const CLASSE_TEXTO_COLUNA = "p-4";
+/** Recuo do texto dentro da coluna: igual em toda tela (editor, Focus, leitura no celular), senão a tinta desalinha.
+ *  Topo e pé valem exatamente UMA linha da nota: o texto cai em cima da grade da folha. */
+export const CLASSE_TEXTO_COLUNA = "px-4 py-[var(--ecos-linha-nota)]";
 
 /** Maior ampliação pela pinça (escala final da coluna). */
 export const ESCALA_MAXIMA = 3;
@@ -106,7 +109,7 @@ type Gesto =
   | { tipo: "escalar"; id: number; ox: number; oy: number; r0: number; fator: number }
   | { tipo: "rolagem"; id: number; arrasto: Arrasto };
 
-export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, pincel, dedoDesenha, onOperacao, onAlternarCaneta, estiloFolha = "lisa", children }: Props) {
+export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, pincel, dedoDesenha, onOperacao, onAlternarCaneta, estiloFolha = "lisa", linhaPx, children }: Props) {
   const fora = useRef<HTMLDivElement>(null);
   const dentro = useRef<HTMLDivElement>(null);
   const tela = useRef<HTMLCanvasElement>(null);
@@ -526,7 +529,7 @@ export function ColunaTinta({ largura, tracos, escrevendo, folhaPlana = false, p
   const margem = esquerda / escala;
   return (
     <div ref={fora} className="relative w-full min-w-0 overflow-y-hidden" style={{ ...(escrevendo || folhaPlana ? { background: "var(--ecos-folha, transparent)" } : {}), height: alturaDentro * escala || undefined, overflowX: largura * escala > larguraFora + 1 ? "auto" : "hidden", touchAction: "pan-x pan-y" }} data-coluna-tinta>
-      {(escrevendo || folhaPlana) && estiloFolha !== "lisa" && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ ...desenhoFolha(estiloFolha, escala), backgroundPosition: `${esquerda}px 0` }} />}
+      {(escrevendo || folhaPlana) && estiloFolha !== "lisa" && (() => { const { deslocamentoY, ...desenho } = desenhoFolha(estiloFolha, escala, linhaPx); return <div aria-hidden className="pointer-events-none absolute inset-0" style={{ ...desenho, backgroundPosition: `${esquerda}px ${deslocamentoY}` }} />; })()}
       <div ref={dentro} className="absolute top-0" style={{ width: largura, minHeight: alturaMinima, left: esquerda, transform: escala !== 1 ? `scale(${escala})` : undefined, transformOrigin: "top left" }}>
         {children}
         {escrevendo && <div aria-hidden style={{ height: ESPACO_ESCRITA }} />}

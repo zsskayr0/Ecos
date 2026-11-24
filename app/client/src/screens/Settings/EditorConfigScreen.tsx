@@ -1,7 +1,9 @@
-import { ALargeSmall, Columns3, FileText, Globe2, Link2, ListOrdered, ListTree, Rows3, Scan, Type, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, ALargeSmall, Columns3, FileText, Globe2, Link2, ListOrdered, ListTree, Rows3, Scan, Type, ListChecks, PanelRight, Shapes, SpellCheck2, StickyNote, Timer, Zap } from "lucide-react";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
 import type { FonteNota, FormasEscrita, LarguraNota, MargemPagina, PapelNota } from "@/lib/preferencias-aplicativo";
+import { linhaDasPreferencias } from "@/lib/linha-nota";
 import { Cabecalho, Linha, Secao, Segmentado, Seletor, usePreferencias } from "./campos-config";
 import { IDIOMAS } from "./idiomas";
 
@@ -29,13 +31,16 @@ const TAMANHOS = [
   { valor: "0", rotulo: "Automático", icone: ALargeSmall, cor: TOM.aco },
   ...[13, 14, 15, 16, 18, 20, 22].map((n) => ({ valor: String(n), rotulo: `${n} px`, icone: ALargeSmall, cor: TOM.ciano })),
 ] as const;
-const ENTRELINHAS = [{ id: "0", rotulo: "Auto" }, { id: "1.3", rotulo: "Justa" }, { id: "1.6", rotulo: "Média" }, { id: "2", rotulo: "Dupla" }] as const;
+const LINHAS = [{ id: "20", rotulo: "20" }, { id: "24", rotulo: "24 (padrão)" }, { id: "28", rotulo: "28" }, { id: "32", rotulo: "32" }] as const;
 const PAPEIS = [{ id: "desligado", rotulo: "Desligado" }, { id: "a4", rotulo: "A4" }, { id: "carta", rotulo: "Carta" }] as const satisfies readonly { id: PapelNota; rotulo: string }[];
 const MARGENS = [{ id: "estreita", rotulo: "Estreita" }, { id: "normal", rotulo: "Normal" }, { id: "larga", rotulo: "Larga" }] as const satisfies readonly { id: MargemPagina; rotulo: string }[];
 
 /** O ato de escrever, em notas e em tarefas: captura rápida, modo Focus, ortografia, links e caneta. */
 export function EditorConfigScreen() {
   const [prefs, alterar] = usePreferencias();
+  // Mudar a linha desloca o texto e deixa a escrita à mão para trás: só vale depois de confirmar.
+  const [linhaPendente, setLinhaPendente] = useState<number | null>(null);
+  const linhaAtual = linhaDasPreferencias(prefs);
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -54,9 +59,19 @@ export function EditorConfigScreen() {
         <Linha Icone={ALargeSmall} titulo="Tamanho do texto" descricao="Automático usa 14 px no computador e 16 px no celular.">
           <Seletor valor={String(prefs.notaTamanho) as (typeof TAMANHOS)[number]["valor"]} opcoes={TAMANHOS} onChange={(v) => alterar({ notaTamanho: Number(v) })} label="Tamanho do texto" />
         </Linha>
-        <Linha Icone={Rows3} titulo="Entrelinha" descricao="Espaço entre as linhas do texto.">
-          <Segmentado valor={(ENTRELINHAS.find((e) => Number(e.id) === prefs.notaEntrelinha)?.id ?? "0") as (typeof ENTRELINHAS)[number]["id"]} opcoes={ENTRELINHAS} onChange={(v) => alterar({ notaEntrelinha: Number(v) })} label="Entrelinha" />
+        <Linha Icone={Rows3} titulo="Linha da nota" descricao="A altura de uma linha, em px. É a medida de tudo na nota: o texto, o espaço dos títulos, o Enter em branco, as imagens e a grade da folha (pautada, quadriculada e pontilhada).">
+          <Segmentado valor={String(linhaAtual) as (typeof LINHAS)[number]["id"]} opcoes={LINHAS} onChange={(v) => { const n = Number(v); if (n !== linhaAtual) setLinhaPendente(n); }} label="Linha da nota" />
         </Linha>
+        {linhaPendente !== null && (
+          <div role="alertdialog" aria-label="Mudar a linha da nota" className="mx-4 mb-3 flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-secondary">
+            <p className="flex items-start gap-2"><AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+              <span>Mudar a linha de {linhaAtual} para {linhaPendente} px move o texto de todas as notas. A escrita à mão fica no lugar em que foi desenhada, então vai desalinhar do texto e da grade, e pode ficar mais difícil de ler. O texto e os arquivos não mudam, e dá para voltar ao valor anterior quando quiser.</span></p>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="h-8 rounded-lg px-3 text-xs font-medium text-text-secondary hover:bg-surface-3" onClick={() => setLinhaPendente(null)}>Cancelar</button>
+              <button type="button" className="h-8 rounded-lg bg-warning/20 px-3 text-xs font-medium text-text-primary hover:bg-warning/30" onClick={() => { alterar({ notaLinha: linhaPendente }); setLinhaPendente(null); }}>Mudar para {linhaPendente} px</button>
+            </div>
+          </div>
+        )}
       </Secao>
 
       <Secao titulo="Modo página">

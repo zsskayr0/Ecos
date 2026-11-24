@@ -1,3 +1,4 @@
+import { dimensoesLembradas, encaixarImagemEmLinhas } from "@/lib/imagem-linha";
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range } from "@codemirror/state";
 import { sumarioEditor } from "./sumario-editor";
@@ -12,6 +13,7 @@ import { tags as t } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 import { autocompletarWikilink, type OpcoesWikilink } from "./wikilink-autocompletar";
 import { tabelas } from "./tabela-widget";
+import { rolagemSuave } from "./rolagem-suave";
 import { matematica, temaMatematica } from "./matematica-widget";
 import { blocosEscrita, temaEscrita } from "./escrita-widget";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
@@ -87,8 +89,17 @@ class ImagemWidget extends WidgetType {
       img.replaceWith(falha);
     });
     img.addEventListener("mousedown", (e) => { e.preventDefault(); view.dispatch({ selection: { anchor: this.de } }); view.focus(); });
+    // Notas medidas em linhas (`.ecos-grade`): a imagem ocupa sempre linhas inteiras e nunca cresce (lib/imagem-linha.ts).
+    // Imagem já vista: reserva o lugar com o tamanho lembrado antes de ela carregar, para a tela não pular ao rolar.
+    const encaixar = () => { if (encaixarImagemEmLinhas(img, img.parentElement ?? view.contentDOM, dimensoesLembradas(this.url), view.contentDOM)) view.requestMeasure(); };
+    img.addEventListener("load", encaixar);
+    queueMicrotask(encaixar);
+    const obs = typeof ResizeObserver === "function" ? new ResizeObserver(encaixar) : null;
+    obs?.observe(view.contentDOM);
+    (img as HTMLImageElement & { __obs?: ResizeObserver | null }).__obs = obs;
     return img;
   }
+  destroy(dom: HTMLElement) { (dom as HTMLElement & { __obs?: ResizeObserver | null }).__obs?.disconnect(); }
   ignoreEvent() { return true; }
 }
 
@@ -268,7 +279,7 @@ function montarDecoracoes(view: EditorView): DecorationSet {
         case "Blockquote": {
           const a = state.doc.lineAt(no.from).number;
           const b = state.doc.lineAt(no.to).number;
-          for (let n = a; n <= b; n++) decos.push(Decoration.line({ class: "cm-citacao" }).range(state.doc.line(n).from));
+          for (let n = a; n <= b; n++) decos.push(Decoration.line({ class: `cm-citacao${n === a ? " cm-citacao-topo" : ""}${n === b ? " cm-citacao-fim" : ""}` }).range(state.doc.line(n).from));
           return;
         }
         case "QuoteMark":
@@ -446,7 +457,7 @@ const tema = EditorView.theme({
   ".cm-neg": { fontWeight: "700" },
   ".cm-ita": { fontStyle: "italic" },
   ".cm-tach": { textDecoration: "line-through", opacity: "0.7" },
-  ".cm-cod": { fontFamily: "\"IBM Plex Mono\", monospace", fontSize: "13.5px", background: "rgb(var(--ecos-surface-3-rgb))", borderRadius: "4px", padding: "1px 4px" },
+  ".cm-cod": { fontFamily: "\"IBM Plex Mono\", monospace", fontSize: "13.5px", lineHeight: "1", background: "rgb(var(--ecos-surface-3-rgb))", borderRadius: "4px", padding: "1px 4px" },
   ".cm-bloco-cod": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "0.9em", background: "rgb(var(--ecos-surface-2-rgb))" },
   ".cm-citacao": { borderLeft: "3px solid rgb(var(--ecos-steel-500-rgb))", paddingLeft: "12px", color: "rgb(var(--ecos-text-secondary-rgb))" },
   ".cm-link, .cm-wikilink": { color: "rgb(var(--ecos-steel-300-rgb))", textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },
@@ -522,6 +533,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         plugin,
         sumarioEditor,
         tabelas,
+        rolagemSuave,
         matematica,
         temaMatematica,
         blocosEscrita,

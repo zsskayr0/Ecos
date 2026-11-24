@@ -1,3 +1,5 @@
+import { separarTextoColadoNaTabela } from "@/lib/tabela-colada";
+import { dimensoesLembradas, encaixarImagemEmLinhas } from "@/lib/imagem-linha";
 import ReactMarkdown from "react-markdown";
 import { alturaNaLinguagem, lerBlocoEscrita, svgEscrita } from "@/lib/escrita-bloco";
 import { numerarTitulosLigado, remarkSumario } from "@/lib/sumario";
@@ -208,7 +210,8 @@ function Figura({ src, alt, title, itemId, tipo, width }: { src?: string; alt?: 
   return (
     <span className="ecos-figura" data-alinhar={alinhar} >
       {/* eslint-disable-next-line jsx-a11y/alt-text -- alt vem do próprio Markdown */}
-      <img src={resolverSrcImagem(src, itemId, tipo)} alt={texto} className="max-w-full rounded-xl" style={w ? { width: w } : undefined} loading="lazy" />
+      <img src={resolverSrcImagem(src, itemId, tipo)} alt={texto} className="max-w-full rounded-xl" style={w ? { width: w } : undefined} loading="lazy"
+        ref={(el) => { if (el && !el.dataset.encaixe) { el.dataset.encaixe = "1"; const f = () => encaixarImagemEmLinhas(el, el.closest<HTMLElement>(".ecos-figura"), dimensoesLembradas(el.currentSrc || el.src)); el.addEventListener("load", f); queueMicrotask(f); if (typeof ResizeObserver === "function" && el.parentElement) new ResizeObserver(f).observe(el.parentElement); } }} />
       {title && <span className="ecos-legenda">{title}</span>}
     </span>
   );
@@ -295,7 +298,7 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
           ),
         }}
       >
-        {alturaNaLinguagem(normalizarDelimitadores(semQuebrasDePagina(corpo)))}
+        {alturaNaLinguagem(normalizarDelimitadores(separarTextoColadoNaTabela(semQuebrasDePagina(corpo))))}
       </ReactMarkdown>
     </div>
   );

@@ -11,6 +11,7 @@
  */
 import { defaultUrlTransform } from "react-markdown";
 import { gerarD } from "@/lib/tinta/geometria";
+import { linhaNotaAtual } from "@/lib/linha-nota";
 import type { Ferramenta, PontoTinta } from "@/lib/tinta/tipos";
 
 /** Largura lógica da folha do bloco: as coordenadas valem igual em qualquer tela (a folha é escalada). */
@@ -18,8 +19,8 @@ export const LARGURA_ESCRITA = 700;
 export const ALTURA_ESCRITA_PADRAO = 240;
 export const ALTURA_ESCRITA_MIN = 80;
 export const ALTURA_ESCRITA_MAX = 2400;
-/** Lado do quadriculado, em px da folha. */
-export const PASSO_GRADE = 28;
+/** Lado do quadriculado, em px da folha: uma linha da nota (o número central). */
+export const passoGrade = () => linhaNotaAtual();
 
 export interface TracoEscrita { ferramenta: Ferramenta; cor: string; espessura: number; pontos: PontoTinta[]; d: string }
 export interface BlocoEscrita { altura: number; tracos: TracoEscrita[] }
@@ -71,7 +72,7 @@ export function escreverBlocoEscrita(b: BlocoEscrita): string {
 export function svgEscrita(b: BlocoEscrita, opcoes: { corTinta: string; grade?: string | null; fundo?: string | null }): string {
   const { corTinta, grade, fundo } = opcoes;
   const esc = (s: string) => s.replace(/[<>&"]/g, "");
-  const defs = grade ? `<defs><pattern id="g" width="${PASSO_GRADE}" height="${PASSO_GRADE}" patternUnits="userSpaceOnUse"><path d="M ${PASSO_GRADE} 0 L 0 0 0 ${PASSO_GRADE}" fill="none" stroke="${esc(grade)}" stroke-opacity="0.1" stroke-width="1"/></pattern></defs>` : "";
+  const defs = grade ? `<defs><pattern id="g" width="${passoGrade()}" height="${passoGrade()}" patternUnits="userSpaceOnUse"><path d="M ${passoGrade()} 0 L 0 0 0 ${passoGrade()}" fill="none" stroke="${esc(grade)}" stroke-opacity="0.1" stroke-width="1"/></pattern></defs>` : "";
   const fundos = (fundo ? `<rect width="100%" height="100%" fill="${esc(fundo)}"/>` : "") + (grade ? `<rect width="100%" height="100%" fill="url(#g)"/>` : "");
   const tracos = b.tracos.map((t) => {
     const cor = esc(t.cor === "auto" ? corTinta : t.cor);
@@ -129,8 +130,8 @@ function pngEscrita(b: BlocoEscrita): string | null {
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, LARGURA_ESCRITA, b.altura);
     ctx.strokeStyle = "#e3e6ea"; ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = PASSO_GRADE; x < LARGURA_ESCRITA; x += PASSO_GRADE) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, b.altura); }
-    for (let y = PASSO_GRADE; y < b.altura; y += PASSO_GRADE) { ctx.moveTo(0, y + 0.5); ctx.lineTo(LARGURA_ESCRITA, y + 0.5); }
+    for (let x = passoGrade(); x < LARGURA_ESCRITA; x += passoGrade()) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, b.altura); }
+    for (let y = passoGrade(); y < b.altura; y += passoGrade()) { ctx.moveTo(0, y + 0.5); ctx.lineTo(LARGURA_ESCRITA, y + 0.5); }
     ctx.stroke();
     desenharEscrita(ctx, b.tracos, "#111111", false);
     const url = c.toDataURL("image/png");

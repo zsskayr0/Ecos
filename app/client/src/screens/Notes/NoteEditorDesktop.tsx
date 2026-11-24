@@ -7,9 +7,10 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
-import { AlertTriangle, Archive, ArchiveRestore, CheckCircle2, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2, FileDown, PanelRight, X, ListTree } from "lucide-react";
+import { removerEspacosEmBranco } from "@/lib/limpar-espacos";
+import { AlertTriangle, Archive, ArchiveRestore, CheckCircle2, Eraser, Copy, FileX, PanelRightClose, PanelRightOpen, Trash2, FileDown, PanelRight, X, ListTree } from "lucide-react";
 import { alternarSumarioLateral, reiniciarSumarioLateral, useSumarioLateralAberto } from "@/components/editor/sumario-lateral-estado";
-import { AcoesFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
+import { AcoesFocusContext, AcoesEsquerdaFocusContext, AcoesJanelaContext, ModoFocusDocumentoContext, PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
 import { ApiError, lixeira, notas, type AtualizarNotaPayload } from "@/lib/api";
 import { guardarRascunhoNota, lerRascunhoNota, removerRascunhoNota, type RascunhoNota } from "@/lib/offline-store";
 import { cabeNoKeepalive, lerConflito, quedaSuspeita, type NotaNoServidor } from "@/lib/nota-sincronia";
@@ -100,6 +101,9 @@ export function NoteEditorDesktop() {
   const montagemPainel = useContext(PainelFocusTarefaContext);
   const acoesFocus = useContext(AcoesFocusContext);
   const acoesJanela = useContext(AcoesJanelaContext);
+  const acoesEsquerdaFocus = useContext(AcoesEsquerdaFocusContext);
+  // Depois de "Remover espaços em branco": uma borracha balança um instante no cabeçalho (no lugar de um aviso).
+  const [borracha, setBorracha] = useState(false);
   const [nota, setNota] = useState<NotaApi | null>(null);
   const [naoEncontrada, setNaoEncontrada] = useState(false);
   const [falhaCarga, setFalhaCarga] = useState<string | null>(null);
@@ -416,8 +420,10 @@ export function NoteEditorDesktop() {
     semRodape={noPainel}
     acoes={modoFocus ? (fechar) => <>
       <BotaoCopiarCaminho variante="linha" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />
-      <button type="button" onClick={() => { fechar(); void duplicar(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={16} />Duplicar nota</button>
-      <button type="button" onClick={() => { fechar(); void alternarArquivada(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={16} /> : <Archive size={16} />}{nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"}</button>
+      <button type="button" onClick={() => { fechar(); void duplicar(); }} className="ecos-menu-item flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={16} className="ecos-menu-icone" />Duplicar nota</button>
+      <button type="button" onClick={() => { fechar(); void alternarArquivada(); }} className="ecos-menu-item flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={16} className="ecos-menu-icone" /> : <Archive size={16} className="ecos-menu-icone" />}{nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"}</button>
+      <button type="button" onClick={() => { fechar(); const limpo = removerEspacosEmBranco(valor.corpo); if (limpo !== valor.corpo) { mudar({ corpo: limpo }); setBorracha(true); window.setTimeout(() => setBorracha(false), 1400); } }} className="ecos-menu-item flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Eraser size={16} className="ecos-menu-icone" />Remover espaços em branco</button>
+      <button type="button" onClick={() => { fechar(); setConfirmandoDelete(true); }} className="ecos-menu-item flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-error/40 px-3 text-sm text-error transition-colors hover:bg-error/10 disabled:opacity-40"><Trash2 size={16} className="ecos-menu-icone" />Apagar nota</button>
     </> : undefined}
     anexos={noPainel ? undefined : <AttachmentsField tipo="nota" espaco={valor.espaco} itemId={id} corpo={valor.corpo} onCorpoChange={(corpo) => mudar({ corpo })} onBusyChange={setEnviandoAnexo} compact />} />;
   const rotuloSumario = sumarioAberto ? "Fechar sumário" : "Abrir sumário";
@@ -425,11 +431,17 @@ export function NoteEditorDesktop() {
   return (
     <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>
       {!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />, acoesJanela)}
+      {modoFocus && acoesEsquerdaFocus && createPortal(
+        <>
+          <span title={valor.pasta ? `Pasta: ${valor.pasta}` : "Sem pasta"} className="max-w-[28rem] truncate text-xs text-text-muted">{valor.pasta ? valor.pasta.split("/").filter(Boolean).join(" › ") : "Sem pasta"}</span>
+          {borracha && <Eraser size={16} role="img" aria-label="Espaços em branco removidos" className="ecos-borracha ml-2 shrink-0 text-text-secondary" />}
+        </>,
+        acoesEsquerdaFocus,
+      )}
       {modoFocus && acoesFocus && createPortal(
         <>
-          <span aria-live="polite" title={estado} className={`mr-1 max-w-40 truncate text-[11px] ${erro || conflito ? "text-error" : "text-text-muted"}`}>{enviandoAnexo ? "Enviando anexo…" : estado}</span>
+          <span aria-live="polite" title={estado} className={`mr-1 max-w-40 truncate text-xs ${erro || conflito ? "text-error" : "text-text-secondary"}`}>{enviandoAnexo ? "Enviando anexo…" : estado}</span>
           {opcoesNota("flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary")}
-          <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-error/15 disabled:opacity-40"><Trash2 size={15} /></button>
           <span aria-hidden className="mx-1 h-4 w-px bg-border" />
           <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary aria-pressed:text-text-primary"><ListTree size={15} /></button>
           <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={rotuloPainel} title={rotuloPainel} className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary">{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>
@@ -439,7 +451,10 @@ export function NoteEditorDesktop() {
       )}
       {noPainel && id && createPortal(
         <aside aria-label="Opções da nota" className="flex min-w-0 flex-col gap-6">
-          <h2 className="font-display text-lg font-semibold text-text-primary">Opções</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold text-text-primary">Detalhes</h2>
+            <button type="button" onClick={painelFocus.alternar} aria-label="Fechar painel lateral" title="Fechar painel lateral" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>
+          </div>
           <div className="border-t border-border pt-6 empty:hidden"><NotasLaterais corpo={valor.corpo} /></div>
           <section className="space-y-4 border-t border-border pt-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
@@ -458,7 +473,7 @@ export function NoteEditorDesktop() {
         </aside>,
         montagemPainel!,
       )}
-      <div className="ecos-detail-content">
+      <div className={acoesJanela ? "ecos-detail-content !pt-3" : "ecos-detail-content"}>
         {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
         {semRascunhoLocal && <div role="status" className="mb-5 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-primary"><AlertTriangle size={17} className="mt-0.5 shrink-0 text-warning" />Não foi possível guardar o rascunho neste aparelho. Evite fechar a nota antes de aparecer “Salvo”.</div>}
         {conflito && <ConflitoNota servidor={conflito} meuTitulo={valor.titulo} meuCorpo={valor.corpo} ocupado={salvando} onManterMeu={manterMeu} onUsarServidor={usarServidor} />}

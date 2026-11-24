@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, type LucideIcon } from "lucide-react";
+import { GrupoDeslizante } from "@/components/common/GrupoDeslizante";
 import { TimePicker } from "@/components/common/TimePicker";
 import { MenuSuspenso, type OpcaoMenu } from "@/components/common/MenuSuspenso";
 import { lerPreferenciasAplicativo, salvarPreferenciasAplicativo, type PreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
@@ -52,13 +53,13 @@ export function Seletor<T extends string>({ valor, opcoes, onChange, label }: { 
 /** Duas ou três opções lado a lado, no mesmo desenho do seletor de visualização. */
 export function Segmentado<T extends string>({ valor, opcoes, onChange, label }: { valor: T; opcoes: readonly { id: T; rotulo: string; Icone?: LucideIcon }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div className="flex shrink-0 rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label={label}>
+    <GrupoDeslizante className="flex shrink-0 rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label={label}>
       {opcoes.map(({ id, rotulo, Icone }) => (
-        <button key={id} type="button" aria-pressed={valor === id} onClick={() => onChange(id)} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${valor === id ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-secondary"}`}>
+        <button key={id} type="button" aria-pressed={valor === id} onClick={() => onChange(id)} className={`relative z-10 flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${valor === id ? "text-text-primary" : "text-text-muted hover:text-text-secondary"}`}>
           {Icone && <Icone size={15} strokeWidth={1.75} />}{rotulo}
         </button>
       ))}
-    </div>
+    </GrupoDeslizante>
   );
 }
 

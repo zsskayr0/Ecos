@@ -34,3 +34,18 @@ describe("escreverTabela e preencherCelula", () => {
     expect(el.querySelectorAll("a")[1].hasAttribute("href")).toBe(false);
   });
 });
+
+describe("larguras das colunas nos traços", () => {
+  it("tabela padrão (3 traços) não tem larguras e é gravada igual", async () => {
+    const { lerTabela, escreverTabela } = await import("./tabela-widget");
+    const t = lerTabela("| a | b |\n| --- | --- |\n| 1 | 2 |")!;
+    expect(t.larguras).toBeUndefined();
+    expect(escreverTabela(t)).toBe("| a | b |\n| --- | --- |\n| 1 | 2 |");
+  });
+  it("traços a mais viram largura (8px cada) e voltam iguais", async () => {
+    const { lerTabela, escreverTabela } = await import("./tabela-widget");
+    const t = lerTabela("| a | b |\n| ------------------ | :---: |\n| 1 | 2 |")!;
+    expect(t.larguras).toEqual([18 * 8, 8 * 0 + 24]);
+    expect(escreverTabela(t).split("\n")[1]).toBe("| ------------------ | :---: |");
+  });
+});

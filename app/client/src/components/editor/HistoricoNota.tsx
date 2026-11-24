@@ -59,7 +59,7 @@ export function HistoricoNota({ notaId, aberto, onFechar, onRestaurada }: Props)
   if (!aberto) return null;
   return createPortal(
     <div role="dialog" aria-modal aria-labelledby={titulo} onMouseDown={(e) => { if (e.target === e.currentTarget && !ocupado) onFechar(); }}
-      className="fixed inset-0 z-[61] flex items-center justify-center bg-black/40 p-4 backdrop-blur-md">
+      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-md">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-4 overflow-hidden rounded-2xl border border-steel-400/25 bg-surface-1 p-5 shadow-[0_24px_64px_rgb(0_0_0/0.5)]">
         <div className="flex items-center justify-between gap-3">
           <h2 id={titulo} className="flex items-center gap-2 font-display text-lg font-semibold text-text-primary">
