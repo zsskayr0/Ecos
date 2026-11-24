@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArrowDownLeft, ArrowUpRight, CheckCircle2, ExternalLink, FileText, Globe, Locate, Minus, Plus, Scan } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useVisorZoom } from "@/lib/use-visor-zoom";
+import { ArrowDownLeft, ArrowUpRight, CheckCircle2, ExternalLink, FileText, Globe, Hash, Locate, Minus, Plus, Scan } from "lucide-react";
 
 export type LadoMapa = "entrada" | "saida" | "externo";
 
@@ -17,6 +18,8 @@ export interface NoMapa {
 
 interface Props {
   centro: { tipo: "nota" | "tarefa"; titulo: string };
+  /** Tags do item: ficam num recipiente acima dele, ligado por uma linha só. */
+  tags?: string[];
   nos: NoMapa[];
   aoAbrir: (no: NoMapa, e: MouseEvent) => void;
   /** "Ver onde está": abre o documento onde a conexão aparece e rola até o trecho. */
@@ -38,6 +41,11 @@ const botaoFoco = "focus-visible:outline focus-visible:outline-2 focus-visible:o
 const atrasoLinha = (ordem: number) => ordem * 65;
 
 const CENTRO = "__centro";
+const TAGS = "__tags";
+/** Quantas tags aparecem no recipiente; o resto vira "+N". */
+const MAX_TAGS = 10;
+/** Acima disto, o lado vira um bloco em grade em vez de uma coluna comprida. */
+const LIMITE_GRUPO = 8;
 const ESCALA_MIN = 0.3;
 const ESCALA_MAX = 2.5;
 /** Escala ao centralizar um item clicado. */
@@ -47,10 +55,6 @@ const LINHA_FOCO = 0.5;
 /** Dois cliques no mesmo ponto dentro deste prazo (ms) abrem o item, mesmo com o mapa ainda deslizando. */
 const PRAZO_DUPLO = 450;
 
-interface Vista { x: number; y: number; s: number }
-
-const limitar = (s: number) => Math.min(ESCALA_MAX, Math.max(ESCALA_MIN, s));
-const semMovimento = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Posição e tamanho no layout do mapa, sem influência do zoom (offset*, não getBoundingClientRect). */
 function caixa(el: HTMLElement, raiz: HTMLElement) {
@@ -121,20 +125,22 @@ function useTelaGrande() {
  * centraliza e aproxima até ele, e o clique duplo (ou o botão de abrir do cartão) abre. As linhas são medidas pelo layout
  * (independente do zoom). No celular as colunas empilham e as linhas somem.
  */
-export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }: Props) {
+export function MapaConexoes({ centro, tags = [], nos, aoAbrir, aoVerOnde, aoAbrirCentro }: Props) {
   const comZoom = useTelaGrande();
-  const visor = useRef<HTMLDivElement>(null);
-  const raiz = useRef<HTMLDivElement>(null);
-  const centroEl = useRef<HTMLButtonElement>(null);
-  const cartoes = useRef(new Map<string, HTMLElement>());
-  const vista = useRef<Vista>({ x: 0, y: 0, s: 1 });
-  const mexeu = useRef(false);
-  const fimTransicao = useRef(0);
-  const [linhas, setLinhas] = useState<{ chave: string; lado: LadoMapa; d: string; fim: [number, number] }[]>([]);
   const [ativa, setAtiva] = useState<string | null>(null);
   const [foco, setFoco] = useState<string | null>(null);
+  // Zoom, arrasto, pinça (toque), caneta e roda vêm do hook; o mapa só diz o que não deve iniciar arrasto.
+  const { visor, mundo: raiz, mexeu, percentual, ajustar, centralizar, zoomNoCentro, aoPressionar, aoMover, aoSoltar } = useVisorZoom({
+    ativo: comZoom, escalaMin: ESCALA_MIN, escalaMax: ESCALA_MAX,
+    ignorar: "[data-lado],[data-centro],[data-tags],button,a",
+    aoMexer: () => { setFoco(null); setAtiva(null); },
+    aoToqueFundo: () => setFoco(null),
+  });
+  const centroEl = useRef<HTMLButtonElement>(null);
+  const tagsEl = useRef<HTMLDivElement>(null);
+  const cartoes = useRef(new Map<string, HTMLElement>());
+  const [linhas, setLinhas] = useState<{ chave: string; lado: LadoMapa | "tags"; d: string; fim: [number, number] }[]>([]);
   const ultimoClique = useRef<{ chave: string; t: number; x: number; y: number } | null>(null);
-  const [percentual, setPercentual] = useState(100);
 
   const registrar = useCallback((chave: string, el: HTMLElement | null) => { if (el) cartoes.current.set(chave, el); else cartoes.current.delete(chave); }, []);
 
@@ -162,6 +168,12 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
       }
       saida.push({ chave, lado, d, fim: [x2, y2] });
     }
+    // Tags: uma linha só, do recipiente (em cima) até o item.
+    const t = tagsEl.current;
+    if (t) {
+      const B = caixa(t, r), x = B.x + B.w / 2, y1 = B.y + B.h, y2 = C.y;
+      saida.push({ chave: TAGS, lado: "tags", d: `M${x},${y1} L${cx},${y2}`, fim: [cx, y2] });
+    }
     setLinhas(saida);
   }, []);
 
@@ -172,7 +184,7 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
     const obs = new ResizeObserver(medir);
     obs.observe(r);
     return () => obs.disconnect();
-  }, [medir, nos, comZoom]);
+  }, [medir, nos, tags, comZoom]);
 
   // A entrada do painel só desloca (sem escala), então a medida já vale desde o primeiro quadro: as linhas
   // começam logo, no primeiro frame depois da montagem, em vez de esperar o painel assentar.
@@ -182,77 +194,23 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
     return () => cancelAnimationFrame(id);
   }, [medir]);
 
-  /** Escreve a vista direto no DOM (sem re-render); `ms` > 0 anima com a curva suave do Ecos. */
-  const aplicar = useCallback((v: Vista, ms: number) => {
-    const el = raiz.current;
-    if (!el) return;
-    const dur = semMovimento() ? 0 : ms;
-    vista.current = v;
-    el.style.transition = dur ? `transform ${dur}ms cubic-bezier(.22,1,.36,1)` : "none";
-    // Camada própria só durante o movimento; depois o navegador redesenha o texto nítido na escala final.
-    // Com dur = 0 (arrasto) não mexe: o arrasto mantém a camada enquanto dura.
-    if (dur) el.style.willChange = "transform";
-    el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`;
-    window.clearTimeout(fimTransicao.current);
-    if (dur) fimTransicao.current = window.setTimeout(() => { el.style.willChange = ""; }, dur + 80);
-    setPercentual(Math.round(v.s * 100));
-  }, []);
-
-  /** Enquadra tudo no visor (zoom para caber, centralizado). */
-  const ajustar = useCallback((ms: number) => {
-    const vp = visor.current, w = raiz.current;
-    if (!vp || !w) return;
-    const vw = vp.clientWidth, vh = vp.clientHeight, ww = w.offsetWidth, wh = w.offsetHeight;
-    if (!vw || !vh || !ww || !wh) return;
-    // Piso de 55% no enquadramento: com dezenas de itens é melhor caber no tamanho legível e arrastar do que virar um risco.
-    const s = limitar(Math.max(0.55, Math.min(1, vw / ww, vh / wh)));
-    aplicar({ s, x: (vw - ww * s) / 2, y: Math.max(0, (vh - wh * s) / 2) }, ms);
-  }, [aplicar]);
-
   useLayoutEffect(() => {
     if (!comZoom) return;
-    if (!mexeu.current) ajustar(0);
+    if (!mexeu.current) ajustar(0, 0.55);
     const vp = visor.current;
     if (!vp || typeof ResizeObserver === "undefined") return;
-    const obs = new ResizeObserver(() => { if (!mexeu.current) ajustar(0); });
+    const obs = new ResizeObserver(() => { if (!mexeu.current) ajustar(0, 0.55); });
     obs.observe(vp);
     return () => obs.disconnect();
   }, [comZoom, nos, ajustar]);
 
-  /** Aproxima/afasta mantendo o ponto (px, py) do visor parado. */
-  const zoomEm = useCallback((px: number, py: number, fator: number, ms: number) => {
-    const { x, y, s } = vista.current;
-    const s2 = limitar(s * fator);
-    if (s2 === s) return;
-    mexeu.current = true;
-    setFoco(null);
-    aplicar({ s: s2, x: px - (px - x) * (s2 / s), y: py - (py - y) * (s2 / s) }, ms);
-  }, [aplicar]);
-
-  // A roda precisa de listener não passivo para impedir a rolagem da janela por baixo.
-  useEffect(() => {
-    const vp = visor.current;
-    if (!comZoom || !vp) return;
-    const roda = (e: WheelEvent) => {
-      e.preventDefault();
-      const r = vp.getBoundingClientRect();
-      zoomEm(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016), 120);
-    };
-    vp.addEventListener("wheel", roda, { passive: false });
-    return () => vp.removeEventListener("wheel", roda);
-  }, [comZoom, zoomEm]);
-
   /** Centraliza o item, no meio do visor, aproximando com zoom suave. */
   function focar(chave: string) {
     setFoco(chave);
-    const vp = visor.current, r = raiz.current;
-    const el = chave === CENTRO ? centroEl.current : cartoes.current.get(chave);
-    if (!comZoom || !vp || !r || !el) return;
-    const b = caixa(el, r);
-    const vw = vp.clientWidth, vh = vp.clientHeight;
-    const s = limitar(Math.max(vista.current.s, ESCALA_FOCO));
-    mexeu.current = true;
-    aplicar({ s, x: vw / 2 - (b.x + b.w / 2) * s, y: vh * LINHA_FOCO - (b.y + b.h / 2) * s }, 560);
+    const r = raiz.current;
+    const el = chave === CENTRO ? centroEl.current : chave === TAGS ? tagsEl.current : cartoes.current.get(chave);
+    if (!comZoom || !r || !el) return;
+    centralizar(caixa(el, r), { escala: Math.max(1, ESCALA_FOCO), linha: LINHA_FOCO, ms: 560 });
   }
 
   const limparFoco = () => setFoco(null);
@@ -286,36 +244,26 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
     if (no) abrirDireto(no, e);
   }
 
-  // Arrastar o fundo move o mapa; um toque no fundo (sem arrastar) tira o destaque.
-  const arrasto = useRef<{ px: number; py: number; x: number; y: number; moveu: boolean } | null>(null);
-  function aoPressionar(e: ReactPointerEvent<HTMLDivElement>) {
-    if (!comZoom || e.button !== 0 || (e.target as HTMLElement).closest("[data-lado],[data-centro],[data-controles],button,a")) return;
-    arrasto.current = { px: e.clientX, py: e.clientY, x: vista.current.x, y: vista.current.y, moveu: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function aoMover(e: ReactPointerEvent<HTMLDivElement>) {
-    const a = arrasto.current;
-    if (!a) return;
-    const dx = e.clientX - a.px, dy = e.clientY - a.py;
-    if (!a.moveu && Math.hypot(dx, dy) < 4) return;
-    if (!a.moveu) {
-      a.moveu = true; mexeu.current = true; limparFoco(); setAtiva(null);
-      // Arrastando, o mapa é só uma camada que se desloca: sem hover reagindo por baixo e sem redesenhar o texto a cada passo.
-      const r = raiz.current;
-      if (r) { window.clearTimeout(fimTransicao.current); r.style.pointerEvents = "none"; r.style.willChange = "transform"; }
-    }
-    aplicar({ ...vista.current, x: a.x + dx, y: a.y + dy }, 0);
-  }
-  function aoSoltar() {
-    const a = arrasto.current;
-    arrasto.current = null;
-    if (a?.moveu) { const r = raiz.current; if (r) { r.style.pointerEvents = ""; r.style.willChange = ""; } }
-    else if (a) limparFoco();
-  }
-
   const ordemDe = useMemo(() => new Map(nos.map((n, i) => [n.chave, Math.min(i, 12)])), [nos]);
   const por = (lado: LadoMapa) => nos.filter((n) => n.lado === lado);
   const entrada = por("entrada"), saida = por("saida"), externos = por("externo");
+  // Muitos itens num lado: em vez de uma coluna enorme, um bloco em grade (até 3 colunas) com uma linha só até ele.
+  const agrupa = { entrada: comZoom && entrada.length > LIMITE_GRUPO, saida: comZoom && saida.length > LIMITE_GRUPO };
+  const colunasDe = (n: number) => Math.min(3, Math.ceil(n / 10));
+  const larguraDe = (agrupado: boolean, n: number) => (agrupado ? `${colunasDe(n) * 16 + (colunasDe(n) - 1) * 0.625}rem` : "18rem");
+  const colunasGrade = `${larguraDe(agrupa.entrada, entrada.length)} 15rem ${larguraDe(agrupa.saida, saida.length)}`;
+  const lista = (lado: "entrada" | "saida", itens: NoMapa[], vazio: string, Icone: typeof ArrowUpRight, texto: string, ordem: string, rotulo: string) => {
+    const agrupado = agrupa[lado];
+    return (
+      <div role="group" aria-label={rotulo}
+        className={`flex min-w-0 flex-col gap-2.5 ${ordem}`}>
+        {titulo(Icone, texto, itens.length)}
+        {itens.length ? (agrupado
+          ? <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${colunasDe(itens.length)}, minmax(0, 1fr))` }}>{itens.map(cartao)}</div>
+          : itens.map(cartao)) : <Vazio>{vazio}</Vazio>}
+      </div>
+    );
+  };
   const CentroIcone = ICONE[centro.tipo];
   const alvo = foco && foco !== CENTRO ? foco : ativa;
   const cartao = (n: NoMapa) => <Cartao key={n.chave} no={n} ordem={ordemDe.get(n.chave) ?? 0} pronto={pronto} ativo={alvo === n.chave} aoAtivar={setAtiva} registrar={registrar} aoSelecionar={selecionar} aoAbrir={aoAbrir} aoVerOnde={aoVerOnde} />;
@@ -324,13 +272,13 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
   );
 
   const mapa = (
-    <div ref={raiz} className={comZoom ? "absolute left-0 top-0 flex w-[64rem] origin-top-left flex-col gap-12 px-10 pb-10 pt-24" : "relative flex flex-col gap-12"}>
+    <div ref={raiz} className={comZoom ? "absolute left-0 top-0 flex w-max min-w-[64rem] origin-top-left flex-col gap-12 px-10 pb-10 pt-24" : "relative flex flex-col gap-12"}>
       <svg className="pointer-events-none absolute inset-0 hidden h-full w-full md:block" style={{ willChange: "transform", contain: "strict" }} aria-hidden>
         {pronto && linhas.map((l) => {
           const forte = alvo === l.chave;
           const atraso = atrasoLinha(ordemDe.get(l.chave) ?? 0);
           return (
-            <g key={l.chave} className={l.lado === "externo" ? "text-text-muted" : l.lado === "entrada" ? "text-steel-300" : "text-success"}>
+            <g key={l.chave} className={l.lado === "externo" ? "text-text-muted" : l.lado === "entrada" || l.lado === "tags" ? "text-steel-300" : "text-success"}>
               <path d={l.d} pathLength={1} strokeDasharray="1 1" className="ecos-linha-desenha" fill="none" stroke="currentColor" strokeWidth={forte ? 2.5 : 1.25} strokeLinecap="round" opacity={alvo ? (forte ? 0.95 : 0.15) : 0.45} style={{ transition: "opacity 160ms, stroke-width 160ms", animationDelay: `${atraso}ms` }} />
               <circle cx={l.fim[0]} cy={l.fim[1]} r={forte ? 4 : 3} className="ecos-linha-ponto" fill="currentColor" opacity={alvo ? (forte ? 0.95 : 0.15) : 0.6} style={{ transition: "opacity 160ms", animationDelay: `${atraso + 480}ms` }} />
             </g>
@@ -338,11 +286,21 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
         })}
       </svg>
 
-      <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-[18rem_15rem_18rem] md:justify-center md:gap-x-14">
-        <div className="flex min-w-0 flex-col gap-2.5 md:order-1" role="group" aria-label="Mencionada em">
-          {titulo(ArrowDownLeft, "Mencionada em", entrada.length)}
-          {entrada.length ? entrada.map(cartao) : <Vazio>Nada aponta para cá ainda.</Vazio>}
+      {tags.length > 0 && (
+        <div ref={tagsEl} data-tags role="group" aria-label="Tags" onClick={() => focar(TAGS)} style={pronto ? { animationDelay: "0ms" } : { opacity: 0 }}
+          className={`ecos-no-nasce relative z-10 mx-auto flex w-fit max-w-[34rem] flex-col gap-2 rounded-2xl border border-dashed bg-surface-1 px-4 py-3 transition-colors ${foco === TAGS ? "border-steel-300/70" : "border-border"}`}>
+          {titulo(Hash, "Tags", tags.length)}
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-2">
+            {tags.slice(0, MAX_TAGS).map((t, i) => (
+              <span key={t} style={{ animationDelay: `${-i * 0.7}s` }} className="ecos-tag-flutua rounded-full border border-border bg-surface-3 px-2.5 py-1 text-xs text-text-primary">#{t}</span>
+            ))}
+            {tags.length > MAX_TAGS && <span className="px-1 text-xs text-text-muted">+{tags.length - MAX_TAGS}</span>}
+          </div>
         </div>
+      )}
+
+      <div className="grid grid-cols-1 items-center gap-6 md:justify-center md:gap-x-14 md:[grid-template-columns:var(--colunas)]" style={{ "--colunas": colunasGrade } as CSSProperties}>
+        {lista("entrada", entrada, "Nada aponta para cá ainda.", ArrowDownLeft, "Mencionada em", "md:order-1", "Mencionada em")}
 
         <button ref={centroEl} data-centro type="button" onClick={selecionarCentro} title={`Abrir ${centro.tipo}: ${centro.titulo}`}
           className={`relative z-10 flex flex-col items-center gap-2 rounded-2xl border bg-surface-2 px-5 py-6 text-center shadow-lg transition-colors hover:bg-surface-3 md:order-2 ${foco === CENTRO ? "border-steel-300" : "border-steel-300/50"} ${botaoFoco}`}>
@@ -351,10 +309,7 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
           <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{ROTULO[centro.tipo]}</span>
         </button>
 
-        <div className="flex min-w-0 flex-col gap-2.5 md:order-3" role="group" aria-label="Menciona">
-          {titulo(ArrowUpRight, "Menciona", saida.length)}
-          {saida.length ? saida.map(cartao) : <Vazio>Não menciona nada ainda.</Vazio>}
-        </div>
+        {lista("saida", saida, "Não menciona nada ainda.", ArrowUpRight, "Menciona", "md:order-3", "Menciona")}
       </div>
 
       {externos.length > 0 && (
@@ -375,10 +330,10 @@ export function MapaConexoes({ centro, nos, aoAbrir, aoVerOnde, aoAbrirCentro }:
 
       {comZoom && (
         <div data-controles className="absolute bottom-3 right-3 z-20 flex items-center gap-0.5 rounded-xl border border-border bg-surface-2/90 p-1 shadow-lg">
-          <button type="button" className={botaoZoom} aria-label="Afastar" title="Afastar" onClick={() => { const v = visor.current!; zoomEm(v.clientWidth / 2, v.clientHeight / 2, 1 / 1.3, 380); }}><Minus size={14} aria-hidden /></button>
+          <button type="button" className={botaoZoom} aria-label="Afastar" title="Afastar" onClick={() => zoomNoCentro(1 / 1.3)}><Minus size={14} aria-hidden /></button>
           <span className="w-10 text-center text-[11px] tabular-nums text-text-muted" aria-live="off">{percentual}%</span>
-          <button type="button" className={botaoZoom} aria-label="Aproximar" title="Aproximar" onClick={() => { const v = visor.current!; zoomEm(v.clientWidth / 2, v.clientHeight / 2, 1.3, 380); }}><Plus size={14} aria-hidden /></button>
-          <button type="button" className={botaoZoom} aria-label="Ajustar à tela" title="Ajustar à tela" onClick={() => { mexeu.current = false; limparFoco(); ajustar(560); }}><Scan size={14} aria-hidden /></button>
+          <button type="button" className={botaoZoom} aria-label="Aproximar" title="Aproximar" onClick={() => zoomNoCentro(1.3)}><Plus size={14} aria-hidden /></button>
+          <button type="button" className={botaoZoom} aria-label="Ajustar à tela" title="Ajustar à tela" onClick={() => { mexeu.current = false; limparFoco(); ajustar(560, 0.55); }}><Scan size={14} aria-hidden /></button>
         </div>
       )}
     </div>

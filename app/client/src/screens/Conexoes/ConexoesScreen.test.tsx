@@ -7,7 +7,7 @@ const titulos = vi.fn();
 const abrir = vi.fn();
 vi.mock("@/lib/api", () => ({
   links: { de: (...a: unknown[]) => de(...a), titulos: (...a: unknown[]) => titulos(...a) },
-  notas: { obter: vi.fn().mockResolvedValue({ titulo: "Projeto Ecos" }) },
+  notas: { obter: vi.fn().mockResolvedValue({ titulo: "Projeto Ecos", tags: ["jogos", "minecraft"] }) },
   tarefas: { obter: vi.fn().mockResolvedValue({ titulo: "Tarefa X" }) },
 }));
 vi.mock("@/lib/refresh-bus", () => ({ useRefreshBus: () => ({ versao: 0 }) }));
@@ -44,6 +44,13 @@ describe("tela de conexões", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     // O botão de abrir do cartão também leva ao link.
     expect(screen.getByRole("link", { name: "Abrir o link Guia de Exemplo" }).getAttribute("href")).toBe("https://exemplo.com/a");
+  });
+
+  it("as tags do item ficam num recipiente acima dele", async () => {
+    montar();
+    const grupo = await screen.findByRole("group", { name: "Tags" });
+    expect(grupo.textContent).toContain("#jogos");
+    expect(grupo.textContent).toContain("#minecraft");
   });
 
   it("otimista: na segunda abertura mostra o que foi visto na hora e depois troca só se mudou", async () => {

@@ -29,6 +29,7 @@ export function ConexoesScreen() {
   const guardado = lerConexoes(tipo, id);
   const [dados, setDados] = useState<ConexoesItem | null>(guardado?.dados ?? null);
   const [titulo, setTitulo] = useState<string | null>(guardado?.titulo ?? null);
+  const [tags, setTags] = useState<string[]>(guardado?.tags ?? []);
   const [erro, setErro] = useState(false);
   const titulosExternos = useTitulosExternos(dados?.externos ?? []);
 
@@ -39,13 +40,15 @@ export function ConexoesScreen() {
     const g = lerConexoes(tipo, id);
     setDados(g?.dados ?? null);
     setTitulo(g?.titulo ?? null);
-    const obterTitulo = tipo === "tarefa" ? tarefas.obter(id) : notas.obter(id);
-    Promise.all([links.de(tipo, id), obterTitulo.then((x) => x.titulo)])
-      .then(([d, t]) => {
-        guardarConexoes(tipo, id, { dados: d, titulo: t });
+    setTags(g?.tags ?? []);
+    const obterItem = tipo === "tarefa" ? tarefas.obter(id) : notas.obter(id);
+    Promise.all([links.de(tipo, id), obterItem.then((x) => ({ titulo: x.titulo, tags: x.tags ?? [] }))])
+      .then(([d, item]) => {
+        guardarConexoes(tipo, id, { dados: d, titulo: item.titulo, tags: item.tags });
         if (!ativo) return;
         setDados((atual) => (JSON.stringify(atual) === JSON.stringify(d) ? atual : d));
-        setTitulo(t);
+        setTitulo(item.titulo);
+        setTags((atual) => (JSON.stringify(atual) === JSON.stringify(item.tags) ? atual : item.tags));
       })
       .catch(() => { if (ativo && !g) setErro(true); }); // com cópia guardada, falha de rede não derruba a tela
     return () => { ativo = false; };
@@ -87,13 +90,13 @@ export function ConexoesScreen() {
     <div className="relative h-full min-h-[26rem] w-full min-w-0">
       <header className="pointer-events-none absolute left-5 top-4 z-20 flex max-w-[min(42rem,60%)] flex-col gap-1">
         <h1 className="flex items-center gap-2 text-lg font-semibold text-text-primary"><Network size={18} className="text-steel-300" aria-hidden />Conexões</h1>
-        <p className="text-sm text-text-secondary">
+        <p className="text-xs text-text-muted">
           {total
-            ? `${contar("entrada")} ${contar("entrada") === 1 ? "menção" : "menções"} · ${contar("saida")} ${contar("saida") === 1 ? "link interno" : "links internos"} · ${contar("externo")} ${contar("externo") === 1 ? "link externo" : "links externos"}. Clique num item para centralizar; clique duas vezes (ou use o botão de abrir) para abrir. Role para aproximar ou afastar.`
+            ? `${contar("entrada")} ${contar("entrada") === 1 ? "menção" : "menções"} · ${contar("saida")} ${contar("saida") === 1 ? "link interno" : "links internos"} · ${contar("externo")} ${contar("externo") === 1 ? "link externo" : "links externos"}`
             : "Esta " + tipo + " ainda não tem conexões."}
         </p>
       </header>
-      <MapaConexoes centro={{ tipo, titulo }} nos={nos} aoAbrir={abrirNo} aoVerOnde={verOnde} aoAbrirCentro={(e) => abrir(caminhoDe(tipo, id), comTecla(e))} />
+      <MapaConexoes centro={{ tipo, titulo }} tags={tags} nos={nos} aoAbrir={abrirNo} aoVerOnde={verOnde} aoAbrirCentro={(e) => abrir(caminhoDe(tipo, id), comTecla(e))} />
     </div>
   );
 }

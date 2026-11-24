@@ -19,7 +19,7 @@ function criarCache<T>() {
   };
 }
 
-export interface ConexoesGuardadas { dados: ConexoesItem; titulo: string }
+export interface ConexoesGuardadas { dados: ConexoesItem; titulo: string; tags?: string[] }
 
 const telas = criarCache<ConexoesGuardadas>();
 const titulosDasPaginas = criarCache<string | null>();

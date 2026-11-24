@@ -11,6 +11,7 @@ import { corDoTipo, ROTULO_TIPO_SINGULAR, usePreferenciasGrafico, type SecaoGraf
 import { MarcaTipo } from "./controles";
 import { MotorGrafico, type InfoNoHover } from "./motor-grafico";
 import { PainelGrafico } from "./PainelGrafico";
+import { ExplorarGrafico } from "./ExplorarGrafico";
 import { chaveConstelacao, filtrarGalaxia, regiao, type FocoGalaxia } from "./galaxia";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAppUI } from "@/lib/ui-context";
@@ -45,6 +46,7 @@ export function GraficoScreen() {
   const [busca, setBusca] = useState("");
   const [foco, setFoco] = useState<FocoGalaxia>({ nivel: "universo" });
   const [prefs, alterar, redefinir] = usePreferenciasGrafico();
+  const [aba, setAba] = useState<"galaxia" | "explorar" | "geral">("galaxia");
   /** Conteúdo da dica; fica no último nó mesmo depois de sair, para a dica desvanecer sem trocar de texto. */
   const [dicaInfo, setDicaInfo] = useState<InfoNoHover | null>(null);
 
@@ -64,8 +66,10 @@ export function GraficoScreen() {
   }, [dadosRotulados]);
   const sistemas = useMemo(() => [...new Set((dadosRotulados?.nos ?? []).filter((n) => n.tipo !== "tag" && regiao(n).espaco === foco.espaco && regiao(n).constelacao === foco.constelacao).map((n) => regiao(n).sistema))].sort(), [dadosRotulados, foco.espaco, foco.constelacao]);
   const planetas = useMemo(() => (dadosRotulados?.nos ?? []).filter((n) => n.tipo !== "tag" && regiao(n).espaco === foco.espaco && regiao(n).constelacao === foco.constelacao && regiao(n).sistema === foco.sistema).sort((a, b) => a.titulo.localeCompare(b.titulo)), [dadosRotulados, foco.espaco, foco.constelacao, foco.sistema]);
-  const recentes = useRef({ dados: recorte, prefs, busca, navigate, intercalarEquipes, setIntercalarEquipes, setFiltroEquipeId, setEspacoAtivo });
-  recentes.current = { dados: recorte, prefs, busca, navigate, intercalarEquipes, setIntercalarEquipes, setFiltroEquipeId, setEspacoAtivo };
+  /** Galáxia usa o recorte do nível; a Visão geral mostra tudo de uma vez. */
+  const recorteAtivo = aba === "geral" ? dadosRotulados : recorte;
+  const recentes = useRef({ dados: recorteAtivo, prefs, busca, navigate, intercalarEquipes, setIntercalarEquipes, setFiltroEquipeId, setEspacoAtivo });
+  recentes.current = { dados: recorteAtivo, prefs, busca, navigate, intercalarEquipes, setIntercalarEquipes, setFiltroEquipeId, setEspacoAtivo };
 
   useEffect(() => {
     let ativo = true;
@@ -97,23 +101,24 @@ export function GraficoScreen() {
       },
       onFocar: (no) => setFoco({ nivel: "planeta", ...regiao(no), id: no.id }),
       onHover: (info) => { if (info) setDicaInfo(info); },
-    }, recentes.current.prefs, true);
+    }, recentes.current.prefs, aba === "galaxia");
+    m.cliqueCentraliza = aba === "geral";
     motor.current = m;
     m.definirFoco(foco);
     if (recentes.current.dados) m.definirDados(recentes.current.dados.nos, recentes.current.dados.arestas);
     m.definirBusca(recentes.current.busca);
     return () => { m.destruir(); motor.current = null; };
-  }, [temNos]);
+  }, [temNos, aba]);
 
-  useEffect(() => { if (recorte) { motor.current?.definirFoco(foco); motor.current?.definirDados(recorte.nos, recorte.arestas); motor.current?.ajustar(); } }, [recorte, foco]);
+  useEffect(() => { if (recorteAtivo) { motor.current?.definirFoco(foco); motor.current?.definirDados(recorteAtivo.nos, recorteAtivo.arestas); motor.current?.ajustar(); } }, [recorteAtivo, foco]);
   useEffect(() => { motor.current?.definirPrefs(prefs); }, [prefs]);
   useEffect(() => { motor.current?.definirBusca(busca); }, [busca]);
 
   const contagens = useMemo(() => {
     const c: Record<TipoGrafico, number> = { nota: 0, tarefa: 0, evento: 0, tag: 0 };
-    recorte?.nos.forEach((n) => { c[n.tipo] += 1; });
+    recorteAtivo?.nos.forEach((n) => { c[n.tipo] += 1; });
     return c;
-  }, [recorte]);
+  }, [recorteAtivo]);
 
   const abrirConfig = useCallback((secao: SecaoGrafico) => navigate(`/configuracoes/grafico#${secao}`), [navigate]);
 
@@ -126,6 +131,12 @@ export function GraficoScreen() {
     <div className={`flex h-full min-h-[60vh] flex-col px-4 pt-1 ${desktop ? "pb-0" : "pb-nav-safe"}`}>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div><h1 className="pt-[14px] font-display text-3xl font-semibold tracking-tight text-text-primary">Galáxia</h1><p className="text-xs text-text-muted">{dados.nos.length} astros · {dados.arestas.length} ligações</p></div>
+        <div role="tablist" aria-label="Modo do gráfico" className="flex items-center gap-1 rounded-xl border border-border bg-surface-1 p-1 text-sm">
+          {([["galaxia", "Galáxia"], ["explorar", "Explorar"], ["geral", "Visão geral"]] as const).map(([id, rotulo]) => (
+            <button key={id} type="button" role="tab" aria-selected={aba === id} onClick={() => setAba(id)}
+              className={`rounded-lg px-3 py-1 transition-colors ${aba === id ? "bg-surface-3 text-text-primary" : "text-text-muted hover:text-text-primary"}`}>{rotulo}</button>
+          ))}
+        </div>
         <div className="flex items-center gap-2 text-xs text-text-muted"><span>Equipe</span>
           <SeletorGalaxia ariaLabel="Filtrar galáxia por equipe" icone={Users} tema="app" valor={intercalarEquipes ? filtroEquipeId ?? "" : espacoAtivo} onChange={(valor) => intercalarEquipes ? setFiltroEquipeId(valor || null) : setEspacoAtivo(valor)} opcoes={[
             { valor: intercalarEquipes ? "" : "pessoal", rotulo: intercalarEquipes ? "Todas as equipes" : "Pessoal" },
@@ -136,10 +147,13 @@ export function GraficoScreen() {
       {erro && <p role="alert" className="mb-3 text-sm text-error">{erro}</p>}
       {!temNos && !erro ? (
         <EmptyState icon={Network} title="Nada para mostrar no gráfico." subtitle="Crie notas com [[links]] e #tags para ver as conexões aparecerem aqui." />
+      ) : aba === "explorar" ? (
+        <ExplorarGrafico dados={dadosRotulados ?? dados} prefs={prefs} onAbrir={(n) => { const r = rotaDoNo(n); if (r) navigate(r); }} podeAbrir={(n) => rotaDoNo(n) !== null} />
       ) : (
         <div ref={area} className="relative min-h-[420px] flex-1 overflow-hidden rounded-t-2xl bg-[#050713] text-slate-200">
           <canvas ref={canvas} className="block touch-none" role="img" aria-label="Gráfico de conexões entre notas, tarefas, eventos e tags" />
-          <nav aria-label="Níveis da galáxia" className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-white/10 bg-[#0c1222]/85 p-1.5 text-xs text-slate-200 shadow-lg backdrop-blur-md sm:max-w-[calc(100%-20rem)]">
+          {aba === "geral" && <p className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-20rem)] text-[11px] text-slate-500">Clique num astro para centralizá-lo; clique duas vezes para abrir. Role para aproximar ou afastar.</p>}
+          {aba === "galaxia" && <nav aria-label="Níveis da galáxia" className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-white/10 bg-[#0c1222]/85 p-1.5 text-xs text-slate-200 shadow-lg backdrop-blur-md sm:max-w-[calc(100%-20rem)]">
             <button type="button" onClick={() => setFoco({ nivel: "universo" })} className={`rounded-lg px-2 py-1 ${foco.nivel === "universo" ? "bg-white/15 text-white" : "hover:bg-white/10"}`}>Universo</button>
             <span aria-hidden className="text-slate-500">/</span>
             <SeletorGalaxia ariaLabel="Constelação" icone={Folder} valor={foco.constelacao ? chaveConstelacao({ espaco: foco.espaco ?? "pessoal", constelacao: foco.constelacao }) : ""} onChange={(valor) => { const r = regioes.find((item) => chaveConstelacao(item) === valor); setFoco(r ? { nivel: "constelacao", espaco: r.espaco, constelacao: r.constelacao } : { nivel: "universo" }); }} opcoes={[
@@ -148,7 +162,7 @@ export function GraficoScreen() {
             ]} />
             {foco.constelacao && <><span aria-hidden className="text-slate-500">/</span><SeletorGalaxia ariaLabel="Sistema solar" icone={Orbit} valor={foco.sistema ?? ""} onChange={(valor) => setFoco(valor ? { nivel: "sistema", espaco: foco.espaco, constelacao: foco.constelacao, sistema: valor } : { nivel: "constelacao", espaco: foco.espaco, constelacao: foco.constelacao })} opcoes={[{ valor: "", rotulo: "Sistemas" }, ...sistemas.map((s) => ({ valor: s, rotulo: s }))]} /></>}
             {foco.sistema && <><span aria-hidden className="text-slate-500">/</span><SeletorGalaxia ariaLabel="Planeta" icone={Orbit} valor={foco.id ?? ""} buscar onChange={(valor) => setFoco(valor ? { nivel: "planeta", espaco: foco.espaco, constelacao: foco.constelacao, sistema: foco.sistema, id: valor } : { nivel: "sistema", espaco: foco.espaco, constelacao: foco.constelacao, sistema: foco.sistema })} opcoes={[{ valor: "", rotulo: "Planetas" }, ...planetas.map((n) => ({ valor: n.id, rotulo: n.titulo }))]} /></>}
-          </nav>
+          </nav>}
           {prefs.legenda && <div aria-label="Legenda do gráfico" className="absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-11rem)] flex-wrap gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-[#0c1222]/85 px-3 py-2 text-[11px] text-slate-300 backdrop-blur-md">{(["nota", "tarefa", "evento", "tag"] as const).map((tipo) => <span key={tipo} className="flex items-center gap-1.5"><MarcaTipo tipo={tipo} cor={corDoTipo(prefs, tipo)} tamanho={8} />{ROTULO_TIPO_SINGULAR[tipo]}{tipo === "tag" ? " · lua" : ""}</span>)}</div>}
           <div
             ref={dica}

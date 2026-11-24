@@ -275,6 +275,7 @@ export class MotorGrafico {
 
   /** Enquadra todo o grafo visível com um deslize suave da câmera. */
   ajustar() {
+    this.seguindo = null;
     const visiveis = this.nos.filter((n) => n.visAlvo > 0 && n.x != null);
     if (!visiveis.length || !this.largura) return;
     // Ignora os poucos nós soltos lá longe (2% de cada ponta) para o enquadramento não encolher o grafo por causa deles.
@@ -287,6 +288,11 @@ export class MotorGrafico {
     const k = clamp(Math.min((this.largura - 100) / bw, (this.altura - 80) / bh), 0.15, this.galaxia ? 2.2 : 1.6);
     this.alvo = { k, x: -((x0 + x1) / 2) * k, y: -((y0 + y1) / 2) * k };
   }
+
+  /** Visão geral: clicar centraliza o astro e só o duplo clique abre (no lugar de abrir já no primeiro clique). */
+  cliqueCentraliza = false;
+  private ultimoClique: { id: string; t: number } | null = null;
+  private seguindo: string | null = null;
 
   zoom(fator: number) {
     this.usuarioMexeu = true;
@@ -461,6 +467,7 @@ export class MotorGrafico {
         this.sim.alpha(Math.max(this.sim.alpha(), 0.3));
       } else {
         this.panning = true;
+        this.seguindo = null;
         this.velPan = { x: 0, y: 0 };
       }
       this.definirCursor("grabbing");
@@ -552,7 +559,17 @@ export class MotorGrafico {
         this.arrastando = null;
         if (!this.moveu && !this.focouNaPressao) {
           if (e.shiftKey && no.dado.tipo !== "tag" && this.cb.onFocar) this.cb.onFocar(no.dado);
-          else this.cb.onAbrir(no.dado);
+          else if (this.cliqueCentraliza) {
+            // Um clique leva a câmera até o astro; dois cliques seguidos nele (mesmo durante o deslize) abrem.
+            const agora = performance.now(), u = this.ultimoClique;
+            if (u && u.id === no.id && agora - u.t < 450) { this.ultimoClique = null; this.cb.onAbrir(no.dado); }
+            else {
+              this.ultimoClique = { id: no.id, t: agora };
+              const k = clamp(Math.max(this.alvo.k, 1.1), 0.12, 5);
+              this.alvo = { k, x: -(no.x ?? 0) * k, y: -(no.y ?? 0) * k };
+              this.seguindo = no.id;
+            }
+          } else this.cb.onAbrir(no.dado);
         }
       }
       if (this.panning) {
@@ -568,8 +585,9 @@ export class MotorGrafico {
     const aoRolar = (e: WheelEvent) => {
       e.preventDefault();
       this.usuarioMexeu = true;
+      this.seguindo = null;
       const p = pos(e);
-      const wx = (p.x - this.largura / 2 - this.alvo.x) / this.alvo.k;
+      const wx =(p.x - this.largura / 2 - this.alvo.x) / this.alvo.k;
       const wy = (p.y - this.altura / 2 - this.alvo.y) / this.alvo.k;
       const k = clamp(this.alvo.k * Math.exp(-e.deltaY * 0.0014), 0.12, 5);
       this.alvo = { k, x: p.x - this.largura / 2 - wx * k, y: p.y - this.altura / 2 - wy * k };
@@ -725,6 +743,9 @@ export class MotorGrafico {
 
     // Câmera: o zoom e o deslize chegam suaves; durante o carregamento o enquadramento se refaz sozinho.
     if (!this.usuarioMexeu && agora < this.autoAjusteAte && agora >= this.proximoAjuste) { this.ajustar(); this.proximoAjuste = agora + 250; }
+    // Astro seguido (clique na Visão geral): o alvo acompanha o astro enquanto a física o move.
+    const seguido = this.seguindo ? this.porId.get(this.seguindo) : null;
+    if (seguido?.x != null && seguido.y != null && !this.panning) { this.alvo.x = -seguido.x * this.alvo.k; this.alvo.y = -seguido.y * this.alvo.k; }
     const kc = k(0.14);
     this.cam.x += (this.alvo.x - this.cam.x) * kc;
     this.cam.y += (this.alvo.y - this.cam.y) * kc;
@@ -827,8 +848,10 @@ export class MotorGrafico {
       const larg = (prefs.espessuraLinhas * (tipo === "wikilink" ? 1.15 : 0.85)) / cam.k;
       const alfa = base * (0.12 + 0.88 * a.rel) * presenca;
       ctx.beginPath();
+      // A ligação "cresce" do astro de origem até o de destino enquanto eles nascem.
+      const cresce = reduzido || this.galaxia ? 1 : 1 - Math.pow(1 - Math.min(1, Math.min(a.s.nasc, a.t.nasc)), 3);
       ctx.moveTo(a.s.px, a.s.py);
-      ctx.lineTo(a.t.px, a.t.py);
+      ctx.lineTo(a.s.px + (a.t.px - a.s.px) * cresce, a.s.py + (a.t.py - a.s.py) * cresce);
       ctx.globalAlpha = alfa;
       ctx.strokeStyle = tema.texto;
       ctx.lineWidth = larg;
