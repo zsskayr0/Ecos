@@ -1395,6 +1395,18 @@ export const preferenciasCalendarioApi = {
   atualizar: (dados: Partial<Omit<PreferenciasCalendarioApi, "definido">>) => patch<PreferenciasCalendarioApi>("/me/preferencias/calendario", dados),
 };
 
+export interface PreferenciasAplicativoApi {
+  dados: Record<string, unknown>;
+  /** `false` = a pessoa nunca salvou no servidor: o aparelho pode subir o que já tinha. */
+  definido: boolean;
+  atualizado_em: string | null;
+}
+
+export const preferenciasAplicativoApi = {
+  obter: () => get<PreferenciasAplicativoApi>("/me/preferencias/aplicativo"),
+  salvar: (dados: Record<string, unknown>) => put<PreferenciasAplicativoApi>("/me/preferencias/aplicativo", { dados }),
+};
+
 export const equipes = {
   listarMinhas: () => get<{ id: string; nome: string; cargo: string; tipo: TipoEquipe; membros: number; cor?: string; cor_personalizada?: boolean; avatar_atualizado_em?: number | null }[]>("/equipes"),
   criar: (nome: string, tipo: TipoEquipe = "pessoal", cor?: string) => post<{ id: string }>("/equipes", { nome, tipo, ...(cor ? { cor } : {}) }),

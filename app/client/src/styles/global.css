@@ -1233,3 +1233,6 @@ html[data-reduzir-movimento] .ecos-borracha { animation: none; }
 .ecos-vidro:hover::after, .ecos-vidro:focus-visible::after { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .ecos-vidro, .ecos-vidro::after { transition: none; } }
 html[data-reduzir-movimento] .ecos-vidro, html[data-reduzir-movimento] .ecos-vidro::after { transition: none; }
+/* Classes-marcadoras (sem estilo próprio): servem de gancho em seletores/testes e para o lint de classes do Tailwind. */
+.ecos-respiro-titulos { }
+.ecos-veu-modal { }

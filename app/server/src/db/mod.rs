@@ -54,6 +54,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0031_feed_oculto_up.sql")).down(include_str!("../../migrations/0031_feed_oculto_down.sql")),
         M::up(include_str!("../../migrations/0032_pastas_trancadas_up.sql")).down(include_str!("../../migrations/0032_pastas_trancadas_down.sql")),
         M::up(include_str!("../../migrations/0033_nota_arquivada_up.sql")).down(include_str!("../../migrations/0033_nota_arquivada_down.sql")),
+        M::up(include_str!("../../migrations/0034_preferencia_aplicativo_up.sql")).down(include_str!("../../migrations/0034_preferencia_aplicativo_down.sql")),
     ])
 }
 

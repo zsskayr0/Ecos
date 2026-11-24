@@ -118,6 +118,61 @@ pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extens
     Ok(Json(PreferenciasCalendario { pais, fuso, inicio, deadlines, definido: true }))
 }
 
+/// Limite do documento de preferências do aplicativo (são dezenas de chaves pequenas; o teto evita abuso).
+const LIMITE_APLICATIVO: usize = 64 * 1024;
+
+#[derive(Debug, Serialize)]
+pub struct PreferenciasAplicativo {
+    /// Documento JSON das preferências; `{}` enquanto a pessoa nunca salvou.
+    pub dados: serde_json::Value,
+    /// `false` enquanto a pessoa nunca salvou: o cliente pode subir o que o aparelho já tinha.
+    pub definido: bool,
+    pub atualizado_em: Option<String>,
+}
+
+/// `GET /me/preferencias/aplicativo`
+pub async fn obter_aplicativo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>) -> AppResult<Json<PreferenciasAplicativo>> {
+    let uid = usuario.0.clone();
+    let linha = state
+        .db
+        .with_read(move |conn| {
+            conn.query_row("SELECT dados, atualizado_em FROM preferencia_aplicativo WHERE usuario_id = ?1", [&uid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).optional()
+        })
+        .await?;
+    Ok(Json(match linha {
+        Some((dados, em)) => PreferenciasAplicativo { dados: serde_json::from_str(&dados).unwrap_or_else(|_| serde_json::json!({})), definido: true, atualizado_em: Some(em) },
+        None => PreferenciasAplicativo { dados: serde_json::json!({}), definido: false, atualizado_em: None },
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SalvarAplicativoPayload {
+    pub dados: serde_json::Value,
+}
+
+/// `PUT /me/preferencias/aplicativo` — substitui o documento inteiro (o cliente manda o conjunto completo).
+pub async fn salvar_aplicativo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<SalvarAplicativoPayload>) -> AppResult<Json<PreferenciasAplicativo>> {
+    let texto = serde_json::to_string(&payload.dados).unwrap_or_default();
+    if !payload.dados.is_object() {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "dados".into(), motivo: "esperado um objeto JSON".into() }]));
+    }
+    if texto.len() > LIMITE_APLICATIVO {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "dados".into(), motivo: "preferências grandes demais".into() }]));
+    }
+    let agora = Utc::now().to_rfc3339();
+    let (uid, t, a) = (usuario.0.clone(), texto, agora.clone());
+    state
+        .db
+        .with(move |conn| {
+            conn.execute(
+                "INSERT INTO preferencia_aplicativo (usuario_id, dados, atualizado_em) VALUES (?1, ?2, ?3)                  ON CONFLICT (usuario_id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em",
+                rusqlite::params![uid, t, a],
+            )
+        })
+        .await?;
+    Ok(Json(PreferenciasAplicativo { dados: payload.dados, definido: true, atualizado_em: Some(agora) }))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -174,6 +229,26 @@ mod testes {
         assert_eq!(depois["definido"], false);
         let (st, _) = chamar(&state, "PATCH", rota, Some(&a), json!({ "fuso": "UTC" })).await;
         assert_eq!(st, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn preferencias_do_aplicativo_sao_por_pessoa_e_valem_em_qualquer_aparelho() {
+        let (state, a, b) = duas_pessoas().await;
+        let rota = "/api/v1/me/preferencias/aplicativo";
+        let (st, vazio) = chamar(&state, "GET", rota, Some(&a), Value::Null).await;
+        assert_eq!((st, vazio["definido"].as_bool(), &vazio["dados"]), (StatusCode::OK, Some(false), &json!({})));
+
+        let (st, salvo) = chamar(&state, "PUT", rota, Some(&a), json!({ "dados": { "formatoData": "ymd", "notaFonte": "serifa" } })).await;
+        assert_eq!(st, StatusCode::OK, "{salvo}");
+        let (_, lido) = chamar(&state, "GET", rota, Some(&a), Value::Null).await;
+        assert_eq!(lido["dados"], json!({ "formatoData": "ymd", "notaFonte": "serifa" }));
+        let (_, de_b) = chamar(&state, "GET", rota, Some(&b), Value::Null).await;
+        assert_eq!(de_b["definido"], false);
+
+        let (st, _) = chamar(&state, "PUT", rota, Some(&a), json!({ "dados": [1, 2] })).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+        let (st, _) = chamar(&state, "GET", rota, None, Value::Null).await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
     }
 
     #[test]

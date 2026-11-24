@@ -7,6 +7,7 @@ import { Dialog } from "@/components/common/Dialog";
 import { registrarCoresDasEquipes } from "./team-color";
 import { definirUsuarioDasFotos } from "./profile-avatar";
 import { sincronizarPreferenciasCalendario } from "./preferencias-calendario";
+import { iniciarSincroniaPreferenciasAplicativo } from "./preferencias-aplicativo-sync";
 
 import { mensagemDeErro } from "@/lib/erros";
 export interface Perfil {
@@ -122,6 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Preferências de calendário e localização acompanham a conta: cópia local espelha o servidor ao entrar.
   useEffect(() => { if (perfil?.id) void sincronizarPreferenciasCalendario(perfil.id); }, [perfil?.id]);
+
+  // Preferências do aplicativo (Configurações) também: valem em todos os aparelhos da conta.
+  useEffect(() => (perfil?.id ? iniciarSincroniaPreferenciasAplicativo(perfil.id) : undefined), [perfil?.id]);
 
   const login = useCallback(async (usuario: string, senha: string) => {
     setErro(null);

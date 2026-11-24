@@ -104,6 +104,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/me/metricas", get(metricas::obter))
         .route("/me/atividade", get(metricas::atividade))
         .route("/me/preferencias/calendario", get(preferencias::obter).patch(preferencias::atualizar))
+        .route("/me/preferencias/aplicativo", get(preferencias::obter_aplicativo).put(preferencias::salvar_aplicativo))
         .route("/me/feed/ocultos", get(feed_oculto::listar).put(feed_oculto::alterar))
         .route("/me/aceites/termos", post(crate::auth::aceitar_termos))
         .route("/admin/usuarios", get(crate::admin::listar).post(crate::admin::criar))
