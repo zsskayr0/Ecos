@@ -1286,3 +1286,4 @@ html[data-reduzir-movimento] .ecos-vidro, html[data-reduzir-movimento] .ecos-vid
 /* Campo do overlay de busca: sem contorno nativo (inclusive dentro do Cofre, que define o seu) e sem o "x" do navegador. */
 .ecos-busca-veu input:focus, .ecos-busca-veu input:focus-visible { outline: none !important; box-shadow: none !important; }
 .ecos-busca-veu input[type="search"]::-webkit-search-cancel-button, .ecos-busca-veu input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.ecos-busca-lista { scrollbar-width: none; } .ecos-busca-lista::-webkit-scrollbar { display: none; }
