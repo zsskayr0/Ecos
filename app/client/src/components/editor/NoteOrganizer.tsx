@@ -19,6 +19,8 @@ interface Props {
   tagsNoTexto: string[];
   onTags: (tags: string[]) => void;
   disabled?: boolean;
+  /** Quais pastas listar/criar; padrão: notas. */
+  tipo?: "nota" | "tarefa";
 }
 
 const normalizarTag = (bruta: string) => canonicaTag(bruta) ?? "";
@@ -28,7 +30,7 @@ const normalizarTag = (bruta: string) => canonicaTag(bruta) ?? "";
  * menu com "criar pasta" embutido; as tags são chips com campo de adição e
  * sugestões das tags que você mais usa nas outras notas.
  */
-export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTags, disabled }: Props) {
+export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTags, disabled, tipo = "nota" }: Props) {
   const mobile = useIsMobile();
   const [pastasLista, setPastasLista] = useState<{ caminho: string; nome: string }[]>([]);
   const [menuAberto, setMenuAberto] = useState(false);
@@ -43,13 +45,13 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
   const listaId = useId();
 
   const carregarPastas = () =>
-    pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ recursivo: true, tipo, espaco }).then((r) => setPastasLista(r.subpastas)).catch(() => undefined);
 
   useEffect(() => {
     let vivo = true;
-    pastas.listar({ recursivo: true, tipo: "nota", espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
+    pastas.listar({ recursivo: true, tipo, espaco }).then((r) => vivo && setPastasLista(r.subpastas)).catch(() => undefined);
     return () => { vivo = false; };
-  }, [espaco]);
+  }, [espaco, tipo]);
 
   useEffect(() => {
     if (!menuAberto) return;
@@ -76,7 +78,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
     setCriando(true);
     setErroPasta(null);
     try {
-      const { caminho } = await pastas.criar({ tipo: "nota", nome, espaco, pasta_pai: pasta || undefined });
+      const { caminho } = await pastas.criar({ tipo, nome, espaco, pasta_pai: pasta || undefined });
       await carregarPastas();
       onPasta(caminho);
       setNovaPasta("");
@@ -109,7 +111,7 @@ export function NoteOrganizer({ espaco, pasta, onPasta, tags, tagsNoTexto, onTag
           {mobile && <button type="button" tabIndex={-1} aria-hidden="true" aria-label="Fechar seleção de pasta" onClick={() => setMenuAberto(false)} className="fixed inset-0 z-40 cursor-default bg-black/60" />}
           <div className={`ecos-fade-in border border-border bg-surface-2 shadow-nav ${mobile ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[min(70dvh,34rem)] overflow-y-auto rounded-2xl p-2" : "absolute left-0 top-full z-30 mt-1 w-64 rounded-xl p-1"}`}>
             {mobile && <div className="mb-1 flex items-center justify-between px-2 pt-1"><div><p className="text-base font-semibold text-text-primary">Mover para pasta</p><p className="text-xs text-text-muted">Escolha onde esta nota será organizada.</p></div><button type="button" onClick={() => setMenuAberto(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-3" aria-label="Fechar"><X size={17} /></button></div>}
-            <div role="menu" aria-label="Pasta da nota" className="max-h-56 overflow-y-auto">
+            <div role="menu" aria-label={tipo === "tarefa" ? "Pasta da tarefa" : "Pasta da nota"} className="max-h-56 overflow-y-auto">
               <ArvorePastas opcoes={[{ valor: "", rotulo: "Sem pasta" }, ...pastasLista.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(pasta && !pastasLista.some((p) => p.caminho === pasta) ? [{ valor: pasta, rotulo: pasta, pasta: true }] : [])]} valores={[pasta ?? ""]} onSelect={(valor) => { onPasta(valor || null); setMenuAberto(false); }} />
             </div>
             {pasta && <p className="px-2 pt-2 text-xs text-text-muted break-words">Criar dentro de {pasta.split("/").join(" / ")}</p>}

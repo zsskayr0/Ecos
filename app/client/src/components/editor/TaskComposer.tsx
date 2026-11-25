@@ -20,7 +20,8 @@ import { TaskDateTimePicker } from "./TaskDateTimePicker";
 import { EquipeSelector } from "./EquipeSelector";
 import { TitleField } from "@/components/common/TitleField";
 import { formatDataHoraCompleta } from "@/lib/format";
-import { PainelFocusTarefaContext } from "@/lib/documento-popup";
+import { NoteOrganizer } from "@/components/editor/NoteOrganizer";
+import { PainelFocusControleContext, PainelFocusTarefaContext } from "@/lib/documento-popup";
 
 import { mensagemDeErro } from "@/lib/erros";
 const LABELS = { baixa: "Baixa", media: "Média", alta: "Alta" };
@@ -61,6 +62,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
 }) {
   const id = useId();
   const painelFocus = useContext(PainelFocusTarefaContext);
+  const controlePainel = useContext(PainelFocusControleContext);
   const raizComposer = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   // Divulgação progressiva: tarefa nova mostra só título, prioridade e data; o resto fica em "Mais opções".
@@ -252,7 +254,10 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-all group-hover:w-0.5 group-hover:bg-steel-400 group-focus-visible:w-0.5 group-focus-visible:bg-steel-400" />
       </div>}
       {focusMode && painelFocus ? createPortal(<aside id={`${id}-planning`} className="flex min-w-0 flex-col gap-6" aria-label="Opções da tarefa">
-        <h2 className="font-display text-lg font-semibold text-text-primary">Opções</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold text-text-primary">Detalhes</h2>
+          <button type="button" onClick={controlePainel.alternar} aria-label="Fechar painel lateral" title="Fechar painel lateral" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>
+        </div>
         {painelExtra}
         <section className={`space-y-3 ${painelExtra ? "border-t border-border pt-6" : ""}`}>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Planejamento</h2>
@@ -265,20 +270,17 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
         <section className="space-y-4 border-t border-border pt-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Organização</h2>
           <EquipeSelector espaco={value.espaco} onChange={(espaco) => onChange({ espaco, pasta: null })} />
-          <div ref={folderMenuRef} className="relative flex flex-col gap-2 text-sm text-text-secondary">
-            <span id={`${id}-folder-label`}>Pasta</span>
-            <button type="button" aria-haspopup="menu" aria-expanded={folderMenuOpen} aria-labelledby={`${id}-folder-label`} onClick={() => setFolderMenuOpen((open) => !open)} className={`${FIELD} flex min-h-11 items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}><Folder size={17} className="shrink-0 text-steel-300" /><span className="min-w-0 flex-1 truncate">{value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Nenhuma pasta"}</span><ChevronDown size={17} className={`shrink-0 text-text-muted transition-transform ${folderMenuOpen ? "rotate-180" : ""}`} /></button>
-            {folderMenuOpen && <div role="menu" aria-labelledby={`${id}-folder-label`} className="absolute top-full z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-surface-1 p-1 shadow-nav"><p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Pastas</p><ArvorePastas opcoes={[{ valor: "", rotulo: "Nenhuma pasta" }, ...folders.map((p) => ({ valor: p.caminho, rotulo: p.nome, pasta: true })), ...(value.pasta && !folders.some((p) => p.caminho === value.pasta) ? [{ valor: value.pasta, rotulo: value.pasta, pasta: true }] : [])]} valores={[value.pasta ?? ""]} onSelect={(pasta) => { onChange({ pasta: pasta || null }); setFolderMenuOpen(false); }} />{folderError && <p role="alert" className="px-3 text-xs text-error">{folderError}</p>}<div className="mt-1 flex gap-2 border-t border-border p-2"><input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void criarPasta(); } }} placeholder={value.pasta ? "Nova subpasta" : "Nova pasta"} aria-label="Nome da nova pasta" className={FIELD} /><button type="button" onClick={() => void criarPasta()} disabled={!newFolder.trim() || creatingFolder} className={`${ACTION} shrink-0 disabled:opacity-40`} aria-label="Criar pasta"><Plus size={18} /></button></div></div>}
-          </div>
-          <div><span id={`${id}-tags-rotulo`} className="mb-2 block text-sm text-text-secondary">Tags</span><div className="flex flex-wrap items-center gap-2" aria-live="polite">{allTags.map((tag) => <ChipTag key={tag} tag={tag} espaco={value.espaco || "pessoal"} className="flex min-w-0 max-w-full items-center gap-1 rounded-lg pl-3 text-sm"><span className="break-all">#{tag}</span>{inlineTags.includes(tag) ? <span className="px-2 py-3 text-xs">na descrição</span> : <button type="button" onClick={() => onChange({ tags: value.tags.filter((t) => t !== tag) })} aria-label={`Remover tag ${tag}`} className="flex min-h-11 min-w-11 items-center justify-center"><X size={15} /></button>}</ChipTag>)}<input id={`${id}-tag`} list={`${id}-tags`} value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} aria-label="Adicionar tag" placeholder="+ tag" className="h-8 w-20 rounded-lg border border-dashed border-border bg-transparent px-2.5 text-sm text-text-primary outline-none transition-[width,border-color] duration-200 placeholder:text-text-muted focus:w-40 focus:border-solid focus:border-steel-400" /></div></div>
+          <NoteOrganizer tipo="tarefa" espaco={value.espaco} pasta={value.pasta} onPasta={(pasta) => onChange({ pasta })} tags={value.tags} tagsNoTexto={inlineTags} onTags={(tags) => onChange({ tags })} />
         </section>
         {!simples && <section className="border-t border-border pt-6" aria-label="Anexos">{anexosCampo}</section>}
         {secaoSubtarefas("space-y-3 border-t border-border pt-6")}
         {editing && itemId && <div className="border-t border-border pt-6"><Conexoes tipo="tarefa" id={itemId} versao={editedAt} compacto /></div>}
-        <section className="space-y-2 border-t border-border pt-6" aria-label="Informações">
+        <section aria-label="Informações" className="space-y-2 border-t border-border pt-6 text-sm text-text-secondary">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
-          {informacoes}
-          {estadoSalvamento && <p aria-live="polite" className="text-sm text-text-muted">{estadoSalvamento}</p>}
+          {createdAt && <p>Criada em {formatDataHoraCompleta(createdAt)}</p>}
+          {completedAt && <p>Concluída em {formatDataHoraCompleta(completedAt)}</p>}
+          {editedAt && <p>Editada <TempoEdicao iso={editedAt} /></p>}
+          {estadoSalvamento && <p aria-live="polite" className="text-text-muted">{estadoSalvamento}</p>}
         </section>
       </aside>, painelFocus) : <aside id={`${id}-planning`} className={`${expanded ? "block" : "hidden"} min-w-0 border-t border-border pt-6 md:block md:border-t-0 md:pl-4 md:pt-0`} aria-label="Planejamento e organização">
         <section className="space-y-4">

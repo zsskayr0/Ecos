@@ -203,7 +203,11 @@ export function TaskDetailScreen() {
 
   const BTN_ICONE = "flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-40";
   /** Ações da tarefa no cabeçalho do modo Focus: pequenas, ao lado do X. */
+  const estadoTexto = enviandoArquivo ? "Enviando anexo…" : salvando ? "Salvando…" : erro ? "Erro ao sincronizar" : sujo ? "Alterações pendentes" : "Salvo";
   const acoesDoCabecalho = tarefa ? <>
+    <span aria-live="polite" title={estadoTexto} className={`mr-1 max-w-40 truncate text-xs ${erro ? "text-error" : "text-text-secondary"}`}>{estadoTexto}</span>
+    <button type="button" onClick={alternarStatus} disabled={atualizandoStatus || enviandoArquivo} aria-pressed={tarefa.status === "concluida"} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} title={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} className={`${BTN_ICONE} text-success hover:bg-success/15`}>{atualizandoStatus ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Check size={15} />}</button>
+    <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar tarefa" className={`${BTN_ICONE} text-error hover:bg-error/15`}><Trash2 size={15} /></button>
     <OpcoesNota menu semRodape semSlotEditor rotulo="Opções da tarefa" revisada onRevisar={() => {}} onExportarPdf={exportarPdf}
       criadoEm={tarefa.criado_em} atualizadoEm={tarefa.atualizado_em ?? tarefa.criado_em} estado={salvando ? "Salvando…" : sujo ? "Alterações pendentes" : "Salvo"} erro={!!erro}
       classeBotao={`${BTN_ICONE} text-text-muted hover:bg-surface-3 hover:text-text-primary`}
@@ -212,8 +216,6 @@ export function TaskDetailScreen() {
         <button type="button" onClick={() => { fechar(); void duplicar(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"><Copy size={16} />Duplicar tarefa</button>
         <button type="button" onClick={() => { fechar(); void alternarArquivada(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary">{tarefa.status === "arquivada" ? <ArchiveRestore size={16} /> : <Archive size={16} />}{tarefa.status === "arquivada" ? "Desarquivar tarefa" : "Arquivar tarefa (não farei)"}</button>
       </>} />
-    <button type="button" onClick={alternarStatus} disabled={atualizandoStatus || enviandoArquivo} aria-pressed={tarefa.status === "concluida"} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} title={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} className={`${BTN_ICONE} text-success hover:bg-success/15`}>{atualizandoStatus ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Check size={15} />}</button>
-    <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar tarefa" className={`${BTN_ICONE} text-error hover:bg-error/15`}><Trash2 size={15} /></button>
     <span aria-hidden className="mx-1 h-4 w-px bg-border" />
     <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className={`${BTN_ICONE} text-text-muted hover:bg-surface-3 hover:text-text-primary aria-pressed:text-text-primary`}><ListTree size={15} /></button>
     {painelFocus.disponivel !== false && <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral"} title={painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral"} className={`${BTN_ICONE} text-text-muted hover:bg-surface-3 hover:text-text-primary`}>{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>}
