@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 /// Quantidade de migrations conhecidas por este binário — usada pro gate de
 /// versão da seção 3.4 ("o app recusa iniciar se a versão do binário for
 /// menor que a versão de schema já aplicada").
-const SCHEMA_VERSION_CONHECIDA: i64 = 34;
+const SCHEMA_VERSION_CONHECIDA: i64 = 35;
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
