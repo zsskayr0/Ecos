@@ -146,7 +146,7 @@ fn notas_fts(conn: &Connection, expr: &str, espaco: Option<&str>, visivel: &str)
 
 fn tarefas_fts(conn: &Connection, expr: &str, espaco: Option<&str>, visivel: &str) -> rusqlite::Result<Vec<serde_json::Value>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT t.id, t.titulo, t.espaco, t.status FROM tarefa_fts \
+        "SELECT t.id, t.titulo, t.espaco, t.status, t.prioridade FROM tarefa_fts \
          JOIN tarefa t ON t.id = tarefa_fts.id \
          WHERE tarefa_fts MATCH ?1 AND (?2 IS NULL OR t.espaco = ?2) AND {visivel} \
          ORDER BY rank LIMIT {LIMITE}",
@@ -155,7 +155,7 @@ fn tarefas_fts(conn: &Connection, expr: &str, espaco: Option<&str>, visivel: &st
         .query_map(rusqlite::params![expr, espaco], |r| {
             Ok(serde_json::json!({
                 "id": r.get::<_, String>(0)?, "titulo": r.get::<_, String>(1)?,
-                "espaco": r.get::<_, String>(2)?, "status": r.get::<_, String>(3)?,
+                "espaco": r.get::<_, String>(2)?, "status": r.get::<_, String>(3)?, "prioridade": r.get::<_, String>(4)?,
             }))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -294,7 +294,7 @@ fn notas_aproximadas(conn: &Connection, palavras: &[String], espaco: Option<&str
 }
 
 fn tarefas_aproximadas(conn: &Connection, palavras: &[String], espaco: Option<&str>, visivel: &str) -> rusqlite::Result<Vec<serde_json::Value>> {
-    let mut stmt = conn.prepare(&format!("SELECT t.id, t.titulo, t.espaco, t.status FROM tarefa t WHERE (?1 IS NULL OR t.espaco = ?1) AND {visivel} ORDER BY t.titulo"))?;
+    let mut stmt = conn.prepare(&format!("SELECT t.id, t.titulo, t.espaco, t.status, t.prioridade FROM tarefa t WHERE (?1 IS NULL OR t.espaco = ?1) AND {visivel} ORDER BY t.titulo"))?;
     let mut rows = stmt.query(rusqlite::params![espaco])?;
     let mut out = Vec::new();
     while let Some(r) = rows.next()? {
@@ -302,7 +302,7 @@ fn tarefas_aproximadas(conn: &Connection, palavras: &[String], espaco: Option<&s
         if todas_casam(palavras, &palavras_de(&titulo)) {
             out.push(serde_json::json!({
                 "id": r.get::<_, String>(0)?, "titulo": titulo,
-                "espaco": r.get::<_, String>(2)?, "status": r.get::<_, String>(3)?,
+                "espaco": r.get::<_, String>(2)?, "status": r.get::<_, String>(3)?, "prioridade": r.get::<_, String>(4)?,
             }));
             if out.len() >= LIMITE {
                 break;

@@ -1,5 +1,5 @@
 import {
-  CalendarCheck2,
+  GitCommitVertical,
   CalendarClock,
   CalendarDays,
   FolderTree,
@@ -34,7 +34,7 @@ interface ItemMenu {
 
 /** Navegação lateral do mobile, organizada como o rail do desktop. */
 const MODULOS: ItemMenu[] = [
-  { rota: "/hoje", rotulo: "Hoje", Icone: CalendarCheck2 },
+  { rota: "/timeline", rotulo: "Timeline", Icone: GitCommitVertical },
   { rota: "/feed", rotulo: "Feed", Icone: Newspaper },
   { rota: "/agenda", rotulo: "Agenda", Icone: CalendarDays },
   { rota: "/eventos", rotulo: "Eventos", Icone: CalendarClock },

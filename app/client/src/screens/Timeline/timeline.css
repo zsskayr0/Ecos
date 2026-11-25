@@ -1,0 +1,77 @@
+/* Timeline: entrada escalonada dos itens, curva que se desenha e pulso do "agora". */
+
+@keyframes ecos-timeline-item-entra {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ecos-timeline-traco {
+  from { stroke-dashoffset: 40; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes ecos-timeline-pulso {
+  0% { box-shadow: 0 0 0 0 rgb(34 211 238 / 0.45); }
+  70%, 100% { box-shadow: 0 0 0 7px rgb(34 211 238 / 0); }
+}
+
+.ecos-timeline-item {
+  animation: ecos-timeline-item-entra 320ms cubic-bezier(.22, 1, .36, 1) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 28ms);
+}
+
+/* Curva de entrada/saída do ramo do dia: desenha-se quando o grupo abre. */
+.ecos-timeline-curva path {
+  stroke-dasharray: 40;
+  animation: ecos-timeline-traco 420ms cubic-bezier(.22, 1, .36, 1) both;
+}
+.ecos-timeline-curva[data-futuro] path {
+  stroke-dasharray: 3 3;
+  animation: none;
+}
+
+.ecos-timeline-agora {
+  animation: ecos-timeline-pulso 2.4s ease-out infinite;
+}
+
+/* Recolher/expandir: a altura anima pelo grid (1fr ↔ 0fr), sem medir nada no JS. */
+.ecos-timeline-ramo {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 320ms cubic-bezier(.22, 1, .36, 1), opacity 240ms ease;
+}
+.ecos-timeline-ramo[data-recolhido] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.ecos-timeline-ramo > * { min-height: 0; overflow: hidden; }
+/* Aberto, o ramo deixa o cartão de detalhes escapar para baixo; o corte só vale enquanto recolhe. */
+.ecos-timeline-ramo:not([data-recolhido]) > * { overflow: visible; }
+
+/* Ramo do registro (o que a pessoa fez): surge depois do trilho principal. */
+@keyframes ecos-timeline-ramo-surge {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ecos-timeline-ramo-registro {
+  animation: ecos-timeline-ramo-surge 500ms ease-out 180ms both;
+}
+
+/* Cartão de detalhes: aparece com um pequeno atraso para não piscar ao passar o mouse pela lista. */
+.ecos-timeline-cartao {
+  transform: translateY(-2px);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+}
+.group\/linha:hover > .ecos-timeline-cartao {
+  transform: none;
+  transition-delay: 350ms, 350ms, 350ms;
+}
+
+/* Bloco de hoje: entra suave. */
+.ecos-timeline-hoje {
+  animation: ecos-timeline-item-entra 400ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ecos-timeline-item, .ecos-timeline-curva path, .ecos-timeline-agora, .ecos-timeline-ramo-registro, .ecos-timeline-hoje { animation: none; }
+  .ecos-timeline-cartao { transition: none; }
+  .ecos-timeline-ramo { transition: none; }
+}

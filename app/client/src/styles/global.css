@@ -1236,3 +1236,53 @@ html[data-reduzir-movimento] .ecos-vidro, html[data-reduzir-movimento] .ecos-vid
 /* Classes-marcadoras (sem estilo próprio): servem de gancho em seletores/testes e para o lint de classes do Tailwind. */
 .ecos-respiro-titulos { }
 .ecos-veu-modal { }
+
+/* Pílula de navegação com recorte no meio para o botão +: raio do vão = metade do botão (28px) + 6px de folga, centrado na borda de cima. */
+.ecos-pilula-recorte { -webkit-mask-image: radial-gradient(circle 34px at 50% 0, transparent 33.5px, #000 34px); mask-image: radial-gradient(circle 34px at 50% 0, transparent 33.5px, #000 34px); }
+.ecos-fab[data-pilula] { position: fixed; left: calc(50% - 28px); right: auto; bottom: calc(52.6px + var(--ecos-safe-bottom)); }
+@media (min-width: 701px) { .ecos-fab[data-pilula="cofre"] { left: auto; right: max(1.25rem, calc(var(--ecos-safe-right) + 1rem)); bottom: calc(2rem + var(--ecos-safe-bottom)); } }
+/* Contorno do recorte: meia-lua de borda (mesma cor da pílula) só na parte de baixo do vão, encostando nas pontas da borda cortada. O hover não escala o botão aqui para não desencaixar o anel. */
+.ecos-fab[data-pilula]::before { content: ""; position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; margin: -34px 0 0 -34px; box-sizing: border-box; border: 1px solid rgb(var(--ecos-border-rgb) / .6); border-radius: 50%; clip-path: inset(50% 0 0 0); pointer-events: none; }
+.ecos-fab[data-pilula]:hover { transform: none; }
+/* Globo do botão +: esfera de raio 28px. O disco e o brilho ficam parados; os glifos (+ à frente, lupa no polo de cima) giram em X. */
+.ecos-fab[data-pilula] { perspective: 220px; }
+.ecos-esfera { position: absolute; inset: 0; display: block; transform-style: preserve-3d; }
+.ecos-esfera-disco { position: absolute; inset: 0; border-radius: 9999px; box-shadow: none; }
+.ecos-esfera-giro { position: absolute; inset: 0; display: block; transform-style: preserve-3d; transition: transform .3s cubic-bezier(.34,1.56,.64,1); }
+.ecos-esfera-glifo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.ecos-esfera-brilho { position: absolute; inset: 0; border-radius: 9999px; pointer-events: none; background: none; transform: translateZ(30px); }
+@keyframes ecos-esfera-dica { 0%,100% { transform: rotateX(0); } 40% { transform: rotateX(-55deg); } }
+.ecos-esfera-giro.ecos-esfera-dica { animation: ecos-esfera-dica 1.1s ease-in-out .9s 2; }
+
+/* Busca rápida: véu desfocado sobre a tela em uso; o painel desce do topo e as sugestões entram em cascata. */
+.ecos-busca-veu { position: fixed; inset: 0; z-index: 90; overflow-y: auto; background: rgb(0 0 0 / .5); -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1); }
+.ecos-busca-entrando { animation: ecos-busca-veu-in 240ms cubic-bezier(.22,1,.36,1) both; }
+.ecos-busca-entrando .ecos-busca-painel { animation: ecos-busca-painel-in 300ms cubic-bezier(.22,1,.36,1) both; }
+.ecos-busca-saindo { pointer-events: none; animation: ecos-busca-veu-out 200ms ease-in both; }
+.ecos-busca-saindo .ecos-busca-painel { animation: ecos-busca-painel-out 200ms cubic-bezier(.4,0,1,1) both; }
+.ecos-busca-item { animation: ecos-busca-item-in 220ms cubic-bezier(.22,1,.36,1) both; }
+@keyframes ecos-busca-veu-in { from { opacity: 0; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } to { opacity: 1; } }
+@keyframes ecos-busca-veu-out { to { opacity: 0; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } }
+@keyframes ecos-busca-painel-in { from { opacity: 0; transform: translateY(-14px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes ecos-busca-painel-out { to { opacity: 0; transform: translateY(-10px) scale(.98); } }
+@keyframes ecos-busca-item-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: var(--op, 1); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ecos-busca-veu, .ecos-busca-painel, .ecos-busca-item { animation-duration: 1ms !important; animation-delay: 0ms !important; } }
+
+/* Cor do risco das notificações: registrada para poder esmaecer de verde para cinza. */
+@property --risco-cor { syntax: "<color>"; inherits: false; initial-value: rgb(128 128 128); }
+
+/* Sino vazio das notificações: balança a partir do topo, para e repete. */
+.ecos-sino-batendo { transform-origin: 50% 12%; animation: ecos-sino-bate 2.6s ease-in-out .3s infinite; }
+@keyframes ecos-sino-bate {
+  0%, 38%, 100% { transform: rotate(0); }
+  4% { transform: rotate(18deg); } 9% { transform: rotate(-16deg); } 14% { transform: rotate(12deg); }
+  19% { transform: rotate(-9deg); } 24% { transform: rotate(5deg); } 29% { transform: rotate(-2deg); } 33% { transform: rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) { .ecos-sino-batendo { animation: none; } }
+
+/* O "+" é um botão chapado: sem brilho nem sombra interna (no tema claro a esfera parecia um objeto 3D solto). */
+.ecos-fab[data-pilula] { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
+
+/* Campo do overlay de busca: sem contorno nativo (inclusive dentro do Cofre, que define o seu) e sem o "x" do navegador. */
+.ecos-busca-veu input:focus, .ecos-busca-veu input:focus-visible { outline: none !important; box-shadow: none !important; }
+.ecos-busca-veu input[type="search"]::-webkit-search-cancel-button, .ecos-busca-veu input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }

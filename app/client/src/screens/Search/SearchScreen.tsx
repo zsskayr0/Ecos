@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { ChevronLeft, Search as SearchIcon, Clock } from "lucide-react";
 import { busca, vault, type TransacaoApi } from "@/lib/api";
@@ -29,7 +29,8 @@ interface Resultado {
 export function SearchScreen() {
   const navigate = useNavigate();
   const abrirDocumento = useAbrirDocumento();
-  const [termo, setTermo] = useState("");
+  const [params] = useSearchParams();
+  const [termo, setTermo] = useState(() => params.get("q") ?? "");
   const [debounced, setDebounced] = useState("");
   const [resultados, setResultados] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);

@@ -8,6 +8,14 @@ interface AppUIState {
   drawerAberto: boolean;
   abrirDrawer: () => void;
   fecharDrawer: () => void;
+  /** Busca rápida (véu desfocado por cima da tela atual, com sugestões). */
+  buscaAberta: boolean;
+  abrirBusca: () => void;
+  fecharBusca: () => void;
+  /** Notificações (mesmo véu desfocado da busca). */
+  notificacoesAbertas: boolean;
+  abrirNotificacoes: () => void;
+  fecharNotificacoes: () => void;
 
   /** null = no create popup/form open; string = the type being edited. */
   capturaAberta: TipoCaptura | "evento" | "escolha" | null;
@@ -41,6 +49,8 @@ const AppUIContext = createContext<AppUIState | null>(null);
 
 export function AppUIProvider({ children }: { children: ReactNode }) {
   const [drawerAberto, setDrawerAberto] = useState(false);
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
   const [capturaAberta, setCapturaAberta] = useState<TipoCaptura | "evento" | "escolha" | null>(null);
   const [idCaptura, setIdCaptura] = useState(0);
   const [dataCaptura, setDataCaptura] = useState<string | null>(null);
@@ -58,6 +68,12 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       drawerAberto,
       abrirDrawer: () => setDrawerAberto(true),
       fecharDrawer: () => setDrawerAberto(false),
+      buscaAberta,
+      abrirBusca: () => setBuscaAberta(true),
+      fecharBusca: () => setBuscaAberta(false),
+      notificacoesAbertas,
+      abrirNotificacoes: () => setNotificacoesAbertas(true),
+      fecharNotificacoes: () => setNotificacoesAbertas(false),
 
       capturaAberta,
       abrirCaptura: (inicial, data = null, rascunho = null) => { setDataCaptura(data); setRascunhoCaptura(rascunho); setIdCaptura((n) => n + 1); setCapturaAberta(inicial); },
@@ -79,7 +95,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       intercalarEquipes,
       setIntercalarEquipes,
     }),
-    [drawerAberto, capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
+    [drawerAberto, buscaAberta, notificacoesAbertas, capturaAberta, idCaptura, dataCaptura, rascunhoCaptura, diaCofre, anexosDeCaptura, filtroEquipeId, espacoAtivo, intercalarEquipes],
   );
 
   return <AppUIContext.Provider value={value}>{children}</AppUIContext.Provider>;

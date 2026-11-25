@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
 import { ArmadilhaFoco } from "./components/common/ArmadilhaFoco";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -90,6 +90,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
  * another one, so it lives outside `BrowserRouter` entirely). Narrow
  * windows and Android keep the single-column mobile shell.
  */
+/** No mobile o Cofre ocupa a tela sozinho; se algo dentro dele navega para fora de /cofre (ex.: Configurações), devolve a tela ao app. O voltar do sistema retorna ao Cofre pelo popstate. */
+function SaidaDoCofre({ sair }: { sair: () => void }) {
+  const { pathname } = useLocation();
+  useEffect(() => { if (!pathname.startsWith("/cofre")) sair(); }, [pathname, sair]);
+  return null;
+}
+
 function Shell() {
   const desktop = useIsDesktop();
   const desktopRef = useRef(desktop);
@@ -102,7 +109,7 @@ function Shell() {
     window.addEventListener("popstate", navegar);
     return () => { window.removeEventListener("ecos:abrir-cofre", abrir); window.removeEventListener("popstate", navegar); };
   }, []);
-  if (cofre && !desktop) return <BrowserRouter><TelaSobDemanda><Routes><Route path="/cofre/transacao/:id" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /><Route path="*" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /></Routes></TelaSobDemanda></BrowserRouter>;
+  if (cofre && !desktop) return <BrowserRouter key="cofre"><SaidaDoCofre sair={() => setCofre(false)} /><TelaSobDemanda><Routes><Route path="/cofre/transacao/:id" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /><Route path="*" element={<VaultScreen voltar={() => { window.history.replaceState(null,"","/feed"); setCofre(false); }} />} /></Routes></TelaSobDemanda></BrowserRouter>;
   if (desktop) return <DesktopShell />;
 
   return (

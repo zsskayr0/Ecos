@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type PointerEvent as PonteiroReact } from "react";
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useModoExplorador } from "@/lib/use-modo-explorador";
+import { useLayoutExplorador, useModoExplorador } from "@/lib/use-modo-explorador";
 import { ExploradorLateral } from "./ExploradorLateral";
 import { RAIL_EXPLORADOR, RAIL_PRINCIPAL, RAIL_UTILITARIOS, moduloDaRota, moduloPorId, type ModuloId } from "./modules";
 import { definirArvoreLateralVisivel, definirLarguraMenu } from "./arvore-lateral";
@@ -36,6 +36,7 @@ function lerExpandida(): boolean {
 /** Rail lateral: fino (só ícones) ou expandido (ícone + nome). Ctrl/Cmd+B alterna; a escolha é lembrada. */
 export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
   const [expandida, setExpandida] = useState(lerExpandida);
+  const expandidaMenu = expandida;
   useEffect(() => { try { localStorage.setItem(CHAVE_EXPANDIDA, expandida ? "1" : "0"); } catch { /* cache indisponível */ } }, [expandida]);
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
@@ -50,6 +51,9 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
     return () => window.removeEventListener("keydown", aoTeclar);
   }, []);
   const explorador = useModoExplorador();
+  const layoutExplorador = useLayoutExplorador();
+  const trilho = explorador && layoutExplorador === "trilho";
+  const empilhado = explorador && layoutExplorador === "empilhado";
   const modoLargura: ModoLargura = explorador ? "explorador" : "normal";
   const [larguras, setLarguras] = useState(lerLarguras);
   const largura = larguras[modoLargura] ?? LARGURA_PADRAO[modoLargura];
@@ -109,12 +113,13 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
     ro.observe(el);
     definirLarguraMenu(Math.round(el.getBoundingClientRect().width));
     return () => ro.disconnect();
-  }, [explorador]);
+  }, [explorador, layoutExplorador]);
 
   function botao(id: ModuloId) {
     const modulo = moduloPorId(id);
     const ativo = moduloAtivo === id;
-    const compacto = explorador && expandida; // modo explorador aberto: botões mais baixos para sobrar altura à árvore
+    const compacto = empilhado && expandidaMenu; // layout enxuto aberto: botões mais baixos para sobrar altura à árvore
+    const expandida = expandidaMenu && !trilho; // no layout em trilho os ícones nunca levam texto
     return (
       <button
         key={id}
@@ -148,36 +153,81 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
   const botaoRecolher = (
     <button type="button" onClick={() => setExpandida((v) => !v)} aria-expanded={expandida}
       aria-label={expandida ? "Recolher menu lateral" : "Expandir menu lateral"} title={`${expandida ? "Recolher" : "Expandir"} menu (Ctrl+B)`}
-      className={`flex h-10 items-center rounded-xl text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary ${expandida ? "w-full gap-3 px-3" : "w-10 justify-center"}`}>
+      className={`flex h-10 items-center rounded-xl text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary ${expandida && !trilho ? "w-full gap-3 px-3" : "w-10 justify-center"}`}>
       {expandida ? <PanelLeftClose size={19} strokeWidth={1.75} className="shrink-0" /> : <PanelLeftOpen size={19} strokeWidth={1.75} className="shrink-0" />}
-      {expandida && <span className="truncate text-sm font-medium">Recolher menu</span>}
+      {expandida && !trilho &&<span className="truncate text-sm font-medium">Recolher menu</span>}
     </button>
   );
 
-  function secao(id: string, titulo: string) {
-    const aberta = !recolhidas.has(id);
-    return (
-      <button type="button" onClick={() => alternarSecao(id)} aria-expanded={aberta}
-        className="flex h-8 w-full items-center gap-1 rounded-md px-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary">
-        {aberta ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        {titulo}
-      </button>
-    );
-  }
-
-  if (explorador) {
+  if (empilhado) {
     return (
       <nav ref={nav} aria-label="Módulos" data-expandida={expandida} data-explorador="true" style={estiloLargura}
         className={`relative flex shrink-0 flex-col gap-1 overflow-hidden border-r border-border bg-surface-1 py-2.5 ${transicao} ${expandida ? "items-stretch px-2" : "w-14 items-center"}`}>
         {alcaLargura}
         {expandida ? (
           <>
-            {/* Módulos + árvore rolam juntos, com uma única barra, que só aparece ao passar o mouse. */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               <div className="scroll-discreto -mr-1.5 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
-                {secao("modulos", "Módulos")}
-                {!recolhidas.has("modulos") && <div className="flex flex-col gap-1">{RAIL_EXPLORADOR.map(botao)}</div>}
+                <div className="flex flex-col gap-1">{RAIL_EXPLORADOR.map(botao)}</div>
                 <div className="my-2 border-t border-border" />
+                <div className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:bg-surface-2">
+                  <button type="button" aria-expanded={arquivosAbertos}
+                    aria-label={arquivosAbertos ? "Recolher Arquivos" : "Expandir Arquivos"}
+                    onClick={() => alternarSecao("arquivos")}
+                    className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:bg-surface-3 hover:text-text-primary">
+                    {arquivosAbertos ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  </button>
+                  <button type="button" aria-current={abaAtiva?.path === "/arquivos" ? "page" : undefined}
+                    onClick={() => {
+                      if (!arquivosAbertos) alternarSecao("arquivos");
+                      abrirPastaNosArquivos({ state, dispatch }, "");
+                    }}
+                    className="h-full min-w-0 flex-1 rounded text-left uppercase hover:text-text-primary">
+                    Arquivos
+                  </button>
+                </div>
+                {arquivosAbertos && <ExploradorLateral />}
+              </div>
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-surface-1 to-transparent" />
+            </div>
+            <div className="flex shrink-0 items-center gap-1 border-t border-border pt-1.5">
+              <div className="min-w-0 flex-1">{RAIL_UTILITARIOS.map(botao)}</div>
+              <button type="button" onClick={() => setExpandida(false)} aria-label="Recolher menu lateral" title="Recolher menu (Ctrl+B)"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary">
+                <PanelLeftClose size={19} strokeWidth={1.75} />
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {RAIL_EXPLORADOR.map(botao)}
+            <div className="mt-auto flex flex-col items-center gap-1">
+              {RAIL_UTILITARIOS.map(botao)}
+              {botaoRecolher}
+            </div>
+          </>
+        )}
+      </nav>
+    );
+  }
+
+  if (trilho) {
+    return (
+      <nav ref={nav} aria-label="Módulos" data-expandida={expandida} data-explorador="true" style={estiloLargura}
+        className={`relative flex shrink-0 flex-row overflow-hidden border-r border-border bg-surface-1 py-2.5 ${transicao} ${expandida ? "" : "w-14"}`}>
+        {alcaLargura}
+        {/* Trilho de ícones sempre recolhido (como no Obsidian); a árvore de arquivos fica à direita dele. */}
+        <div className="flex min-h-0 w-14 shrink-0 flex-col items-center gap-1">
+          <div className="scroll-discreto flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">{RAIL_PRINCIPAL.map(botao)}</div>
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            {RAIL_UTILITARIOS.map(botao)}
+            {botaoRecolher}
+          </div>
+        </div>
+        {expandida && (
+          <div className="flex min-w-0 flex-1 flex-col gap-1 pl-3 pr-2 pt-1">
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <div className="scroll-discreto -mr-1.5 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
                 <div className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:bg-surface-2">
                   <button type="button" aria-expanded={arquivosAbertos}
                     aria-label={arquivosAbertos ? "Recolher Arquivos" : "Expandir Arquivos"}
@@ -199,22 +249,7 @@ export function Rail({ abrirCofre }: { abrirCofre: () => void }) {
               {/* Esmaece a última linha: deixa claro que a lista continua, em vez de parecer cortada. */}
               <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-surface-1 to-transparent" />
             </div>
-            <div className="flex shrink-0 items-center gap-1 border-t border-border pt-1.5">
-              <div className="min-w-0 flex-1">{RAIL_UTILITARIOS.map(botao)}</div>
-              <button type="button" onClick={() => setExpandida(false)} aria-label="Recolher menu lateral" title="Recolher menu (Ctrl+B)"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary">
-                <PanelLeftClose size={19} strokeWidth={1.75} />
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {RAIL_EXPLORADOR.map(botao)}
-            <div className="mt-auto flex flex-col items-center gap-1">
-              {RAIL_UTILITARIOS.map(botao)}
-              {botaoRecolher}
-            </div>
-          </>
+          </div>
         )}
       </nav>
     );

@@ -1,5 +1,6 @@
+import { Fragment } from "react";
 import { NavLink } from "react-router-dom";
-import { Rss, FileText, Search, CalendarClock, ListChecks } from "lucide-react";
+import { Rss, FileText, CalendarClock, ListChecks } from "lucide-react";
 
 /**
  * Bottom nav — caminhos de trabalho rápido no mobile. Cofre é uma seção
@@ -8,18 +9,19 @@ import { Rss, FileText, Search, CalendarClock, ListChecks } from "lucide-react";
 const ITENS = [
   { to: "/feed", label: "Feed", Icon: Rss },
   { to: "/notas", label: "Notas", Icon: FileText },
-  { to: "/busca", label: "Busca", Icon: Search },
   { to: "/tarefas", label: "Tarefas", Icon: ListChecks },
   { to: "/agenda", label: "Agenda", Icon: CalendarClock },
 ] as const;
 
 export function BottomNav() {
   return (
-    <nav aria-label="Principal" className="fixed inset-x-4 bottom-[calc(16px+var(--ecos-safe-bottom))] z-40 mx-auto max-w-md md:max-w-xl">
-      <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-surface-1/70 px-2 py-1.5 shadow-nav backdrop-blur-nav">
-        {ITENS.map(({ to, label, Icon }) => (
+    <nav aria-label="Principal" className="fixed inset-x-4 bottom-[calc(16px+var(--ecos-safe-bottom))] z-40 mx-auto lg:max-w-xl">
+      <div className="flex items-center justify-between ecos-pilula-recorte rounded-2xl border border-border/60 bg-surface-1/70 px-2 py-1.5 shadow-nav backdrop-blur-nav">
+        {ITENS.map(({ to, label, Icon }, i) => (
+          <Fragment key={to}>
+            {/* Vão do meio: o botão + (Fab) fica encaixado no recorte da pílula. */}
+            {i === ITENS.length / 2 && <span aria-hidden className="w-[76px] shrink-0" />}
           <NavLink
-            key={to}
             to={to}
             className="relative flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-2"
           >
@@ -40,6 +42,7 @@ export function BottomNav() {
               </>
             )}
           </NavLink>
+          </Fragment>
         ))}
       </div>
     </nav>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, ChevronDown, Users } from "lucide-react";
+import { ArrowLeft, Bell, Check, ChevronDown, Lock, Search, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/common/Avatar";
 import { Pill } from "@/components/common/Pill";
@@ -16,8 +16,9 @@ import { useFotoPerfil } from "@/lib/profile-avatar";
  * notification bell on the right (section 2.2). Team filter is
  * optional/temporary, never a fixed tab (section 2.3, rule 6).
  */
-export function Topbar() {
-  const { abrirDrawer, filtroEquipeId, setFiltroEquipeId, espacoAtivo, setEspacoAtivo, intercalarEquipes } = useAppUI();
+/** No Cofre (celular) o mesmo cabeçalho vale, com a lupa virando a seta de voltar e o sino virando o cadeado. */
+export function Topbar({ cofre }: { cofre?: { voltar: () => void; trancar?: () => void } } = {}) {
+  const { abrirDrawer, abrirBusca, abrirNotificacoes, filtroEquipeId, setFiltroEquipeId, espacoAtivo, setEspacoAtivo, intercalarEquipes } = useAppUI();
   const { perfil } = useAuth();
   const { url: urlFotoPerfil } = useFotoPerfil(perfil?.id, perfil?.avatar_atualizado_em);
   const { equipes } = useMinhasEquipes();
@@ -77,10 +78,28 @@ export function Topbar() {
         )}
       </div>}
 
-      <button onClick={() => navigate("/notificacoes")} aria-label="Notificações" className="relative -mr-2 flex h-11 w-11 items-center justify-center">
-        <Bell size={22} strokeWidth={1.75} className="text-text-primary" />
-        {naoLidas > 0 && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-cyan" />}
-      </button>
+      <div className="-mr-2 flex items-center">
+        {cofre ? (
+          <>
+            <button onClick={cofre.voltar} aria-label="Voltar ao Ecos" className="flex h-11 w-11 items-center justify-center">
+              <ArrowLeft size={22} strokeWidth={1.75} className="text-text-primary" />
+            </button>
+            <button onClick={cofre.trancar} aria-label="Trancar o Cofre" disabled={!cofre.trancar} className="flex h-11 w-11 items-center justify-center disabled:opacity-40">
+              <Lock size={22} strokeWidth={1.75} className="text-text-primary" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={abrirBusca} aria-label="Buscar" className="flex h-11 w-11 items-center justify-center">
+              <Search size={22} strokeWidth={1.75} className="text-text-primary" />
+            </button>
+            <button onClick={abrirNotificacoes} aria-label="Notificações" className="relative flex h-11 w-11 items-center justify-center">
+              <Bell size={22} strokeWidth={1.75} className="text-text-primary" />
+              {naoLidas > 0 && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-cyan" />}
+            </button>
+          </>
+        )}
+      </div>
     </header>
   );
 }

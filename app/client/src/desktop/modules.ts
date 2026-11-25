@@ -1,6 +1,6 @@
 import {
   Bell,
-  CalendarCheck2,
+  GitCommitVertical,
   CalendarClock,
   CalendarDays,
   FolderTree,
@@ -51,7 +51,8 @@ interface Modulo {
 const MODULOS: Record<ModuloId, Modulo> = {
   inicio: { id: "inicio", titulo: "Início", icone: Home, raiz: "/inicio" },
   feed: { id: "feed", titulo: "Feed", icone: Newspaper, raiz: "/feed" },
-  hoje: { id: "hoje", titulo: "Hoje", icone: CalendarCheck2, raiz: "/hoje" },
+  // Id "hoje" mantido: preferências salvas do trilho referenciam o módulo por ele.
+  hoje: { id: "hoje", titulo: "Timeline", icone: GitCommitVertical, raiz: "/timeline" },
   agenda: { id: "agenda", titulo: "Agenda", icone: CalendarDays, raiz: "/agenda" },
   eventos: { id: "eventos", titulo: "Eventos", icone: CalendarClock, raiz: "/eventos" },
   tarefas: { id: "tarefas", titulo: "Tarefas", icone: ListChecks, raiz: "/tarefas" },
@@ -72,7 +73,7 @@ const MODULOS: Record<ModuloId, Modulo> = {
 /** Ordem do rail: navegação principal em cima, utilitários embaixo. */
 export const RAIL_PRINCIPAL: ModuloId[] = ["inicio", "hoje", "agenda", "eventos", "tarefas", "notas", "arquivos", "grafico", "feed", "cofre", "media"];
 /** Modo explorador: só os módulos que não são arquivos; notas e o resto ficam na árvore embaixo. */
-export const RAIL_EXPLORADOR: ModuloId[] = ["inicio", "agenda", "tarefas", "eventos", "cofre"];
+export const RAIL_EXPLORADOR: ModuloId[] = ["inicio", "hoje", "tarefas", "notas", "cofre"];
 export const RAIL_UTILITARIOS: ModuloId[] = ["lixeira"];
 
 export function moduloDaRota(path: string): Modulo {

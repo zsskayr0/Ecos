@@ -50,7 +50,7 @@ export function FormShell({
             <span aria-hidden className="mx-1 h-4 w-px bg-border" />
           </>}
         </>, acoesFocus!)}
-        {!noCabecalho && (!embedded || tipos.length > 1) && <div className={`ecos-capture-header flex items-center gap-2 ${embedded ? "justify-center" : ""} ${titulo ? "!pb-2" : ""}`}>
+        {!noCabecalho && !(tipoAtivo === "transacao" && !embedded) && (!embedded || tipos.length > 1) && <div className={`ecos-capture-header flex items-center gap-2 ${embedded ? "justify-center" : ""} ${titulo ? "!pb-2" : ""}`}>
           {titulo && <h1 className="min-w-0 flex-1 font-display text-xl font-semibold text-text-primary">{titulo}</h1>}
           {embedded ? (
             <SegmentedSlide className="ecos-capture-slide" ariaLabel="Tipo de captura" tamanho="lg" value={tipoAtivo} onChange={onTrocarTipo} opcoes={tipos} />

@@ -988,7 +988,7 @@ export interface LinkPendente {
 
 export const busca = {
   buscar: (q: string, params: { tipo?: "nota" | "tarefa"; espaco?: string } = {}) =>
-    get<{ notas: { id: string; titulo: string; espaco: string; trecho: string }[]; tarefas: { id: string; titulo: string; espaco: string; status: string }[] }>(
+    get<{ notas: { id: string; titulo: string; espaco: string; trecho: string }[]; tarefas: { id: string; titulo: string; espaco: string; status: string; prioridade?: PrioridadeTarefa }[] }>(
       `/busca${qs({ q, ...params })}`,
     ),
 };
@@ -2240,4 +2240,21 @@ export const financeiro = {
     excluir: (id: string) => del<{ok: boolean}>(`/vault/pendencias/${id}`),
     converter: (id: string,data: string) => post<{transacao_id: string}>(`/vault/pendencias/${id}/converter`,{data}),
   },
+};
+
+// --- Timeline ---------------------------------------------------------------
+
+/** O que aconteceu com uma Nota ou Tarefa num dia (`em` é o instante UTC). */
+export interface AtividadeTimeline {
+  tipo: "nota" | "tarefa";
+  id: string;
+  titulo: string;
+  acao: "criada" | "editada" | "concluida";
+  em: string;
+}
+
+export const timeline = {
+  /** Notas e Tarefas criadas, editadas e concluídas entre `data_de` e `data_ate` (dias no fuso `tz`). */
+  atividade: (params: { data_de: string; data_ate: string; tz?: number; espaco?: string }) =>
+    get<AtividadeTimeline[]>(`/timeline/atividade${qs(params)}`),
 };

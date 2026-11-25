@@ -16,6 +16,11 @@ const ORDENS_PASTAS = [
   { valor: "uso", rotulo: "Mais usadas", icone: Rows3, cor: TOM.aco },
 ] as const satisfies readonly { valor: OrdemPastas; rotulo: string; icone: typeof Rows3; cor: string }[];
 
+const LAYOUTS_EXPLORADOR = [
+  { valor: "trilho", rotulo: "Trilho de ícones (todos os módulos)", icone: FolderTree, cor: TOM.ciano },
+  { valor: "empilhado", rotulo: "Enxuto (5 módulos, árvore embaixo)", icone: FolderTree, cor: TOM.violeta },
+] as const satisfies readonly { valor: "trilho" | "empilhado"; rotulo: string; icone: typeof FolderTree; cor: string }[];
+
 const MARCAS_ARQUIVO = [
   { valor: "ambos", rotulo: "Ícone e selo (.PDF)", icone: FileType2, cor: TOM.aco },
   { valor: "selo", rotulo: "Só o selo da extensão", icone: FileType2, cor: TOM.ciano },
@@ -76,11 +81,14 @@ export function PastasArquivosScreen() {
       </Secao>
 
       <Secao titulo="Explorador de arquivos">
-        <Linha Icone={FolderTree} titulo="Modo explorador" descricao="No computador, o menu lateral mostra só Início, Agenda, Tarefas, Eventos e Cofre, com a árvore de arquivos do espaço embaixo.">
+        <Linha Icone={FolderTree} titulo="Modo explorador" descricao="No computador, o menu lateral mostra a árvore de arquivos do espaço junto dos módulos (veja o layout abaixo).">
           <Toggle checked={prefs.modoExplorador} onChange={(modoExplorador) => alterar({ modoExplorador })} label="Modo explorador" />
         </Linha>
         {prefs.modoExplorador && (
           <>
+            <Linha Icone={FolderTree} titulo="Layout do menu lateral" descricao="Trilho: todos os módulos como ícones, com a árvore de arquivos à direita. Enxuto: só Início, Timeline, Tarefas, Notas e Cofre, com a árvore embaixo.">
+              <Seletor valor={prefs.exploradorLayout} opcoes={LAYOUTS_EXPLORADOR} onChange={(exploradorLayout) => alterar({ exploradorLayout })} label="Layout do menu lateral" />
+            </Linha>
             <Linha Icone={Flag} titulo="Ícones de tarefa por prioridade" descricao="No modo Explorador, colore os ícones das tarefas em vermelho para prioridade alta, âmbar para média e ciano para baixa.">
               <Toggle checked={prefs.exploradorColorirPrioridade} onChange={(exploradorColorirPrioridade) => alterar({ exploradorColorirPrioridade })} label="Ícones de tarefa por prioridade" />
             </Linha>

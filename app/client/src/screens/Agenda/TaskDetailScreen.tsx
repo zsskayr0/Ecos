@@ -22,7 +22,7 @@ import { EMPTY_TASK, taskFromDetail, taskScheduledAt, taskTags, type TaskFields 
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { definirStatusOtimista } from "@/lib/status-otimista";
 import { useIsDesktop } from "@/lib/use-viewport";
-import { AcoesFocusContext, AcoesJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, PainelFocusControleContext, TituloJanelaContext } from "@/lib/documento-popup";
+import { AcoesFocusContext, AcoesEsquerdaFocusContext, AcoesJanelaContext, FecharDocumentoContext, ModoFocusDocumentoContext, PainelFocusControleContext, TituloJanelaContext } from "@/lib/documento-popup";
 
 import { mensagemDeErro } from "@/lib/erros";
 const chaveRascunho = (id: string) => `ecos.task-draft.v1:${id}`;
@@ -61,6 +61,7 @@ export function TaskDetailScreen() {
   const rotuloSumario = sumarioAberto ? "Fechar sumário" : "Abrir sumário";
   const acoesFocus = useContext(AcoesFocusContext);
   const acoesJanela = useContext(AcoesJanelaContext);
+  const acoesEsquerdaFocus = useContext(AcoesEsquerdaFocusContext);
   const valueRef = useRef(value);
   const salvoRef = useRef(salvo);
   const salvamentoEmCurso = useRef<Promise<void> | null>(null);
@@ -247,7 +248,7 @@ export function TaskDetailScreen() {
   </div>;
 
   // Sem cabeçalho no desktop: a barra do editor gruda rente ao topo, sem fresta por onde o texto rolando aparece.
-  if (desktop) return <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>{!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />, acoesJanela)}{conteudo}</div>;
+  if (desktop) return <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>{modoFocus && acoesEsquerdaFocus && createPortal(<span title={value.pasta ? `Pasta: ${value.pasta}` : "Sem pasta"} className="max-w-[28rem] truncate text-xs text-text-muted">{value.pasta ? value.pasta.split("/").filter(Boolean).join(" › ") : "Sem pasta"}</span>, acoesEsquerdaFocus)}{!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />, acoesJanela)}{conteudo}</div>;
 
   return <div className="ecos-detail-page min-w-0"><DetailHeader onBack={() => navigate(-1)} actions={tarefa && <>
     <BotaoCopiarCaminho variante="rotulo" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />

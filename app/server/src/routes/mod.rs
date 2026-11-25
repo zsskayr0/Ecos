@@ -48,6 +48,7 @@ mod seguro_testes;
 pub mod sync;
 pub mod sync_problemas;
 pub mod tags;
+pub mod timeline;
 pub mod tarefas;
 pub mod tinta;
 pub mod tarefas_serie;
@@ -184,6 +185,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/eventos/:id/ocorrencias", patch(eventos::atualizar_ocorrencia).delete(eventos::cancelar_ocorrencia))
         .route("/tarefas/:id/eventos", get(eventos::da_tarefa))
         .route("/notas/:id/eventos", get(eventos::da_nota))
+        .route("/timeline/atividade", get(timeline::atividade))
         .route("/agenda/capacidade", get(tarefas::capacidade))
         .route("/agenda/blocos", get(tarefas::listar_blocos))
         .route("/feed", get(feed::obter))

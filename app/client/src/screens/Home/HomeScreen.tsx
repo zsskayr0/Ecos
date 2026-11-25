@@ -108,7 +108,7 @@ export function HomeScreen() {
               {doDia.slice(0, 6).map((t) => (
                 <li key={t.id}><button type="button" onClick={(e) => abrirDocumento(`/tarefa/${t.id}`, e)} title={t.titulo} className="w-full truncate rounded-lg px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-2">{t.titulo}</button></li>
               ))}
-              {doDia.length > 6 && <li><button type="button" onClick={() => abrirModulo("/hoje")} className="px-2 py-1 text-xs text-steel-300 hover:underline">Ver todas em Hoje (+{doDia.length - 6})</button></li>}
+              {doDia.length > 6 && <li><button type="button" onClick={() => abrirModulo("/timeline")} className="px-2 py-1 text-xs text-steel-300 hover:underline">Ver todas na Timeline (+{doDia.length - 6})</button></li>}
             </ul>
           )}
         </section>

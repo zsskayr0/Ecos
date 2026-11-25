@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Users } from "lucide-react";
+import { ArrowLeft, ChevronRight, Users } from "lucide-react";
 import { useBuscaConfiguracoes, useGrupos } from "./ConfiguracoesLayout";
 import { CampoBusca, ResultadosBusca } from "./BuscaConfiguracoes";
 
@@ -11,10 +11,15 @@ export function SettingsScreen() {
   const navigate = useNavigate();
   const grupos = useGrupos();
   const busca = useBuscaConfiguracoes(grupos);
+  // Voltar de verdade (Cofre, Feed, onde a pessoa estava); sem histórico (aberto direto), cai no Feed.
+  const voltar = () => ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0 ? navigate(-1) : navigate("/feed", { replace: true });
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
-      <h1 className="mb-4 font-display text-xl text-text-primary">Configurações</h1>
+      <div className="mb-4 flex items-center gap-1">
+        <button type="button" aria-label="Voltar" onClick={voltar} className="-ml-2 flex size-10 shrink-0 items-center justify-center rounded-full text-text-primary active:bg-surface-2"><ArrowLeft size={22} /></button>
+        <h1 className="font-display text-xl text-text-primary">Configurações</h1>
+      </div>
       <CampoBusca valor={busca.consulta} onChange={busca.setConsulta} aoConfirmar={busca.abrirPrimeiro} className="mb-5" />
 
       {busca.consulta.trim() ? <ResultadosBusca resultados={busca.resultados} aoAbrir={busca.abrir} espacoso /> : grupos.map((grupo) => (

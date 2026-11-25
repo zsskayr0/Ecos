@@ -32,7 +32,7 @@ const tela = (Tela: ComponentType, esqueleto?: ReactNode): ReactElement => (
 );
 
 const HomeScreen = carregar(() => import("@/screens/Home/HomeScreen"), "HomeScreen");
-const TodayScreen = carregar(() => import("@/screens/Today/TodayScreen"), "TodayScreen");
+const TimelineScreen = carregar(() => import("@/screens/Timeline/TimelineScreen"), "TimelineScreen");
 const NotesRootScreen = carregar(() => import("@/screens/Notes/NotesRootScreen"), "NotesRootScreen");
 const FolderScreen = carregar(() => import("@/screens/Notes/FolderScreen"), "FolderScreen");
 const NoteDetailScreen = carregar(() => import("@/screens/Notes/NoteDetailScreen"), "NoteDetailScreen");
@@ -107,7 +107,8 @@ export const screenRoutes = (
 
     <Route path="/feed" element={<FeedScreen />} />
     <Route path="/inicio" element={tela(HomeScreen, <SkeletonHoje />)} />
-    <Route path="/hoje" element={tela(TodayScreen, <SkeletonHoje />)} />
+    <Route path="/timeline" element={tela(TimelineScreen, <SkeletonHoje />)} />
+    <Route path="/hoje" element={<Navigate to="/timeline" replace />} />
     {/* Link legado: a administração agora pertence a Configurações. */}
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
 

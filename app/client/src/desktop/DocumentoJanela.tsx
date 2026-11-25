@@ -589,9 +589,9 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
           <div ref={janelaFocusRef} role="dialog" aria-modal="true" aria-label={tituloDinamico || titulo || tituloDaRota(path)} tabIndex={-1}
             className={`pointer-events-auto absolute flex flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav outline-none ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: principal.x, top: principal.y, width: principal.w, height: principal.h, transition: "left 280ms cubic-bezier(.22,1,.36,1)" }}>
-            {/* Nota: sem a "aba" de cima (fundo e linha) — só os botões flutuando; as ações continuam no mesmo lugar. */}
-            <header className={`flex shrink-0 select-none items-center gap-2 pl-3.5 pr-1.5 ${path.startsWith("/notas/nota/") ? "" : "border-b border-border bg-surface-1"}`} style={{ height: ALTURA_TITULO }}>
-              {path.startsWith("/notas/nota/") ? null : <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />}
+            {/* Nota e tarefa: sem a "aba" de cima (fundo e linha) — só os botões flutuando; as ações continuam no mesmo lugar. */}
+            <header className={`flex shrink-0 select-none items-center gap-2 pl-3.5 pr-1.5 ${path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? "" : "border-b border-border bg-surface-1"}`} style={{ height: ALTURA_TITULO }}>
+              {path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? null : <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />}
               <div ref={setAcoesEsquerdaFocus} className="flex min-w-0 items-center empty:hidden" />
               <span className="flex-1" aria-hidden />
               <div ref={setAcoesFocus} className="flex items-center gap-0.5" />

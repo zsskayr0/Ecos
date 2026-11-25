@@ -9,6 +9,8 @@ import {
   isTodayPeriod,
   parseBRDateLenient,
   periodLabel,
+  periodRange,
+  toISO,
   todayPeriod,
   type Period,
 } from "./period";
@@ -16,10 +18,49 @@ import { CalendarDays as IconCalendar, ChevronDown as IconChevronDown } from "lu
 
 type Mode = "month" | "range" | "year";
 
+/** Últimas seleções de período, guardadas no aparelho (valem para qualquer tela e conta). */
+const CHAVE_RECENTES = "ecos:cofre:periodos-recentes";
+const MAX_RECENTES = 6;
+function lerRecentes(): Period[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHAVE_RECENTES) ?? "[]");
+    return Array.isArray(v) ? (v as Period[]).filter((x) => x && (x.kind === "month" || x.kind === "year" || x.kind === "range")).slice(0, MAX_RECENTES) : [];
+  } catch { return []; }
+}
+function guardarRecente(p: Period): Period[] {
+  const chave = JSON.stringify(p);
+  const lista = [p, ...lerRecentes().filter((x) => JSON.stringify(x) !== chave)].slice(0, MAX_RECENTES);
+  try { localStorage.setItem(CHAVE_RECENTES, JSON.stringify(lista)); } catch { /* vale só nesta sessão */ }
+  return lista;
+}
+
+
 export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  // No celular o seletor é um popup sobre a tela desfocada, com entrada e saída animadas (no desktop segue o popover de sempre).
+  const [movel, setMovel] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width:700px)").matches);
+  const [visivel, setVisivel] = useState(false);
+  const [recentes, setRecentes] = useState<Period[]>(() => lerRecentes());
+  const [baixoDoPopup, setBaixoDoPopup] = useState(0);
+  /** Aplica o período e o lembra entre as últimas seleções. */
+  const aplicar = (p: Period) => { setRecentes(guardarRecente(p)); onChange(p); };
+  const [saindo, setSaindo] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(max-width:700px)");
+    const f = () => setMovel(q.matches);
+    q.addEventListener("change", f);
+    return () => q.removeEventListener("change", f);
+  }, []);
+  useEffect(() => {
+    if (open) { setVisivel(true); setSaindo(false); return; }
+    if (!movel) { setVisivel(false); return; }
+    if (!visivel) return;
+    setSaindo(true);
+    const t = window.setTimeout(() => { setVisivel(false); setSaindo(false); }, 200);
+    return () => window.clearTimeout(t);
+  }, [open, movel]); // eslint-disable-line react-hooks/exhaustive-deps
   // Largura do rótulo medida: o botão cresce/encolhe com transição quando o texto muda e empurra vizinhos junto.
   const rotulo = useRef<HTMLSpanElement>(null);
   const [larguraRotulo, setLarguraRotulo] = useState<number | null>(null);
@@ -56,26 +97,83 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
 
   useEffect(() => {
     if (!open) return;
-    setMode(value.kind);
+    // Sempre abre no intervalo, já preenchido com o período em uso (um mês vira do dia 1 ao último).
+    const { from, to } = periodRange(value);
+    setMode("range");
+    setRangeStart(from); setRangeEnd(to);
+    setFromText(formatBR(from)); setToText(formatBR(to));
+    setRangeNavYear(Number(from.slice(0, 4))); setRangeNavMonth(Number(from.slice(5, 7)));
+    setRecentes(lerRecentes());
   }, [open, value]);
+  // O popup das últimas seleções fica logo abaixo do principal, que muda de altura conforme o modo.
+  useLayoutEffect(() => {
+    if (!visivel || !movel) return;
+    const el = dialog.current;
+    if (!el) return;
+    const medir = () => setBaixoDoPopup(el.offsetTop + el.offsetHeight);
+    medir();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(medir);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [visivel, movel, mode]);
 
   useEffect(() => { if(!open)return; dialog.current?.querySelector<HTMLButtonElement>("button")?.focus(); const close=(e:KeyboardEvent)=>{if(e.key==="Escape")setOpen(false);};window.addEventListener("keydown",close);return()=>{window.removeEventListener("keydown",close);trigger.current?.focus();}; },[open]);
   function applyMonth(year: number, month: number) {
-    onChange({ kind: "month", year, month });
+    aplicar({ kind: "month", year, month });
     setOpen(false);
   }
 
   function applyYear(year: number) {
-    onChange({ kind: "year", year });
+    aplicar({ kind: "year", year });
     setOpen(false);
   }
 
   function applyRange() {
     if (!rangeStart || !rangeEnd) return;
     const [from, to] = rangeStart <= rangeEnd ? [rangeStart, rangeEnd] : [rangeEnd, rangeStart];
-    onChange({ kind: "range", from, to });
+    aplicar({ kind: "range", from, to });
     setOpen(false);
   }
+
+  // Arrastar: pegar um dia cria o intervalo a partir dele; pegar uma ponta de um intervalo pronto a ajusta.
+  const arrasto = useRef<{ ancora: string; navEm: number } | null>(null);
+  const [arrastando, setArrastando] = useState(false);
+  function definirIntervalo(a: string, b: string) {
+    const [from, to] = a <= b ? [a, b] : [b, a];
+    setRangeStart(from); setRangeEnd(to);
+    setFromText(formatBR(from)); setToText(formatBR(to));
+  }
+  function diaSob(e: React.PointerEvent): { iso: string; foraDoMes: boolean } | null {
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-iso]") as HTMLElement | null;
+    return el ? { iso: el.dataset.iso as string, foraDoMes: el.dataset.fora === "1" } : null;
+  }
+  function comecarArrasto(e: React.PointerEvent) {
+    const d = diaSob(e);
+    if (!d) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    let ancora = d.iso;
+    if (rangeStart && rangeEnd) {
+      if (d.iso === rangeStart) ancora = rangeEnd;
+      else if (d.iso === rangeEnd) ancora = rangeStart;
+    }
+    arrasto.current = { ancora, navEm: 0 };
+    setArrastando(true);
+    definirIntervalo(ancora, d.iso);
+  }
+  function moverArrasto(e: React.PointerEvent) {
+    const a = arrasto.current;
+    if (!a) return;
+    const d = diaSob(e);
+    if (!d) return;
+    definirIntervalo(a.ancora, d.iso);
+    // Chegou num dia do mês vizinho: vira o calendário para continuar arrastando.
+    if (d.foraDoMes && Date.now() - a.navEm > 650) {
+      a.navEm = Date.now();
+      const ano = Number(d.iso.slice(0, 4)), mes = Number(d.iso.slice(5, 7));
+      setRangeNavYear(ano); setRangeNavMonth(mes);
+    }
+  }
+  function terminarArrasto() { arrasto.current = null; setArrastando(false); }
 
   function pickRangeDay(iso: string) {
     if (!rangeStart || (rangeStart && rangeEnd)) {
@@ -142,22 +240,30 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
         <IconChevronDown width={12} height={12} className={`text-[var(--text-faint)] transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
+      {visivel && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div ref={dialog} role="dialog" aria-modal="true" onKeyDown={e=>{if(e.key!=="Tab")return;const controls=Array.from(e.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled)"));const first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}} aria-label="Selecionar período" className="cofre-card cofre-period-popover">
-            <button
-              onClick={() => {
-                onChange(todayPeriod());
-                setOpen(false);
-              }}
-              className={
-                "mb-2 w-full rounded-[9px] border border-[var(--border)] py-1.5 text-[0.74rem] font-bold " +
-                (isTodayPeriod(value) ? "bg-[var(--panel-elevated)] text-[var(--text)]" : "text-[var(--text-muted)] hover:bg-[var(--panel-elevated)] hover:text-[var(--text)]")
-              }
-            >
-              Hoje
-            </button>
+          <div className={movel ? `ecos-busca-veu ${saindo ? "ecos-busca-saindo" : "ecos-busca-entrando"}` : "fixed inset-0 z-10"} onClick={() => setOpen(false)} />
+          <div ref={dialog} role="dialog" aria-modal="true" onKeyDown={e=>{if(e.key!=="Tab")return;const controls=Array.from(e.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled)"));const first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}} aria-label="Selecionar período" className="cofre-card cofre-period-popover" data-movel={movel || undefined} data-saindo={saindo || undefined}>
+            <div className="mb-2 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { aplicar(todayPeriod()); setOpen(false); }}
+                className={
+                  "w-full rounded-[9px] border border-[var(--border)] py-1.5 text-[0.74rem] font-bold " +
+                  (isTodayPeriod(value) ? "bg-[var(--panel-elevated)] text-[var(--text)]" : "text-[var(--text-muted)] hover:bg-[var(--panel-elevated)] hover:text-[var(--text)]")
+                }
+              >
+                Hoje
+              </button>
+              <button
+                onClick={() => { const d = new Date(); aplicar({ kind: "month", year: d.getFullYear(), month: d.getMonth() + 1 }); setOpen(false); }}
+                className={
+                  "w-full rounded-[9px] border border-[var(--border)] py-1.5 text-[0.74rem] font-bold " +
+                  (value.kind === "month" && value.year === new Date().getFullYear() && value.month === new Date().getMonth() + 1 ? "bg-[var(--panel-elevated)] text-[var(--text)]" : "text-[var(--text-muted)] hover:bg-[var(--panel-elevated)] hover:text-[var(--text)]")
+                }
+              >
+                Este mês
+              </button>
+            </div>
             <div className="mb-3 flex rounded-[10px] border border-[var(--border)] bg-[var(--bg)] p-[3px]">
               {(["month", "range", "year"] as Mode[]).map((m) => (
                 <button
@@ -245,12 +351,20 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
                     <span key={i}>{d}</span>
                   ))}
                 </div>
-                <div className="relative" onMouseLeave={() => setHoverIso(null)}>
+                <div
+                  className="relative select-none"
+                  style={{ touchAction: "none" }}
+                  data-arrastando={arrastando || undefined}
+                  onPointerDown={comecarArrasto}
+                  onPointerMove={moverArrasto}
+                  onPointerUp={terminarArrasto}
+                  onPointerCancel={terminarArrasto}
+                >
                   {/* overlay: uma barra arredondada por semana, do dia inicial ao final — não célula a célula */}
                   {rowSegments.map((seg) => (
                     <div
                       key={seg.row}
-                      className="pointer-events-none absolute rounded-[4px] bg-[var(--panel-elevated)] transition-[left,width] duration-100 ease-out"
+                      className="cofre-faixa-intervalo pointer-events-none absolute transition-[left,width] duration-150 ease-out"
                       style={{
                         top: `${(seg.row * 100) / 6}%`,
                         height: `${100 / 6}%`,
@@ -263,14 +377,17 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
                   <div className="relative z-10 grid grid-cols-7 text-center">
                     {grid.map((cell) => {
                       const isEdge = cell.iso === displayStart || cell.iso === displayEnd;
+                      const ehHoje = cell.iso === toISO(today.getFullYear(), today.getMonth() + 1, today.getDate());
                       return (
                         <button
                           key={cell.iso}
-                          onClick={() => pickRangeDay(cell.iso)}
-                          onMouseEnter={() => setHoverIso(cell.iso)}
+                          type="button"
+                          tabIndex={-1}
+                          data-iso={cell.iso}
+                          data-fora={cell.inMonth ? "0" : "1"}
                           className={
-                            "mx-auto flex h-6 w-6 items-center justify-center rounded-[6px] text-[0.7rem] transition-transform duration-100 hover:scale-110 " +
-                            (!cell.inMonth ? "text-[var(--text-faint)] opacity-40" : isEdge ? "font-bold text-[var(--text)]" : "text-[var(--text-muted)]")
+                            "mx-auto flex h-6 w-6 items-center justify-center rounded-[6px] text-[0.7rem] " +
+                            (!cell.inMonth ? "text-[var(--text-faint)] opacity-40" : isEdge ? "cofre-dia-extremo font-bold" : ehHoje ? "cofre-dia-hoje font-bold text-[var(--text)]" : "text-[var(--text-muted)]")
                           }
                         >
                           {cell.day}
@@ -322,6 +439,18 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
               </div>
             )}
           </div>
+          {movel && recentes.length > 0 && (
+            <div className="cofre-period-recentes" data-saindo={saindo || undefined} style={{ top: baixoDoPopup + 10 }} role="dialog" aria-label="Últimas seleções de período">
+              <b>Recentes</b>
+              <div>
+                {recentes.map((r) => (
+                  <button key={JSON.stringify(r)} onClick={() => { aplicar(r); setOpen(false); }}>
+                    <IconCalendar width={14} height={14} />{periodLabel(r)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
