@@ -106,6 +106,12 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     Ok(Json(itens))
 }
 
+/// Token curto para o cliente anexar como `?mt=` nas URLs de arquivo (`<img>`/`<a>` não mandam `Authorization`).
+pub async fn token_leitura(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Extension(sessao): Extension<crate::middleware::auth_guard::SessaoAtual>) -> AppResult<Json<serde_json::Value>> {
+    let (token, expira_em_s) = crate::auth::session::emitir_token_midia(&usuario.0, sessao.0.as_deref(), &state.config.session_secret).map_err(|_| AppError::new(ErrorCode::InternalError))?;
+    Ok(Json(serde_json::json!({ "token": token, "expira_em_s": expira_em_s })))
+}
+
 pub async fn obter_arquivo(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(caminho): Path<String>) -> AppResult<([(axum::http::HeaderName, String); 1], Vec<u8>)> {
     let permitidos = crate::espacos::chaves_acessiveis(&state, &usuario.0).await?;
     let Some((_, arquivo)) = crate::espacos::achar_midia(&state.config.notes_root, caminho.trim_start_matches('/'), &permitidos) else { return Err(AppError::new(ErrorCode::NotFound)); };
@@ -253,6 +259,19 @@ mod tests {
         // O prefixo `src/Media/` é o do Markdown; no disco a biblioteca mora em `.ecos_app/Media/`.
         assert_eq!(std::fs::read(temp.join("teste").join(crate::espacos::caminho_no_layout_atual(caminho))).unwrap(), data);
         let uri = format!("/api/v1/media/arquivo/{}", caminho.trim_start_matches("src/Media/").replace(' ', "%20"));
+        // Token de leitura (?mt=): abre o arquivo sem Authorization, só em rota de arquivo e só em GET; não vale como sessão.
+        let tk = app.clone().call(Request::get("/api/v1/media/token").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(tk.status(), StatusCode::OK);
+        let tk: serde_json::Value = serde_json::from_slice(&to_bytes(tk.into_body(), 8192).await.unwrap()).unwrap();
+        let mt = tk["token"].as_str().unwrap().to_string();
+        let por_mt = app.clone().call(Request::get(format!("{uri}?mt={mt}")).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(por_mt.status(), StatusCode::OK);
+        let sem_mt = app.clone().call(Request::get(uri.clone()).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(sem_mt.status(), StatusCode::UNAUTHORIZED);
+        let fora_de_rota = app.clone().call(Request::get(format!("/api/v1/media?mt={mt}")).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(fora_de_rota.status(), StatusCode::UNAUTHORIZED);
+        let apagar = app.clone().call(Request::delete(format!("{uri}?mt={mt}")).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(apagar.status(), StatusCode::UNAUTHORIZED);
         let preview = app.clone().call(Request::get(uri).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(preview.status(), StatusCode::OK);
         assert_eq!(preview.headers()["content-type"], "application/pdf");

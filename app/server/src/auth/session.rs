@@ -49,6 +49,29 @@ pub fn validar_access_token(token: &str, segredo: &[u8]) -> Option<Claims> {
         .map(|dado| dado.claims)
 }
 
+/// Token de leitura de mídia: vale só para `GET` de arquivos (ver `auth_guard::rota_de_midia`) e expira em minutos.
+/// Serve para `<img src>`/`<a href>`, que não conseguem mandar `Authorization` (o app nativo não tem cookie de mesma origem).
+const DURACAO_TOKEN_MIDIA_MIN: i64 = 10;
+
+/// Chave derivada: um token de mídia nunca valida como access token (e vice-versa), mesmo com o mesmo formato JWT.
+fn chave_midia(segredo: &[u8]) -> Vec<u8> {
+    let mut chave = segredo.to_vec();
+    chave.extend_from_slice(b":leitura-de-midia:v1");
+    chave
+}
+
+/// Devolve o token e quantos segundos ele ainda vale.
+pub fn emitir_token_midia(usuario_id: &str, sessao_id: Option<&str>, segredo: &[u8]) -> anyhow::Result<(String, i64)> {
+    let exp = (Utc::now() + ChronoDuration::minutes(DURACAO_TOKEN_MIDIA_MIN)).timestamp() as usize;
+    let claims = Claims { sub: usuario_id.to_string(), exp, sid: sessao_id.map(str::to_string) };
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(&chave_midia(segredo)))?;
+    Ok((token, DURACAO_TOKEN_MIDIA_MIN * 60))
+}
+
+pub fn validar_token_midia(token: &str, segredo: &[u8]) -> Option<Claims> {
+    decode::<Claims>(token, &DecodingKey::from_secret(&chave_midia(segredo)), &Validation::default()).ok().map(|d| d.claims)
+}
+
 /// Gera um refresh token opaco novo — o valor em si vai só no cookie do
 /// navegador; o que persiste no banco é `hash_refresh_token(valor)`.
 pub fn gerar_refresh_token() -> String {
@@ -117,6 +140,17 @@ mod tests {
     fn access_token_rejeita_segredo_errado() {
         let token = emitir_access_token("usr_1", b"segredo-a-xxxxxxxxxxxxxxxxxxxxxx").unwrap();
         assert!(validar_access_token(&token, b"segredo-b-yyyyyyyyyyyyyyyyyyyyyy").is_none());
+    }
+
+    #[test]
+    fn token_de_midia_nao_vale_como_access_token_nem_o_contrario() {
+        let segredo = b"segredo-de-teste-32-bytes-aaaaaa";
+        let (midia, segundos) = emitir_token_midia("usr_1", Some("s1"), segredo).unwrap();
+        assert_eq!(segundos, 600);
+        assert_eq!(validar_token_midia(&midia, segredo).unwrap().sub, "usr_1");
+        assert!(validar_access_token(&midia, segredo).is_none());
+        let acesso = emitir_access_token("usr_1", segredo).unwrap();
+        assert!(validar_token_midia(&acesso, segredo).is_none());
     }
 
     #[test]

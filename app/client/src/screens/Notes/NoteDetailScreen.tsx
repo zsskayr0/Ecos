@@ -374,7 +374,7 @@ function NoteDetailMobile() {
           <button type="button" onPointerEnter={(e) => { if (e.pointerType !== "touch") setGiraAnexo(true); }} onPointerLeave={() => setGiraAnexo(false)} onPointerCancel={() => setGiraAnexo(false)} onClick={() => { setPulsoAnexo(true); window.setTimeout(() => setPulsoAnexo(false), 220); anexarRef.current?.(); }} aria-label="Anexar arquivo" title="Anexar arquivo (na linha do cursor)" className={`${DETAIL_ACTION} group w-10 px-0 text-text-secondary`}><Plus size={18} aria-hidden className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${giraAnexo ? "rotate-90" : ""} ${pulsoAnexo ? "scale-125" : ""}`} /></button>
         </div>
         <OpcoesNota notaId={id} criadoEm={nota.criado_em} atualizadoEm={nota.atualizado_em} estado={enviandoAnexo ? "Enviando anexo…" : conflito ? "Conflito: escolha uma versão" : quedaPendente ? "Aguardando confirmação" : salvando ? "Salvando…" : editando ? "Editando" : "Salvo"} erro={!!erro} revisada={!!nota.ultima_revisao_em} onRevisar={marcarRevisado} onHistorico={() => setHistoricoAberto(true)} classeBotao={`${DETAIL_ACTION} text-text-secondary`}
-          anexos={editando ? <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact /> : undefined}
+          anexos={editando ? <AttachmentsField corpo={corpoEdit} onCorpoChange={setCorpoEdit} tipo="nota" espaco={nota.espaco} itemId={id} onBusyChange={setEnviandoAnexo} disabled={salvando} compact /> : undefined}
           acoes={(fechar) => <>
             {!editando && id && <SeletorVisualizacao modo={modoNota} travado={temTintaLeitura} aoEscolher={escolherModoNota} />}
             <AtalhoTema />

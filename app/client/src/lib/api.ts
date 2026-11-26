@@ -12,7 +12,7 @@ import type { SalvarTintaNota, TintaNota } from "@/lib/tinta/tipos";
  */
 import type { TipoEquipe } from "./tipo-equipe";
 import { mensagemDeCampos, mensagemLimiteDeTentativas } from "./erros";
-import { apiBase, obterAccessToken, definirAccessToken } from "./server-config";
+import { apiBase, obterAccessToken, definirAccessToken, comTokenMidia } from "./server-config";
 import { cabeNoKeepalive } from "./nota-sincronia";
 import { estaNoTauri, obterServidorBaseUrl } from "./server-config";
 import { invoke } from "@tauri-apps/api/core";
@@ -690,7 +690,7 @@ export const notas = {
       formData.append("arquivo", arquivo);
       return req<{ nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string }>(`/notas/${id}/anexos`, { method: "POST", body: formData });
     },
-    urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/notas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
+    urlDownload: (id: string, nomeArquivo: string) => comTokenMidia(`${BASE()}/notas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`),
   },
   /** Modo de escrita: tinta em `_anexos/<id>/tinta.json` (o `.md` não muda). 409 = outra aba gravou antes. */
   tinta: {
@@ -722,7 +722,7 @@ export const lixeira = {
  * Nota ou Tarefa, sem criar uma nova cópia do arquivo. */
 export const media = {
   listar: (espaco?: string) => get<Midia[]>(`/media${qs({ espaco })}`),
-  excluir: (caminho: string) => req<{ ok: true }>(media.urlArquivo(caminho).slice(BASE().length), { method: "DELETE" }),
+  excluir: (caminho: string) => req<{ ok: true }>(media.urlArquivoSemToken(caminho).slice(BASE().length), { method: "DELETE" }),
   /** `espaco`: biblioteca de destino (a do item que vai usar o arquivo); sem ele o servidor usa o Pessoal. */
   enviar: async (arquivo: File, espaco?: string) => {
     if (arquivo.size > 120 * 1024 * 1024) throw new ApiError("ARQUIVO_GRANDE", "O arquivo excede 120 MB. Escolha um arquivo menor.", 413);
@@ -738,7 +738,7 @@ export const media = {
     const accessToken = obterAccessToken();
     let resp: Response;
     try {
-      resp = await fetch(media.urlArquivo(caminho), { credentials: "include", headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+      resp = await fetch(media.urlArquivoSemToken(caminho), { credentials: "include", headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
     } catch {
       throw new ApiError("CONEXAO_INDISPONIVEL", "Não foi possível conectar ao servidor Ecos.", 0);
     }
@@ -746,7 +746,10 @@ export const media = {
     return resp.arrayBuffer();
   },
   referencia: (item: Midia) => `${item.mime.startsWith("image/") ? "!" : ""}[${item.nome.replace(/[\\\[\]]/g, "_")}](${item.caminho.split("/").map((p) => encodeURIComponent(p).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16)}`)).join("/")})`,
-  urlArquivo: (caminho: string) => `${BASE()}/media/arquivo/${caminho.replace(/^src\/Media\//, "").split("/").map((p) => { try { return encodeURIComponent(decodeURIComponent(p)); } catch { return encodeURIComponent(p); } }).join("/")}`,
+  /** URL para `<img>`/`<a>`: no app nativo leva o token curto de leitura (ver `server-config.comTokenMidia`). */
+  urlArquivo: (caminho: string) => comTokenMidia(media.urlArquivoSemToken(caminho)),
+  /** Para `fetch` com `Authorization` (baixar, excluir). */
+  urlArquivoSemToken: (caminho: string) => `${BASE()}/media/arquivo/${caminho.replace(/^src\/Media\//, "").split("/").map((p) => { try { return encodeURIComponent(decodeURIComponent(p)); } catch { return encodeURIComponent(p); } }).join("/")}`,
 };
 
 // --- Tasks & Agenda (section 11.6) ------------------------------------------
@@ -928,7 +931,7 @@ export const tarefas = {
       formData.append("arquivo", arquivo);
       return req<{ nome_arquivo: string; url_relativa: string; tamanho_bytes: number; corpo: string }>(`/tarefas/${id}/anexos`, { method: "POST", body: formData });
     },
-    urlDownload: (id: string, nomeArquivo: string) => `${BASE()}/tarefas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`,
+    urlDownload: (id: string, nomeArquivo: string) => comTokenMidia(`${BASE()}/tarefas/${id}/anexos/${encodeURIComponent(nomeArquivo)}`),
   },
 };
 
@@ -1313,7 +1316,7 @@ export const arquivos = {
   },
   resumo: (params: { espaco?: string; pasta?: string }) =>
     get<{ pastas: number; arquivos: number; notas: number; tarefas: number; midias: number; bytes: number }>(`/arquivos/resumo${qs(params)}`),
-  urlConteudo: (espaco: string, caminho: string) => `${BASE()}/arquivos/conteudo${qs({ espaco, caminho })}`,
+  urlConteudo: (espaco: string, caminho: string) => comTokenMidia(`${BASE()}/arquivos/conteudo${qs({ espaco, caminho })}`),
   baixar: async (espaco: string, caminho: string): Promise<ArrayBuffer> => {
     const accessToken = obterAccessToken();
     let resp: Response;

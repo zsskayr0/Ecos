@@ -90,4 +90,60 @@ export function obterAccessToken(): string | null {
 
 export function definirAccessToken(token: string | null): void {
   accessTokenEmMemoria = token;
+  if (!token) { tokenMidia = null; return; }
+  if (estaNoTauri()) void renovarTokenMidia();
+}
+
+// --- Leitura de mídia no app nativo -------------------------------------------------------------
+// `<img src>` e `<a href>` não mandam `Authorization`, e o cookie de sessão (SameSite=Strict) não acompanha pedidos do
+// WebView do Tauri para o servidor. Por isso as URLs de arquivo levam `?mt=<token curto>` (vale só para GET de arquivo,
+// ~10 min). No navegador o cookie de mesma origem basta e nada muda.
+let tokenMidia: string | null = null;
+let renovando: Promise<void> | null = null;
+let temporizador: ReturnType<typeof setTimeout> | null = null;
+const RENOVAR_ANTES_MS = 2 * 60 * 1000;
+
+export function renovarTokenMidia(): Promise<void> {
+  if (renovando) return renovando;
+  const access = accessTokenEmMemoria;
+  if (!access || !estaNoTauri()) return Promise.resolve();
+  renovando = (async () => {
+    try {
+      const resp = await fetch(`${apiBase()}/media/token`, { headers: { Authorization: `Bearer ${access}` } });
+      if (!resp.ok) return;
+      const dados = (await resp.json()) as { token?: string; expira_em_s?: number };
+      if (!dados.token) return;
+      tokenMidia = dados.token;
+      if (temporizador) clearTimeout(temporizador);
+      temporizador = setTimeout(() => { void renovarTokenMidia(); }, Math.max(30_000, (dados.expira_em_s ?? 600) * 1000 - RENOVAR_ANTES_MS));
+    } catch { /* sem rede: o próximo erro de imagem tenta de novo */ }
+  })().finally(() => { renovando = null; });
+  return renovando;
+}
+
+const ROTA_DE_ARQUIVO = /\/api\/v1\/(?:media\/arquivo\/|arquivos\/conteudo|(?:notas|tarefas)\/[^/?#]+\/anexos\/)/;
+
+/** Acrescenta (ou troca) o token de leitura numa URL de arquivo; fora do app nativo devolve a URL como está. */
+export function comTokenMidia(url: string): string {
+  if (!tokenMidia || !estaNoTauri() || !ROTA_DE_ARQUIVO.test(url)) return url;
+  const [base, ancora = ""] = url.split("#");
+  const limpa = base.replace(/([?&])mt=[^&]*&?/, "$1").replace(/[?&]$/, "");
+  return `${limpa}${limpa.includes("?") ? "&" : "?"}mt=${tokenMidia}${ancora ? `#${ancora}` : ""}`;
+}
+
+// Imagem que carregou antes do token existir, ou com ele vencido (rolagem preguiçosa): tenta uma vez com o token atual.
+// Links de arquivo ganham o token novo no momento do clique.
+if (typeof document !== "undefined") {
+  document.addEventListener("error", (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !ROTA_DE_ARQUIVO.test(img.src) || img.dataset.mtTentou === "1") return;
+    img.dataset.mtTentou = "1";
+    void renovarTokenMidia().then(() => { const novo = comTokenMidia(img.src); if (novo !== img.src) img.src = novo; });
+  }, true);
+  const atualizarLink = (e: Event) => {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    if (a && ROTA_DE_ARQUIVO.test(a.href)) { const novo = comTokenMidia(a.href); if (novo !== a.href) a.href = novo; }
+  };
+  document.addEventListener("pointerdown", atualizarLink, true);
+  document.addEventListener("click", atualizarLink, true);
 }

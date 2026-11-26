@@ -45,14 +45,30 @@ fn extrair_token(req: &Request<Body>) -> Option<String> {
         .map(|c| c.value().to_string())
 }
 
+/// Rotas de leitura de arquivo que `<img>`/`<a>` abrem direto, sem como mandar `Authorization`.
+fn rota_de_midia(metodo: &axum::http::Method, caminho: &str) -> bool {
+    if metodo != axum::http::Method::GET { return false; }
+    let caminho = caminho.strip_prefix("/api/v1").unwrap_or(caminho);
+    if caminho.starts_with("/media/arquivo/") || caminho == "/arquivos/conteudo" { return true; }
+    let partes: Vec<&str> = caminho.trim_start_matches('/').split('/').collect();
+    partes.len() == 4 && matches!(partes[0], "notas" | "tarefas") && partes[2] == "anexos"
+}
+
+/// `?mt=<token>` só vale nas rotas de leitura de arquivo (`rota_de_midia`); em qualquer outra, é ignorado.
+fn token_de_midia(req: &Request<Body>, segredo: &[u8]) -> Option<session::Claims> {
+    if !rota_de_midia(req.method(), req.uri().path()) { return None; }
+    let token = req.uri().query()?.split('&').find_map(|par| par.strip_prefix("mt="))?;
+    session::validar_token_midia(token, segredo)
+}
+
 pub async fn exigir_sessao(
     State(state): State<AppState>,
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, AppError> {
-    let token = extrair_token(&req).ok_or(AppError::new(ErrorCode::Unauthorized))?;
-
-    let claims = session::validar_access_token(&token, &state.config.session_secret)
+    let claims = extrair_token(&req)
+        .and_then(|token| session::validar_access_token(&token, &state.config.session_secret))
+        .or_else(|| token_de_midia(&req, &state.config.session_secret))
         .ok_or(AppError::new(ErrorCode::Unauthorized))?;
 
     // O access token é stateless (15 min): sem isto, uma conta excluída continuaria entrando até ele expirar.
