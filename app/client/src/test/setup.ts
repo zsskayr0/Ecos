@@ -30,3 +30,9 @@ if (typeof HTMLDialogElement !== "undefined") {
   if (!HTMLDialogElement.prototype.showModal) HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute("open", ""); };
   if (!HTMLDialogElement.prototype.close) HTMLDialogElement.prototype.close = function close() { this.removeAttribute("open"); };
 }
+
+// O jsdom não tem matchMedia. Padrão: nenhuma consulta casa (viewport "desktop" sem preferências do sistema).
+// Testes que precisam de outro resultado trocam window.matchMedia por conta própria.
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = ((q: string) => ({ matches: false, media: q, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+}

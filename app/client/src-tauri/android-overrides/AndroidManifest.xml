@@ -5,7 +5,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Biometria para abrir o Cofre com a senha guardada no Keystore (CofreSenhaBridge). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Avisos do Ecos (push por UnifiedPush, EcosPushReceiver.kt); no Android 13+ é pedida ao ligar os avisos. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Android 11+: para enxergar os distribuidores UnifiedPush instalados (ntfy etc.). -->
+    <queries>
+        <intent>
+            <action android:name="org.unifiedpush.android.distributor.REGISTER" />
+        </intent>
+    </queries>
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -15,6 +24,15 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.ecos_client"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- Recebe do distribuidor UnifiedPush o endereço deste aparelho e os avisos do servidor. -->
+        <receiver android:name=".EcosPushReceiver" android:enabled="true" android:exported="true">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
+                <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
+                <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT" />
+                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
+            </intent-filter>
+        </receiver>
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"

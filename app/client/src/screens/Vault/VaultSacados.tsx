@@ -13,6 +13,7 @@ import { PeriodPicker } from "./nexus/PeriodPicker";
 import { periodNoun, periodRange, type Period } from "./nexus/period";
 import { CORES } from "./VaultCategories";
 import { agruparSimilares, type GrupoSimilar } from "./sacados/similares";
+import { useConfirmar } from "@/components/common/useConfirmar";
 
 type Visao = "painel" | "conciliacao";
 type Papel = "todos" | "pagador" | "recebedor";
@@ -306,6 +307,7 @@ function Conciliacao({ grupos, ignorados, onIgnorar, aoMesclar }: { grupos: Grup
 function GrupoCard({ grupo, i, onIgnorar, aoMesclar }: { grupo: GrupoSimilar; i: number; onIgnorar: () => void; aoMesclar: () => void }) {
   const [principalId, setPrincipalId] = useState(grupo.principal.id);
   const [nome, setNome] = useState(grupo.principal.nome);
+  const { confirmar, dialogo } = useConfirmar();
   const [juntando, setJuntando] = useState(false);
   const principal = grupo.membros.find((m) => m.id === principalId) ?? grupo.principal;
   const origens = grupo.membros.filter((m) => m.id !== principal.id);
@@ -319,7 +321,7 @@ function GrupoCard({ grupo, i, onIgnorar, aoMesclar }: { grupo: GrupoSimilar; i:
   async function juntar() {
     const final = nome.trim().replace(/\s+/g, " ");
     if (!final) return;
-    if (!window.confirm(`Juntar ${grupo.membros.length} cadastros em “${final}”? Os ${total} lançamentos passam para ele e os outros nomes deixam de existir.`)) return;
+    if (!(await confirmar({ title: `Juntar ${grupo.membros.length} cadastros em “${final}”?`, description: `Os ${total} lançamentos passam para ele e os outros nomes deixam de existir. Não dá para desfazer.`, confirmLabel: "Juntar" }))) return;
     setJuntando(true);
     try {
       const r = await vault.beneficiarios.mesclar({ destino_id: principal.id, origem_ids: origens.map((o) => o.id), nome: final });
@@ -333,6 +335,7 @@ function GrupoCard({ grupo, i, onIgnorar, aoMesclar }: { grupo: GrupoSimilar; i:
 
   return (
     <div className="cofre-card cofre-cats-card cofre-sacados-grupo cofre-rise" style={estiloI(i)}>
+      {dialogo}
       <p className="cofre-sacados-motivo" data-motivo={grupo.motivo}>{MOTIVO[grupo.motivo]}</p>
       <ul role="radiogroup" aria-label="Cadastro que permanece">
         {grupo.membros.map((m) => (

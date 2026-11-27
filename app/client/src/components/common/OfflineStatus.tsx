@@ -4,6 +4,7 @@ import { obterEstadoOffline, marcarServidorDisponivel, type EstadoOffline } from
 import { sincronizarPendenciasOffline } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { avisar } from "@/lib/toast";
+import { abrirRota } from "@/lib/abrir-rota";
 
 export function OfflineStatus() {
   const [estado, setEstado] = useState<EstadoOffline>(() => obterEstadoOffline());
@@ -11,6 +12,13 @@ export function OfflineStatus() {
   const { notificar } = useRefreshBus();
   // Arrastar o aviso para fora o dispensa; ele volta sozinho quando a situação muda (ex.: voltou a falhar ou a sincronizar).
   const [dispensado, setDispensado] = useState<string | null>(null);
+  // A tela de Pendências avisa quando está aberta: lá o aviso é redundante.
+  const [naTela, setNaTela] = useState(false);
+  useEffect(() => {
+    const aoMudar = (e: Event) => setNaTela(!!(e as CustomEvent<boolean>).detail);
+    window.addEventListener("ecos:pendencias-aberta", aoMudar);
+    return () => window.removeEventListener("ecos:pendencias-aberta", aoMudar);
+  }, []);
   const [arraste, setArraste] = useState<{ x: number; y: number; solto: boolean } | null>(null);
   const toque = useRef<{ id: number; x0: number; y0: number; moveu: boolean } | null>(null);
   estadoRef.current = estado;
@@ -46,7 +54,7 @@ export function OfflineStatus() {
 
   const situacao = estado.erro ? "erro" : estado.sincronizando ? "sync" : estado.servidorDisponivel ? "pendente" : "offline";
   useEffect(() => { setDispensado((atual) => (atual !== null && atual !== situacao ? null : atual)); }, [situacao]);
-  if (dispensado === situacao) return null;
+  if (dispensado === situacao || naTela) return null;
   if (estado.servidorDisponivel && !estado.sincronizando && estado.pendentes === 0 && !estado.erro) return null;
 
   const Icone = estado.erro ? AlertTriangle : estado.sincronizando ? Loader2 : estado.servidorDisponivel ? CloudUpload : WifiOff;
@@ -92,10 +100,10 @@ export function OfflineStatus() {
       type="button"
       onPointerDown={aoPressionar} onPointerMove={aoMover} onPointerUp={aoSoltar} onPointerCancel={aoSoltar}
       style={{ touchAction: "none", transform: `translateX(calc(-50% + ${arraste?.x ?? 0}px)) translateY(${arraste?.y ?? 0}px)`, opacity: arraste ? Math.max(0.2, 1 - Math.hypot(arraste.x, arraste.y) / 220) : 1, transition: arraste?.solto ? "transform 180ms ease-out, opacity 180ms ease-out" : undefined }}
-      onClick={() => void sincronizar()}
-      disabled={estado.sincronizando || !navigator.onLine}
+      // O envio já é tentado sozinho a cada 15 s: o clique leva para a tela que mostra e resolve item a item.
+      onClick={() => abrirRota("/configuracoes/pendencias")}
       role="status"
-      title={estado.erro ?? (estado.pendentes > 0 ? "Tentar sincronizar agora" : undefined)}
+      title={estado.erro ? `${estado.erro} · Toque para ver e resolver` : "Ver o que está esperando envio"}
       className={`fixed left-1/2 top-[calc(env(safe-area-inset-top)+10px)] z-[140] flex min-h-9 select-none items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-nav backdrop-blur-md ${estado.erro ? "border-warning/50 bg-warning/15 text-warning" : "border-steel-500/40 bg-surface-1/95 text-text-primary"}`}
     >
       <Icone size={15} aria-hidden className={estado.sincronizando ? "animate-spin motion-reduce:animate-none" : ""} />

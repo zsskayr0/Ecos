@@ -75,9 +75,9 @@ describe.each([["dark", false], ["light", false], ["dark", true], ["light", true
       expect(razao("#ffffff", t["steel-500"])).toBeGreaterThanOrEqual(4.5);
     });
     it("borda de controle >= 3:1 em todas as superfícies", () => expect(falhas(["border-control"], SUPERFICIES, 3)).toEqual([]));
-    it("texto sobre fundo de acento (on-accent) >= 4,5:1", () => {
+    it("texto sobre fundo de acento, sucesso e erro (on-accent) >= 4,5:1", () => {
       if (alto) return;
-      expect(falhas(["on-accent"], ["cyan", "violet"], 4.5)).toEqual([]);
+      expect(falhas(["on-accent"], ["cyan", "violet", "success", "error"], 4.5)).toEqual([]);
     });
     it("texto sobre fundo steel-700 (on-steel-700) >= 4,5:1", () => {
       expect(razao(t["on-steel-700"], t["steel-700"])).toBeGreaterThanOrEqual(4.5);

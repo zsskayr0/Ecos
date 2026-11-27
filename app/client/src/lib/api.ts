@@ -361,6 +361,38 @@ export async function sincronizarPendenciasOffline(): Promise<number> {
   return sincronizacaoEmCurso;
 }
 
+/**
+ * Envia só um item da fila (tela Pendências). Item que depende de outro ainda não enviado (id temporário de algo
+ * criado offline) espera esse outro: o envio em ordem continua com `sincronizarPendenciasOffline`.
+ */
+export async function enviarMutacaoPendente(id: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const fila = await listarMutacoesPendentes();
+  const item = fila.find((m) => m.id === id);
+  if (!item) return { ok: true };
+  const dependeDe = fila.find((m) => m.id !== id && m.tempId && m.criadaEm < item.criadaEm && (item.caminho.includes(m.tempId) || (item.corpo ?? "").includes(m.tempId)));
+  if (dependeDe) return { ok: false, erro: "Depende de uma alteração anterior que ainda não foi enviada. Resolva aquela primeiro." };
+  try {
+    const resposta = await req<Record<string, unknown>>(item.caminho, { method: item.metodo, body: item.corpo ?? undefined }, false, true);
+    const idReal = typeof resposta?.id === "string" ? resposta.id : undefined;
+    if (item.tempId && idReal) await substituirIdTemporario(item.tempId, idReal);
+    await concluirMutacaoPendente(item.id);
+    marcarSincronizacao(false);
+    return { ok: true };
+  } catch (erro) {
+    const mensagem = erro instanceof ApiError ? erro.message : "Não foi possível enviar esta alteração.";
+    await registrarErroMutacao(item.id, mensagem);
+    return { ok: false, erro: mensagem };
+  }
+}
+
+/** Joga fora um item da fila sem enviar (tela Pendências, com confirmação). O que está no servidor não muda. */
+export async function descartarMutacaoPendente(id: string): Promise<void> {
+  await concluirMutacaoPendente(id);
+  const restantes = await listarMutacoesPendentes();
+  // Sem o item que travava, o aviso de erro some; o que sobrou volta a ser enviado normalmente.
+  marcarSincronizacao(false, restantes.some((m) => m.erro) ? (restantes.find((m) => m.erro)?.erro ?? null) : null);
+}
+
 /** Variante autenticada para conteúdo binário, usada pela foto de perfil. */
 async function reqBlob(path: string, tentouRenovar = false): Promise<Blob | null> {
   const accessToken = obterAccessToken();
@@ -842,6 +874,10 @@ export interface TarefaDetalhe {
   criado_em: string;
   atualizado_em?: string;
   concluida_em?: string | null;
+  /** Data antes do primeiro adiamento: `AAAA-MM-DD` (prazo) ou instante ISO (horário). Ausente se nunca foi adiada. */
+  adiada_de?: string | null;
+  /** Quantas vezes foi adiada (0 ou ausente = nunca). */
+  adiamentos?: number;
   caminho_arquivo: string;
   pasta: string | null;
   corpo: string;
@@ -876,6 +912,8 @@ export interface AtualizarTarefaPayload {
   subtarefas?: SubtarefaInput[];
   /** Em tarefa recorrente: o que a edição atinge (padrão do servidor: só esta). */
   escopo?: EscopoSerie;
+  /** A troca de data é um adiamento: o servidor guarda a data original e conta as vezes. */
+  adiar?: boolean;
 }
 
 export const tarefas = {
@@ -1526,7 +1564,15 @@ export const notificacoes = {
   naoLidas: () => get<{ total: number }>("/notificacoes/nao-lidas"),
   marcarLida: (id: string) => patch<{ ok: true }>(`/notificacoes/${id}/lida`),
   marcarTodasLidas: () => post<{ ok: true }>("/notificacoes/marcar-todas-lidas"),
+  /** Por categoria: se o aviso vai para a caixa e se vai por push. */
+  preferencias: () => get<{ items: PreferenciaNotificacao[] }>("/notificacoes/preferencias"),
+  definirPreferencia: (categoria: CategoriaNotificacao, mudanca: { caixa?: boolean; push?: boolean }) => patch<{ ok: true }>(`/notificacoes/preferencias/${categoria}`, mudanca),
+  /** O celular cadastra o próprio endereço de push (UnifiedPush); `null` desliga. */
+  registrarAparelho: (dados: { instalacao: string; nome?: string; push_endpoint: string | null }) => put<{ id: string; push_tipo: string }>("/notificacoes/aparelho", dados),
 };
+
+export type CategoriaNotificacao = "agenda" | "equipes" | "sync" | "cofre";
+export interface PreferenciaNotificacao { categoria: CategoriaNotificacao; caixa: boolean; push: boolean }
 
 // --- Vault / Cofre (section 11.14, via /vault/* proxy) ---------------------
 

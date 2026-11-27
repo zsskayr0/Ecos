@@ -76,7 +76,7 @@ export function MediaScreen() {
       <p className="mb-2 break-words text-sm text-text-primary">Excluir {confirmando.nome}?</p>
       <p className="mb-3 text-xs text-text-secondary">O arquivo será movido para a lixeira e deixará de abrir nas notas ou tarefas que o utilizam.</p>
       {erro && <p role="alert" className="mb-3 text-sm text-error">{erro}</p>}
-      <div className="flex gap-2"><button type="button" disabled={excluindo} onClick={() => setConfirmando(null)} className="rounded-xl bg-surface-2 px-4 py-2 text-sm text-text-primary">Cancelar</button><button type="button" disabled={excluindo} onClick={excluir} className="rounded-xl bg-error px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{excluindo ? "Excluindo..." : "Excluir"}</button></div>
+      <div className="flex gap-2"><button type="button" disabled={excluindo} onClick={() => setConfirmando(null)} className="rounded-xl bg-surface-2 px-4 py-2 text-sm text-text-primary">Cancelar</button><button type="button" disabled={excluindo} onClick={excluir} className="rounded-xl bg-error px-4 py-2 text-sm font-medium text-on-accent disabled:opacity-40">{excluindo ? "Excluindo..." : "Excluir"}</button></div>
     </div></Dialog>}
     {itens === null ? <SkeletonMidia itens={6} rotulo="Carregando mídia…" /> : !itens.length && !erro ? <EmptyState icon={Library} title="Sua biblioteca está vazia" subtitle="Anexe imagens, PDFs e outros arquivos às notas ou tarefas para vê-los aqui." /> : <div className="grid grid-cols-2 gap-3">
       {filtrados.map((item) => <div key={item.caminho} className="overflow-hidden rounded-2xl border border-border bg-surface-1">

@@ -1,7 +1,8 @@
 import { avisar } from "@/lib/toast";
+import { CLASSE_ITEM_ARQUIVADO, CLASSE_TITULO_ARQUIVADO } from "@/lib/aparencia-arquivada";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Circle, Flag, FlagTriangleRight, Flame, FolderInput, ListChecks, SquareArrowOutUpRight } from "lucide-react";
+import { Archive, CalendarDays, CheckCircle2, Circle, Flag, FlagTriangleRight, Flame, FolderInput, ListChecks, SquareArrowOutUpRight } from "lucide-react";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { PrioridadeTarefa, Tarefa } from "@/lib/types";
 import { AvatarUsuario } from "@/components/common/AvatarUsuario";
@@ -41,6 +42,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
   useEffect(() => { setPasta(tarefa.pasta ?? null); }, [tarefa.pasta]);
 
   const subtarefas = detalhe?.subtarefas ?? [];
+  const arquivada = tarefa.status === "arquivada";
   const feitas = subtarefas.filter((s) => s.concluida).length;
   const prazo = detalhe?.due_date ?? tarefa.dueDate ?? detalhe?.scheduled_at ?? tarefa.scheduledAt;
   const vencida = !!prazo && !concluida && prazo.slice(0, 10) < new Date().toLocaleDateString("sv-SE");
@@ -81,7 +83,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
   return (
     <article
       onClick={aoClicarCartao((e) => abrirDocumento(`/tarefa/${tarefa.id}`, e))}
-      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${BORDA_POR_PRIORIDADE[prioridade]} ${concluida ? "opacity-70" : ""}`}
+      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${BORDA_POR_PRIORIDADE[prioridade]} ${arquivada ? CLASSE_ITEM_ARQUIVADO : concluida ? "opacity-70" : ""}`}
     >
       <div className="flex min-h-7 items-center justify-between gap-2">
         <PastaChip caminho={pasta} />
@@ -101,10 +103,10 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
       </div>
 
       <div className="flex items-start gap-2.5">
-        <button type="button" aria-label={concluida ? "Reabrir tarefa" : "Concluir tarefa"} onClick={(e) => { e.stopPropagation(); void alternarConclusao(); }} className="mt-px shrink-0 text-text-muted hover:text-success">
+        {arquivada ? <Archive size={18} strokeWidth={1.75} aria-label="Arquivada" className="mt-px shrink-0 text-text-muted" /> : <button type="button" aria-label={concluida ? "Reabrir tarefa" : "Concluir tarefa"} onClick={(e) => { e.stopPropagation(); void alternarConclusao(); }} className="mt-px shrink-0 text-text-muted hover:text-success">
           {concluida ? <CheckCircle2 size={18} strokeWidth={1.75} className="text-success" /> : <Circle size={18} strokeWidth={1.75} />}
-        </button>
-        <button type="button" onClick={(e) => { e.stopPropagation(); abrirDocumento(`/tarefa/${tarefa.id}`, e); }} className={`min-w-0 text-left font-body text-[15px] font-semibold leading-snug hover:underline ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo}<SeloNaoSincronizado id={tarefa.id} /></button>
+        </button>}
+        <button type="button" onClick={(e) => { e.stopPropagation(); abrirDocumento(`/tarefa/${tarefa.id}`, e); }} className={`min-w-0 text-left font-body text-[15px] font-semibold leading-snug hover:underline ${arquivada ? CLASSE_TITULO_ARQUIVADO : concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo}<SeloNaoSincronizado id={tarefa.id} /></button>
       </div>
 
       {expandido ? (

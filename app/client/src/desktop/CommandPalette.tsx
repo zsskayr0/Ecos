@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Dialog } from "@/components/common/Dialog";
 import {
   Columns2,
@@ -12,14 +12,14 @@ import {
   Users,
   Wallet,
   X,
-  type LucideProps,
-} from "lucide-react";
+  Keyboard, type LucideProps } from "lucide-react";
 import { busca, vault } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useAppUI } from "@/lib/ui-context";
 import { useMinhasEquipes } from "@/lib/use-minhas-equipes";
 import { RAIL_PRINCIPAL, RAIL_UTILITARIOS, moduloPorId } from "./modules";
 import { useWorkspace } from "./workspace-store";
+import { teclasComoTexto, todosOsAtalhos } from "@/lib/atalhos";
 
 interface Comando {
   id: string;
@@ -119,6 +119,8 @@ export function CommandPalette({
     };
   }, [consultaTexto, filtro, aberta, escopoCofre]);
 
+  const abrirAtalhos = useCallback(() => dispatch({ type: "open", path: "/configuracoes/atalhos", where: "focused", reuse: "modulo" }), [dispatch]);
+
   const comandos = useMemo<Comando[]>(() => {
     const abrir = (path: string) => dispatch({ type: "open", path, where: "focused", reuse: "modulo" });
     const abrirAoLado = (path: string) => dispatch({ type: "open", path, where: "new-pane", reuse: "modulo" });
@@ -130,6 +132,7 @@ export function CommandPalette({
       { id: "nova-tarefa", grupo: "Criar", rotulo: "Nova tarefa", icone: ListPlus, executar: () => abrirCaptura("tarefa") },
       { id: "nova-transacao", grupo: "Criar", rotulo: "Nova transação", icone: Wallet, executar: () => abrirCaptura("transacao") },
       { id: "organizar-pastas", grupo: "Configurações", rotulo: "Organizar pastas", dica: "Notas e tarefas", icone: ListChecks, executar: () => abrir("/configuracoes/organizacao") },
+      { id: "atalhos", grupo: "Configurações", rotulo: "Atalhos de teclado", icone: Keyboard, executar: () => abrir("/configuracoes/atalhos") },
     ];
 
     for (const id of [...RAIL_PRINCIPAL, ...RAIL_UTILITARIOS, "busca", "perfil", "ajuda"] as const) {
@@ -186,6 +189,12 @@ export function CommandPalette({
         ? comandos.filter((c) => semAcento(`${c.rotulo} ${c.grupo}`).includes(q))
         : filtro === "comandos" ? comandos : comandos.filter((c) => c.grupo === "Criar" || c.grupo === "Ir para");
 
+    // Digitar o que quer fazer também acha o atalho ("fechar aba" → Ctrl+W); Enter abre a lista completa.
+    const atalhos: Comando[] = soConteudo || q.length < 2 ? [] : todosOsAtalhos()
+      .filter((a) => { const texto = semAcento(`${a.acao} ${a.grupo}`); return q.split(/\s+/).every((p) => texto.includes(p)); })
+      .slice(0, 6)
+      .map((a, i) => ({ id: `atalho-${i}-${a.acao}`, grupo: "Atalhos de teclado", rotulo: a.acao, dica: a.grupo, atalho: teclasComoTexto(a.teclas), icone: Keyboard, executar: abrirAtalhos }));
+
     const conteudo: Comando[] = [
       ...(resultados?.notas ?? []).map<Comando>((n) => ({
         id: `nota-${n.id}`,
@@ -206,8 +215,8 @@ export function CommandPalette({
       })),
       ...(resultados?.transacoes ?? []).map<Comando>((t) => ({id:`transacao-${t.id}`,grupo:"Transações",rotulo:t.descricao,dica:new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(t.valor_centavos/100),icone:Wallet,executar:()=>aoAbrirDocumento(`/cofre/transacao/${t.id}`,false)})),
     ];
-    return [...filtrados, ...conteudo];
-  }, [comandos, consultaTexto, filtro, resultados, aoAbrirDocumento]);
+    return [...filtrados, ...atalhos, ...conteudo];
+  }, [comandos, consultaTexto, filtro, resultados, aoAbrirDocumento, abrirAtalhos]);
 
   useEffect(() => setAtivo(0), [termo, filtroManual]);
   useEffect(() => {

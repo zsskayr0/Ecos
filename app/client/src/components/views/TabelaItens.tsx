@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
-import { ArrowUp, CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
+import { Archive, ArrowUp, CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
+import { CLASSE_ITEM_ARQUIVADO, CLASSE_TITULO_ARQUIVADO, estaArquivado } from "@/lib/aparencia-arquivada";
 import { Avatar } from "@/components/common/Avatar";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -53,16 +54,19 @@ function montarColunas({ temNota, temTarefa, itens, mostrarCriada, mostrarMotivo
       ordenar: (a, b) => cmpTexto(a.titulo, b.titulo),
       celula: (item) => {
         const concluida = ehTarefa(item) && item.status === "concluida";
+        const arquivada = estaArquivado(item);
         return (
           <span className="flex min-w-0 items-center gap-2">
-            {ehNota(item) ? (
+            {arquivada && ehTarefa(item) ? (
+              <Archive size={15} strokeWidth={1.75} aria-label="Arquivada" className="shrink-0 text-text-muted" />
+            ) : ehNota(item) ? (
               <StickyNote size={15} strokeWidth={1.75} className="shrink-0 text-steel-300" />
             ) : concluida ? (
               <CheckCircle2 size={15} strokeWidth={1.75} className="shrink-0 text-success" />
             ) : (
               <Circle size={15} strokeWidth={1.75} className="shrink-0 text-text-muted" />
             )}
-            <span className={`truncate font-medium ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{item.titulo || "Sem título"}</span>
+            <span className={`truncate font-medium ${arquivada ? CLASSE_TITULO_ARQUIVADO : concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{item.titulo || "Sem título"}</span>
           </span>
         );
       },
@@ -430,7 +434,7 @@ export function TabelaItens({ itens, chave, mostrarCriada = false, mostrarMotivo
               tabIndex={0}
               onClick={(e) => { if (!onSelecionar?.(e, item, linhas)) abrir(caminhoDoItem(item), e); }}
               onKeyDown={(e) => aoTeclarNaLinha(e, item)}
-              className={`group grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
+              className={`group grid min-h-[40px] cursor-pointer border-b border-border text-[13px] last:border-b-0 ${estaArquivado(item) ? `${CLASSE_ITEM_ARQUIVADO} ` : ""}hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${saindo.has(`${item.tipo}:${item.id}`) ? "ecos-item-sai pointer-events-none" : entrando.has(`${item.tipo}:${item.id}`) ? "ecos-item-entra" : ""} ${selecionados.has(`${item.tipo}:${item.id}`) ? "bg-steel-700/25" : ""}`}
               style={{ gridTemplateColumns: modelo }}
             >
               {colunas.map((coluna) => (

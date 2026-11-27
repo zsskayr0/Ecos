@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
     jobs::watch::iniciar(state.clone());
     jobs::calendario::iniciar(state.clone());
     jobs::push::iniciar(state.clone());
+    jobs::lembretes::iniciar(state.clone());
     jobs::mdns::anunciar(&config);
 
     // Uma porta só em produção (seção 2, modelo Jellyfin/Immich): serve a build estática do client como fallback de

@@ -1,4 +1,5 @@
 import { pastaDoArquivo } from "@/lib/caminho-item";
+import { tabParaCorpo } from "@/components/common/TitleField";
 import { avisar } from "@/lib/toast";
 import { exportarDocumentosEmPdf } from "@/lib/exportar-pdf";
 import { avisarExcluido } from "@/lib/desfazer";
@@ -484,14 +485,14 @@ export function NoteEditorDesktop() {
 
         <div ref={raizNota} className="flex min-w-0 flex-col gap-4">
           <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
-            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
+            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" onKeyDown={tabParaCorpo} className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
             {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />}
             {!modoFocus && escrevendo && !noPainel && <button type="button" onClick={() => setDetalhesAbertos((v) => !v)} aria-pressed={detalhesAbertos} aria-label="Detalhes da nota" title="Detalhes: pasta, tags, equipe e conexões" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><PanelRight size={17} /></button>}
             {!modoFocus && <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><ListTree size={17} /></button>}
             {!modoFocus && opcoesNota("flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary")}
             {!modoFocus && <button type="button" onClick={() => void duplicar()} aria-label="Duplicar nota" title="Duplicar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40"><Copy size={17} /></button>}
             {!modoFocus && <button type="button" onClick={() => void alternarArquivada()} aria-pressed={!!nota?.arquivada} aria-label={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} title={nota?.arquivada ? "Desarquivar nota" : "Arquivar nota"} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40">{nota?.arquivada ? <ArchiveRestore size={17} /> : <Archive size={17} />}</button>}
-            {!modoFocus && <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
+            {!modoFocus && <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar nota" title="Apagar nota" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-error text-error transition-colors hover:bg-error hover:text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-error disabled:opacity-40"><Trash2 size={18} /></button>}
           </div>
 
           {!noPainel && !escrevendo && <div className="flex min-w-0 flex-col gap-4"><NoteOrganizer espaco={valor.espaco} pasta={valor.pasta} onPasta={(pasta) => mudar({ pasta })} tags={valor.tags} tagsNoTexto={noTexto} onTags={(tags) => mudar({ tags })} />

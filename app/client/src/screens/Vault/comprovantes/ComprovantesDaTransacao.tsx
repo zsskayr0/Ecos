@@ -5,6 +5,7 @@ import { ANEXO_TAMANHO_MAXIMO_BYTES, ApiError, vault, type AnexoApi, type TipoAn
 import { ICONE_ANEXO, ROTULOS_ANEXO } from "./rotulos";
 import { MiniaturaDoAnexo } from "./Miniatura";
 import { VisualizadorDaTransacao } from "./VisualizadorDaTransacao";
+import { useConfirmar } from "@/components/common/useConfirmar";
 
 const ACEITOS = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
 
@@ -15,6 +16,7 @@ const ACEITOS = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
  */
 export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprovante" }: { transacaoId: string; aoMudar?: () => void; tipo?: TipoAnexo }) {
   const r = ROTULOS_ANEXO[tipo];
+  const { confirmar, dialogo } = useConfirmar();
   const Icone = ICONE_ANEXO[tipo];
   const [anexos, setAnexos] = useState<AnexoApi[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprova
   }
 
   async function remover(anexo: AnexoApi) {
-    if (!window.confirm(`Remover “${anexo.nome_arquivo}”? O arquivo será apagado do Cofre.`)) return;
+    if (!(await confirmar({ title: `Remover “${anexo.nome_arquivo}”?`, description: "O arquivo é apagado do Cofre. Não vai para a Lixeira.", confirmLabel: "Remover" }))) return;
     setErro(null);
     try {
       await vault.anexos.excluir(anexo.id);
@@ -76,6 +78,7 @@ export function ComprovantesDaTransacao({ transacaoId, aoMudar, tipo = "comprova
 
   return (
     <section className="cofre-anexos" data-tipo={tipo} aria-label={`${r.titulo} do lançamento`}>
+      {dialogo}
       <div className="cofre-anexos-head">
         <h3><Icone size={14} aria-hidden />{r.titulo}{anexos && anexos.length > 0 && <span>{anexos.length}</span>}</h3>
       </div>

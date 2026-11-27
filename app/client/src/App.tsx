@@ -1,4 +1,6 @@
 import { lazy, useEffect, useRef, useState } from "react";
+import { OuvinteDeRota } from "@/components/layout/OuvinteDeRota";
+import { ReceptorPush } from "@/components/layout/ReceptorPush";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AppUIProvider } from "@/lib/ui-context";
 import { ArmadilhaFoco } from "./components/common/ArmadilhaFoco";
@@ -121,6 +123,9 @@ function Shell() {
         <Route path="/onboarding" element={<OnboardingScreen />} />
         <Route element={<AppShell />}>{screenRoutes}</Route>
       </Routes>
+      {/* App Android: endereço de push e avisos tocados na barra do sistema (precisa do roteador para abrir a rota). */}
+      <ReceptorPush />
+      <OuvinteDeRota />
     </BrowserRouter>
   );
 }

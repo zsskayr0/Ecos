@@ -237,6 +237,13 @@ pub struct TarefaFrontMatter {
     /// Ocorrência de uma série recorrente (a regra mora no arquivo da série, ver `tarefa_serie`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serie: Option<crate::tarefa_serie::OcorrenciaRef>,
+    /// Data em que a Tarefa estava antes do primeiro adiamento: `AAAA-MM-DD` (prazo) ou instante RFC 3339 (horário).
+    /// Só a ação "Adiar" grava; editar a data à mão não mexe. Fica gravada mesmo depois de concluir, como histórico.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adiada_de: Option<String>,
+    /// Quantas vezes a Tarefa foi adiada.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub adiamentos: u32,
     /// Nomes alternativos. O Ecos mantém o título aqui, porque o arquivo se chama `note-<Título>.md`/`task-<Título>.md`
     /// e editores de Markdown resolvem `[[Título]]` pelo nome do arquivo ou por alias.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -275,7 +282,28 @@ pub struct TempoRegistrado {
     pub criado_em: DateTime<Utc>,
 }
 
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 impl TarefaFrontMatter {
+    /// Registra um adiamento depois que a data já foi trocada: guarda a data de `antes` só no primeiro adiamento e
+    /// conta mais um. Sem data antes ou sem mudança de data, não é adiamento e nada muda.
+    pub fn registrar_adiamento(&mut self, antes: &TarefaFrontMatter) {
+        let original = antes
+            .scheduled_at
+            .map(|i| i.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+            .or_else(|| antes.due_date.map(|d| d.to_string()));
+        let Some(original) = original else { return };
+        if self.scheduled_at == antes.scheduled_at && self.due_date == antes.due_date {
+            return;
+        }
+        if self.adiada_de.is_none() {
+            self.adiada_de = Some(original);
+        }
+        self.adiamentos += 1;
+    }
+
     /// Muda o status mantendo `concluida_em` coerente: concluir grava o instante (sem sobrescrever se já estava concluída),
     /// reabrir apaga. Todo caminho que altera `status` deve passar por aqui.
     pub fn definir_status(&mut self, novo: TarefaStatus, agora: DateTime<Utc>) {
@@ -1001,6 +1029,44 @@ mod tests {
         // A data da Tarefa não é tocada por ter tempo alocado.
         assert_eq!(de_volta.scheduled_at, fm.scheduled_at);
         assert_eq!(de_volta.due_date, fm.due_date);
+    }
+
+    #[test]
+    fn adiar_guarda_a_data_original_so_na_primeira_vez_e_conta_os_adiamentos() {
+        let mut fm = tarefa_pendente();
+        fm.due_date = Some("2026-11-20".parse().unwrap());
+        let antes = fm.clone();
+        fm.due_date = Some("2026-11-21".parse().unwrap());
+        fm.registrar_adiamento(&antes);
+        assert_eq!(fm.adiada_de.as_deref(), Some("2026-11-20"));
+        assert_eq!(fm.adiamentos, 1);
+
+        let antes = fm.clone();
+        fm.due_date = Some("2026-11-25".parse().unwrap());
+        fm.registrar_adiamento(&antes);
+        assert_eq!(fm.adiada_de.as_deref(), Some("2026-11-20"), "a original não muda no segundo adiamento");
+        assert_eq!(fm.adiamentos, 2);
+
+        let texto = crate::frontmatter::serialize(&fm, "").unwrap();
+        let de_volta = crate::frontmatter::parse::<TarefaFrontMatter>(&texto).unwrap().front_matter;
+        assert_eq!((de_volta.adiada_de.as_deref(), de_volta.adiamentos), (Some("2026-11-20"), 2));
+    }
+
+    #[test]
+    fn adiar_com_horario_guarda_o_instante_e_sem_data_ou_sem_mudanca_nao_conta() {
+        let mut fm = tarefa_pendente();
+        let antes = fm.clone();
+        fm.registrar_adiamento(&antes);
+        assert_eq!((fm.adiada_de.clone(), fm.adiamentos), (None, 0));
+        assert!(!crate::frontmatter::serialize(&fm, "").unwrap().contains("adia"), "tarefa nunca adiada não grava os campos");
+
+        fm.scheduled_at = Some("2026-11-20T13:00:00Z".parse().unwrap());
+        let antes = fm.clone();
+        fm.registrar_adiamento(&antes);
+        assert_eq!(fm.adiamentos, 0, "mesma data não é adiamento");
+        fm.scheduled_at = Some("2026-11-21T13:00:00Z".parse().unwrap());
+        fm.registrar_adiamento(&antes);
+        assert_eq!(fm.adiada_de.as_deref(), Some("2026-11-20T13:00:00Z"));
     }
 
     #[test]

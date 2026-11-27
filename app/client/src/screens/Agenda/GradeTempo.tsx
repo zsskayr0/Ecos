@@ -732,7 +732,7 @@ export function GradeTempo({ dias, hoje, itens, concluidas, encaixe, onMudarEnca
               );
             })}
             <div aria-hidden className="pointer-events-none absolute z-[5] flex items-center" style={{ left: 56, right: 0, top: Math.min(minutosAgora, MINUTOS_DIA) * PX_POR_MINUTO }}>
-              <span className="-ml-1 rounded bg-error px-1 py-0.5 text-[10px] font-semibold text-white">{agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="-ml-1 rounded bg-error px-1 py-0.5 text-[10px] font-semibold text-on-accent">{agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
               <span className="h-px flex-1 bg-error" />
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from "react";
-import { CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
+import { Archive, CheckCircle2, Circle, Folder, StickyNote } from "lucide-react";
+import { CLASSE_ITEM_ARQUIVADO, CLASSE_TITULO_ARQUIVADO } from "@/lib/aparencia-arquivada";
 import { AvatarUsuario } from "@/components/common/AvatarUsuario";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
 import { useAbrirDocumento } from "@/lib/documento-popup";
@@ -50,10 +51,10 @@ function BlocoNota({ nota }: { nota: Nota }) {
   const preview = nota.corpo ? previewDaNota(nota.corpo, nota.id) : nota.preview;
 
   return (
-    <button type="button" onClick={(e) => abrir(caminhoDoItem(nota), e)} className={BLOCO}>
+    <button type="button" onClick={(e) => abrir(caminhoDoItem(nota), e)} className={`${BLOCO} ${nota.arquivada ? CLASSE_ITEM_ARQUIVADO : ""}`}>
       {capa && <img src={capa.url} alt="" loading="lazy" onError={() => setErroImagem(capa.url)} className="-mx-4 -mt-4 mb-1 h-24 w-[calc(100%+2rem)] max-w-none shrink-0 object-cover" />}
       <CabecalhoPasta item={nota} Icone={pastaDoItem(nota) ? Folder : StickyNote} />
-      <p className="line-clamp-2 font-body text-[15px] font-semibold leading-snug text-text-primary">{nota.titulo || "Sem título"}</p>
+      <p className={`line-clamp-2 font-body text-[15px] font-semibold leading-snug ${nota.arquivada ? CLASSE_TITULO_ARQUIVADO : "text-text-primary"}`}>{nota.titulo || "Sem título"}</p>
       {preview && <p className={`${capa ? "line-clamp-2" : "line-clamp-4"} text-sm leading-snug text-text-secondary`}>{preview}</p>}
       <Tags item={nota} />
       <Rodape item={nota} />
@@ -64,15 +65,16 @@ function BlocoNota({ nota }: { nota: Nota }) {
 function BlocoTarefa({ tarefa }: { tarefa: Tarefa }) {
   const abrir = useAbrirDocumento();
   const concluida = tarefa.status === "concluida";
+  const arquivada = tarefa.status === "arquivada";
   return (
-    <button type="button" onClick={(e) => abrir(caminhoDoItem(tarefa), e)} className={BLOCO}>
+    <button type="button" onClick={(e) => abrir(caminhoDoItem(tarefa), e)} className={`${BLOCO} ${arquivada ? CLASSE_ITEM_ARQUIVADO : ""}`}>
       <span className="flex items-center justify-between gap-2">
         <CabecalhoPasta item={tarefa} Icone={pastaDoItem(tarefa) ? Folder : CheckCircle2} />
         <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${CLASSE_PRIORIDADE[tarefa.prioridade]}`}>{ROTULO_PRIORIDADE[tarefa.prioridade]}</span>
       </span>
       <span className="flex items-start gap-2">
-        {concluida ? <CheckCircle2 size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
-        <span className={`line-clamp-3 font-body text-[15px] font-semibold leading-snug ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo || "Sem título"}</span>
+        {arquivada ? <Archive size={16} strokeWidth={1.75} aria-label="Arquivada" className="mt-0.5 shrink-0 text-text-muted" /> : concluida ? <CheckCircle2 size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
+        <span className={`line-clamp-3 font-body text-[15px] font-semibold leading-snug ${arquivada ? CLASSE_TITULO_ARQUIVADO : concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{tarefa.titulo || "Sem título"}</span>
       </span>
       <Tags item={tarefa} />
       <Rodape item={tarefa} />

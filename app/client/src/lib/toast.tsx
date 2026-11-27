@@ -44,7 +44,7 @@ export function ToastHost() {
       onMouseLeave={toast.acao ? retomar : undefined}
       onFocus={toast.acao ? pausar : undefined}
       onBlur={toast.acao ? retomar : undefined}
-      className={`${toast.acao ? "" : "pointer-events-none "}fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[100] mx-auto flex w-fit max-w-full items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-nav ${toast.tom === "sucesso" ? "border-success/50 bg-success text-white" : erro ? "border-error/50 bg-error text-white" : "border-steel-500/30 bg-surface-raised text-text-primary"}`}
+      className={`${toast.acao ? "" : "pointer-events-none "}fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[100] mx-auto flex w-fit max-w-full items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-nav ${toast.tom === "sucesso" ? "border-success/50 bg-success text-on-accent" : erro ? "border-error/50 bg-error text-on-accent" : "border-steel-500/30 bg-surface-raised text-text-primary"}`}
     >
       {toast.tom === "sucesso" && <CheckCircle2 size={18} aria-hidden />}
       {erro && <AlertCircle size={18} aria-hidden />}

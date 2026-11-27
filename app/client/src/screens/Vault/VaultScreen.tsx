@@ -247,7 +247,7 @@ function VaultScreenDoEspaco({ voltar, embedded = false }: {
 
 const menus = [
     {id:"painel",nome:"Painel",curto:"Painel",icone:LayoutDashboard,descricao:"Uma visão clara das suas finanças."},
-    {id:"lancamentos",nome:"Transações",curto:"Extrato",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
+    {id:"lancamentos",nome:"Transações",curto:"Histórico",icone:ArrowLeftRight,descricao:"Movimentações, conciliação e histórico."},
     {id:"comprovantes",nome:"Comprovantes",curto:"Comprov.",icone:Paperclip,descricao:"Comprovantes e notas fiscais guardados, ligados aos seus lançamentos."},
     {id:"recorrencias",nome:"Recorrências",curto:"Recorr.",icone:Repeat2,descricao:"Compromissos recorrentes e parcelamentos."},
     {id:"mensalidades",nome:"Mensalidades",curto:"Mensal.",icone:HandCoins,descricao:"Mensalidades dos residentes e o reajuste anual."},

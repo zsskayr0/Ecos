@@ -378,6 +378,8 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
         id: new_id(),
         titulo: payload.titulo.clone(),
         tipo: Default::default(),
+        adiada_de: None,
+        adiamentos: 0,
         aliases: vec![payload.titulo.clone()],
         extras: Default::default(),
         status: TarefaStatus::Pendente,
@@ -460,6 +462,8 @@ pub async fn obter(State(state): State<AppState>, Extension(usuario): Extension<
         "criado_em": fm.criado_em,
         "atualizado_em": fm.atualizado_em.unwrap_or(fm.criado_em),
         "concluida_em": fm.concluida_em,
+        "adiada_de": fm.adiada_de,
+        "adiamentos": fm.adiamentos,
         "caminho_arquivo": caminho_relativo,
         "pasta": pasta,
         "corpo": doc.body,
@@ -528,6 +532,9 @@ pub struct AtualizarTarefaPayload {
     /// Em Tarefa recorrente, o que a edição atinge: `esta` (padrão), `proximas` ou `serie`.
     #[serde(default)]
     pub escopo: Option<String>,
+    /// A troca de data é um adiamento ("passar pra outro dia"), não uma edição: guarda a data original e conta.
+    #[serde(default)]
+    pub adiar: bool,
 }
 
 /// A edição mexeu em algo que o molde da série copia para cada ocorrência?
@@ -582,6 +589,9 @@ pub async fn atualizar_sem_links(State(state): State<AppState>, Extension(usuari
     }
     if let Some(due_date) = payload.due_date {
         fm.due_date = due_date;
+    }
+    if payload.adiar {
+        fm.registrar_adiamento(&fm_antes);
     }
     if let Some(tags) = payload.tags {
         fm.tags = ecos_core::tags::atualizar_preservando(&fm.tags, &tags);

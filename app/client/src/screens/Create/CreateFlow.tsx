@@ -378,12 +378,14 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
         }
       }
       notificar();
-      if (sessao !== sessaoCaptura.current) return true;
-      ultimoEnvio.current = JSON.stringify({ tipo, draft });
+      // Chegou ao servidor: o texto guardado por uma falha anterior não precisa mais ser oferecido (vale mesmo com a
+      // captura já fechada, que é o caso do salvar otimista ao fechar).
       if (tipo === "nota" || tipo === "tarefa") {
         try { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_RASCUNHO_FALHA); } catch { /* cache indisponível */ }
-        return true;
       }
+      if (sessao !== sessaoCaptura.current) return true;
+      ultimoEnvio.current = JSON.stringify({ tipo, draft });
+      if (tipo === "nota" || tipo === "tarefa") return true;
       fecharTudo();
       if (tipo === "transacao" && location.pathname.startsWith("/cofre")) navigate("/cofre");
       return true;
@@ -402,15 +404,32 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
 
   // Fechar pelo X: com conteúdo mínimo, grava o que falta e avisa onde ficou; abaixo disso, descarta sem criar nada.
   // Se a gravação falhar, a captura continua aberta (com o erro na tela) em vez de perder o texto.
-  async function encerrar() {
+  // Otimista: a captura fecha na hora e o envio segue em segundo plano. Se falhar, o texto já ficou guardado neste
+  // aparelho (CHAVE_RASCUNHO_FALHA) e o aviso oferece reabrir para tentar de novo.
+  function encerrar() {
+    // Um autosave em andamento ainda pode estar criando o item: espera ele terminar (o render seguinte já conhece o
+    // item criado) para não criar de novo nem acusar uma falha que não houve.
+    if (envioEmCurso.current) {
+      const espera = window.setInterval(() => { if (!envioEmCurso.current) { window.clearInterval(espera); window.setTimeout(() => encerrarRef.current(), 0); } }, 50);
+      return;
+    }
     const tipo = capturaAberta;
     if ((tipo === "nota" || tipo === "tarefa") && (itemCriado || temConteudoMinimo(draft.texto))) {
       const emDia = ultimoEnvio.current === JSON.stringify({ tipo, draft });
-      if (!emDia && !(await salvar())) return;
-      avisar(tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
+      const onde = tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas";
+      if (emDia) avisar(onde);
+      else {
+        const envio = salvar();
+        void envio.then((ok) => {
+          if (ok) avisar(onde);
+          else avisar(`Não consegui salvar a ${tipo}. O texto ficou guardado neste aparelho.`, "erro", { rotulo: "Recuperar", aoClicar: () => abrirCaptura(tipo) });
+        });
+      }
     }
     fecharTudo();
   }
+  const encerrarRef = useRef(encerrar);
+  encerrarRef.current = encerrar;
 
   // No desktop o X da janela desmonta este componente (e monta outro do zero): sem passar por `encerrar`, o aviso
   // e a gravação do que ainda estava no intervalo dos 600 ms teriam de acontecer aqui.

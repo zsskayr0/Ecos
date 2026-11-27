@@ -68,6 +68,7 @@ const AboutScreen = carregar(() => import("@/screens/Settings/AboutScreen"), "Ab
 const LicensesScreen = carregar(() => import("@/screens/Settings/LicensesScreen"), "LicensesScreen");
 const ProblemasSincronizacaoScreen = carregar(() => import("@/screens/Settings/ProblemasSincronizacaoScreen"), "ProblemasSincronizacaoScreen");
 const ProblemasArquivosScreen = carregar(() => import("@/screens/Settings/ProblemasArquivosScreen"), "ProblemasArquivosScreen");
+const PendenciasScreen = carregar(() => import("@/screens/Settings/PendenciasScreen"), "PendenciasScreen");
 const CalendarPreferencesScreen = carregar(() => import("@/screens/Settings/CalendarPreferencesScreen"), "CalendarPreferencesScreen");
 const FeedConfigScreen = carregar(() => import("@/screens/Settings/FeedConfigScreen"), "FeedConfigScreen");
 const TarefasConfigScreen = carregar(() => import("@/screens/Settings/TarefasConfigScreen"), "TarefasConfigScreen");
@@ -175,6 +176,7 @@ export const screenRoutes = (
       <Route path="calendario" element={tela(CalendarPreferencesScreen)} />
       <Route path="calendario/problemas" element={tela(ProblemasSincronizacaoScreen)} />
       <Route path="arquivos/problemas" element={tela(ProblemasArquivosScreen)} />
+      <Route path="pendencias" element={tela(PendenciasScreen)} />
       <Route path="uso-diario" element={<Navigate to="/configuracoes/tarefas" replace />} />
       <Route path="tarefas" element={tela(TarefasConfigScreen)} />
       <Route path="feed" element={tela(FeedConfigScreen)} />

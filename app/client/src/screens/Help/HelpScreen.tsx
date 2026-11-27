@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronDown, Keyboard } from "lucide-react";
+import { GRUPOS_ATALHOS } from "@/lib/atalhos";
+import { ListaAtalhos } from "@/components/common/ListaAtalhos";
+import { useIsDesktop } from "@/lib/use-viewport";
 
 const PERGUNTAS = [
   {
@@ -33,6 +36,7 @@ const PERGUNTAS = [
 export function HelpScreen() {
   const navigate = useNavigate();
   const [aberta, setAberta] = useState<number | null>(0);
+  const desktop = useIsDesktop();
 
   return (
     <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-nav-safe">
@@ -57,6 +61,13 @@ export function HelpScreen() {
           </div>
         ))}
       </div>
+
+      {/* Atalhos só existem com teclado: no celular a seção não aparece. */}
+      {desktop && <section aria-labelledby="ajuda-atalhos" className="mt-8">
+        <h2 id="ajuda-atalhos" className="mb-1 flex items-center gap-2 font-display text-lg text-text-primary"><Keyboard size={18} aria-hidden />Atalhos de teclado</h2>
+        <p className="mb-4 text-sm text-text-muted">A mesma lista de Configurações › Atalhos de teclado. Na paleta ({GRUPOS_ATALHOS[0]!.atalhos[0]!.teclas.join("+")}), digite o que quer fazer para achar o atalho.</p>
+        <ListaAtalhos grupos={GRUPOS_ATALHOS} />
+      </section>}
     </div>
   );
 }

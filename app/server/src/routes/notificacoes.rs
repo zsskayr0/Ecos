@@ -92,7 +92,7 @@ pub async fn atualizar_preferencia(State(state): State<AppState>, Extension(usua
 ///
 /// Duas fases para que o caminho comum (nada novo) seja SÓ leitura, sem pegar a trava de escrita: (1) numa conexão
 /// de leitura, acha as tarefas ainda não notificadas hoje; (2) só se houver alguma, grava na conexão de escrita.
-async fn varrer_prazos(state: &AppState, usuario_id: &str) -> rusqlite::Result<()> {
+pub(crate) async fn varrer_prazos(state: &AppState, usuario_id: &str) -> rusqlite::Result<()> {
     let uid = usuario_id.to_string();
     let (dia, novos) = state.db.with_read(move |conn| prazos_a_notificar(conn, &uid)).await?;
     if novos.is_empty() {
@@ -103,7 +103,9 @@ async fn varrer_prazos(state: &AppState, usuario_id: &str) -> rusqlite::Result<(
         .db
         .with(move |conn| {
             for (chave, titulo, quando) in novos {
-                criar(conn, &uid, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&chave))?;
+                // Link para a tarefa: o toque no aviso (no app ou no push) abre direto nela.
+                let id_tarefa = chave.split(':').nth(1).unwrap_or_default();
+                criar_com_acao(conn, &uid, "agenda", "Prazo próximo", &format!("A tarefa \"{titulo}\" {quando}."), Some(&chave), Some(&format!("/tarefa/{id_tarefa}")))?;
                 // Só lembra depois de gravar com sucesso. (Quem desliga a caixa de "agenda" e religa no mesmo dia só
                 // volta a receber estes avisos no dia seguinte ou após reiniciar o servidor.)
                 lembrar_prazo(&uid, &dia, chave);
@@ -239,4 +241,63 @@ pub async fn marcar_todas_lidas(State(state): State<AppState>, Extension(usuario
         .with(move |conn| conn.execute("UPDATE notificacao SET lida = 1 WHERE usuario_id = ?1", [&usuario.0]))
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AparelhoPayload {
+    /// Identificador desta instalação do app (gerado no aparelho e guardado nele).
+    pub instalacao: String,
+    pub nome: Option<String>,
+    /// Endpoint UnifiedPush que o distribuidor (ntfy etc.) deu ao aparelho; `null` desliga o push dele.
+    pub push_endpoint: Option<String>,
+}
+
+/// `PUT /notificacoes/aparelho` — o app do celular cadastra (ou atualiza) o próprio endpoint de push. Não depende do
+/// pareamento por LAN: o aparelho vira um `dispositivo` da pessoa com id derivado da instalação. Registrar de novo
+/// reativa um endpoint que tinha sido desativado por falhas.
+pub async fn registrar_aparelho(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(p): Json<AparelhoPayload>) -> AppResult<Json<serde_json::Value>> {
+    use crate::error::CampoInvalido;
+    let instalacao = p.instalacao.trim().to_string();
+    if !(8..=64).contains(&instalacao.len()) || !instalacao.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(AppError::validation(vec![CampoInvalido { campo: "instalacao".into(), motivo: "identificador inválido".into() }]));
+    }
+    let endpoint = p.push_endpoint.map(|e| e.trim().to_string()).filter(|e| !e.is_empty());
+    if let Some(e) = &endpoint {
+        if let Err(motivo) = crate::push::validar_endpoint(e) {
+            return Err(AppError::validation(vec![CampoInvalido { campo: "push_endpoint".into(), motivo: motivo.into() }]));
+        }
+    }
+    let nome = p.nome.map(|n| n.trim().chars().take(60).collect::<String>()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Celular".into());
+    let id = format!("ap-{instalacao}");
+    let uid = usuario.0.clone();
+    let tipo = if endpoint.is_some() { "unifiedpush" } else { "nenhum" };
+    let (id_r, tipo_r) = (id.clone(), tipo.to_string());
+    let dono: Option<String> = state
+        .db
+        .with(move |conn| {
+            use rusqlite::OptionalExtension;
+            let dono = conn.query_row("SELECT usuario_id FROM dispositivo WHERE id = ?1", [&id_r], |r| r.get::<_, String>(0)).optional()?;
+            match &dono {
+                Some(d) if d != &uid => {}
+                Some(_) => {
+                    conn.execute(
+                        "UPDATE dispositivo SET nome = ?1, push_tipo = ?2, push_endpoint = ?3, push_falhas = 0, push_desativado_em = NULL WHERE id = ?4",
+                        rusqlite::params![nome, tipo_r, endpoint, id_r],
+                    )?;
+                }
+                None => {
+                    conn.execute(
+                        "INSERT INTO dispositivo (id, usuario_id, nome, papel, push_tipo, push_endpoint) VALUES (?1, ?2, ?3, 'espelho', ?4, ?5)",
+                        rusqlite::params![id_r, uid, nome, tipo_r, endpoint],
+                    )?;
+                }
+            }
+            Ok(dono)
+        })
+        .await?;
+    if dono.is_some_and(|d| d != usuario.0) {
+        // Outra conta já usa esta instalação (troca de login no mesmo aparelho): o app gera outro identificador.
+        return Err(AppError::new(ErrorCode::Conflict).with_message("Esta instalação já está ligada a outra conta."));
+    }
+    Ok(Json(serde_json::json!({ "id": id, "push_tipo": tipo })))
 }

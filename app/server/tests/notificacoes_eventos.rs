@@ -64,3 +64,38 @@ async fn adicionar_pessoa_a_equipe_notifica_a_pessoa() {
     let (_, lista) = e.chamar("GET", "/api/v1/notificacoes?categoria=equipes", Some(&bia), None).await;
     assert_eq!(lista["items"].as_array().unwrap().len(), 1, "{lista}");
 }
+
+#[tokio::test]
+async fn celular_cadastra_o_endpoint_e_passa_a_receber_push() {
+    let e = nova();
+    let (_, ana) = e.admin("ana").await;
+    let corpo = json!({ "instalacao": "inst-abc12345", "nome": "Pixel", "push_endpoint": "https://ntfy.exemplo.com/upAbC?up=1" });
+    let (st, r) = e.chamar("PUT", "/api/v1/notificacoes/aparelho", Some(&ana), Some(corpo.clone())).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["push_tipo"], "unifiedpush");
+    // Registrar de novo atualiza a mesma linha (não duplica o aparelho).
+    e.chamar("PUT", "/api/v1/notificacoes/aparelho", Some(&ana), Some(corpo)).await;
+    let n: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM dispositivo WHERE id = 'ap-inst-abc12345'", [], |r| r.get(0))).await.unwrap();
+    assert_eq!(n, 1);
+
+    // Uma notificação nova entra na fila de push do aparelho.
+    let hoje = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    e.chamar("PATCH", "/api/v1/me/preferencias/calendario", Some(&ana), Some(json!({ "pais": "Brasil", "fuso": "UTC", "inicio": "07:00", "deadlines": true }))).await;
+    e.chamar("POST", "/api/v1/tarefas", Some(&ana), Some(json!({ "titulo": "Pagar boleto", "due_date": hoje }))).await;
+    e.chamar("GET", "/api/v1/notificacoes/nao-lidas", Some(&ana), None).await;
+    let fila: i64 = e.state.db.with(|c| c.query_row("SELECT COUNT(*) FROM push_fila WHERE dispositivo_id = 'ap-inst-abc12345'", [], |r| r.get(0))).await.unwrap();
+    assert_eq!(fila, 1);
+    let url: Option<String> = e.state.db.with(|c| c.query_row("SELECT acao_url FROM notificacao WHERE chave LIKE 'prazo:%'", [], |r| r.get(0))).await.unwrap();
+    assert!(url.unwrap().starts_with("/tarefa/"), "o aviso de prazo abre a tarefa");
+
+    // Endpoint local é recusado; null desliga o push do aparelho.
+    let (st, _) = e.chamar("PUT", "/api/v1/notificacoes/aparelho", Some(&ana), Some(json!({ "instalacao": "inst-abc12345", "push_endpoint": "http://127.0.0.1/x" }))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, r) = e.chamar("PUT", "/api/v1/notificacoes/aparelho", Some(&ana), Some(json!({ "instalacao": "inst-abc12345", "push_endpoint": null }))).await;
+    assert_eq!(r["push_tipo"], "nenhum");
+
+    // Outra conta não assume a instalação de alguém.
+    let (_, bia) = e.pessoa(&ana, "bia").await;
+    let (st, _) = e.chamar("PUT", "/api/v1/notificacoes/aparelho", Some(&bia), Some(json!({ "instalacao": "inst-abc12345", "push_endpoint": null }))).await;
+    assert_eq!(st, StatusCode::CONFLICT);
+}

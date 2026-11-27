@@ -38,3 +38,15 @@ describe("AttachmentsField — arrastar e soltar", () => {
     expect(media.enviar).not.toHaveBeenCalled();
   });
 });
+
+describe("AttachmentsField — vários arquivos pelo botão", () => {
+  it("o seletor aceita vários arquivos e envia cada um", async () => {
+    const { container } = render(<AttachmentsField tipo="nota" corpo="" onCorpoChange={() => undefined} />);
+    const entrada = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(entrada.multiple).toBe(true);
+    const arquivos = [new File(["1"], "um.pdf"), new File(["2"], "dois.pdf"), new File(["3"], "tres.pdf")];
+    fireEvent.change(entrada, { target: { files: arquivos } });
+    await waitFor(() => expect(media.enviar).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(media.enviar).mock.calls.map((c) => (c[0] as File).name)).toEqual(["um.pdf", "dois.pdf", "tres.pdf"]);
+  });
+});

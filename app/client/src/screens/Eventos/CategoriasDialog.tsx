@@ -97,7 +97,7 @@ function LinhaCategoria({ categoria, ocupado, onSalvar, onExcluir }: { categoria
         <button type="button" onClick={() => setEditando(true)} className="min-w-0 flex-1 truncate text-left text-sm" aria-label={`Editar categoria ${categoria.nome}`}>{categoria.nome}</button>
         <span className="shrink-0 text-xs text-text-muted">{categoria.eventos ?? 0} {categoria.eventos === 1 ? "evento" : "eventos"}</span>
         {confirma ? (
-          <button type="button" disabled={ocupado} onClick={onExcluir} className="rounded-lg bg-error px-2 py-1 text-xs font-medium text-white disabled:opacity-40">Excluir mesmo?</button>
+          <button type="button" disabled={ocupado} onClick={onExcluir} className="rounded-lg bg-error px-2 py-1 text-xs font-medium text-on-accent disabled:opacity-40">Excluir mesmo?</button>
         ) : (
           <button type="button" onClick={() => setConfirma(true)} aria-label={`Excluir categoria ${categoria.nome}`} className="rounded-lg p-1.5 text-text-muted hover:bg-surface-3 hover:text-error"><Trash2 size={15} /></button>
         )}

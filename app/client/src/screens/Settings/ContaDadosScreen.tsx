@@ -169,7 +169,7 @@ export function ContaDadosScreen() {
               <button
                 type="submit"
                 disabled={!fraseCorreta || excluindo}
-                className="min-h-11 flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                className="min-h-11 flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-on-accent disabled:opacity-40"
               >
                 {excluindo ? "Excluindo…" : "Excluir permanentemente"}
               </button>

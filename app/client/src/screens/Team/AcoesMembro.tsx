@@ -93,7 +93,7 @@ export function AcoesMembro({ nome, cargoAtual, ocupado, onTrocarCargo, onRemove
                   type="button"
                   disabled={ocupado}
                   onClick={() => { if (confirmando === "transferir") onTransferir?.(); else onRemover(); setAberto(false); setConfirmando(null); }}
-                  className="min-h-11 flex-1 rounded-lg bg-error text-sm font-semibold text-white disabled:opacity-40"
+                  className="min-h-11 flex-1 rounded-lg bg-error text-sm font-semibold text-on-accent disabled:opacity-40"
                 >
                   {confirmando === "transferir" ? "Transferir" : "Remover"}
                 </button>

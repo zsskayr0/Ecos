@@ -182,7 +182,7 @@ export function GoogleCalendarCard({ intervaloPollMs = 2000 }: { intervaloPollMs
           <p className="mt-1 text-xs text-text-muted">Os eventos continuam no Ecos, como privados e sem vínculo com o Google. O acesso do Ecos à sua conta é revogado.</p>
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={() => setConfirmaDesconectar(false)} disabled={ocupado !== null} className={`${botao} bg-surface-1 text-text-primary`}>Cancelar</button>
-            <button type="button" onClick={() => void desconectar()} disabled={ocupado !== null} className={`${botao} bg-error text-white`}>{ocupado === "desconectar" ? "Desconectando..." : "Desconectar"}</button>
+            <button type="button" onClick={() => void desconectar()} disabled={ocupado !== null} className={`${botao} bg-error text-on-accent`}>{ocupado === "desconectar" ? "Desconectando..." : "Desconectar"}</button>
           </div>
         </div>
       )}

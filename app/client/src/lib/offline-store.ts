@@ -239,7 +239,10 @@ function emitir(): void {
 }
 
 async function atualizarQuantidade(): Promise<void> {
-  estado = { ...estado, pendentes: (await listarMutacoesPendentes()).length };
+  const fila = await listarMutacoesPendentes();
+  // O erro do item recusado fica gravado na fila: depois de recarregar o app, o aviso continua dizendo que há o que resolver.
+  const recusada = fila.find((m) => m.erro)?.erro ?? null;
+  estado = { ...estado, pendentes: fila.length, erro: fila.length ? (estado.erro ?? recusada) : null };
   emitir();
 }
 

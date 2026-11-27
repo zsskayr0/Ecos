@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { EVENTO_ABRIR_ROTA } from "@/lib/abrir-rota";
 import { Dialog } from "@/components/common/Dialog";
 import { MemoryRouter, Routes } from "react-router-dom";
 import { ArrowLeft, Bell, ChevronDown, FolderTree, Lock, LogOut, Search, User, Users, Settings, X } from "lucide-react";
@@ -265,6 +266,17 @@ function Conteudo() {
     window.addEventListener("ecos:voltar-do-cofre", voltar);
     return () => window.removeEventListener("ecos:voltar-do-cofre", voltar);
   }, []);
+  // `abrirRota` (lib/abrir-rota): de fora do roteador, abre a rota numa aba (saindo do Cofre se ele estiver na frente).
+  useEffect(() => {
+    const abrir = (e: Event) => {
+      const caminho = (e as CustomEvent<string>).detail;
+      if (!caminho) return;
+      setCofreAberto(false);
+      dispatch({ type: "open", path: caminho, where: "focused", reuse: "path" });
+    };
+    window.addEventListener(EVENTO_ABRIR_ROTA, abrir);
+    return () => window.removeEventListener(EVENTO_ABRIR_ROTA, abrir);
+  }, [dispatch]);
 
   const trazerParaFrente = useCallback(
     (id: number) => setJanelas((js) => js.map((j) => (j.id === id ? { ...j, z: ++contador.current } : j))),

@@ -22,6 +22,14 @@ export function ConfirmDeleteDialog({ open, title, busy, onCancel, onConfirm, de
   return <dialog ref={dialog} role="alertdialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}
     className="ecos-confirm-dialog border border-border bg-surface-1 text-text-primary backdrop:bg-black/60"
     onCancel={(e) => { e.preventDefault(); if (!busy) onCancel(); }}
+    // Esc tratado aqui: atalhos de tela que escutam Esc no window e dão preventDefault (ex.: sair da seleção
+    // no Cofre) cancelariam o evento `cancel` nativo e o diálogo ficaria aberto.
+    onKeyDown={(e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!busy) onCancel();
+    }}
     onClick={(e) => {
       if (e.target !== e.currentTarget || busy) return;
       const rect = e.currentTarget.getBoundingClientRect();
@@ -31,7 +39,7 @@ export function ConfirmDeleteDialog({ open, title, busy, onCancel, onConfirm, de
     <p id={`${id}-description`} className="mb-6 text-sm text-text-secondary">{description}</p>
     <div className="flex gap-3">
       <button type="button" autoFocus disabled={busy} onClick={onCancel} className="min-h-12 flex-1 rounded-xl bg-surface-2 px-4 text-sm font-medium disabled:opacity-40">Cancelar</button>
-      <button type="button" disabled={busy} onClick={onConfirm} className="min-h-12 flex-1 rounded-xl bg-error px-4 text-sm font-semibold text-white disabled:opacity-40">{busy ? busyLabel : confirmLabel}</button>
+      <button type="button" disabled={busy} onClick={onConfirm} className="min-h-12 flex-1 rounded-xl bg-error px-4 text-sm font-semibold text-on-accent disabled:opacity-40">{busy ? busyLabel : confirmLabel}</button>
     </div>
   </dialog>;
 }

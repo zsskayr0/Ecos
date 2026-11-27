@@ -322,7 +322,7 @@ export function TeamProfileScreen() {
           ) : (
             <div className="flex gap-2">
               <button type="button" disabled={saindo} onClick={() => setConfirmandoSaida(false)} className="min-h-11 flex-1 rounded-2xl bg-surface-2 text-sm font-medium text-text-primary disabled:opacity-40">Cancelar</button>
-              <button type="button" disabled={saindo} onClick={() => void sairDaEquipe()} className="min-h-11 flex-1 rounded-2xl bg-error text-sm font-semibold text-white disabled:opacity-40">{saindo ? "Saindo…" : "Confirmar saída"}</button>
+              <button type="button" disabled={saindo} onClick={() => void sairDaEquipe()} className="min-h-11 flex-1 rounded-2xl bg-error text-sm font-semibold text-on-accent disabled:opacity-40">{saindo ? "Saindo…" : "Confirmar saída"}</button>
             </div>
           )}
         </section>

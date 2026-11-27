@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
 import { useIsMobile } from "@/lib/use-viewport";
 
 interface Props {
@@ -9,6 +9,22 @@ interface Props {
   ariaLabel: string;
   className: string;
   autoFocus?: boolean;
+}
+
+/**
+ * Tab no título vai direto para o corpo (descrição da tarefa, texto da nota), pulando a barra de
+ * formatação que fica no meio do caminho. Procura o editor no ancestral mais próximo que tenha um;
+ * sem editor editável (pré-visualização, modo simples) o Tab segue o padrão do navegador.
+ */
+export function tabParaCorpo(e: KeyboardEvent<HTMLElement>) {
+  if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.nativeEvent.isComposing) return;
+  for (let no = e.currentTarget.parentElement; no && no !== document.body; no = no.parentElement) {
+    const corpo = no.querySelector<HTMLElement>('.cm-content[contenteditable="true"]');
+    if (!corpo) continue;
+    e.preventDefault();
+    corpo.focus();
+    return;
+  }
 }
 
 /**
@@ -32,7 +48,7 @@ export function TitleField({ id, value, onChange, placeholder, ariaLabel, classN
   }, [mobile, value]);
 
   if (!mobile) {
-    return <input id={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} aria-label={ariaLabel} autoFocus={autoFocus} className={className} />;
+    return <input id={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} aria-label={ariaLabel} autoFocus={autoFocus} className={className} onKeyDown={tabParaCorpo} />;
   }
 
   return (
@@ -45,6 +61,7 @@ export function TitleField({ id, value, onChange, placeholder, ariaLabel, classN
       placeholder={placeholder}
       aria-label={ariaLabel}
       autoFocus={autoFocus}
+      onKeyDown={tabParaCorpo}
       className={`${className} min-h-[80px] max-h-[108px] resize-none overflow-y-auto leading-7`}
     />
   );

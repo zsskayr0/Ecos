@@ -2,6 +2,7 @@
 //! arquivos pra reindexação incremental.
 
 pub mod calendario;
+pub mod lembretes;
 pub mod mdns;
 pub mod push;
 pub mod ranking;

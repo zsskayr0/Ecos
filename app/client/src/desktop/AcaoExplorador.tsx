@@ -175,7 +175,7 @@ function AcaoSimples({ acao, alvo, espaco, aoFechar, aoConcluir, aoOtimista, aoO
               Excluir <span className="font-medium text-text-primary">{alvo.rotulo}</span>?{" "}
               {alvo.lote ? "Vão para a Lixeira, de onde dá para restaurar (pastas vão com tudo o que há dentro)." : alvo.pasta ? "A pasta e tudo o que há dentro dela vão para a Lixeira." : "Vai para a Lixeira, de onde dá para restaurar."}
             </p>
-            <button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-white disabled:opacity-40"><Trash2 size={16} />Excluir</button>
+            <button type="button" disabled={ocupado} onClick={() => void excluir()} className="mt-4 flex min-h-10 items-center gap-2 rounded-lg bg-error px-3 text-sm font-medium text-on-accent disabled:opacity-40"><Trash2 size={16} />Excluir</button>
           </>
         )}
 

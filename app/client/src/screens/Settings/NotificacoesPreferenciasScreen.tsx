@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Bell, BellRing, Inbox, MoonStar, Sunrise } from "lucide-react";
 import { Toggle } from "@/components/common/Toggle";
 import { Cabecalho, CampoHora, Linha, Secao, usePreferencias } from "./campos-config";
+import { AvisosNesteCelular, AvisosPorCategoria } from "./AvisosDoServidor";
 
 type Permissao = NotificationPermission | "indisponivel";
 const lerPermissao = (): Permissao => (typeof Notification === "undefined" ? "indisponivel" : Notification.permission);
@@ -14,7 +15,7 @@ const ROTULO_PERMISSAO: Record<Permissao, string> = {
   indisponivel: "Este aparelho não oferece notificações do sistema.",
 };
 
-/** Preferências de aviso. Valem para o que é gerado neste aparelho (hoje, o resumo diário); a caixa de notificações do servidor tem tela própria. */
+/** Preferências de aviso: os do servidor (por categoria, na caixa e no celular) e os gerados neste aparelho (resumo diário). */
 export function NotificacoesPreferenciasScreen() {
   const [prefs, alterar] = usePreferencias();
   const [permissao, setPermissao] = useState<Permissao>(lerPermissao);
@@ -30,6 +31,9 @@ export function NotificacoesPreferenciasScreen() {
       <Link to="/notificacoes" className="mb-6 flex items-center gap-3 rounded-2xl border border-border bg-surface-1 px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-surface-2">
         <Inbox size={18} className="text-steel-300" />Ver caixa de notificações
       </Link>
+
+      <AvisosNesteCelular />
+      <AvisosPorCategoria />
 
       <Secao titulo="Resumo diário">
         <Linha Icone={Sunrise} titulo="Resumo do dia" descricao="Uma vez por dia, um aviso com as tarefas de hoje e as atrasadas. Aparece com o Ecos aberto; se você abrir depois da hora, ele sai na hora.">

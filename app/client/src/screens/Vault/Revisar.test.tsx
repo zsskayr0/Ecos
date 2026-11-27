@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -102,16 +102,18 @@ it("avisa quando o mesmo comprovante já está em outro lançamento", async () =
 it("descartar só apaga depois de confirmar", async () => {
   vi.mocked(vault.comprovantes.rascunhos.obter).mockResolvedValue(lido);
   vi.mocked(vault.comprovantes.rascunhos.descartar).mockResolvedValue({ ok: true });
-  const confirmar = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
   const onFechar = vi.fn();
   render(<RevisarComprovante id="r1" onFechar={onFechar} onMudou={vi.fn()} />);
   await screen.findByDisplayValue(/1\.234,56/);
   fireEvent.click(screen.getByRole("button", { name: /Descartar comprovante/ }));
+  fireEvent.click(within(await screen.findByRole("alertdialog", { name: /Descartar este comprovante/ })).getByRole("button", { name: "Cancelar" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(vault.comprovantes.rascunhos.descartar).not.toHaveBeenCalled();
+  expect(onFechar).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: /Descartar comprovante/ }));
+  fireEvent.click(within(await screen.findByRole("alertdialog", { name: /Descartar este comprovante/ })).getByRole("button", { name: "Descartar" }));
   await waitFor(() => expect(vault.comprovantes.rascunhos.descartar).toHaveBeenCalledWith("r1"));
   expect(onFechar).toHaveBeenCalled();
-  confirmar.mockRestore();
 });
 
 it("comprovante que sumiu da fila mostra mensagem clara", async () => {
@@ -162,15 +164,13 @@ it("“Deixar na fila para depois” fecha sem apagar nada", async () => {
 
 it("“Descartar” na pergunta apaga o comprovante sem pedir uma segunda confirmação", async () => {
   vi.mocked(vault.comprovantes.rascunhos.descartar).mockResolvedValue({ ok: true });
-  const confirmar = vi.spyOn(window, "confirm");
   const { onFechar, onMudou } = await abrirPronto();
   clicarEmFechar();
   fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
   await waitFor(() => expect(vault.comprovantes.rascunhos.descartar).toHaveBeenCalledWith("r1"));
-  expect(confirmar).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alertdialog", { name: /Descartar este comprovante/ })).toBeNull();
   expect(onMudou).toHaveBeenCalledWith();
   expect(onFechar).toHaveBeenCalled();
-  confirmar.mockRestore();
 });
 
 it("“Continuar revisando” volta ao formulário com o que já estava preenchido", async () => {

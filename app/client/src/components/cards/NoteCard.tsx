@@ -1,4 +1,5 @@
 import { avisar } from "@/lib/toast";
+import { CLASSE_ITEM_ARQUIVADO, CLASSE_TITULO_ARQUIVADO } from "@/lib/aparencia-arquivada";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import type { Nota } from "@/lib/types";
@@ -61,7 +62,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
     <article
       title={MOTIVO_LABEL[nota.motivoRanking]}
       onClick={aoClicarCartao(abrir)}
-      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${cores.border}`}
+      className={`group/cartao ${CLASSE_CARTAO_CLICAVEL} flex w-full min-w-0 flex-col gap-2 rounded-card border-l-4 bg-surface-1 p-4 text-left ${cores.border} ${nota.arquivada ? CLASSE_ITEM_ARQUIVADO : ""}`}
     >
       <div className="flex min-h-7 items-center justify-between gap-2">
         <PastaChip caminho={pasta} />
@@ -76,7 +77,7 @@ export function NoteCard({ nota, pastas = [] }: { nota: Nota; pastas?: PastaOpca
         </div>
       </div>
 
-      <button type="button" onClick={(e) => { e.stopPropagation(); abrir(e); }} className="w-fit max-w-full text-left font-body text-[15px] font-semibold leading-snug text-text-primary hover:underline">{nota.titulo}<SeloNaoSincronizado id={nota.id} /></button>
+      <button type="button" onClick={(e) => { e.stopPropagation(); abrir(e); }} className={`w-fit max-w-full text-left font-body text-[15px] font-semibold leading-snug hover:underline ${nota.arquivada ? CLASSE_TITULO_ARQUIVADO : "text-text-primary"}`}>{nota.titulo}<SeloNaoSincronizado id={nota.id} /></button>
 
       {corpoSemAnexos && (expandido
         ? <div className="text-sm leading-relaxed text-text-secondary"><MarkdownPreview corpo={corte.texto} itemId={nota.id} aoAlternarChecklist={(i) => void alternar(i)} />{corte.cortado && <AvisoCortado onAbrir={() => abrirDocumento(`/notas/nota/${nota.id}`)} tipo="nota" />}</div>

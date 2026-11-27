@@ -64,6 +64,11 @@ describe("sinais do menu lateral", () => {
 describe("título da guia de Arquivos", () => {
   it("mostra o nome da pasta aberta; sem pasta, continua Arquivos", () => {
     expect(tituloDaRota("/arquivos")).toBe("Arquivos");
+    expect(tituloDaRota("/configuracoes/notificacoes")).toBe("Notificações");
+    expect(tituloDaRota("/configuracoes/calendario/problemas")).toBe("Problemas de sincronização");
+    expect(tituloDaRota("/configuracoes/cofre/seguranca")).toBe("Cofre · Segurança");
+    expect(tituloDaRota("/configuracoes/equipes/abc")).toBe("Equipe");
+    expect(tituloDaRota("/configuracoes/inexistente")).toBe("Configurações");
     expect(tituloDaRota("/arquivos?pasta=Dev%2FEcos%20App")).toBe("Ecos App");
   });
 });

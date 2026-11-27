@@ -150,6 +150,11 @@ function corHex(cor: string): Cor {
 }
 
 /** Cor do texto na tela → cor no papel branco: cinzas viram texto escuro ou cinza, cores vivas ficam (no tema escuro viram o azul de link). */
+/** Fundo de código e barra de citação no papel (as cores da tela são do tema; no papel, sempre claras). */
+const FUNDO_CODIGO: Cor = [0.95, 0.96, 0.97];
+const BARRA_CITACAO: Cor = [0.74, 0.8, 0.88];
+const REGUA: Cor = [0.82, 0.85, 0.89];
+
 function corNoPapel(rgb: [number, number, number], escuro: boolean): Cor {
   const [r, g, b] = rgb.map((x) => x / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -177,8 +182,28 @@ function escreverFiel(e: Escritor, nota: NotaFiel) {
       const pronta = nota.imagens.get(im.src);
       if (pronta && paginaDe(im.y) === p) e.pdf.imagem(pronta.indice, MARGEM_LATERAL + im.x * escala, im.y * escala + dy, im.w * escala, im.h * escala);
     }
+    // Atrás do texto: fundo de código, barra de citação, linha horizontal e caixa de tarefa, nas posições da tela.
+    for (const d of layout.decoracoes ?? []) {
+      if (paginaDe(d.y) !== p) continue;
+      const x = MARGEM_LATERAL + d.x * escala, y = d.y * escala + dy, w = d.w * escala, h = d.h * escala;
+      if (d.k === "fundo") e.pdf.retangulo(x, y, w, h, FUNDO_CODIGO);
+      else if (d.k === "barra") e.pdf.retangulo(x, y, Math.max(1.5, w), h, BARRA_CITACAO);
+      else if (d.k === "regua") e.pdf.linha(x, y, x + w, y, REGUA, 0.8);
+      else {
+        const lado = Math.min(w, h);
+        e.pdf.linha(x, y, x + lado, y, CINZA, 0.8); e.pdf.linha(x + lado, y, x + lado, y + lado, CINZA, 0.8);
+        e.pdf.linha(x + lado, y + lado, x, y + lado, CINZA, 0.8); e.pdf.linha(x, y + lado, x, y, CINZA, 0.8);
+        if (d.marcada) { e.pdf.linha(x + lado * 0.22, y + lado * 0.52, x + lado * 0.42, y + lado * 0.74, TEXTO, 1.2); e.pdf.linha(x + lado * 0.42, y + lado * 0.74, x + lado * 0.8, y + lado * 0.28, TEXTO, 1.2); }
+      }
+    }
     for (const w of layout.palavras) {
       if (paginaDe(w.y) !== p) continue;
+      if (w.emoji) {
+        const im = e.emojis.get(w.t);
+        const lado = Math.min(w.w, w.h) * escala;
+        if (im) e.pdf.imagem(im.indice, MARGEM_LATERAL + w.x * escala, w.y * escala + dy + (w.h * escala - lado) / 2, lado, lado);
+        continue;
+      }
       const fonte: Fonte = w.codigo ? "codigo" : w.negrito ? (w.italico ? "negritoItalico" : "negrito") : w.italico ? "italico" : "normal";
       const texto = limparTexto(w.t);
       if (!texto) continue;

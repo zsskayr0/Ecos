@@ -165,7 +165,7 @@ export function PrivacyVaultScreen() {
               <button
                 onClick={() => void resetarCofre()}
                 disabled={frase !== FRASE_CONFIRMACAO || apagando}
-                className="flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                className="flex-1 rounded-2xl bg-error py-2.5 text-sm font-semibold text-on-accent disabled:opacity-40"
               >
                 {apagando ? "Apagando…" : "Apagar permanentemente"}
               </button>

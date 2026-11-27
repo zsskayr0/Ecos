@@ -227,7 +227,7 @@ export function SeletorCor({ ferramenta, valor, onChange }: Props) {
                   </button>
                   {editando && editavel && (
                     <button type="button" aria-label={`Remover ${c}`} title="Remover do grupo" onClick={() => remover(grupo.id, c)}
-                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-error text-white shadow"><X size={10} strokeWidth={3} /></button>
+                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-error text-on-accent shadow"><X size={10} strokeWidth={3} /></button>
                   )}
                 </div>
               );

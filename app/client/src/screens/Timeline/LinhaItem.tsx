@@ -2,7 +2,7 @@ import type { CSSProperties, MouseEvent } from "react";
 import { CalendarClock, CalendarDays, Check, CircleCheck, FilePen, FilePlus2, Flag, Folder, ListPlus, ListTodo, PencilLine, Tag, Wallet, type LucideIcon } from "lucide-react";
 import { rotuloHorario } from "@/lib/agenda-tempo";
 import type { Icone, ItemTimeline, RamoDaLinha } from "@/lib/timeline";
-import { RAMO, RECUO_ITEM, RECUO_LISTA, REGISTRO } from "./geometria";
+import { COR_TRILHO, RAMO, RECUO_ITEM, RECUO_LISTA, REGISTRO } from "./geometria";
 
 const ICONES: Record<Icone, LucideIcon> = {
   tarefa: ListTodo, prazo: Flag, evento: CalendarDays, transacao: Wallet,
@@ -19,6 +19,19 @@ const PRIORIDADE: Record<string, string> = { alta: "Prioridade alta", media: "Pr
 const fmtData = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const fmtDuracao = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}min` : ""}` : `${min}min`);
 
+/**
+ * Cor do ponto: nota é cinza (some no fundo), tarefa pela prioridade (baixa também aparece), Cofre sempre roxo,
+ * registro de tarefa no ciano do ramo. Atrasada e concluída são decididas antes.
+ */
+const COR_PRIORIDADE: Record<string, string> = { alta: "bg-warning", media: "bg-cyan", baixa: "bg-steel-300" };
+function corDoPonto(item: ItemTimeline): string {
+  if (item.icone === "nota-criada" || item.icone === "nota-editada") return "bg-text-muted";
+  if (item.icone === "transacao") return "bg-violet";
+  if (item.natureza === "registro") return "bg-cyan";
+  if (item.icone === "tarefa" || item.icone === "prazo") return COR_PRIORIDADE[item.info?.prioridade ?? "media"] ?? "bg-cyan";
+  return "bg-text-muted";
+}
+
 export interface AcoesItem {
   onAbrir: (item: ItemTimeline, e: MouseEvent<HTMLButtonElement>) => void;
   onConcluir: (item: ItemTimeline) => void;
@@ -27,6 +40,11 @@ export interface AcoesItem {
 
 /** Posição de um trilho relativa ao `<li>` do item (que começa em RECUO_LISTA). */
 const x = (trilho: number) => trilho - RECUO_LISTA;
+
+/** Trecho do trilho da programação nesta linha (dias com registro: o grupo não desenha o trilho inteiro). */
+function TrilhoDaLinha() {
+  return <span aria-hidden className={`pointer-events-none absolute inset-y-0 w-0 border-l ${COR_TRILHO}`} style={{ left: x(RAMO) - 0.5 }} />;
+}
 
 /** O ramo do registro nesta linha: reta, curva de entrada (do trilho principal) ou de saída (de volta a ele). */
 function RamoRegistro({ ramo }: { ramo: RamoDaLinha }) {
@@ -90,9 +108,11 @@ export function LinhaItem({ item, indice, ramo, enfase, mostrarData, acoes }: {
   const horario = mostrarData ? `${item.dia.slice(8, 10)}/${item.dia.slice(5, 7)}`
     : item.minutos === null ? (item.icone === "prazo" ? "Prazo" : item.icone === "transacao" ? "Cofre" : "Dia todo") : rotuloHorario(item.minutos);
 
-  const corPonto = atrasada ? "bg-error" : concluida ? "bg-success" : registro ? "bg-cyan" : "bg-text-muted";
+  const corPonto = atrasada ? "bg-error" : concluida ? "bg-success" : corDoPonto(item);
   const corTexto = atrasada && enfase ? "text-error" : concluida ? "text-text-muted line-through decoration-text-muted/50" : registro ? "text-text-secondary" : "text-text-primary";
   const corPropria = item.cor && !atrasada && !concluida ? item.cor : undefined;
+  // Só o evento pinta o ponto com a própria cor; o lançamento do Cofre fica roxo e a cor dele vai só no valor.
+  const corDoPontoProprio = item.icone === "evento" ? corPropria : undefined;
 
   const classe = "relative flex items-center gap-3 rounded-xl py-2 pr-3 transition-colors";
   const estilo: CSSProperties = { marginLeft: -RECUO_ITEM, paddingLeft: RECUO_ITEM, width: `calc(100% + ${RECUO_ITEM}px)` };
@@ -111,15 +131,17 @@ export function LinhaItem({ item, indice, ramo, enfase, mostrarData, acoes }: {
     {item.alvo
       ? <button type="button" onClick={(e) => acoes.onAbrir(item, e)} aria-label={`${registro ? `${item.detalhe} ` : ""}${item.titulo}${atrasada ? " (atrasada)" : ""}`} style={estilo} className={`${classe} hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70`}>{conteudo}</button>
       : <div style={estilo} className={classe}>{conteudo}</div>}
+    {ramo?.porLinha && ramo.trilho && <TrilhoDaLinha />}
     {ramo && <RamoRegistro ramo={ramo} />}
     <span aria-hidden className={`pointer-events-none absolute top-1/2 z-10 h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform duration-200 group-hover/linha:scale-150 ${corPonto} ${registro ? "ring-2 ring-cyan/15" : ""}`}
-      style={{ left: x(registro ? REGISTRO : RAMO), backgroundColor: corPropria }} />
+      style={{ left: x(registro ? REGISTRO : RAMO), backgroundColor: corDoPontoProprio }} />
     {item.alvo && <CartaoDetalhes item={item} acoes={acoes} />}
   </li>;
 }
 
-export function MarcadorAgora({ agora }: { agora: Date }) {
+export function MarcadorAgora({ agora, trilho }: { agora: Date; /** Dia com registro: o trilho é desenhado por linha. */ trilho?: boolean }) {
   return <li aria-label="Agora" data-agora className="ecos-timeline-item relative flex h-6 items-center">
+    {trilho && <TrilhoDaLinha />}
     <span aria-hidden className="ecos-timeline-agora absolute z-10 h-[9px] w-[9px] -translate-x-1/2 rounded-full bg-cyan" style={{ left: x(RAMO) }} />
     <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-cyan/60 to-transparent" />
     <span className="ml-2 text-[11px] font-medium tabular-nums text-cyan">{rotuloHorario(agora.getHours() * 60 + agora.getMinutes())}</span>

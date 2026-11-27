@@ -5,6 +5,7 @@ import { hojeISO } from "@/lib/format";
 import { TransactionForm } from "@/screens/Create/TransactionForm";
 import { DRAFT_VAZIO, type CapturaDraft } from "@/screens/Create/CreateFlow";
 import { exibivelComoImagem, useBlobUrl } from "./use-blob-url";
+import { useConfirmar } from "@/components/common/useConfirmar";
 
 const LIMITE_CONFIANCA = 0.85;
 const INTERVALO_MS = 1500;
@@ -44,6 +45,7 @@ export function RevisarComprovante({ id, jaAnexadoEm, onFechar, onMudou, abrirLa
   onMudou: (guardado?: { id: string; data: string; descricao: string }) => void;
   abrirLancamento?: (transacaoId: string) => void;
 }) {
+  const { confirmar: perguntarAntes, dialogo, aberto: confirmando } = useConfirmar();
   const [rascunho, setRascunho] = useState<RascunhoApi | null>(null);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
@@ -85,7 +87,7 @@ export function RevisarComprovante({ id, jaAnexadoEm, onFechar, onMudou, abrirLa
   useEffect(() => {
     fechar.current?.focus();
     const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || salvando) return;
+      if (e.key !== "Escape" || salvando || confirmando) return;
       // Esc com a pergunta aberta = "continuar revisando".
       if (saindo) setSaindo(false);
       else tentarSair();
@@ -93,7 +95,7 @@ export function RevisarComprovante({ id, jaAnexadoEm, onFechar, onMudou, abrirLa
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onFechar, salvando, saindo, rascunho, erroCarga]);
+  }, [onFechar, salvando, saindo, rascunho, erroCarga, confirmando]);
 
   /** Com o comprovante carregado, sair (X ou Esc) pergunta o que fazer com ele; sem ele (erro de carga), só fecha. */
   function tentarSair() {
@@ -135,9 +137,9 @@ export function RevisarComprovante({ id, jaAnexadoEm, onFechar, onMudou, abrirLa
     }
   }
 
-  /** `confirmar = false` quando quem chama já perguntou (a pergunta de sair). */
-  async function descartar(confirmar = true) {
-    if (confirmar && !window.confirm("Descartar este comprovante? O arquivo será apagado do Cofre.")) return;
+  /** `perguntar = false` quando quem chama já perguntou (a pergunta de sair). */
+  async function descartar(perguntar = true) {
+    if (perguntar && !(await perguntarAntes({ title: "Descartar este comprovante?", description: "O arquivo é apagado do Cofre. Não vai para a Lixeira.", confirmLabel: "Descartar" }))) return;
     try {
       await vault.comprovantes.rascunhos.descartar(id);
       onMudou();
@@ -161,6 +163,7 @@ export function RevisarComprovante({ id, jaAnexadoEm, onFechar, onMudou, abrirLa
 
   return (
     <div className="cofre-viewer-backdrop">
+      {dialogo}
       <div className="cofre-viewer cofre-review" role="dialog" aria-modal="true" aria-label="Revisar comprovante">
         <header>
           <div><b>Revisar comprovante</b><small>{rascunho?.nome_arquivo ?? "Carregando…"}</small></div>

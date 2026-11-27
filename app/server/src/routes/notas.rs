@@ -41,6 +41,9 @@ pub struct NotaResumo {
     pub criado_por: Option<String>,
     #[serde(default)]
     pub criado_por_nome: Option<String>,
+    /// Guardada (arquivada): as vistas mostram esmaecida, igual à tarefa arquivada.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub arquivada: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +135,21 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
     // Uma única consulta para as tags evita N+1 queries (e N aquisições do
     // mutex SQLite) ao abrir uma pasta com muitas notas.
     let ids: Vec<String> = visiveis.iter().map(|(id, ..)| id.clone()).collect();
+    let ids_arquivo = ids.clone();
+    let arquivadas: std::collections::HashSet<String> = if ids_arquivo.is_empty() {
+        Default::default()
+    } else {
+        state
+            .db
+            .with_read(move |conn| {
+                let marcadores = std::iter::repeat("?").take(ids_arquivo.len()).collect::<Vec<_>>().join(", ");
+                let sql = format!("SELECT id FROM nota WHERE COALESCE(arquivada, 0) = 1 AND id IN ({marcadores})");
+                let mut stmt = conn.prepare(&sql)?;
+                let linhas = stmt.query_map(rusqlite::params_from_iter(ids_arquivo.iter()), |r| r.get::<_, String>(0))?;
+                Ok(linhas.collect::<Result<_, _>>()?)
+            })
+            .await?
+    };
     let tags_por_nota: HashMap<String, Vec<String>> = if ids.is_empty() {
         HashMap::new()
     } else {
@@ -168,6 +186,7 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
             tags,
             criado_por: criado_por.clone(),
             criado_por_nome: criado_por_nome.clone(),
+            arquivada: arquivadas.contains(id),
         });
     }
 

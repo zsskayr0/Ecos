@@ -70,6 +70,7 @@ export function notaDoFeed(item: Record<string, unknown>, equipes: MinhaEquipe[]
     ultimaRevisaoEm: typeof item.ultima_revisao_em === "string" ? item.ultima_revisao_em : null,
     contagemLinksEntrada: 0,
     motivoRanking: motivoValido(item.motivo),
+    arquivada: item.arquivada === true || item.status === "arquivada",
   };
 }
 
@@ -87,6 +88,7 @@ export function notaResumoParaView(
     tags: string[];
     criado_por?: string | null;
     criado_por_nome?: string | null;
+    arquivada?: boolean;
   },
   equipes: MinhaEquipe[],
   perfil: PerfilBasico | null,
@@ -106,6 +108,7 @@ export function notaResumoParaView(
     criadoEm: n.criado_em,
     atualizadoEm: n.atualizado_em,
     ultimaRevisaoEm: n.ultima_revisao_em,
+    arquivada: n.arquivada === true,
     contagemLinksEntrada: 0,
     // GAP-09: the ranking `motivo` only exists today in the `feed_item`
     // table (section 4) — no endpoint to look it up for a standalone Nota

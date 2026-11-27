@@ -67,6 +67,8 @@ export interface Nota {
   contagemLinksEntrada: number;
   motivoRanking: MotivoRanking;
   diasOrfa?: number;
+  /** Nota guardada (arquivada): as vistas mostram esmaecida. */
+  arquivada?: boolean;
 }
 
 export type PrioridadeTarefa = "baixa" | "media" | "alta";

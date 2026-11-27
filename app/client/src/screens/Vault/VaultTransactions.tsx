@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { ArrowDown, ArrowDownLeft, ArrowUp, ArrowUpRight, Check, ChevronDown, Columns3, Grid2X2, List, Plus, RefreshCw, Repeat, Search, SlidersHorizontal, Table2, Tag, Trash2, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowDown, ArrowDownLeft, ArrowUp, ArrowUpRight, Check, ChevronDown, Columns3, Clock3, Grid2X2, History, List, ListChecks, Plus, RefreshCw, Repeat, Search, SlidersHorizontal, SquarePen, Table2, Tag, Trash2, X } from "lucide-react";
 import { bloqueioDeMensalidade, financeiro, vault, type CategoriaApi, type ContaApi, type FormaPagamentoApi, type TransacaoApi } from "@/lib/api";
 import { BloqueioReajuste, type BloqueioPendente } from "./mensalidades/BloqueioReajuste";
-import { formatMoeda } from "@/lib/format";
+import { formatMoeda, isoDoSqlite } from "@/lib/format";
 import { sequenciaExportacao } from "@/lib/sequencia-exportacao";
 import { publicarListaDeLancamentos } from "@/lib/lista-lancamentos";
 import { casaBusca } from "@/lib/texto-busca";
@@ -27,8 +28,10 @@ import { SEM_CATEGORIA_ID as SEM_CATEGORIA } from "./SeletorCategoriaLateral";
 import { caminhoCompleto } from "@/lib/categorias-hierarquia";
 import { CaixaEcos } from "./CaixaEcos";
 import { AvatarAutor } from "./AvatarAutor";
+import { useConfirmar } from "@/components/common/useConfirmar";
 
-type Visualizacao = "lista" | "tabela";
+/** Histórico: os lançamentos agrupados por dia, como no celular (onde é a única vista). */
+type Visualizacao = "lista" | "tabela" | "historico";
 type Tipo = "todos" | "entrada" | "saida";
 type Status = "todos" | "efetivada" | "pendente";
 type Origem = "todas" | "recorrente" | "pontual";
@@ -52,7 +55,7 @@ function lerVista(): Partial<Vista> {
   try {
     const v = JSON.parse(localStorage.getItem(CHAVE_VISTA) ?? "{}") as Partial<Vista>;
     const ok: Partial<Vista> = {};
-    if (v.view === "lista" || v.view === "tabela") ok.view = v.view;
+    if (v.view === "lista" || v.view === "tabela" || v.view === "historico") ok.view = v.view;
     if (v.ordem && CHAVES_ORDEM.includes(v.ordem.chave) && (v.ordem.dir === 1 || v.ordem.dir === -1)) ok.ordem = v.ordem;
     if (v.tipo === "todos" || v.tipo === "entrada" || v.tipo === "saida") ok.tipo = v.tipo;
     if (v.status === "todos" || v.status === "efetivada" || v.status === "pendente") ok.status = v.status;
@@ -77,6 +80,8 @@ interface Contexto {
   viaComprovante: Set<string>;
   clicar: (t: TransacaoApi, e: MouseEvent) => void;
   alternar: (id: string, gesto?: Gesto) => void;
+  /** Abre o menu de opções do lançamento (segurar no toque, botão direito no mouse). */
+  opcoes: (t: TransacaoApi, x: number, y: number) => void;
   aoAnexar: () => void;
   modoValor: ModoValor;
   /** Maior valor do período atual: o 100% da barra/anel. */
@@ -94,6 +99,8 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   atualizar: () => void;
 }) {
   const { abrirCaptura, abrirBusca } = useAppUI();
+  const { confirmar, dialogo } = useConfirmar();
+  const [menuDe, setMenuDe] = useState<{ t: TransacaoApi; x: number; y: number } | null>(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [catsAberto, setCatsAberto] = useState(false);
   const autoria = useAutoriaDoCofre();
@@ -120,9 +127,9 @@ export function VaultTransactions({ recarregar, periodo, period, onPeriodChange,
   const [contas, setContas] = useState<Map<string, ContaApi>>(new Map());
   const [colunasVisiveis, setColunasVisiveis] = useState<Set<string>>(lerColunasVisiveis);
   const [view, setView] = useState<Visualizacao>(vistaInicial.view ?? "lista");
-  // No celular só existe a Lista (cartões); a Tabela fica para telas largas.
+  // No celular só existe o Histórico (cartões por dia); Lista e Tabela ficam para telas largas.
   const movel = useMovel();
-  const modo: Visualizacao = movel ? "lista" : view;
+  const modo: Visualizacao = movel ? "historico" : view;
   const [ordem, setOrdem] = useState<{ chave: Ordem; dir: 1 | -1 }>(vistaInicial.ordem ?? { chave: "data", dir: -1 });
   useEffect(() => {
     try { localStorage.setItem(CHAVE_VISTA, JSON.stringify({ view, ordem, tipo: filtro.tipo ? vistaInicial.tipo ?? "todos" : tipo, status, origem, categorias: [...catsSel] })); } catch { /* vale só nesta sessão */ }
@@ -328,22 +335,31 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
     window.setTimeout(() => { quadro.contentWindow?.focus(); quadro.contentWindow?.print(); }, 100);
   }
 
-  async function lote(acao: "efetivar" | "previsto" | "excluir") {
-    if (acao === "excluir" && !window.confirm(`Excluir ${selecionados.length} lançamentos?`)) return;
+  /** Ação nos selecionados ou, vinda do menu de um lançamento, só nele (`alvo`). */
+  async function lote(acao: "efetivar" | "previsto" | "excluir", alvo?: string[]) {
+    const ids = alvo ?? selecionados;
+    if (acao === "excluir" && !(await confirmar({ title: `Excluir ${ids.length} ${ids.length === 1 ? "lançamento" : "lançamentos"}?`, description: "Os lançamentos são apagados do Cofre. Não vão para a Lixeira.", confirmLabel: "Excluir" }))) return;
     setOcupado(true);
     setErro("");
     setFeedback("");
     try {
-      const r = await financeiro.lote(selecionados, acao);
-      if (r.erros.length) setErro(r.erros.map((e) => `Linha ${e.linha}: ${e.erro}`).join("; "));
-      else setFeedback(`${r.aplicadas} operações aplicadas.`);
-      sairDaSelecao();
+      const r = await financeiro.lote(ids, acao);
+      // O servidor numera pela posição em `ids` (1 = primeiro); aqui vira descrição e data do lançamento.
+      const nomeDe = (linha: number) => {
+        const t = exibidas.find((x) => x.id === ids[linha - 1]);
+        return t ? `“${t.descricao || "Sem descrição"}” (${t.data.split("-").reverse().join("/")})` : "Um lançamento";
+      };
+      const feito = { efetivar: ["efetivado", "efetivados"], previsto: ["marcado como previsto", "marcados como previstos"], excluir: ["excluído", "excluídos"] }[acao];
+      const resumo = r.aplicadas > 0 ? `${r.aplicadas} ${r.aplicadas === 1 ? `lançamento ${feito[0]}` : `lançamentos ${feito[1]}`}.` : "";
+      if (r.erros.length) setErro([resumo, ...r.erros.map((e) => `${nomeDe(e.linha)}: ${e.erro}`)].filter(Boolean).join(" "));
+      else setFeedback(resumo);
+      if (!alvo) sairDaSelecao();
       setVersao((v) => v + 1);
       atualizar();
     } catch (e) {
       // Recebimento de mensalidade com reajuste sem decisão: o diálogo resolve o ciclo e repete a ação.
       const b = acao === "efetivar" ? bloqueioDeMensalidade(e) : null;
-      if (b) setBloqueio({ ...b, repetir: () => lote(acao) });
+      if (b) setBloqueio({ ...b, repetir: () => lote(acao, alvo) });
       else setErro((e as Error).message);
     } finally { setOcupado(false); }
   }
@@ -420,6 +436,7 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
   const contexto: Contexto = {
     categorias: categoriasPorId, pagadores, contas, forma: formas.rotulo, autor: autoria.ativo ? autoria.nomeDe : undefined,
     selecionando: selecionados.length > 0, selecionados: marcados, viaComprovante, clicar, alternar, aoAnexar,
+    opcoes: (t, x, y) => setMenuDe({ t, x, y }),
     modoValor, maxValor,
   };
 
@@ -485,13 +502,19 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
         <MenuOrdenar valor={ordem.chave} aoMudar={(chave) => setOrdem((o) => ({ ...o, chave }))} />
         <button type="button" aria-label={ordem.dir === 1 ? "Ordem crescente" : "Ordem decrescente"} title={ordem.dir === 1 ? "Crescente" : "Decrescente"} onClick={() => setOrdem((o) => ({ ...o, dir: o.dir === 1 ? -1 : 1 }))}><ArrowUp size={14} className="cofre-sort-dir" data-desc={ordem.dir !== 1 || undefined} /></button>
       </div>}
-      {!movel && <div className="cofre-view-toggle"><button aria-pressed={view === "lista"} onClick={() => setView("lista")}><List size={14} />Lista</button><button aria-pressed={view === "tabela"} onClick={() => setView("tabela")}><Table2 size={14} />Tabela</button></div>}
+      {!movel && <div className="cofre-view-toggle"><button aria-pressed={view === "lista"} onClick={() => setView("lista")}><List size={14} />Lista</button><button aria-pressed={view === "tabela"} onClick={() => setView("tabela")}><Table2 size={14} />Tabela</button><button aria-pressed={view === "historico"} onClick={() => setView("historico")}><History size={14} />Histórico</button></div>}
       {modo === "tabela" && <MenuColunas visiveis={colunasVisiveis} autor={!!contexto.autor} aoMudar={(v) => { setColunasVisiveis(v); salvarColunasVisiveis(v); }} />}
     </div>
   </div>
   );
 
   return <section className="cofre-transactions" ref={secao} data-valor={modoValor}>
+    {dialogo}
+    {menuDe && <MenuLancamento {...menuDe} fechar={() => setMenuDe(null)} movel={movel}
+      abrir={() => { const t = menuDe.t; if (ehPrevista(t.id) && t.transacao_recorrente_id) void abrirOcorrencia(t); else abrir(t.id); }} selecionar={() => alternar(menuDe.t.id)}
+      efetivar={ehPrevista(menuDe.t.id) || menuDe.t.status !== "efetivada" ? () => void lote("efetivar", [menuDe.t.id]) : undefined}
+      previsto={!ehPrevista(menuDe.t.id) && menuDe.t.status === "efetivada" ? () => void lote("previsto", [menuDe.t.id]) : undefined}
+      excluir={ehPrevista(menuDe.t.id) ? undefined : () => void lote("excluir", [menuDe.t.id])} />}
     {movel && <BotaoTopo />}
     <div className="cofre-transactions-top"><h1>Transações</h1><div className="cofre-transactions-actions">
       {movel ? <button type="button" className="cofre-search cofre-search-atalho" onClick={abrirBusca} aria-label="Buscar"><Search size={18} strokeWidth={1.75} /><span>Buscar transação…</span></button> : <label className="cofre-search"><Search size={15} /><input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="Buscar transação…" aria-label="Buscar transação" />{consulta && <button type="button" className="cofre-search-limpar" aria-label="Limpar busca" onClick={() => setConsulta("")}><X size={13} /></button>}</label>}
@@ -515,7 +538,9 @@ td small{display:block;margin-top:1px;color:#64748b;font-size:10px}td i{margin-l
         : !exibidas.length ? (buscando ? <VaultEmptyState carregando titulo="Buscando…" />
           : q ? <VaultEmptyState titulo={`Nada encontrado para “${q}”.`} descricao="Tente outro termo ou ajuste os filtros." />
           : <VaultEmptyState titulo="Nenhum lançamento no período" descricao="Lance receitas, despesas, recorrentes ou parceladas e acompanhe vencimentos e pagamentos." onNovo={() => abrirCaptura("transacao")} />)
-        : modo === "lista" ? (movel ? <ListaMovel rows={exibidas} ctx={contexto} porDia={ordem.chave === "data"} bancario={ordem.chave === "data" && ordem.dir === -1} /> : <div>{exibidas.map((t) => <Linha key={t.id} t={t} ctx={contexto} />)}</div>)
+        : modo === "historico" ? (movel ? <ListaMovel rows={exibidas} ctx={contexto} porDia={ordem.chave === "data"} bancario={ordem.chave === "data" && ordem.dir === -1} />
+          : <div className="cofre-historico"><ListaMovel rows={exibidas} ctx={contexto} porDia={ordem.chave === "data"} bancario={ordem.chave === "data" && ordem.dir === -1} /></div>)
+        : modo === "lista" ? <div>{exibidas.map((t) => <Linha key={t.id} t={t} ctx={contexto} />)}</div>
         : <Tabela rows={exibidas} ctx={contexto} ordem={ordem} ordenar={ordenar} visiveis={colunasVisiveis} />}
     </div>
     <div className="cofre-transactions-footer"><span>{exibidas.length} lançamento{exibidas.length === 1 ? "" : "s"}</span><Pendencias lista={exibidas} /><button disabled={ocupado || carregando} onClick={() => setVersao((v) => v + 1)}><RefreshCw size={13} />Atualizar</button>{cursor && <button disabled={ocupado} onClick={() => void mais()}>Carregar mais</button>}</div>
@@ -864,7 +889,7 @@ function Linha({ t, ctx, movel = false }: { t: TransacaoApi; ctx: Contexto; move
   const prefCat = usePreferenciasCofre().categoria;
   const pagador = ctx.pagadores.get(t.beneficiario_id ?? "");
   const marcado = ctx.selecionados.has(t.id);
-  // No toque não existe "passar o mouse": segurar a linha começa a seleção.
+  // Segurar a linha (toque) abre o menu de opções, que inclui "Selecionar"; no mouse, o botão direito faz o mesmo.
   const toque = useRef<{ timer: number; disparou: boolean } | null>(null);
   const cancelarToque = () => { if (toque.current) window.clearTimeout(toque.current.timer); };
   return <div
@@ -876,8 +901,10 @@ function Linha({ t, ctx, movel = false }: { t: TransacaoApi; ctx: Contexto; move
     onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
     onPointerDown={(e) => {
       if (e.pointerType !== "touch" || ctx.selecionando) return;
-      toque.current = { disparou: false, timer: window.setTimeout(() => { if (toque.current) toque.current.disparou = true; ctx.alternar(t.id); }, TEMPO_TOQUE_LONGO_MS) };
+      const { clientX: x, clientY: y } = e;
+      toque.current = { disparou: false, timer: window.setTimeout(() => { if (toque.current) toque.current.disparou = true; navigator.vibrate?.(12); ctx.opcoes(t, x, y); }, TEMPO_TOQUE_LONGO_MS) };
     }}
+    onContextMenu={(e) => { e.preventDefault(); cancelarToque(); if (toque.current?.disparou) return; ctx.opcoes(t, e.clientX, e.clientY); }}
     onPointerUp={cancelarToque} onPointerLeave={cancelarToque} onPointerCancel={cancelarToque}
   >
     {movel ? <>
@@ -899,9 +926,45 @@ function Linha({ t, ctx, movel = false }: { t: TransacaoApi; ctx: Contexto; move
   </div>;
 }
 
+/** Menu de um lançamento: no celular sobe de baixo (folha); no mouse abre onde se clicou. */
+function MenuLancamento({ t, x, y, movel, fechar, abrir, selecionar, efetivar, previsto, excluir }: {
+  t: TransacaoApi; x: number; y: number; movel: boolean; fechar: () => void;
+  abrir: () => void; selecionar: () => void; efetivar?: () => void; previsto?: () => void; excluir?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.querySelector<HTMLButtonElement>("button")?.focus();
+    if (movel) return;
+    const r = el.getBoundingClientRect();
+    setPos({ left: Math.min(x, window.innerWidth - r.width - 8), top: Math.min(y, window.innerHeight - r.height - 8) });
+  }, [movel, x, y]);
+  useEffect(() => {
+    const tecla = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fechar(); } };
+    window.addEventListener("keydown", tecla, true);
+    return () => window.removeEventListener("keydown", tecla, true);
+  }, [fechar]);
+  const item = (rotulo: string, Icone: typeof Check, acao: () => void, perigo = false) => (
+    <button type="button" role="menuitem" data-perigo={perigo || undefined} onClick={() => { fechar(); acao(); }}><Icone size={16} aria-hidden />{rotulo}</button>
+  );
+  // Portal na raiz do Cofre: fora de ancestrais com transform (o fixed ficaria preso a eles) e ainda com as variáveis do Cofre.
+  return createPortal(<div className="cofre-menu-lanc-fundo" data-movel={movel || undefined} onPointerDown={(e) => { if (e.target === e.currentTarget) fechar(); }} onContextMenu={(e) => { e.preventDefault(); fechar(); }}>
+    <div ref={ref} role="menu" aria-label={`Opções de ${t.descricao}`} className="cofre-menu-lanc" style={movel ? undefined : pos ?? { left: x, top: y, visibility: "hidden" }}>
+      <p className="cofre-menu-lanc-titulo"><b>{t.descricao}</b><span>{dataBr(t.data)} · {t.tipo === "entrada" ? "+" : "−"}{formatMoeda(t.valor_centavos)}</span></p>
+      {item("Abrir lançamento", SquarePen, abrir)}
+      {efetivar && item("Efetivar", Check, efetivar)}
+      {previsto && item("Marcar como previsto", Clock3, previsto)}
+      {item("Selecionar", ListChecks, selecionar)}
+      {excluir && item("Excluir", Trash2, excluir, true)}
+    </div>
+  </div>, document.querySelector(".cofre-app") ?? document.body);
+}
+
 interface ColunaTabela { id: string; nome: string; largura: number; ordem?: Ordem; padrao?: boolean; celula: (t: TransacaoApi, ctx: Contexto, cat?: CategoriaApi) => ReactNode }
 const VAZIO = <span className="cofre-table-vazio">—</span>;
-const dataHora = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); };
+const dataHora = (iso: string) => { const d = new Date(isoDoSqlite(iso)); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); };
 const COLUNAS: ColunaTabela[] = [
   { id: "categoria", nome: "Categoria", largura: 190, ordem: "categoria", padrao: true, celula: (t, ctx, cat) => <span className="cofre-table-cat"><Inicio t={t} categoria={cat} ctx={ctx} /><span>{cat?.nome ?? "—"}</span></span> },
   { id: "data", nome: "Data", largura: 100, ordem: "data", padrao: true, celula: (t) => dataBr(t.data) },

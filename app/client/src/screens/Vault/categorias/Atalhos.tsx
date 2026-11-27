@@ -1,18 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Keyboard, X } from "lucide-react";
 
-export const ATALHOS: { teclas: string; acao: string }[] = [
-  { teclas: "/", acao: "Buscar categoria" },
-  { teclas: "N", acao: "Nova categoria" },
-  { teclas: "1 – 6", acao: "Grade, Lista, Tabela, Kanban, Mapa e Nuvem" },
-  { teclas: "S", acao: "Mostrar ou esconder subcategorias" },
-  { teclas: "A", acao: "Mostrar ou esconder arquivadas" },
-  { teclas: "D", acao: "Revisar categorias parecidas" },
-  { teclas: "I", acao: "Modelos, importar e exportar" },
-  { teclas: "Ctrl + A", acao: "Selecionar tudo que está visível" },
-  { teclas: "Esc", acao: "Fechar painel ou limpar a seleção" },
-  { teclas: "?", acao: "Mostrar esta ajuda" },
-];
+export { ATALHOS_CATEGORIAS_COFRE as ATALHOS } from "@/lib/atalhos";
+import { ATALHOS_CATEGORIAS_COFRE as ATALHOS } from "@/lib/atalhos";
 
 const digitando = (alvo: EventTarget | null) => {
   const el = alvo as HTMLElement | null;

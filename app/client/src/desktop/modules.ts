@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { nomeDoArquivo } from "@/lib/format";
+import { ABAS_COFRE } from "@/screens/Settings/abas-cofre";
 
 export type ModuloId =
   | "inicio"
@@ -130,15 +131,41 @@ export function tituloDaRota(path: string): string {
   if (primeiro === "perfil" && segundo === "editar") return "Editar perfil";
   if (primeiro === "perfil" && segundo === "rotina") return "Ajustar rotina";
   if (primeiro === "configuracoes" && segundo) {
+    // Mesmos rótulos das abas em ConfiguracoesLayout.
+    if (segundo === "cofre" && terceiro) { const aba = ABAS_COFRE.find((a) => a.id === terceiro); return aba ? `Cofre · ${aba.rotulo}` : "Cofre"; }
+    if (segundo === "equipes" && terceiro) return terceiro === "nova" ? "Nova equipe" : terceiro === "escanear" ? "Entrar com QR" : "Equipe";
+    const sub: Record<string, string> = {
+      "calendario/problemas": "Problemas de sincronização",
+      "arquivos/problemas": "Problemas de arquivos",
+      "sobre/licencas": "Licenças",
+    };
+    if (terceiro && sub[`${segundo}/${terceiro}`]) return sub[`${segundo}/${terceiro}`];
     const nomes: Record<string, string> = {
-      servidor: "Servidor",
-      sync: "Sincronização",
-      privacidade: "Privacidade",
-      cofre: "Cofre",
+      perfil: "Perfil",
+      "editar-perfil": "Editar perfil",
+      rotina: "Rotina",
+      equipes: "Equipes",
       conta: "Conta e dados",
       aparencia: "Aparência",
+      "idioma-regiao": "Idioma e região",
+      notificacoes: "Notificações",
+      atalhos: "Atalhos de teclado",
+      tarefas: "Tarefas",
+      notas: "Notas",
+      feed: "Feed",
+      editor: "Editor e escrita",
+      calendario: "Calendário e agenda",
       grafico: "Gráfico",
-      organizacao: "Organização",
+      "pastas-arquivos": "Exibição e lixeira",
+      organizacao: "Gerenciar pastas e tags",
+      "pastas-trancadas": "Pastas trancadas",
+      icones: "Ícones personalizados",
+      privacidade: "Privacidade e redefinição",
+      cofre: "Cofre",
+      servidor: "Servidor e backup",
+      pendencias: "Pendências",
+      sync: "Sincronização",
+      administracao: "Usuários e equipes",
       sobre: "Sobre",
     };
     return nomes[segundo] ?? "Configurações";

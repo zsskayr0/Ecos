@@ -187,7 +187,13 @@ export function atrasadasAteOntem(tarefas: TarefaResumo[], agora: Date): ItemTim
  * ramo de commits. Para cada linha diz se o ramo passa na metade de cima/de baixo, se entra (curva saindo do trilho
  * principal) ou sai (curva voltando), e se a linha tem um ponto nele.
  */
-export interface RamoDaLinha { cima: boolean; baixo: boolean; entra: boolean; sai: boolean; ponto: boolean }
+export interface RamoDaLinha {
+  cima: boolean; baixo: boolean; entra: boolean; sai: boolean; ponto: boolean;
+  /** O dia tem registro: o trilho da programação é desenhado linha a linha, e não inteiro pelo grupo. */
+  porLinha: boolean;
+  /** Esta linha desenha o trilho da programação. Some em todo o trecho em que o ramo do registro desvia (a curva o substitui; item programado no meio fica só com o ponto). */
+  trilho: boolean;
+}
 
 export function ramosDoRegistro(itens: Pick<ItemTimeline, "natureza">[]): RamoDaLinha[] {
   const primeiro = itens.findIndex((i) => i.natureza === "registro");
@@ -195,7 +201,9 @@ export function ramosDoRegistro(itens: Pick<ItemTimeline, "natureza">[]): RamoDa
   itens.forEach((i, n) => { if (i.natureza === "registro") ultimo = n; });
   return itens.map((item, n) => {
     const dentro = primeiro !== -1 && n >= primeiro && n <= ultimo;
-    return { cima: dentro && n > primeiro, baixo: dentro && n < ultimo, entra: n === primeiro, sai: n === ultimo, ponto: item.natureza === "registro" };
+    const registro = item.natureza === "registro";
+    return { cima: dentro && n > primeiro, baixo: dentro && n < ultimo, entra: n === primeiro, sai: n === ultimo, ponto: registro,
+      porLinha: primeiro !== -1, trilho: !dentro };
   });
 }
 

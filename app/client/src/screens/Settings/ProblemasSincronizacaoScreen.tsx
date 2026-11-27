@@ -127,7 +127,7 @@ export function ProblemasSincronizacaoScreen() {
                     <p className="mt-1 text-xs text-text-secondary">{CONFIRMACAO[confirmando.acao]}</p>
                     <div className="mt-3 flex gap-2">
                       <button type="button" onClick={() => setConfirmando(null)} disabled={ocupado !== null} className={`${botao} bg-surface-1 text-text-primary`}>Cancelar</button>
-                      <button type="button" onClick={() => void executar(`${p.id}:${confirmando.acao}`, async () => { await problemasSync.agir(p.id, confirmando.acao, true); })} disabled={ocupado !== null} className={`${botao} bg-error text-white`}>{ocupado ? "Aplicando…" : "Confirmar"}</button>
+                      <button type="button" onClick={() => void executar(`${p.id}:${confirmando.acao}`, async () => { await problemasSync.agir(p.id, confirmando.acao, true); })} disabled={ocupado !== null} className={`${botao} bg-error text-on-accent`}>{ocupado ? "Aplicando…" : "Confirmar"}</button>
                     </div>
                   </div>
                 ) : (

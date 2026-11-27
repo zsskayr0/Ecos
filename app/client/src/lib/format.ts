@@ -110,6 +110,24 @@ export function formatUltimaEdicao(iso: string, agora: Date = new Date()): strin
   return data.getFullYear() === agora.getFullYear() ? `${diaMes} - ${hora}` : `${diaMes}/${data.getFullYear()} - ${hora}`;
 }
 
+/**
+ * O SQLite grava `datetime('now')` como "AAAA-MM-DD HH:MM:SS" em UTC, sem fuso; `new Date` leria como hora local.
+ * Converte para ISO com Z. Outros formatos passam intactos.
+ */
+export function isoDoSqlite(valor: string): string {
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(valor) ? `${valor.replace(" ", "T")}Z` : valor;
+}
+
+/**
+ * "Adiada 2 vezes · data original 20/11/2026 às 13:00". `adiadaDe` é `AAAA-MM-DD` (prazo) ou instante ISO (horário).
+ * Vazio quando a tarefa nunca foi adiada.
+ */
+export function rotuloAdiamento(adiadaDe: string | null | undefined, vezes: number | undefined): string {
+  if (!adiadaDe || !vezes) return "";
+  const original = /^\d{4}-\d{2}-\d{2}$/.test(adiadaDe) ? adiadaDe.split("-").reverse().join("/") : formatDataHoraCompleta(adiadaDe);
+  return `Adiada ${vezes === 1 ? "1 vez" : `${vezes} vezes`}${original ? ` · data original ${original}` : ""}`;
+}
+
 /** "15/09/2026 às 12:46" — para o tooltip do horário relativo. */
 export function formatDataHoraCompleta(iso: string): string {
   const data = new Date(iso);

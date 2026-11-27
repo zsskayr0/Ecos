@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
 import { tarefas } from "@/lib/api";
 import { dataLocalISO, diaEMinutosLocais, diasEntre, instanteLocalISO, somarDiasISO } from "@/lib/agenda-tempo";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
@@ -128,7 +128,7 @@ export function TimelineScreen() {
       const amanha = somarDiasISO(hoje, 1);
       const scheduledAt = item.info?.scheduledAt;
       const payload = scheduledAt ? { scheduled_at: instanteLocalISO(amanha, diaEMinutosLocais(scheduledAt).minutos) } : { due_date: amanha };
-      void executar(() => tarefas.atualizar(id, payload), "Não foi possível reagendar a tarefa.");
+      void executar(() => tarefas.atualizar(id, { ...payload, adiar: item.dia < amanha }), "Não foi possível adiar a tarefa.");
     },
   };
 
@@ -193,15 +193,16 @@ export function TimelineScreen() {
               const minutoAgora = agora.getHours() * 60 + agora.getMinutes();
               const posAgora = ehHoje ? itens.findIndex((i) => (i.minutos ?? -1) > minutoAgora) : -1;
               const ramos = ramosDoRegistro(itens);
+              const porLinha = ramos.some((r) => r.porLinha);
               return <GrupoDia key={dia} id={dia} rotulo={rotuloDoDia(dia, hoje)} subtitulo={Math.abs(diasEntre(hoje, dia)) === 1 ? formatar(fmtDiaCurto, dia) : undefined}
                 contagem={itens.length} atual={ehHoje} futuro={dia > hoje} primeiro={n === 0 && atrasadas.length === 0} ultimo={ultimo}
-                recolhido={recolhido(dia)} onAlternar={alternar} refDia={ehHoje ? hojeRef : undefined}>
+                recolhido={recolhido(dia)} onAlternar={alternar} refDia={ehHoje ? hojeRef : undefined} trilhoPorLinha={porLinha}>
                 {itens.length === 0 && <li className="ecos-timeline-item py-2 text-sm text-text-muted">Nada programado.</li>}
                 {itens.map((item, i) => <Fragment key={item.chave}>
-                  {ehHoje && i === posAgora && <MarcadorAgora agora={agora} />}
+                  {ehHoje && i === posAgora && <MarcadorAgora agora={agora} trilho={porLinha} />}
                   <LinhaItem item={item} indice={i} ramo={ramos[i]} acoes={acoes} />
                 </Fragment>)}
-                {ehHoje && itens.length > 0 && posAgora === -1 && <MarcadorAgora agora={agora} />}
+                {ehHoje && itens.length > 0 && posAgora === -1 && <MarcadorAgora agora={agora} trilho={porLinha} />}
               </GrupoDia>;
             })}
           </ol>
@@ -212,6 +213,31 @@ export function TimelineScreen() {
       {dados && <div className="hidden 2xl:sticky 2xl:top-4 2xl:block">{calendario}</div>}
     </div>
 
+    {dados && <BotaoHoje alvo={hojeRef} versao={dias.length} />}
     <EventoDialog aberto={eventoEmEdicao !== null} eventoId={eventoEmEdicao?.id ?? null} ocorrencia={eventoEmEdicao?.ocorrencia ?? null} categorias={[]} onFechar={() => setEventoEmEdicao(null)} onSalvo={() => { setEventoEmEdicao(null); notificar(); }} />
   </div>;
+}
+
+/**
+ * Botão flutuante "Hoje": aparece quando o dia de hoje sai da tela e rola de volta até ele. A seta diz para que lado
+ * ele ficou. No celular fica acima da barra de baixo, à direita (o "+" está no centro).
+ */
+function BotaoHoje({ alvo, versao }: { alvo: React.RefObject<HTMLLIElement | null>; versao: number }) {
+  const [lado, setLado] = useState<"acima" | "abaixo" | null>(null);
+  useEffect(() => {
+    const el = alvo.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(([e]) => {
+      if (!e) return;
+      setLado(e.isIntersecting ? null : e.boundingClientRect.top < 0 ? "acima" : "abaixo");
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [alvo, versao]);
+  if (!lado) return null;
+  const Seta = lado === "acima" ? ArrowUp : ArrowDown;
+  return <button type="button" onClick={() => alvo.current?.scrollIntoView({ block: "start", behavior: "smooth" })}
+    className="ecos-pop fixed bottom-[calc(var(--ecos-safe-bottom,0px)+96px)] right-4 z-40 flex min-h-11 items-center gap-1.5 rounded-full border border-cyan/40 bg-surface-1/95 px-4 text-sm font-semibold text-cyan shadow-nav backdrop-blur-md hover:bg-surface-2 lg:bottom-6 lg:right-6">
+    <Seta size={16} aria-hidden />Hoje
+  </button>;
 }

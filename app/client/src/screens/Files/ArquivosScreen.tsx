@@ -1,4 +1,5 @@
 import { abrirPastaNosArquivos } from "../../desktop/navegacao-abas";
+import { CLASSE_ITEM_ARQUIVADO } from "@/lib/aparencia-arquivada";
 import { useWorkspaceOpcional } from "../../desktop/workspace-store";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as PointerReact } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -997,7 +998,7 @@ export function ArquivosScreen() {
   const corDoIcone = (l: Linha) => l.arquivo?.fora_do_padrao ? "text-error" : l.arquivo?.tipo === "tarefa" ? "text-cyan" : l.arquivo?.tipo === "nota" ? "text-steel-300" : "text-text-secondary";
   const concluida = (l: Linha) => l.arquivo?.tipo === "tarefa" && l.arquivo.status === "concluida";
   /** Concluída: riscada (e verde, se a preferência pedir). Arquivada: itálico, sem riscar. */
-  const estiloDoNome = (l: Linha) => concluida(l) ? (concluidaVerde ? "line-through !text-success/80" : "line-through opacity-50") : arquivada(l) ? "italic !text-text-muted" : "";
+  const estiloDoNome = (l: Linha) => concluida(l) ? (concluidaVerde ? "line-through !text-success/80" : "line-through opacity-50") : arquivada(l) ? "italic !text-text-muted" /* = CLASSE_TITULO_ARQUIVADO, com ! para vencer a cor do tipo */ : "";
   const arquivada = (l: Linha) => !!l.arquivo?.tipo && l.arquivo.status === "arquivada";
 
   /** Concluir/reabrir pelo checkbox da linha. Otimista: marca na hora e o servidor confirma depois (se recusar, a lista volta). */
@@ -1025,7 +1026,8 @@ export function ArquivosScreen() {
    * Os dois ocupam o mesmo espaço, então nada se mexe na linha. */
   function marcadorDaLinha(l: Linha) {
     const icone = iconeDaLinha(l, 18);
-    if (!(desktop && checkboxTarefa && l.arquivo?.tipo === "tarefa" && l.arquivo.id)) return icone;
+    // Arquivada não se conclui pela lista: fica só o ícone.
+    if (!(desktop && checkboxTarefa && l.arquivo?.tipo === "tarefa" && l.arquivo.id) || arquivada(l)) return icone;
     const feita = concluida(l);
     return (
       <span data-sem-arraste="" style={{ color: corDaTarefa(l) }} className="group/marc relative flex h-[18px] w-[18px] shrink-0 items-center justify-center"
@@ -1388,7 +1390,7 @@ export function ArquivosScreen() {
                         onContextMenu={(e) => abrirMenuCtx(linha, e)}
                         onKeyDown={(e) => { if (e.key === "Enter") abrir(linha); }}
                         tabIndex={0}
-                        className={`group relative flex cursor-default select-none rounded-xl text-center ${emFaixa ? "h-10 max-w-[220px] shrink-0 flex-row items-center gap-2 border border-border bg-surface-2 pl-3 pr-9 text-left" : `min-h-[112px] flex-col items-center gap-2 px-2 pb-2 ${comMiniatura ? "pt-2" : "pt-4"}`} focus-visible:outline-none ${selecionada ? "bg-steel-500/20 ring-2 ring-steel-400" : ""} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                        className={`group relative flex cursor-default select-none rounded-xl text-center ${arquivada(linha) ? `${CLASSE_ITEM_ARQUIVADO} ` : ""}${emFaixa ? "h-10 max-w-[220px] shrink-0 flex-row items-center gap-2 border border-border bg-surface-2 pl-3 pr-9 text-left" : `min-h-[112px] flex-col items-center gap-2 px-2 pb-2 ${comMiniatura ? "pt-2" : "pt-4"}`} focus-visible:outline-none ${selecionada ? "bg-steel-500/20 ring-2 ring-steel-400" : ""} ${linha.pasta ? realce(linha.caminho) : ""}`}
                         {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                       >
                         <span className={`absolute right-1 top-1 ${selecionada ? "" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"}`}>{acoes(linha)}</span>
@@ -1433,7 +1435,7 @@ export function ArquivosScreen() {
                     tabIndex={0}
                     data-fora-do-padrao={vermelho || undefined}
                     style={desktop ? { gridTemplateColumns: modeloColunas } : undefined}
-                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline-none ${desktop ? "" : "grid-cols-[minmax(0,1fr)_auto_32px]"} border-l-[3px] ${selecionada ? "border-l-steel-400 bg-steel-500/20" : `border-l-transparent`} ${linha.pasta ? realce(linha.caminho) : ""}`}
+                    className={`group grid min-h-11 cursor-default select-none items-center gap-3 border-b border-border/70 px-3 text-sm last:border-b-0 focus-visible:outline-none ${arquivada(linha) ? `${CLASSE_ITEM_ARQUIVADO} ` : ""}${desktop ? "" : "grid-cols-[minmax(0,1fr)_auto_32px]"} border-l-[3px] ${selecionada ? "border-l-steel-400 bg-steel-500/20" : `border-l-transparent`} ${linha.pasta ? realce(linha.caminho) : ""}`}
                     {...(linha.pasta ? soltarEm(linha.caminho) : {})}
                   >
                     <span role="gridcell" className="flex min-w-0 items-center gap-2.5">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isoDoSqlite } from "@/lib/format";
 import { ChevronLeft, Receipt } from "lucide-react";
 import { vault, ApiError, bloqueioDeMensalidade, enviarLancamentoParaEspaco, type TransacaoApi, type FormaPagamento } from "@/lib/api";
 import { SeletorDestino } from "./SeletorDestino";
@@ -267,6 +268,8 @@ export function EditorDeLancamento({ id: idDaRota, aoSalvar, aoExcluir, aoFechar
         onDuplicar={duplicar}
         onEnviar={destinos.length ? () => setEnviando({ destino: destinos[0].espaco, mover: false, ocupado: false }) : undefined}
         criadoPor={autoria.nomeDe(tx.criado_por)}
+        criadoEm={tx.criado_em ? isoDoSqlite(tx.criado_em) : undefined}
+        atualizadoEm={tx.atualizado_em ? isoDoSqlite(tx.atualizado_em) : undefined}
         anexos={comComprovantes ? <div className="cofre-anexos-par"><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} /><ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="nota_fiscal" />{(categoriasDeLucros.includes(tx.categoria_id ?? "") || (tx.recibos ?? 0) > 0) && <ComprovantesDaTransacao transacaoId={tx.id} aoMudar={notificar} tipo="recibo_lucros" />}</div> : undefined}
       />
     </div>

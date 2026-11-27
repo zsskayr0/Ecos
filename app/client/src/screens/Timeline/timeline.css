@@ -35,6 +35,9 @@
 /* Recolher/expandir: a altura anima pelo grid (1fr ↔ 0fr), sem medir nada no JS. */
 .ecos-timeline-ramo {
   display: grid;
+  /* Coluna limitada à largura do dia: sem isso o item do grid cresce até o título mais comprido (min-width: auto)
+     e, no celular, a página inteira rolava para o lado em vez de os títulos serem cortados com reticências. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 1fr;
   transition: grid-template-rows 320ms cubic-bezier(.22, 1, .36, 1), opacity 240ms ease;
 }
@@ -42,7 +45,7 @@
   grid-template-rows: 0fr;
   opacity: 0;
 }
-.ecos-timeline-ramo > * { min-height: 0; overflow: hidden; }
+.ecos-timeline-ramo > * { min-height: 0; min-width: 0; overflow: hidden; }
 /* Aberto, o ramo deixa o cartão de detalhes escapar para baixo; o corte só vale enquanto recolhe. */
 .ecos-timeline-ramo:not([data-recolhido]) > * { overflow: visible; }
 

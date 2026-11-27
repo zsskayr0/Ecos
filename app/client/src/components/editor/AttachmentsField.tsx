@@ -117,6 +117,12 @@ export function AttachmentsField(props: Props) {
     }
   }
 
+  /** Vários arquivos escolhidos de uma vez: um por vez, o primeiro no ponto do cursor e os seguintes depois (como colar). */
+  async function enviarVarios(lista: File[], posicao?: number) {
+    let pos = posicao;
+    for (const arquivo of lista) { await enviarRef.current(arquivo, pos); pos = undefined; }
+  }
+
   // O ouvinte usa sempre a versão mais recente de `enviar` (que lê `atual`).
   const enviarRef = useRef(enviar);
   enviarRef.current = enviar;
@@ -234,7 +240,7 @@ export function AttachmentsField(props: Props) {
         {anexos.length === 0 && <p className="cofre-anexos-vazio">Cole com Ctrl+V ou arraste arquivos até aqui.</p>}
       </div>
       {visualizador}
-      <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo, posBotao.current); }} />
+      <input ref={input} type="file" multiple className="hidden" onChange={(e) => { const lista = [...(e.target.files ?? [])]; e.target.value = ""; void enviarVarios(lista, posBotao.current); }} />
     </section>;
   }
 
@@ -259,7 +265,7 @@ export function AttachmentsField(props: Props) {
       <a href={url(a[3])} target="_blank" rel="noreferrer" className="flex-1 truncate text-sm text-steel-300">{a[2]}</a>
       <button type="button" disabled={props.disabled || enviando} className="flex min-h-11 min-w-11 items-center justify-center" aria-label={`Remover referência de ${a[2]}`} onClick={() => props.onCorpoChange(props.corpo.replace(a[0], "").replace(/\n{3,}/g, "\n\n").trim())}><X size={15} className="text-text-secondary" /></button>
     </div>)}
-    <input ref={input} type="file" className="hidden" onChange={(e) => { const arquivo = e.target.files?.[0]; e.target.value = ""; if (arquivo) void enviar(arquivo, posBotao.current); }} />
+    <input ref={input} type="file" multiple className="hidden" onChange={(e) => { const lista = [...(e.target.files ?? [])]; e.target.value = ""; void enviarVarios(lista, posBotao.current); }} />
     {!props.compact && <p className="text-xs text-text-secondary">Até 120 MB por arquivo. Salve a nota ou tarefa para manter o vínculo.</p>}
     {erro && <div role="alert" className="min-w-0 text-sm text-error"><p>{arquivoFalhou && <span className="break-all font-medium">{arquivoFalhou.name}: </span>}{erro}</p>{arquivoFalhou && <button type="button" disabled={enviando || props.disabled} onClick={() => void enviar(arquivoFalhou)} className="mt-2 min-h-11 rounded-lg border border-error/40 px-3 text-sm disabled:opacity-40">Tentar novamente</button>}</div>}
     {visualizador}

@@ -3,7 +3,7 @@ import { useEscFecha } from "@/components/common/Dialog";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useContext, useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { CalendarClock, ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
 import { pastas } from "@/lib/api";
@@ -42,7 +42,7 @@ function lerLarguraSidebar(): number {
 }
 const ACTION = "flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-2 text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400";
 
-export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false, organizacaoCompacta = false, estadoSalvamento }: {
+export function TaskComposer({ createdAt, editedAt, completedAt, postponed, value, onChange, onSave, saving = false, itemId, editing = false, dirty = false, floatingSave = true, showPriority = true, titleActions, timePanel, onUploadingChange, focusMode, painelExtra = false, organizacaoCompacta = false, estadoSalvamento }: {
   value: TaskFields; onChange: (patch: Partial<TaskFields>) => void; onSave: () => void;
   saving?: boolean; itemId?: string; editing?: boolean; dirty?: boolean;
   /** false quando quem hospeda o compositor já oferece o próprio botão Salvar fixo (desktop). */
@@ -52,6 +52,8 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
   editedAt?: string;
   /** Quando a tarefa foi concluída (ISO) — só aparece se houver. */
   completedAt?: string | null;
+  /** Já pronto para exibir (ver `rotuloAdiamento`); vazio quando a tarefa nunca foi adiada. */
+  postponed?: string;
   /** Na janela Focus, a descrição ganha largura e o planejamento vira um painel destacado. */
   focusMode?: boolean;
   /** Modo Focus: controles que vão no topo do painel lateral (prioridade, duplicar…). */
@@ -186,7 +188,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
       <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
     </section>
   );
-  const informacoes = <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>;
+  const informacoes = <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{postponed && <> · {postponed}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>;
   const camposOrganizacao = (
     <div className={organizacaoCompacta ? "grid min-w-0 grid-cols-2 gap-2" : "space-y-4"} role={organizacaoCompacta ? "group" : undefined} aria-label={organizacaoCompacta ? "Pasta e tags" : undefined}>
       <div ref={folderMenuRef} className="relative flex min-w-0 flex-col gap-2 text-sm text-text-secondary">
@@ -279,6 +281,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, value, onChange
           <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Informações</h2>
           {createdAt && <p>Criada em {formatDataHoraCompleta(createdAt)}</p>}
           {completedAt && <p>Concluída em {formatDataHoraCompleta(completedAt)}</p>}
+          {postponed && <p className="flex items-center gap-1.5"><CalendarClock size={14} aria-hidden className="shrink-0 text-warning" />{postponed}</p>}
           {editedAt && <p>Editada <TempoEdicao iso={editedAt} /></p>}
           {estadoSalvamento && <p aria-live="polite" className="text-text-muted">{estadoSalvamento}</p>}
         </section>

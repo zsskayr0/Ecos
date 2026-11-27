@@ -10,7 +10,7 @@ import { AlertTriangle, Bold, Brackets, ChevronDown, Code, Contrast, Ellipsis, E
 import { SeletorEmoji } from "./SeletorEmoji";
 import { ContadorTexto } from "./ContadorTexto";
 import { EditorVivo, type AreaLike } from "./EditorVivo";
-import { GRUPOS_ATALHOS } from "@/screens/Settings/AtalhosScreen";
+import { GRUPOS_ATALHOS } from "@/lib/atalhos";
 import { MarkdownPreview, resolverSrcImagem } from "@/lib/markdown-mini";
 import { OutlineTitulos, SumarioLateral } from "./OutlineTitulos";
 import { IrParaTrecho } from "./IrParaTrecho";
@@ -349,7 +349,10 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
     try {
       const item = await media.enviar(arquivo, espaco);
       const texto = alvo()?.texto?.() ?? corpo;
-      onCorpoChange(inserirReferencia(texto, media.referencia(item), Math.min(posAnexo.current, texto.length)));
+      const novo = inserirReferencia(texto, media.referencia(item), Math.min(posAnexo.current, texto.length));
+      // Vários arquivos de uma vez: o próximo entra logo depois deste, na ordem em que foram escolhidos.
+      posAnexo.current = Math.min(posAnexo.current, texto.length) + (novo.length - texto.length);
+      onCorpoChange(novo);
     } catch (e) { avisar(mensagemDeErro(e, "Não foi possível enviar o arquivo. Tente novamente."), "erro"); }
   }
 
@@ -639,7 +642,7 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         </div>}
         {!barraCompacta && controlesModo}
       </div>}
-      <input ref={seletorAnexo} type="file" className="hidden" aria-label="Escolher arquivo para anexar" onChange={(e) => { const a = e.target.files?.[0]; e.target.value = ""; if (a) void anexarArquivo(a); }} />
+      <input ref={seletorAnexo} type="file" multiple className="hidden" aria-label="Escolher arquivos para anexar" onChange={(e) => { const lista = [...(e.target.files ?? [])]; e.target.value = ""; void (async () => { for (const a of lista) await anexarArquivo(a); })(); }} />
       {usaPaleta && emojiAberto && <div className="fixed inset-x-0 top-28 z-50 flex justify-center"><div className="relative h-0 w-72">{seletorEmoji}</div></div>}
       {tintaNotaId && <>
         <AvisoModoEscrita open={avisoAberto} largura={LARGURA_COLUNA_PADRAO} onRecusar={() => setAvisoAberto(false)} onAceitar={() => { setAvisoAberto(false); tinta.converter(LARGURA_COLUNA_PADRAO); setEscrevendo(true); }} />

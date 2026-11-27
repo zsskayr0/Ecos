@@ -32,11 +32,15 @@ pub struct Destino {
     pub endpoint: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Mensagem {
     pub categoria: String,
     pub titulo: String,
     pub corpo: String,
+    /// Id da notificação: o aparelho usa para não mostrar duas vezes e para marcar como lida ao abrir.
+    pub id: String,
+    /// Rota do app aberta ao tocar no aviso (ex.: `/tarefa/ID`).
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +87,7 @@ impl EntregaPush for EntregaHttp {
                 .http
                 .post(&destino.endpoint)
                 .timeout(std::time::Duration::from_secs(10))
-                .json(&serde_json::json!({ "titulo": titulo, "corpo": corpo, "categoria": mensagem.categoria }))
+                .json(&serde_json::json!({ "id": mensagem.id, "titulo": titulo, "corpo": corpo, "categoria": mensagem.categoria, "url": mensagem.url }))
                 .send()
                 .await;
             match resposta {
@@ -188,7 +192,7 @@ pub async fn processar_fila(state: &AppState, entrega: &dyn EntregaPush, agora: 
         .db
         .with(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT f.id, f.dispositivo_id, d.push_tipo, COALESCE(d.push_endpoint, ''), f.tentativas, f.expira_em, n.categoria, n.titulo, n.corpo \
+                "SELECT f.id, f.dispositivo_id, d.push_tipo, COALESCE(d.push_endpoint, ''), f.tentativas, f.expira_em, n.categoria, n.titulo, n.corpo, n.id, n.acao_url \
                  FROM push_fila f JOIN dispositivo d ON d.id = f.dispositivo_id JOIN notificacao n ON n.id = f.notificacao_id \
                  WHERE f.estado = 'pendente' AND f.proxima_tentativa_em <= ?1 ORDER BY f.proxima_tentativa_em LIMIT ?2",
             )?;
@@ -196,7 +200,7 @@ pub async fn processar_fila(state: &AppState, entrega: &dyn EntregaPush, agora: 
                 .query_map(params![agora_s, LOTE], |r| {
                     Ok(Pendente {
                         fila_id: r.get(0)?, dispositivo_id: r.get(1)?, tipo: r.get(2)?, endpoint: r.get(3)?, tentativas: r.get(4)?, expira_em: r.get(5)?,
-                        mensagem: Mensagem { categoria: r.get(6)?, titulo: r.get(7)?, corpo: r.get(8)? },
+                        mensagem: Mensagem { categoria: r.get(6)?, titulo: r.get(7)?, corpo: r.get(8)?, id: r.get(9)?, url: r.get(10)? },
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -490,10 +494,10 @@ mod testes {
 
     #[test]
     fn cofre_nunca_vai_com_texto_para_o_push() {
-        let m = Mensagem { categoria: "cofre".into(), titulo: "Conta de luz".into(), corpo: "R$ 1.234,56 vence hoje".into() };
+        let m = Mensagem { categoria: "cofre".into(), titulo: "Conta de luz".into(), corpo: "R$ 1.234,56 vence hoje".into(), ..Default::default() };
         let (t, c) = conteudo_para_push(&m);
         assert!(!format!("{t}{c}").contains("1.234") && !t.contains("luz"));
-        let a = Mensagem { categoria: "agenda".into(), titulo: "Prazo".into(), corpo: "corpo".into() };
+        let a = Mensagem { categoria: "agenda".into(), titulo: "Prazo".into(), corpo: "corpo".into(), ..Default::default() };
         assert_eq!(conteudo_para_push(&a), ("Prazo".to_string(), "corpo".to_string()));
     }
 

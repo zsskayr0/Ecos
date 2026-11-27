@@ -93,7 +93,9 @@ export function CartaoTarefa({ tarefa, abrirDocumento }: { tarefa: TarefaResumo;
     const payload: { due_date?: string; scheduled_at?: string } = {};
     if (tarefa.scheduled_at) payload.scheduled_at = instanteLocalISO(dia, diaEMinutosLocais(tarefa.scheduled_at).minutos);
     if (tarefa.due_date || !tarefa.scheduled_at) payload.due_date = dia;
-    try { await tarefasApi.atualizar(tarefa.id, payload); notificar(); }
+    // Mover para depois é adiar: o servidor guarda a data original. Trazer para antes é só reagendar.
+    const atual = tarefa.scheduled_at ? dataLocalISO(new Date(tarefa.scheduled_at)) : tarefa.due_date;
+    try { await tarefasApi.atualizar(tarefa.id, { ...payload, adiar: !!atual && dia > atual }); notificar(); }
     catch (e) { setSaindo(null); fechar(); setErro(mensagemDeErro(e, "Não foi possível mover a tarefa.")); }
   }
 
@@ -104,7 +106,7 @@ export function CartaoTarefa({ tarefa, abrirDocumento }: { tarefa: TarefaResumo;
   const armado = dx >= LIMITE_CONCLUIR;
   return (
     <div className="relative overflow-hidden rounded-2xl" style={{ maxHeight: saindo ? 0 : 160, opacity: saindo ? 0 : 1, transition: "max-height 260ms cubic-bezier(0.4, 0, 0.2, 1) 60ms, opacity 200ms ease-out" }}>
-      <div aria-hidden className={`absolute inset-y-0 left-0 flex items-center pl-5 transition-colors duration-150 ${armado ? "bg-success text-white" : "bg-success/25 text-success"} ${dx > 0 ? "opacity-100" : "opacity-0"}`} style={{ width: Math.max(0, dx) }}>
+      <div aria-hidden className={`absolute inset-y-0 left-0 flex items-center pl-5 transition-colors duration-150 ${armado ? "bg-success text-on-accent" : "bg-success/25 text-success"} ${dx > 0 ? "opacity-100" : "opacity-0"}`} style={{ width: Math.max(0, dx) }}>
         <span className="transition-transform duration-150" style={{ transform: `scale(${armado ? 1.3 : Math.min(1, dx / LIMITE_CONCLUIR)})` }}>{concluida ? <RotateCcw size={20} /> : <Check size={20} />}</span>
       </div>
       <div className="absolute inset-y-0 right-0 flex" style={{ width: LARGURA_ACOES }} aria-hidden={!aberto}>

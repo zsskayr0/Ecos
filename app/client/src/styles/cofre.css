@@ -10,6 +10,9 @@
   overflow-wrap: break-word;
 }
 .cofre-app button { cursor: pointer; }
+/* Tema claro: os tons pastel do escuro davam 1,6:1 e 2,0:1 sobre a superfície. */
+html[data-theme="light"] .cofre-app,
+html[data-theme="light"] .cofre-launch-form { --cofre-income: var(--ecos-success); --cofre-expense: var(--ecos-error); }
 .cofre-app .font-display { font-family:'Poppins',sans-serif; }
 .cofre-app button:disabled { cursor: default; opacity: .5; }
 .cofre-app :is(button,input,select,summary):focus-visible { outline: 2px solid var(--ecos-steel-300); outline-offset: 3px; }
@@ -1874,3 +1877,95 @@ html:not([data-theme="light"]) .cofre-transaction-list-row[data-cor-escuro="off"
   .cofre-futuras-abrir ~ .cofre-tx-dia-grupo:first-of-type .cofre-tx-dia { margin-top:0; }
   .cofre-tx-lista-movel:has(.cofre-futuras-abrir) { gap:0; row-gap:0; }
 }
+
+/* Histórico no desktop: a mesma vista por dia do celular, gerada a partir das regras acima (max-width:700px), limitada ao contêiner .cofre-historico. */
+@media (min-width:701px) {
+  .cofre-historico { max-width:760px; margin:0 auto; padding:12px 4px; }
+  .cofre-historico .cofre-tx-lista-movel { display:grid; gap:10px; }
+  .cofre-transactions-card .cofre-historico .cofre-transaction-list-row.cofre-tx-movel { display:flex; align-items:center; gap:9px; min-height:0; padding:10px 10px;
+    border:0; border-radius:22px; background:var(--panel); box-shadow:none; color:var(--text); }
+  .cofre-historico .cofre-tx-movel[data-tom="entrada"] { --tom: var(--cofre-income); }
+  .cofre-historico .cofre-tx-movel[data-tom="saida"] { --tom: var(--cofre-expense); }
+  .cofre-historico .cofre-tx-movel[data-tom="pendente"] { --tom: #d99a06; }
+  .cofre-historico .cofre-tx-movel { --tx-cinza: #9b9b9b; --tx-titulo: #ececec; }
+  html[data-theme="light"] .cofre-historico .cofre-tx-movel { --tx-cinza: #787878; --tx-titulo: #1f1f1f; }
+  .cofre-historico .cofre-tx-movel[data-tom="futura"] { --tom: var(--tx-cinza); }
+  .cofre-historico .cofre-tx-movel.selected { background:color-mix(in srgb, var(--tom, var(--tx-cinza)) 10%, var(--panel)); }
+  .cofre-historico .cofre-tx-icone { flex:0 0 auto; display:grid; place-items:center; width:36px; height:36px; border-radius:50%; color:var(--tom, var(--tx-cinza)); background:color-mix(in srgb, var(--tom, var(--tx-cinza)) 15%, transparent); }
+  .cofre-historico .cofre-tx-texto { flex:1 1 auto; min-width:0; display:grid; gap:3px; }
+  .cofre-historico .cofre-tx-texto b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14.5px; font-weight:600; color:var(--tx-titulo); opacity:.86; }
+  .cofre-historico .cofre-tx-texto small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--tx-cinza); }
+  .cofre-historico .cofre-tx-valor { flex:0 0 auto; display:grid; gap:3px; justify-items:end; }
+  .cofre-historico .cofre-tx-valor strong { font-size:14.5px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--tom, var(--tx-cinza)); }
+  .cofre-historico .cofre-tx-valor strong[data-tipo="entrada"] { color:var(--cofre-income); }
+  .cofre-historico .cofre-tx-valor strong[data-tipo="saida"] { color:var(--cofre-expense); }
+  .cofre-historico .cofre-tx-moeda { font-style:normal; font-size:.78em; font-weight:600; opacity:.7; margin-right:1px; }
+  .cofre-historico .cofre-tx-valor time { font-size:11.5px; color:var(--tx-cinza); }
+  .cofre-historico .cofre-tx-dia-grupo { display:grid; gap:10px; }
+  .cofre-historico .cofre-tx-dia-grupo + .cofre-tx-dia-grupo { margin-top:6px; }
+  .cofre-historico .cofre-tx-dia { display:flex; align-items:baseline; gap:8px; margin:6px 2px 0; padding-bottom:7px; border-bottom:1px solid var(--border); font-weight:600; color:var(--text); font-size:14px; }
+  .cofre-historico .cofre-tx-dia[data-hoje] { font-size:16px; }
+  .cofre-historico .cofre-tx-dia small { font-size:12px; font-weight:400; color:var(--tx-cinza, var(--text-muted)); }
+  .cofre-historico .cofre-tx-dia i { margin-left:auto; font-size:11px; font-style:normal; font-weight:400; color:var(--tx-cinza, var(--text-muted)); font-variant-numeric:tabular-nums; }
+  .cofre-historico .cofre-tx-dia { flex-wrap:wrap; }
+  .cofre-historico .cofre-tx-dia-totais { flex:1 0 100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:2px; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .cofre-historico .cofre-tx-dia-totais em { display:grid; gap:1px; font-style:normal; white-space:nowrap; }
+  .cofre-historico .cofre-tx-dia-totais em small { font-size:10px; font-weight:400; text-transform:uppercase; letter-spacing:.04em; color:var(--tx-cinza, var(--text-muted)); }
+  .cofre-historico .cofre-tx-dia-totais em[data-t="entrada"] { color:var(--cofre-income); }
+  .cofre-historico .cofre-tx-dia-totais em[data-t="saida"] { color:var(--cofre-expense); }
+  .cofre-historico .cofre-tx-dia-totais em:last-child { text-align:right; }
+  .cofre-historico .cofre-tx-dia-totais em:nth-child(2) { text-align:center; }
+  .cofre-historico .cofre-tx-dia-totais { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; font-size:12.5px; }
+  .cofre-historico .cofre-tx-dia-totais b { font-weight:400; color:var(--tx-cinza, var(--text-muted)); margin:0 -4px; }
+  .cofre-historico .cofre-tx-dia-totais em:last-child,
+  .cofre-historico .cofre-tx-dia-totais em:nth-child(2) { text-align:left; }
+  .cofre-historico .cofre-tx-dia-totais { flex:0 1 auto; margin-left:auto; margin-top:0; font-size:11.5px; gap:2px 7px; }
+  .cofre-historico .cofre-tx-dia[data-hoje] { font-size:15px; }
+  .cofre-historico .cofre-tx-dia { display:block; padding-bottom:0; border-bottom:0; margin:8px 2px 0; scroll-margin-top:84px; }
+  .cofre-historico .cofre-tx-dia-grupo { scroll-margin-top:84px; }
+  .cofre-historico .cofre-tx-dia button { display:flex; align-items:center; gap:6px; width:100%; min-height:40px; padding:0 2px 0 0; border:0; border-bottom:1px solid var(--border); background:transparent; color:inherit; font:inherit; text-align:left; }
+  .cofre-historico .cofre-tx-dia button svg { margin-left:auto; color:var(--tx-cinza, var(--text-muted)); transition:transform .25s cubic-bezier(.34,1.56,.64,1); }
+  .cofre-historico .cofre-tx-dia[data-aberto] button svg { transform:rotate(180deg); color:var(--text); }
+  .cofre-historico .cofre-resumo-dia { position:fixed; left:16px; right:16px; bottom:calc(var(--ecos-safe-bottom, 0px) + 100px); z-index:39; padding:14px 16px 16px; border:1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius:22px; background:color-mix(in srgb, var(--panel) 82%, transparent); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); box-shadow:0 10px 30px rgb(0 0 0 / .35); animation:cofre-resumo-in .42s cubic-bezier(.34,1.4,.5,1) both; transform-origin:50% 100%; }
+  .cofre-historico .cofre-resumo-dia[data-saindo] { animation:cofre-resumo-out .22s ease-in both; }
+  .cofre-historico .cofre-resumo-topo { display:flex; align-items:baseline; gap:8px; margin-bottom:12px; }
+  .cofre-historico .cofre-resumo-topo b { font-size:15px; font-weight:700; color:var(--text); }
+  .cofre-historico .cofre-resumo-topo span { font-size:12px; color:var(--tx-cinza, var(--text-muted)); }
+  .cofre-historico .cofre-resumo-topo button { margin-left:auto; display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:50%; background:color-mix(in srgb, var(--text) 8%, transparent); color:var(--text); }
+  .cofre-historico .cofre-resumo-grade { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+  .cofre-historico .cofre-resumo-grade > div { display:grid; gap:4px; padding:10px 10px; border-radius:14px; background:color-mix(in srgb, var(--text) 5%, transparent); }
+  .cofre-historico .cofre-resumo-grade small { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--tx-cinza, var(--text-muted)); }
+  .cofre-historico .cofre-resumo-grade strong { font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .cofre-historico .cofre-resumo-grade strong[data-t="entrada"] { color:var(--cofre-income); }
+  .cofre-historico .cofre-resumo-grade strong[data-t="saida"] { color:var(--cofre-expense); }
+  .cofre-historico body:has(.cofre-resumo-dia) .cofre-topo { opacity:0; pointer-events:none; }
+  .cofre-historico .cofre-tx-dia-grupo { scroll-margin-top:72px; }
+  .cofre-historico .cofre-futuras-fechar { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; min-height:38px; margin:2px 0 6px; border-radius:12px; color:var(--text-muted); font-size:12px; font-weight:600; background:color-mix(in srgb, var(--text) 5%, transparent); animation:cofre-periodo-in .35s ease both; }
+  .cofre-historico .cofre-futuras-fechar svg { transform:rotate(180deg); }
+  .cofre-historico .cofre-tx-dia-grupo[data-futura] { animation:cofre-periodo-in .4s cubic-bezier(.22,1,.36,1) both; }
+  .cofre-historico .cofre-futuras-abrir { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; min-height:40px; margin:0 0 6px; border-radius:12px; background:color-mix(in srgb, var(--text) 5%, transparent); color:var(--text-muted); font-size:12px; font-weight:600; transition:background .2s, transform .12s; }
+  .cofre-historico .cofre-futuras-abrir:active { transform:scale(.98); background:color-mix(in srgb, var(--text) 10%, transparent); }
+  .cofre-historico .cofre-futuras-abrir svg { animation:cofre-seta-sobe 1.8s ease-in-out infinite; }
+  .cofre-historico .cofre-futuras-abrir { min-height:34px; margin:0; }
+  .cofre-historico .cofre-futuras-abrir + .cofre-puxar,
+  .cofre-historico .cofre-puxar[aria-hidden="true"] { display:none; }
+  .cofre-historico .cofre-futuras-abrir ~ .cofre-tx-dia-grupo:first-of-type .cofre-tx-dia { margin-top:0; }
+  .cofre-historico .cofre-tx-lista-movel:has(.cofre-futuras-abrir) { gap:0; row-gap:0; }
+}
+
+/* Menu de um lançamento (segurar no toque, botão direito no mouse). */
+.cofre-menu-lanc-fundo { position:fixed; inset:0; z-index:95; }
+.cofre-menu-lanc-fundo[data-movel] { display:flex; align-items:flex-end; padding:0 12px calc(var(--ecos-safe-bottom, 0px) + 12px); background:rgb(0 0 0 / .42); animation:cofre-menu-lanc-fundo .18s ease-out both; }
+.cofre-menu-lanc { position:fixed; min-width:220px; max-width:min(320px, calc(100vw - 16px)); padding:6px; border:1px solid var(--border); border-radius:14px; background:var(--panel-elevated, var(--panel)); color:var(--text); box-shadow:0 14px 36px rgb(0 0 0 / .32); font-family:'Poppins',sans-serif; }
+.cofre-menu-lanc-fundo[data-movel] .cofre-menu-lanc { position:static; width:100%; max-width:none; padding:8px; border-radius:22px; animation:cofre-menu-lanc-sobe .26s cubic-bezier(.22,1,.36,1) both; }
+.cofre-menu-lanc-titulo { display:grid; gap:2px; padding:8px 10px 10px; margin-bottom:4px; border-bottom:1px solid var(--border); }
+.cofre-menu-lanc-titulo b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13.5px; font-weight:600; }
+.cofre-menu-lanc-titulo span { font-size:11.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.cofre-menu-lanc button { display:flex; align-items:center; gap:10px; width:100%; min-height:38px; padding:0 10px; border:0; border-radius:9px; background:transparent; color:inherit; font:inherit; font-size:13.5px; text-align:left; cursor:pointer; }
+.cofre-menu-lanc-fundo[data-movel] .cofre-menu-lanc button { min-height:48px; font-size:15px; }
+.cofre-menu-lanc button:hover, .cofre-menu-lanc button:focus-visible { background:color-mix(in srgb, var(--text) 7%, transparent); outline:none; }
+.cofre-menu-lanc button svg { color:var(--text-muted); }
+.cofre-menu-lanc button[data-perigo], .cofre-menu-lanc button[data-perigo] svg { color:var(--danger); }
+@keyframes cofre-menu-lanc-fundo { from { opacity:0; } to { opacity:1; } }
+@keyframes cofre-menu-lanc-sobe { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion:reduce) { .cofre-menu-lanc-fundo[data-movel], .cofre-menu-lanc-fundo[data-movel] .cofre-menu-lanc { animation:none; } }

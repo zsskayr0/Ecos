@@ -27,7 +27,6 @@ beforeEach(() => {
     { id: "b3", nome: "Empresa Alfa", documento: null, observacoes: null, transacoes: 2 },
   ]);
   vi.mocked(vault.transacoes.listar).mockResolvedValue({ items: [tx("t1", "saida", 10000, "b1"), tx("t2", "entrada", 50000, "b3"), tx("t3", "saida", 2000, null)], next_cursor: null });
-  vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
 it("lista os sacados do período e separa pagadores de recebedores", async () => {
@@ -59,6 +58,8 @@ it("a conciliação sugere juntar nomes parecidos, mantendo o mais usado, e junt
   expect(within(grupo).getAllByRole("radio")).toHaveLength(2); // "Empresa Alfa" não é parecido com ninguém
   expect((within(grupo).getByRole("radio", { name: /Mercado Extra/ }) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: /Juntar 2 cadastros/ }));
+  expect(vault.beneficiarios.mesclar).not.toHaveBeenCalled();
+  fireEvent.click(within(await screen.findByRole("alertdialog", { name: /Juntar 2 cadastros/ })).getByRole("button", { name: "Juntar" }));
   await waitFor(() => expect(vault.beneficiarios.mesclar).toHaveBeenCalledWith({ destino_id: "b1", origem_ids: ["b2"], nome: "Mercado Extra" }));
 });
 

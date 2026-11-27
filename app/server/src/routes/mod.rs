@@ -213,6 +213,7 @@ fn rotas_protegidas(state: AppState) -> Router<AppState> {
         .route("/notificacoes/preferencias/:categoria", patch(notificacoes::atualizar_preferencia))
         .route("/notificacoes/:id/lida", patch(notificacoes::marcar_lida))
         .route("/notificacoes/marcar-todas-lidas", post(notificacoes::marcar_todas_lidas))
+        .route("/notificacoes/aparelho", put(notificacoes::registrar_aparelho))
         .route("/sync/status", get(sync::status))
         .route("/sync/dispositivos", get(sync::listar_dispositivos))
         .route("/sync/dispositivos/parear", post(sync::parear))

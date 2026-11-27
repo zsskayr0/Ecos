@@ -114,15 +114,16 @@ it("anexa, avisa quando o arquivo já estava em outro lançamento e recarrega a 
 it("só remove depois de confirmar", async () => {
   vi.mocked(vault.anexos.listar).mockResolvedValueOnce([anexo]).mockResolvedValue([]);
   vi.mocked(vault.anexos.excluir).mockResolvedValue({ ok: true });
-  const confirmar = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
   render(<ComprovantesDaTransacao transacaoId="t1" />);
   const remover = await screen.findByRole("button", { name: "Remover luz.pdf" });
   fireEvent.click(remover);
+  fireEvent.click(within(await screen.findByRole("alertdialog", { name: /Remover “luz.pdf”/ })).getByRole("button", { name: "Cancelar" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(vault.anexos.excluir).not.toHaveBeenCalled();
   fireEvent.click(remover);
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remover" }));
   await waitFor(() => expect(vault.anexos.excluir).toHaveBeenCalledWith("x1"));
   await screen.findByText(/Nenhum comprovante neste lançamento/);
-  confirmar.mockRestore();
 });
 
 it("imagem aparece no visualizador e some da memória ao fechar", async () => {

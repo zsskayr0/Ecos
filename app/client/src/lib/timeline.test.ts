@@ -73,6 +73,12 @@ describe("ramosDoRegistro", () => {
       [false, false, false, false, false],
     ]);
   });
+  it("o trilho da programação some em todo o trecho em que o ramo desvia", () => {
+    const r = ramosDoRegistro([{ natureza: "programado" }, { natureza: "registro" }, { natureza: "programado" }, { natureza: "registro" }, { natureza: "programado" }]);
+    expect(r.map((x) => x.trilho)).toEqual([true, false, false, false, true]);
+    expect(r.every((x) => x.porLinha)).toBe(true);
+    expect(ramosDoRegistro([{ natureza: "programado" }])[0]!.porLinha).toBe(false);
+  });
   it("sem registro não há ramo", () => {
     expect(ramosDoRegistro([{ natureza: "programado" }]).every((x) => !x.entra && !x.sai && !x.cima)).toBe(true);
   });

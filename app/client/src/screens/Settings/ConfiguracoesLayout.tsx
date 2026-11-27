@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Bell, CalendarClock, CalendarDays, DatabaseBackup, EyeOff, FolderCog, FolderTree, Info, Keyboard, Languages, ListChecks, Lock, Network, Palette, PenLine, Rss, Server, Shapes, StickyNote, User, UserCog, Users, type LucideIcon } from "lucide-react";
+import { Bell, CloudUpload, CalendarClock, CalendarDays, DatabaseBackup, EyeOff, FolderCog, FolderTree, Info, Keyboard, Languages, ListChecks, Lock, Network, Palette, PenLine, Rss, Server, Shapes, StickyNote, User, UserCog, Users, type LucideIcon } from "lucide-react";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { useAuth } from "@/lib/auth-context";
 import { ABAS_COFRE } from "./abas-cofre";
@@ -53,6 +53,7 @@ function montarGrupos({ admin, desktop }: { admin: boolean; desktop: boolean }):
     ] },
     { titulo: "Sistema", abas: [
       { para: `${C}/servidor`, rotulo: "Servidor e backup", Icone: Server },
+      { para: `${C}/pendencias`, rotulo: "Pendências", Icone: CloudUpload },
       // Quem administra a instância ganha Usuários e equipes (criar contas, equipes); para as demais pessoas nem aparece.
       ...(admin ? [{ para: `${C}/administracao`, rotulo: "Usuários e equipes", Icone: UserCog }] : []),
       { para: `${C}/sobre`, rotulo: "Sobre", Icone: Info },

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Circle, RotateCcw, StickyNote } from "lucide-react";
+import { Archive, CheckCircle2, ChevronDown, ChevronRight, Circle, RotateCcw, StickyNote } from "lucide-react";
+import { CLASSE_ITEM_ARQUIVADO, CLASSE_TITULO_ARQUIVADO, estaArquivado } from "@/lib/aparencia-arquivada";
 import { tarefas as tarefasApi } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { definirStatusOtimista, type StatusTarefa } from "@/lib/status-otimista";
@@ -39,6 +40,7 @@ function Cartao({ item, comum, arrastavel = false }: { item: FeedItem; comum: Co
   const aoArrastar = (e: DragEvent) => { e.dataTransfer.setData("text/ecos-tarefa", item.id); e.dataTransfer.effectAllowed = "move"; };
   const nota = item.tipo === "nota";
   const concluida = !nota && item.status === "concluida";
+  const arquivada = estaArquivado(item);
   const prazo = !nota ? prazoDaTarefa(item) : null;
   return (
     <div data-flip={chave} onClickCapture={(e) => { comum.onSelecionar?.(e, item, comum.itens); }} className={`${animacao} ${marcado ? "rounded-lg ring-2 ring-steel-400 ring-offset-2 ring-offset-base" : ""}`}>
@@ -47,11 +49,11 @@ function Cartao({ item, comum, arrastavel = false }: { item: FeedItem; comum: Co
         draggable={arrastavel && !nota}
         onDragStart={arrastavel && !nota ? aoArrastar : undefined}
         onClick={(e) => abrir(caminhoDoItem(item), e)}
-        className={`flex w-full flex-col gap-1.5 rounded-lg border-0 bg-surface-1 p-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(128,128,128,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(0,0,0,0.18),0_0_0_1px_rgba(128,128,128,0.2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${arrastavel && !nota ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`flex w-full flex-col gap-1.5 rounded-lg border-0 bg-surface-1 p-3 text-left ${arquivada ? `${CLASSE_ITEM_ARQUIVADO} ` : ""}shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(128,128,128,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(0,0,0,0.18),0_0_0_1px_rgba(128,128,128,0.2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-steel-400 ${arrastavel && !nota ? "cursor-grab active:cursor-grabbing" : ""}`}
       >
         <span className="flex items-start gap-2">
-          {nota ? <StickyNote size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-steel-300" /> : concluida ? <CheckCircle2 size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
-          <span className={`line-clamp-3 text-sm font-medium leading-snug ${concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{item.titulo || "Sem título"}</span>
+          {nota ? <StickyNote size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-steel-300" /> : arquivada ? <Archive size={15} strokeWidth={1.75} aria-label="Arquivada" className="mt-0.5 shrink-0 text-text-muted" /> : concluida ? <CheckCircle2 size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-success" /> : <Circle size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-text-muted" />}
+          <span className={`line-clamp-3 text-sm font-medium leading-snug ${arquivada ? CLASSE_TITULO_ARQUIVADO : concluida ? "text-text-muted line-through" : "text-text-primary"}`}>{item.titulo || "Sem título"}</span>
         </span>
         {!nota && (
           <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
