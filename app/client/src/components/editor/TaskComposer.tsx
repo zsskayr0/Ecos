@@ -256,7 +256,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, postponed, valu
         <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-all group-hover:w-0.5 group-hover:bg-steel-400 group-focus-visible:w-0.5 group-focus-visible:bg-steel-400" />
       </div>}
       {focusMode && painelFocus ? createPortal(<aside id={`${id}-planning`} className="flex min-w-0 flex-col gap-6" aria-label="Opções da tarefa">
-        <div className="flex items-center justify-between gap-2">
+        <div className="ecos-vidro-barra sticky -top-5 z-10 -mx-5 -mt-5 flex items-center justify-between gap-2 bg-base/40 px-5 pb-2 pt-3">
           <h2 className="font-display text-lg font-semibold text-text-primary">Detalhes</h2>
           <button type="button" onClick={controlePainel.alternar} aria-label="Fechar painel lateral" title="Fechar painel lateral" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>
         </div>

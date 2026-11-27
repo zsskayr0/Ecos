@@ -1287,3 +1287,13 @@ html[data-reduzir-movimento] .ecos-vidro, html[data-reduzir-movimento] .ecos-vid
 .ecos-busca-veu input:focus, .ecos-busca-veu input:focus-visible { outline: none !important; box-shadow: none !important; }
 .ecos-busca-veu input[type="search"]::-webkit-search-cancel-button, .ecos-busca-veu input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
 .ecos-busca-lista { scrollbar-width: none; } .ecos-busca-lista::-webkit-scrollbar { display: none; }
+
+/* Vidro: barra fixa. O desfoque e o escurecimento passam da borda da barra e somem por máscara (sem corte seco entre barra e texto). */
+.ecos-vidro-barra { background-color: transparent !important; isolation: isolate; }
+.ecos-vidro-barra::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 0; bottom: -56px; pointer-events: none;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6);
+  background: linear-gradient(to bottom, rgb(var(--ecos-base-rgb) / 0.72) 0, rgb(var(--ecos-base-rgb) / 0.72) calc(100% - 56px), rgb(var(--ecos-base-rgb) / 0.55) calc(100% - 44px), rgb(var(--ecos-base-rgb) / 0.34) calc(100% - 30px), rgb(var(--ecos-base-rgb) / 0.14) calc(100% - 15px), rgb(var(--ecos-base-rgb) / 0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 56px), rgb(0 0 0 / 0.75) calc(100% - 42px), rgb(0 0 0 / 0.4) calc(100% - 26px), rgb(0 0 0 / 0.12) calc(100% - 12px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 56px), rgb(0 0 0 / 0.75) calc(100% - 42px), rgb(0 0 0 / 0.4) calc(100% - 26px), rgb(0 0 0 / 0.12) calc(100% - 12px), transparent 100%);
+}

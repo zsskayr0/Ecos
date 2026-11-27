@@ -194,7 +194,7 @@ export function SumarioLateral({ corpo, view, raiz, aoFechar, aberto }: Props & 
   if (emFocus ? !montagemFocus : !aberto) return null;
   const conteudo = (
     <aside aria-label="Sumário" className="flex min-w-0 flex-col gap-6">
-      <div className="flex items-center justify-between gap-2">
+      <div className="ecos-vidro-barra sticky -top-5 z-10 -mx-5 -mt-5 flex items-center justify-between gap-2 bg-base/40 px-5 pb-2 pt-3">
         <h2 className="font-display text-lg font-semibold text-text-primary">Sumário</h2>
         <button type="button" onClick={aoFechar} aria-label="Fechar sumário" title="Fechar sumário" className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} /></button>
       </div>

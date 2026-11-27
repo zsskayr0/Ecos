@@ -590,7 +590,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
             className={`pointer-events-auto absolute flex flex-col overflow-hidden rounded-2xl border border-border bg-base shadow-nav outline-none ${camadaSaindo ? "ecos-modal-out" : "ecos-focus-in"}`}
             style={{ left: principal.x, top: principal.y, width: principal.w, height: principal.h, transition: "left 280ms cubic-bezier(.22,1,.36,1)" }}>
             {/* Nota e tarefa: sem a "aba" de cima (fundo e linha) — só os botões flutuando; as ações continuam no mesmo lugar. */}
-            <header className={`flex shrink-0 select-none items-center gap-2 pl-3.5 pr-1.5 ${path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? "" : "border-b border-border bg-surface-1"}`} style={{ height: ALTURA_TITULO }}>
+            <header className={`flex shrink-0 select-none items-center gap-2 pl-3.5 pr-1.5 ${path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? "ecos-vidro-barra absolute inset-x-0 top-0 z-20 bg-base/40" : "border-b border-border bg-surface-1"}`} style={{ height: ALTURA_TITULO }}>
               {path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? null : <Icone size={14} strokeWidth={1.75} className="pointer-events-none shrink-0 text-text-muted" />}
               <div ref={setAcoesEsquerdaFocus} className="flex min-w-0 items-center empty:hidden" />
               <span className="flex-1" aria-hidden />
@@ -602,7 +602,7 @@ export function DocumentoJanela({ path, ordem, z, aoFechar: aoFecharDeVez, aoFoc
               <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={aoFechar}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-3 hover:text-text-primary"><X size={15} strokeWidth={1.75} /></button>
             </header>
-            <div className="rolagem-recuada min-h-0 flex-1 overflow-y-auto">
+            <div className="rolagem-recuada min-h-0 flex-1 overflow-y-auto" style={path.startsWith("/notas/nota/") || path.startsWith("/tarefa/") ? { paddingTop: ALTURA_TITULO } : undefined}>
               <AjusteJanelaContext.Provider value={ajustarAoConteudo}>
               <TituloJanelaContext.Provider value={setTituloDinamico}>
               <FecharDocumentoContext.Provider value={aoFechar}>
