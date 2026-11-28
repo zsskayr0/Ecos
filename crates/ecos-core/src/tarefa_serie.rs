@@ -183,6 +183,9 @@ pub struct ModeloSerie {
     /// Títulos das subtarefas (cada ocorrência nasce com todas por fazer).
     #[serde(default)]
     pub subtarefas: Vec<String>,
+    /// Bloco de cada subtarefa, na mesma ordem de `subtarefas`; vazio em séries antigas (tudo no bloco padrão).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtarefas_blocos: Vec<Option<String>>,
     /// Hora local (no fuso da regra) do `scheduled_at`; ausente = a ocorrência não tem horário.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hora: Option<NaiveTime>,
@@ -308,7 +311,7 @@ mod tests {
 
         let mut serie = SerieTarefa {
             id: "s".into(), regra: regra(Frequencia::Diaria, d(2026, 10, 1)), estado: EstadoSerie::Ativa,
-            modelo: ModeloSerie { titulo: "x".into(), corpo: String::new(), duration_min: None, prioridade: Default::default(), tags: vec![], subtarefas: vec![], hora: None, prazo_apos_dias: None },
+            modelo: ModeloSerie { titulo: "x".into(), corpo: String::new(), duration_min: None, prioridade: Default::default(), tags: vec![], subtarefas: vec![], subtarefas_blocos: vec![], hora: None, prazo_apos_dias: None },
             geradas: vec![d(2026, 10, 1), d(2026, 10, 2)], puladas: vec![],
         };
         serie.regra.max_ocorrencias = Some(2);

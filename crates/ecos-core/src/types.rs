@@ -195,6 +195,10 @@ pub struct Subtarefa {
     pub titulo: String,
     #[serde(default)]
     pub concluida: bool,
+    /// Bloco de subtarefas a que o item pertence (marcador `::: subtarefas <bloco>` no corpo).
+    /// Ausente = bloco padrão.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bloco: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

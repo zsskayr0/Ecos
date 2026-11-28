@@ -1,5 +1,6 @@
 import { dimensoesLembradas, encaixarImagemEmLinhas } from "@/lib/imagem-linha";
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { createPortal } from "react-dom";
 import { Annotation, Compartment, EditorState, Facet, Prec, type Range } from "@codemirror/state";
 import { sumarioEditor } from "./sumario-editor";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
@@ -16,6 +17,8 @@ import { tabelas } from "./tabela-widget";
 import { rolagemSuave } from "./rolagem-suave";
 import { matematica, temaMatematica } from "./matematica-widget";
 import { blocosEscrita, temaEscrita } from "./escrita-widget";
+import { blocosSubtarefas, registroSubtarefas, temaSubtarefas, type PortalSubtarefas } from "./subtarefas-widget";
+import { BlocoSubtarefas } from "./BlocoSubtarefas";
 import { colarMarkdown, atalhoColarTextoSimples } from "./colarMarkdown";
 import { contadorTexto } from "./ContadorTexto";
 import { QUEBRA_PAGINA } from "@/lib/tipografia-nota";
@@ -67,6 +70,8 @@ interface Props {
   aoAbrirWikilink?: (interno: string, clique: MouseEvent) => void;
   /** Leitura de Nota com tinta (e Modo de escrita): o mesmo CodeMirror, sem edição, para o texto não mudar de lugar. */
   somenteLeitura?: boolean;
+  /** Tarefa: a linha `::: subtarefas [nome]` vira o bloco de subtarefas (lido do contexto da tarefa). */
+  blocosSubtarefas?: boolean;
 }
 
 const externa = Annotation.define<boolean>();
@@ -486,7 +491,12 @@ const tema = EditorView.theme({
 
 const edicao = (somenteLeitura: boolean) => [EditorState.readOnly.of(somenteLeitura), EditorView.editable.of(!somenteLeitura)];
 
-export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink, somenteLeitura = false, aoCriarView }: Props) {
+export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placeholder, alturaMinima, resolverImagem, atalhos, className, wikilinks, aoAbrirWikilink, somenteLeitura = false, aoCriarView, blocosSubtarefas: comSubtarefas = false }: Props) {
+  const [portais, setPortais] = useState<PortalSubtarefas[]>([]);
+  const registro = useRef({
+    adicionar: (p: PortalSubtarefas) => setPortais((l) => [...l, p]),
+    remover: (el: HTMLElement) => setPortais((l) => l.filter((x) => x.el !== el)),
+  });
   const raiz = useRef<HTMLDivElement>(null);
   const leitura = useRef(new Compartment());
   const somenteLeituraInicial = useRef(somenteLeitura);
@@ -538,6 +548,7 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
         temaMatematica,
         blocosEscrita,
         temaEscrita,
+        ...(comSubtarefas ? [registroSubtarefas.of(registro.current), blocosSubtarefas, temaSubtarefas] : []),
         wikilinksRef.current ? autocompletarWikilink(() => wikilinksRef.current) : autocompletarEmoji(),
         colarMarkdown(),
         Prec.highest(keymap.of([atalhoColarTextoSimples])),
@@ -633,5 +644,8 @@ export function EditorVivo({ corpo, onCorpoChange, areaRef, ariaLabel, placehold
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: corpo }, selection: { anchor: Math.min(anchor, t), head: Math.min(head, t) }, annotations: externa.of(true) });
   }, [corpo]);
 
-  return <div ref={raiz} className={className} data-editor-vivo />;
+  return <>
+    <div ref={raiz} className={className} data-editor-vivo />
+    {portais.map((p) => createPortal(<BlocoSubtarefas bloco={p.bloco} noEditor />, p.el, String(p.id)))}
+  </>;
 }

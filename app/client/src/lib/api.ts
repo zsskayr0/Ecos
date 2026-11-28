@@ -793,6 +793,8 @@ export interface Subtarefa {
   id: string;
   titulo: string;
   concluida: boolean;
+  /** Bloco de subtarefas (marcador no corpo); ausente = bloco padrão. */
+  bloco?: string | null;
 }
 
 /** Input shape for a subtask the client is sending — `id` omitted means "new", matching `SubtarefaPayload` in `tarefas.rs`. */
@@ -800,6 +802,8 @@ export interface SubtarefaInput {
   id?: string;
   titulo: string;
   concluida: boolean;
+  /** Bloco de subtarefas (marcador no corpo); ausente = bloco padrão. */
+  bloco?: string | null;
 }
 
 /** Ids de tarefas mascaradas ("Tarefa privada") vistas nas listas: abrir uma delas pede a senha da pasta. */

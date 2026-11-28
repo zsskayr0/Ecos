@@ -7,7 +7,7 @@ import { useAtraso } from "@/lib/use-atraso";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { Archive, ArchiveRestore, Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Copy, Loader2, PanelRightClose, PanelRightOpen, FileDown, ListTree } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, CheckCircle2, Circle, AlertTriangle, ListX, Check, Copy, Loader2, PanelRightClose, PanelRightOpen, FileDown, ListTree, ListChecks } from "lucide-react";
 import { OpcoesNota } from "@/components/editor/OpcoesNota";
 import { alternarSumarioLateral, reiniciarSumarioLateral, useSumarioLateralAberto } from "@/components/editor/sumario-lateral-estado";
 import { BotaoCopiarCaminho } from "@/components/common/BotaoCopiarCaminho";
@@ -15,6 +15,8 @@ import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { tarefas, ApiError, type EscopoSerie, type TarefaDetalhe } from "@/lib/api";
 import { RecorrenciaTarefa } from "@/components/editor/RecorrenciaTarefa";
 import { TaskComposer } from "@/components/editor/TaskComposer";
+import { SubtarefasTela } from "@/components/editor/SubtarefasTela";
+import { SubtarefasCorpoContext } from "@/components/editor/BlocoSubtarefas";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ConfirmDeleteDialog } from "@/components/common/ConfirmDeleteDialog";
@@ -51,6 +53,7 @@ export function TaskDetailScreen() {
   const [enviandoArquivo, setEnviandoArquivo] = useState(false);
   const [timeEntries, setTimeEntries] = useState<{ id: string; tipo: "planejado" | "real"; inicio_em: string; duracao_min: number }[]>([]);
   const [registrandoTempo, setRegistrandoTempo] = useState(false);
+  const [subtarefasAbertas, setSubtarefasAbertas] = useState(false);
   const desktop = useIsDesktop();
   const definirTituloJanela = useContext(TituloJanelaContext);
   const fecharDocumento = useContext(FecharDocumentoContext);
@@ -206,6 +209,8 @@ export function TaskDetailScreen() {
   const BTN_ICONE = "flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-40";
   /** Ações da tarefa no cabeçalho do modo Focus: pequenas, ao lado do X. */
   const estadoTexto = enviandoArquivo ? "Enviando anexo…" : salvando ? "Salvando…" : erro ? "Erro ao sincronizar" : sujo ? "Alterações pendentes" : "Salvo";
+  const contagemSubtarefas = `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length}`;
+  const rotuloSubtarefas = value.subtarefas.length ? `Subtarefas (${contagemSubtarefas})` : "Subtarefas";
   const acoesDoCabecalho = tarefa ? <>
     <span aria-live="polite" title={estadoTexto} className={`mr-1 max-w-40 truncate text-xs ${erro ? "text-error" : "text-text-secondary"}`}>{estadoTexto}</span>
     <button type="button" onClick={alternarStatus} disabled={atualizandoStatus || enviandoArquivo} aria-pressed={tarefa.status === "concluida"} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} title={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} className={`${BTN_ICONE} text-success hover:bg-success/15`}>{atualizandoStatus ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Check size={15} />}</button>
@@ -219,17 +224,20 @@ export function TaskDetailScreen() {
         <button type="button" onClick={() => { fechar(); void alternarArquivada(); }} className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary">{tarefa.status === "arquivada" ? <ArchiveRestore size={16} /> : <Archive size={16} />}{tarefa.status === "arquivada" ? "Desarquivar tarefa" : "Arquivar tarefa (não farei)"}</button>
       </>} />
     <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+    <button type="button" onClick={() => setSubtarefasAbertas(true)} aria-label={rotuloSubtarefas} title={rotuloSubtarefas} className={`${BTN_ICONE} w-auto gap-1 px-1.5 text-text-muted hover:bg-surface-3 hover:text-text-primary`}><ListChecks size={15} />{value.subtarefas.length > 0 && <span className="font-mono-value text-[11px]">{contagemSubtarefas}</span>}</button>
     <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className={`${BTN_ICONE} text-text-muted hover:bg-surface-3 hover:text-text-primary aria-pressed:text-text-primary`}><ListTree size={15} /></button>
     {painelFocus.disponivel !== false && <button type="button" onClick={painelFocus.alternar} aria-pressed={painelFocus.aberto} aria-label={painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral"} title={painelFocus.aberto ? "Recolher painel lateral" : "Expandir painel lateral"} className={`${BTN_ICONE} text-text-muted hover:bg-surface-3 hover:text-text-primary`}>{painelFocus.aberto ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}</button>}
     <span aria-hidden className="mx-1 h-4 w-px bg-border" />
   </> : null;
 
+  const ctxSubtarefas = { subtarefas: value.subtarefas, onChange: (subtarefas: TaskFields["subtarefas"]) => setValue((anterior) => ({ ...anterior, subtarefas })), onAbrirTodas: () => setSubtarefasAbertas(true) };
   const conteudo = <div className="ecos-detail-content">
     {erro && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{erro}</div>}
     {naoEncontrada ? <EmptyState icon={ListX} title="Essa tarefa sumiu." subtitle="Pode ter sido movida ou apagada." /> : !tarefa ? (erro || demorou ? <FalhaCarga motivo={erro} ressalva="A tarefa não foi apagada." aoTentar={() => setTentativa((n) => n + 1)} /> : <SkeletonTarefaDetalhe desktop={desktop} rotulo="Carregando…" />) : <>
       <ConfirmDeleteDialog open={confirmandoDelete} title="Apagar esta tarefa?" busy={salvando} onCancel={() => setConfirmandoDelete(false)} onConfirm={excluir}
         description={!tarefa.serie ? undefined : escopo === "esta" ? "Só esta ocorrência vai para a Lixeira; a série continua com a próxima. Para encerrar a série, mude \"Ao editar, aplicar a\" em Repetir." : escopo === "proximas" ? "Esta ocorrência vai para a Lixeira e a série é encerrada: nenhuma próxima será criada." : "Esta e as outras ocorrências pendentes vão para a Lixeira e a série é encerrada. As já concluídas ficam."} />
-      {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}
+      {subtarefasAbertas && <SubtarefasTela titulo={value.titulo} subtarefas={value.subtarefas} onChange={(subtarefas) => setValue((anterior) => ({ ...anterior, subtarefas }))} corpo={value.corpo} onCorpoChange={(corpo) => setValue((anterior) => ({ ...anterior, corpo }))} onFechar={() => setSubtarefasAbertas(false)} />}
+      {!desktop && <div className="mb-6 flex items-center gap-3"><button type="button" onClick={() => setSubtarefasAbertas(true)} aria-label={rotuloSubtarefas} title={rotuloSubtarefas} className="order-last ml-auto flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-text-secondary"><ListChecks size={17} />{value.subtarefas.length > 0 && <span className="font-mono-value">{contagemSubtarefas}</span>}</button><button type="button" onClick={alternarStatus} disabled={atualizandoStatus} aria-label={tarefa.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"} aria-pressed={tarefa.status === "concluida"} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-text-secondary disabled:opacity-40">{tarefa.status === "concluida" ? <CheckCircle2 size={25} className="text-success" /> : <Circle size={25} />}</button><h1 className="font-display text-2xl text-text-primary">{tarefa.status === "concluida" ? "Tarefa concluída" : "Editar tarefa"}</h1></div>}
       <TaskComposer key={id} itemId={id} editing createdAt={tarefa.criado_em} editedAt={tarefa.atualizado_em ?? tarefa.criado_em} completedAt={tarefa.status === "concluida" ? tarefa.concluida_em : null} postponed={rotuloAdiamento(tarefa.adiada_de, tarefa.adiamentos)} dirty={sujo} value={value} onChange={(patch) => setValue((previous) => ({ ...previous, ...patch }))} onSave={sincronizar} saving={salvando && !confirmandoDelete} floatingSave={false} showPriority={!desktop} focusMode={modoFocus} onUploadingChange={setEnviandoArquivo} timePanel={<><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-text-secondary">Tempo realizado <span className="font-mono-value text-text-primary">{timeEntries.filter((e) => e.tipo === "real").reduce((n, e) => n + e.duracao_min, 0)} min</span></p><button type="button" onClick={() => adicionarTempo("real")} disabled={registrandoTempo} className="min-h-9 rounded-lg border border-success px-3 text-sm text-success disabled:opacity-40">Registrar tempo</button></div>{timeEntries.length > 0 && <div className="overflow-hidden rounded-lg border border-border">{timeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-sm last:border-0"><span className="text-text-secondary">{new Date(entry.inicio_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span><span className={entry.tipo === "planejado" ? "text-steel-300" : "text-success"}>{entry.tipo === "planejado" ? "Planejado" : "Real"} · {entry.duracao_min} min</span></div>)}</div>}</>} titleActions={desktop && (modoFocus && acoesFocus ? createPortal(acoesDoCabecalho, acoesFocus) : <div className="flex shrink-0 items-center gap-2">
         {!modoFocus && <TaskPriority compact value={value.prioridade} onChange={(prioridade) => setValue((anterior) => ({ ...anterior, prioridade }))} />}
         {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />}
@@ -249,12 +257,12 @@ export function TaskDetailScreen() {
   </div>;
 
   // Sem cabeçalho no desktop: a barra do editor gruda rente ao topo, sem fresta por onde o texto rolando aparece.
-  if (desktop) return <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>{modoFocus && acoesEsquerdaFocus && createPortal(<span title={value.pasta ? `Pasta: ${value.pasta}` : "Sem pasta"} className="max-w-[28rem] truncate text-xs text-text-muted">{value.pasta ? value.pasta.split("/").filter(Boolean).join(" › ") : "Sem pasta"}</span>, acoesEsquerdaFocus)}{!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />, acoesJanela)}{conteudo}</div>;
+  if (desktop) return <div className="ecos-detail-page min-w-0" style={{ "--ecos-editor-sticky-top": "0px" } as React.CSSProperties}>{modoFocus && acoesEsquerdaFocus && createPortal(<span title={value.pasta ? `Pasta: ${value.pasta}` : "Sem pasta"} className="max-w-[28rem] truncate text-xs text-text-muted">{value.pasta ? value.pasta.split("/").filter(Boolean).join(" › ") : "Sem pasta"}</span>, acoesEsquerdaFocus)}{!modoFocus && acoesJanela && createPortal(<BotaoCopiarCaminho variante="pequeno" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />, acoesJanela)}<SubtarefasCorpoContext.Provider value={ctxSubtarefas}>{conteudo}</SubtarefasCorpoContext.Provider></div>;
 
   return <div className="ecos-detail-page min-w-0"><DetailHeader onBack={() => navigate(-1)} actions={tarefa && <>
     <BotaoCopiarCaminho variante="rotulo" tipo="tarefa" espaco={value.espaco} pasta={value.pasta} titulo={value.titulo} />
     <button type="button" onClick={exportarPdf} aria-label="Exportar PDF" title="Exportar PDF" className={`${DETAIL_ACTION} text-text-secondary`}><FileDown size={18} /></button>
     <button type="button" onClick={() => void duplicar()} aria-label="Duplicar tarefa" title="Duplicar" className={`${DETAIL_ACTION} text-text-secondary`}><Copy size={18} /></button>
     <button type="button" onClick={() => setConfirmandoDelete(true)} aria-label="Apagar tarefa" title="Apagar" className={`${DETAIL_ACTION} text-error`}><Trash2 size={18} /></button>
-  </>} />{conteudo}</div>;
+  </>} /><SubtarefasCorpoContext.Provider value={ctxSubtarefas}>{conteudo}</SubtarefasCorpoContext.Provider></div>;
 }

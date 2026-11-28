@@ -472,7 +472,9 @@ pub(super) fn gravar_tarefa(tx: &rusqlite::Connection, item: &TarefaColetada, ex
             params![t.id, fm.id, t.tipo.como_str(), t.inicio_em.to_rfc3339(), (t.inicio_em + chrono::Duration::minutes(t.duracao_min)).to_rfc3339(), t.duracao_min, t.foco, t.criado_em.to_rfc3339()],
         )?;
     }
-    tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, fm.titulo])?;
+    // A busca de tarefas olha o título e os títulos das subtarefas (mesma coluna: sem migração do índice).
+    let texto_busca = std::iter::once(fm.titulo.as_str()).chain(fm.subtarefas.iter().map(|s| s.titulo.as_str())).collect::<Vec<_>>().join("\n");
+    tx.execute("INSERT INTO tarefa_fts (id, titulo) VALUES (?1, ?2)", params![fm.id, texto_busca])?;
     Ok(())
 }
 

@@ -1,5 +1,6 @@
 import type { Completion, CompletionContext, CompletionResult, CompletionSource } from "@codemirror/autocomplete";
 import { normalizarTexto } from "@/lib/texto-busca";
+import { registroSubtarefas } from "./subtarefas-widget";
 
 /**
  * Menu "/" do editor: digitar `/` no começo da linha (ou depois de um espaço) abre a lista de blocos.
@@ -29,6 +30,9 @@ const BLOCOS: Bloco[] = [
   { rotulo: "Fórmula", dica: "$$", chaves: "formula matematica latex equacao", texto: "$$\n«x^2»\n$$", bloco: true },
 ];
 
+/** Só em tarefas (o editor delas liga o registro de blocos). O nome sai selecionado para trocar. */
+const BLOCO_SUBTAREFAS: Bloco = { rotulo: "Bloco de subtarefas", dica: "::: subtarefas", chaves: "subtarefas etapas passos checklist roadmap fase", texto: "::: subtarefas «Nome do bloco»\n§", bloco: true };
+
 function preparar(texto: string): { insert: string; anchor: number; head: number } {
   const ini = texto.indexOf("«");
   if (ini >= 0) {
@@ -52,7 +56,8 @@ export const fonteBlocos: CompletionSource = (ctx: CompletionContext): Completio
   const linha = ctx.state.doc.lineAt(barra);
   const noComeco = !ctx.state.sliceDoc(linha.from, barra).trim();
   const casa = (texto: string) => termo.split(/\s+/).every((p) => normalizarTexto(texto).includes(p));
-  const achados = !termo ? BLOCOS : [...BLOCOS.filter((b) => casa(b.rotulo)), ...BLOCOS.filter((b) => !casa(b.rotulo) && casa(`${b.rotulo} ${b.chaves}`))];
+  const lista = ctx.state.facet(registroSubtarefas) ? [...BLOCOS, BLOCO_SUBTAREFAS] : BLOCOS;
+  const achados = !termo ? lista : [...lista.filter((b) => casa(b.rotulo)), ...lista.filter((b) => !casa(b.rotulo) && casa(`${b.rotulo} ${b.chaves}`))];
   if (!achados.length) return null;
   return {
     from: barra,

@@ -89,6 +89,7 @@ fn modelo_de(fm: &TarefaFrontMatter, corpo: &str, tz: Tz, ancora: NaiveDate) -> 
         prioridade: fm.prioridade,
         tags: fm.tags.clone(),
         subtarefas: fm.subtarefas.iter().map(|s| s.titulo.clone()).collect(),
+        subtarefas_blocos: if fm.subtarefas.iter().any(|s| s.bloco.is_some()) { fm.subtarefas.iter().map(|s| s.bloco.clone()).collect() } else { Vec::new() },
         hora: fm.scheduled_at.map(|d| d.with_timezone(&tz).time()),
         prazo_apos_dias: fm.due_date.map(|d| (d - ancora).num_days()),
     }
@@ -167,7 +168,7 @@ pub async fn gerar_proxima(state: &AppState, serie_id: &str, depois: NaiveDate, 
         due_date: modelo.prazo_apos_dias.and_then(|d| proxima.checked_add_signed(chrono::Duration::days(d))),
         tags: modelo.tags.clone(),
         prioridade: modelo.prioridade,
-        subtarefas: modelo.subtarefas.iter().map(|t| Subtarefa { id: new_id(), titulo: t.clone(), concluida: false }).collect(),
+        subtarefas: modelo.subtarefas.iter().enumerate().map(|(i, t)| Subtarefa { id: new_id(), titulo: t.clone(), concluida: false, bloco: modelo.subtarefas_blocos.get(i).cloned().flatten() }).collect(),
         espaco: base.espaco.clone(),
         evento_externo: EventoExternoRef::default(),
         criado_em: agora,
@@ -468,7 +469,7 @@ pub fn aplicar_molde_em_outra(state: &AppState, caminho_relativo: &str, molde: &
     fm.duration_min = molde.duration_min;
     fm.prioridade = molde.prioridade;
     fm.tags = molde.tags.clone();
-    fm.subtarefas = molde.subtarefas.iter().map(|s| Subtarefa { id: new_id(), titulo: s.titulo.clone(), concluida: false }).collect();
+    fm.subtarefas = molde.subtarefas.iter().map(|s| Subtarefa { id: new_id(), titulo: s.titulo.clone(), concluida: false, bloco: s.bloco.clone() }).collect();
     if let Some(s) = fm.serie.as_mut() {
         s.excecao = false;
     }

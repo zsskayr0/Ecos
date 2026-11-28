@@ -11,6 +11,8 @@ import { MarkdownPreview } from "@/lib/markdown-mini";
 import { tarefas } from "@/lib/api";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { alternarChecklist, cortarCorpo } from "@/lib/checklist";
+import { SubtarefasCorpoContext } from "@/components/editor/BlocoSubtarefas";
+import type { SubtarefaInput } from "@/lib/api";
 import { OcultarDoFeed } from "./OcultarDoFeed";
 import { AvisoCortado, BotaoAcao, CLASSE_BARRA, CLASSE_CARTAO_CLICAVEL, aoClicarCartao, ItemMenu, MenuAcao, PastaChip, TagsChips, SeloNaoSincronizado, useTarefaDetalhe, type PastaOpcao } from "./feed-comum";
 
@@ -60,7 +62,16 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
     const anterior = detalhe;
     const proximas = detalhe.subtarefas.map((s) => s.id === id ? { ...s, concluida: !s.concluida } : s);
     setDetalhe({ ...detalhe, subtarefas: proximas });
-    try { await tarefas.atualizar(tarefa.id, { subtarefas: proximas.map(({ id: sid, titulo, concluida: c }) => ({ id: sid, titulo, concluida: c })) }); } catch { setDetalhe(anterior); avisar("Não foi possível salvar a tarefa.", "erro"); }
+    try { await tarefas.atualizar(tarefa.id, { subtarefas: proximas.map(({ id: sid, titulo, concluida: c, bloco }) => ({ id: sid, titulo, concluida: c, bloco })) }); } catch { setDetalhe(anterior); avisar("Não foi possível salvar a tarefa.", "erro"); }
+  }
+  async function salvarSubtarefas(proximas: SubtarefaInput[]) {
+    if (!detalhe) return;
+    const anterior = detalhe;
+    setDetalhe({ ...detalhe, subtarefas: proximas as typeof detalhe.subtarefas });
+    try {
+      const salvo = await tarefas.atualizar(tarefa.id, { subtarefas: proximas });
+      if (salvo && Array.isArray((salvo as { subtarefas?: unknown }).subtarefas)) setDetalhe((d) => (d ? { ...d, subtarefas: (salvo as typeof detalhe).subtarefas } : d));
+    } catch { setDetalhe(anterior); avisar("Não foi possível salvar a tarefa.", "erro"); }
   }
   async function alternarChecklistCorpo(indice: number) {
     if (!detalhe) return;
@@ -118,7 +129,7 @@ export function TaskCard({ tarefa, pastas = [] }: { tarefa: Tarefa; pastas?: Pas
               ))}
             </ul>
           )}
-          {corpo && <div className="text-sm leading-relaxed text-text-secondary"><MarkdownPreview corpo={corte.texto} itemId={tarefa.id} tipo="tarefa" aoAlternarChecklist={(i) => void alternarChecklistCorpo(i)} />{corte.cortado && <AvisoCortado onAbrir={() => abrirDocumento(`/tarefa/${tarefa.id}`)} tipo="tarefa" />}</div>}
+          {corpo && <div className="text-sm leading-relaxed text-text-secondary"><SubtarefasCorpoContext.Provider value={{ subtarefas, onChange: (l) => void salvarSubtarefas(l) }}><MarkdownPreview corpo={corte.texto} itemId={tarefa.id} tipo="tarefa" aoAlternarChecklist={(i) => void alternarChecklistCorpo(i)} /></SubtarefasCorpoContext.Provider>{corte.cortado && <AvisoCortado onAbrir={() => abrirDocumento(`/tarefa/${tarefa.id}`)} tipo="tarefa" />}</div>}
           {!subtarefas.length && !corpo && <p className="text-sm text-text-muted">Sem detalhes.</p>}
         </div>
       ) : corpo && (

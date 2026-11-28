@@ -10,6 +10,7 @@ import { normalizarDelimitadores, remarkMatematicaBloco } from "@/lib/matematica
 import { imagemDaFormula } from "@/lib/formula-imagem";
 import rehypeRaw from "rehype-raw";
 import { lerAltImagem } from "@/lib/markdown-blocos";
+import { expandirMarcadores } from "@/lib/subtarefas-bloco";
 import { comBibliografia } from "./notas-rodape";
 import { notas, tarefas, type ArquivoExplorador } from "@/lib/api";
 import { medirNota, type LayoutNota } from "@/lib/layout-nota-tinta";
@@ -40,8 +41,7 @@ async function carregar(a: ItemExportavel): Promise<Documento | null> {
     const t = await tarefas.obter(a.id);
     const meta = [STATUS[t.status], `Prioridade ${PRIORIDADE[t.prioridade].toLowerCase()}`];
     if (t.due_date) meta.push(`Prazo ${dataBr(t.due_date)}`);
-    const subs = t.subtarefas.map((s) => `- [${s.concluida ? "x" : " "}] ${s.titulo}`).join("\n");
-    return { id: a.id, titulo: t.titulo, tipo: "tarefa", corpo: [t.corpo, subs].filter(Boolean).join("\n\n"), tags: t.tags, meta };
+    return { id: a.id, titulo: t.titulo, tipo: "tarefa", corpo: expandirMarcadores(t.corpo, t.subtarefas), tags: t.tags, meta };
   }
   return null;
 }

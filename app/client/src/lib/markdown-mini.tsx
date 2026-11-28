@@ -16,6 +16,8 @@ import type { Plugin } from "unified";
 import type { Root, Text } from "mdast";
 import { media, notas, tarefas } from "@/lib/api";
 import { Wikilink } from "@/components/common/Wikilink";
+import { remarkSubtarefas } from "@/lib/subtarefas-bloco";
+import { BlocoSubtarefas } from "@/components/editor/BlocoSubtarefas";
 import { lerAltImagem } from "@/lib/markdown-blocos";
 
 /**
@@ -113,7 +115,7 @@ const remarkMarcas: Plugin<[], Root> = () => (tree) => { percorrerMarcas(tree as
 /** HTML inline só por lista branca: nada de script, style ou atributos de evento. */
 const esquemaSanitize: OpcoesSanitize = {
   ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), "mark", "u", "ecos-wikilink"],
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark", "u", "ecos-wikilink", "ecos-subtarefas"],
   attributes: {
     ...defaultSchema.attributes,
     div: [...(defaultSchema.attributes?.div ?? []), ["align", "center", "left", "right"]],
@@ -121,6 +123,7 @@ const esquemaSanitize: OpcoesSanitize = {
     p: [["align", "center", "left", "right"]],
     img: [...(defaultSchema.attributes?.img ?? []), "title", "width"],
     "ecos-wikilink": ["dataInterno", "dataApelido"],
+    "ecos-subtarefas": ["dataBloco"],
     code: [["className", /^language-./, "math-inline", "math-display"]],
     ul: [["className", "contains-task-list", "ecos-sumario"]],
   },
@@ -217,6 +220,10 @@ function Figura({ src, alt, title, itemId, tipo, width }: { src?: string; alt?: 
   );
 }
 
+/** Componentes fixos (fora do render): recriados a cada render, o bloco remontaria e o clique se perderia. */
+function MarcadorSubtarefas(p: { "data-bloco"?: string }) { return <BlocoSubtarefas bloco={p["data-bloco"] || null} />; }
+function SemMarcador() { return null; }
+
 /** `---pagebreak` vira uma régua na leitura (a quebra real só vale no PDF). */
 const semQuebrasDePagina = (corpo: string) => corpo.replace(/^[ \t]*---pagebreak[ \t]*$/gim, "\n---\n");
 
@@ -234,13 +241,14 @@ export function MarkdownPreview({ corpo, itemId, tipo = "nota", aoAlternarCheckl
   return (
     <div className="ecos-markdown flex min-w-0 flex-col gap-2 text-text-primary [overflow-wrap:anywhere]">
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath, remarkMatematicaBloco, remarkBreaks, remarkWikilink, remarkMarcas, remarkSumario({ numerar: numerarTitulosLigado() })]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], ...(tipo === "tarefa" ? [remarkSubtarefas] : []), remarkMath, remarkMatematicaBloco, remarkBreaks, remarkWikilink, remarkMarcas, remarkSumario({ numerar: numerarTitulosLigado() })]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, esquemaSanitize], [rehypeKatexSobDemanda, { katex }], [rehypeHighlight, { detect: false }], rehypeLinhas]}
         remarkRehypeOptions={{
           footnoteLabel: "Notas",
           footnoteBackLabel: (i: number, r: number) => `Voltar à referência ${i + 1}${r > 1 ? `-${r}` : ""}`,
         }}
         components={{
+          ...({ "ecos-subtarefas": tipo === "tarefa" ? MarcadorSubtarefas : SemMarcador } as object),
           ...({ "ecos-wikilink": (p: { "data-interno"?: string; "data-apelido"?: string }) => <Wikilink interno={p["data-interno"] ?? ""} apelido={p["data-apelido"]} origem={itemId ? { tipo, id: itemId } : undefined} /> } as object),
           img: ({ src, alt, title, width }) => <Figura src={typeof src === "string" ? src : undefined} alt={alt} title={title} width={width} itemId={itemId} tipo={tipo} />,
           a: ({ href, children, node: _n, ...resto }) => {

@@ -3,7 +3,8 @@ import { useEscFecha } from "@/components/common/Dialog";
 import { ArvorePastas } from "@/components/common/ArvorePastas";
 import { useContext, useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CalendarClock, ChevronDown, Clock, Folder, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, Clock, Folder, ListChecks, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { SubtarefasTela } from "./SubtarefasTela";
 import { TaskPriority } from "@/components/common/TaskPriority";
 import { FloatingSaveButton } from "@/components/common/FloatingSaveButton";
 import { pastas } from "@/lib/api";
@@ -78,7 +79,7 @@ export function TaskComposer({ createdAt, editedAt, completedAt, postponed, valu
   const [newFolder, setNewFolder] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
-  const [newSubtask, setNewSubtask] = useState("");
+  const [subtarefasAbertas, setSubtarefasAbertas] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   useEscFecha(folderMenuOpen, () => setFolderMenuOpen(false));
   const [durationMenuOpen, setDurationMenuOpen] = useState(false);
@@ -170,22 +171,23 @@ export function TaskComposer({ createdAt, editedAt, completedAt, postponed, valu
     if (tag && !allTags.includes(tag)) onChange({ tags: [...value.tags, tag] });
     setNewTag("");
   }
-  function addSubtask() {
-    const titulo = newSubtask.trim();
-    if (titulo) onChange({ subtarefas: [...value.subtarefas, { titulo, concluida: false }] });
-    setNewSubtask("");
-  }
   const summary = `${LABELS[value.prioridade]} · ${value.duracao} min · ${value.data ? value.data.split("-").reverse().join("/") + (value.horario ? ` às ${value.horario}` : "") : "Sem data"} · ${value.pasta ? folders.find((p) => p.caminho === value.pasta)?.nome ?? value.pasta : "Sem pasta"}`;
 
   // Tarefa nova começa sem o bloco de anexos: arrastar um arquivo sobre o formulário abre "Mais opções" para recebê-lo.
   const abrirAoArrastarArquivo = (e: DragEvent<HTMLDivElement>) => { if (simples && Array.from(e.dataTransfer.types).includes("Files")) setMaisOpcoes(true); };
   const anexosNoPainel = focusMode && !!painelFocus;
   const anexosCampo = <AttachmentsField tipo="tarefa" espaco={value.espaco} itemId={itemId} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onBusyChange={setUploading} escopoRef={raizComposer} estilo={anexosNoPainel ? "grade" : "lista"} compact />;
+  // Subtarefas não ficam mais numa seção própria: moram em blocos no texto e na tela grande.
+  const feitasSub = value.subtarefas.filter((s) => s.concluida).length;
   const secaoSubtarefas = (classe: string) => (
     <section id={`${id}-subtasks`} aria-label="Subtarefas" className={classe}>
-      <div className="mb-3 flex items-center justify-between gap-2"><label htmlFor={`${id}-subtask`} className="text-sm font-semibold text-text-primary">Subtarefas</label><span className="text-sm text-text-secondary" aria-live="polite">{value.subtarefas.length ? `${value.subtarefas.filter((s) => s.concluida).length}/${value.subtarefas.length} concluídas` : "Opcional"}</span></div>
-      <ul className="mb-3 space-y-1">{value.subtarefas.map((sub, index) => <li key={sub.id ?? index} className="flex min-w-0 items-center gap-2 border-b border-border py-1"><label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={sub.concluida} onChange={(e) => onChange({ subtarefas: value.subtarefas.map((s, i) => i === index ? { ...s, concluida: e.target.checked } : s) })} className="h-5 w-5 shrink-0 accent-steel-500" /><span className={`min-w-0 break-words ${sub.concluida ? "text-text-secondary line-through" : "text-text-primary"}`}>{sub.titulo}</span></label><button type="button" className={ACTION} onClick={() => onChange({ subtarefas: value.subtarefas.filter((_, i) => i !== index) })} aria-label={`Remover subtarefa ${sub.titulo}`}><Trash2 size={16} /></button></li>)}</ul>
-      <div className="flex gap-2"><input id={`${id}-subtask`} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }} placeholder="Adicionar uma etapa" className={FIELD} /><button type="button" onClick={addSubtask} className={`${ACTION} shrink-0`} aria-label="Adicionar subtarefa"><Plus size={18} /></button></div>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Subtarefas</h2>
+      <button type="button" onClick={() => setSubtarefasAbertas(true)} className={`${FIELD} flex min-h-11 w-full items-center gap-3 !py-2.5 text-left transition-colors hover:border-steel-400`}>
+        <ListChecks size={17} aria-hidden className="shrink-0 text-steel-300" />
+        <span className="min-w-0 flex-1 truncate">{value.subtarefas.length ? `${feitasSub} de ${value.subtarefas.length} concluídas` : "Nenhuma subtarefa"}</span>
+        <ChevronRight size={17} aria-hidden className="shrink-0 text-text-muted" />
+      </button>
+      {subtarefasAbertas && <SubtarefasTela titulo={value.titulo} subtarefas={value.subtarefas} onChange={(subtarefas) => onChange({ subtarefas })} corpo={value.corpo} onCorpoChange={(corpo) => onChange({ corpo })} onFechar={() => setSubtarefasAbertas(false)} />}
     </section>
   );
   const informacoes = <p className="min-w-0 break-words text-sm text-text-secondary">{summary}{createdAt && <> · Criada em {formatDataHoraCompleta(createdAt)}</>}{completedAt && <> · Concluída em {formatDataHoraCompleta(completedAt)}</>}{postponed && <> · {postponed}</>}{editedAt && <> · Editada <TempoEdicao iso={editedAt} /></>}</p>;

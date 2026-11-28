@@ -37,6 +37,8 @@ export function blocosDoResumo(corpo: string, maxCaracteres = 1100): BlocoResumo
     if (/^(```|~~~)/.test(linha)) { fechar(); cerca = !cerca; continue; }
     if (cerca) continue;
     if (!linha) { fechar(); continue; }
+    // Marcador de bloco de subtarefas: os itens já aparecem à parte (miniatura).
+    if (/^:::\s*subtarefas\b/i.test(linha)) { fechar(); continue; }
     if (/^(-{3,}|\*{3,}|_{3,}|---pagebreak)$/i.test(linha) || /^\|.*\|$/.test(linha) || /^!\[/.test(linha) || /^<\/?[a-z]/i.test(linha) || /^\$\$/.test(linha)) { fechar(); continue; }
     const titulo = linha.match(/^#{1,6}\s+(.*)$/);
     if (titulo) { fechar(); const t = textoSimples(titulo[1]!); if (t) { saida.push({ tipo: "titulo", texto: t }); total += t.length; } continue; }

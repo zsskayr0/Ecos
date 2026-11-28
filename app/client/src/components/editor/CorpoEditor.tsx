@@ -660,13 +660,13 @@ export function CorpoEditor({ corpo, onCorpoChange: onCorpoChangeExterno, itemId
         ? <ColunaTinta largura={larguraColuna} tracos={tinta.tracos} escrevendo={escrevendo} folhaPlana={folhaPlana} pincel={pincel} dedoDesenha={dedoDesenha} onOperacao={tinta.executar} onAlternarCaneta={alternarCanetaMarca} estiloFolha={folha.estilo} linhaPx={linhaPx}>
             <EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel="Conteúdo da nota" placeholder={placeholder} somenteLeitura={escrevendo || preview}
               alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
-              className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} />
+              className={CLASSE_TEXTO_COLUNA} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} blocosSubtarefas={tipo === "tarefa"} />
           </ColunaTinta>
         : preview
         ? <div style={estiloColuna} className={`ecos-respiro-titulos min-w-0 break-words text-sm ${semBorda ? "min-h-[60vh] px-0.5 py-2" : "min-h-40 rounded-b-xl p-4"} [&_pre]:overflow-x-auto [&_img]:max-w-full`}>{corpo.trim() ? <MarkdownPreview corpo={corpo} itemId={itemId} tipo={tipo} /> : <p className="text-text-muted">Nada para pré-visualizar ainda.</p>}</div>
         : <div style={semBorda && folha.estilo !== "lisa" ? { ...estiloColuna, ...estiloGrade } : estiloColuna} className="ecos-respiro-titulos min-w-0"><EditorVivo aoCriarView={setViewContador} corpo={corpo} onCorpoChange={onCorpoChange} areaRef={editorRef} ariaLabel={tipo === "tarefa" ? "Descrição da tarefa" : "Conteúdo da nota"} placeholder={placeholder}
             alturaMinima={semBorda ? "60vh" : "10rem"} resolverImagem={(src) => resolverSrcImagem(src, itemId, tipo)} atalhos={atalhosEditor}
-            className={semBorda ? "px-0.5 py-[var(--ecos-linha-nota)]" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} /></div>}
+            className={semBorda ? "px-0.5 py-[var(--ecos-linha-nota)]" : "p-4"} aoAbrirWikilink={abrirWikilink} wikilinks={{ notaAtualId: notaId ?? itemId, espaco }} blocosSubtarefas={tipo === "tarefa"} /></div>}
       {!escrevendo && <SumarioLateral aberto={sumarioLateral} corpo={corpo} view={preview ? null : viewContador} raiz={raizRef} aoFechar={() => alternarSumarioLateral(false)} />}
       {!preview && !escrevendo && !barraCompacta && <ContadorTexto view={viewContador} paginas={tipo === "nota"} className="px-2 pb-1 text-right" />}
       {ajudaAberta && <FolhaAtalhosEditor aoFechar={() => { setAjudaAberta(false); editorRef.current?.focus(); }} />}
