@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { ChevronDown } from "lucide-react";
 import { useIsMobile } from "@/lib/use-viewport";
-import { ALTURA_CABECALHO, ALTURA_CURVA, COR_TRILHO, COR_TRILHO_SVG, RAMO, RECUO_LISTA, TRONCO } from "./geometria";
+import { ALTURA_CABECALHO, ALTURA_CABECALHO_MOVEL, ALTURA_CURVA, COR_TRILHO, COR_TRILHO_SVG, RAMO, RECUO_LISTA, TRONCO } from "./geometria";
 
 /** Segmento reto do tronco; tracejado no futuro. */
 function Tronco({ futuro, style }: { futuro?: boolean; style: CSSProperties }) {
@@ -38,34 +38,43 @@ export interface GrupoDiaProps {
   refDia?: Ref<HTMLLIElement>;
   /** Os itens desenham o trilho do ramo linha a linha (dia com registro); o grupo só desenha as curvas. */
   trilhoPorLinha?: boolean;
+  /** Embutida na Agenda: hoje sem o cartão elevado (o destaque é o rótulo "Hoje, …"). */
+  semCartao?: boolean;
+  /** Embutida na Agenda: é o dia em foco (os outros ficam esmaecidos). */
+  foco?: boolean;
+  /** Ação extra no canto do cabeçalho (ex.: ver os horários do dia na Agenda). */
+  extra?: ReactNode;
   children: ReactNode;
 }
 
 /** Um dia da Timeline: ponto no tronco, cabeçalho que recolhe e o ramo com os itens. */
-export function GrupoDia({ id, rotulo, subtitulo, contagem, atual, futuro, destaque, primeiro, ultimo, recolhido, onAlternar, refDia, trilhoPorLinha, children }: GrupoDiaProps) {
-  const meioCabecalho = ALTURA_CABECALHO / 2;
+export function GrupoDia({ id, rotulo, subtitulo, contagem, atual, futuro, destaque, primeiro, ultimo, recolhido, onAlternar, refDia, trilhoPorLinha, extra, foco, semCartao, children }: GrupoDiaProps) {
+  // No celular o cabeçalho é mais alto (alvo de toque confortável); o tronco acompanha.
+  const movel = useIsMobile();
+  const alturaCabecalho = movel ? ALTURA_CABECALHO_MOVEL : ALTURA_CABECALHO;
+  const meioCabecalho = alturaCabecalho / 2;
   const corPonto = destaque ? "bg-error" : atual ? "bg-cyan ecos-timeline-agora" : futuro ? "border border-text-muted/60 bg-base" : "bg-text-muted/70";
   const corRamo = destaque ? "border-error/50" : COR_TRILHO;
   // No celular, hoje não ganha cartão (ocupava a largura e pesava): só o "Hoje" em ciano marca o dia.
-  const movel = useIsMobile();
-  const cartao = atual && !movel;
-  return <li ref={refDia} data-dia={id} className={`relative scroll-mt-24 ${cartao ? "my-2 pb-2" : "pb-1"}`}>
+  const cartao = atual && !movel && !semCartao;
+  return <li ref={refDia} data-dia={id} data-foco={foco || undefined} className={`group/dia relative scroll-mt-24 ${cartao ? "my-2 pb-2" : "pb-1"}`}>
     {cartao && <span aria-hidden className="ecos-timeline-hoje absolute -inset-x-3 inset-y-0 rounded-2xl border border-border/70 bg-surface-1" />}
     {/* tronco: chega ao ponto do dia, segue até o fim do cabeçalho e atravessa o respiro de baixo */}
-    <Tronco futuro={futuro} style={{ top: primeiro ? meioCabecalho : cartao ? -8 : 0, height: primeiro ? meioCabecalho : ALTURA_CABECALHO + (cartao ? 8 : 0) }} />
+    <Tronco futuro={futuro} style={{ top: primeiro ? meioCabecalho : cartao ? -8 : 0, height: primeiro ? meioCabecalho : alturaCabecalho + (cartao ? 8 : 0) }} />
     {!ultimo && <Tronco futuro={futuro} style={{ bottom: cartao ? -8 : 0, height: cartao ? 16 : 4 }} />}
 
-    <h2 className="relative" style={{ height: ALTURA_CABECALHO }}>
+    <h2 className="relative" style={{ height: alturaCabecalho }}>
       <button type="button" onClick={() => onAlternar(id)} aria-expanded={!recolhido} aria-controls={`ramo-${id}`} style={{ paddingLeft: TRONCO + 16 }}
-        className="group flex h-full w-full items-center gap-2 rounded-xl pr-2 text-left transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70">
-        <span aria-hidden className={`absolute h-[9px] w-[9px] -translate-x-1/2 rounded-full ring-4 transition-colors ${cartao ? "ring-surface-1" : "ring-base"} ${corPonto}`} style={{ left: TRONCO }} />
+        className={`group flex h-full w-full items-center gap-2 rounded-xl ${extra ? "pr-20" : "pr-2"} text-left transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70`}>
+        <span aria-hidden className={`absolute h-[9px] w-[9px] max-lg:h-[11px] max-lg:w-[11px] -translate-x-1/2 rounded-full ring-4 transition-colors ${cartao ? "ring-surface-1" : "ring-base"} ${corPonto}`} style={{ left: TRONCO }} />
         {atual && movel
-          ? <><span className="text-[15px] font-semibold text-cyan">Hoje</span><span className="min-w-0 truncate text-xs text-text-muted">{rotulo}</span></>
-          : <span className={atual ? "font-display text-lg text-text-primary" : `text-[15px] font-semibold ${destaque ? "text-error" : "text-text-primary"}`}>{rotulo}</span>}
-        {subtitulo && <span className="text-xs text-text-muted">{subtitulo}</span>}
-        <span className={`ml-auto rounded-full px-1.5 text-[11px] tabular-nums transition-opacity duration-300 ${destaque ? "bg-error/15 text-error" : "text-text-muted"} ${recolhido || destaque ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>{contagem}</span>
-        <ChevronDown size={15} aria-hidden className={`text-text-muted transition-transform duration-300 ${recolhido ? "-rotate-90" : ""}`} />
+          ? <><span className="text-[18px] font-semibold text-cyan">Hoje</span><span className="min-w-0 truncate text-[13px] text-text-muted">{rotulo}</span></>
+          : <span className={atual ? "font-display text-lg text-text-primary" : `text-[15px] font-semibold max-lg:text-[18px] ${destaque ? "text-error" : "text-text-primary"}`}>{rotulo}</span>}
+        {subtitulo && <span className="text-xs text-text-muted max-lg:text-[13px]">{subtitulo}</span>}
+        <span className={`ml-auto rounded-full px-1.5 text-[11px] max-lg:text-[13px] tabular-nums transition-opacity duration-300 ${destaque ? "bg-error/15 text-error" : "text-text-muted"} ${recolhido || destaque ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>{contagem}</span>
+        <ChevronDown size={15} aria-hidden className={`max-lg:h-5 max-lg:w-5 text-text-muted transition-transform duration-300 ${recolhido ? "-rotate-90" : ""}`} />
       </button>
+      {extra && <span className="absolute right-1 top-1/2 -translate-y-1/2">{extra}</span>}
     </h2>
 
     <div id={`ramo-${id}`} className="ecos-timeline-ramo" data-recolhido={recolhido || undefined} {...inerte(recolhido)}>
@@ -86,11 +95,11 @@ const fmtCurto = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "nume
 const curto = (dia: string) => fmtCurto.format(new Date(`${dia}T12:00:00`)).replace(/\./g, "");
 
 /** Dias futuros seguidos sem nada: uma linha discreta no tronco, em vez de um grupo por dia. */
-export function FaixaVazia({ de, ate, ultimo }: { de: string; ate: string; ultimo?: boolean }) {
+export function FaixaVazia({ de, ate, ultimo, foco }: { de: string; ate: string; ultimo?: boolean; foco?: boolean }) {
   const rotulo = de === ate ? curto(de) : `${curto(de)} – ${curto(ate)}`;
-  return <li data-faixa-de={de} data-faixa-ate={ate} className="ecos-timeline-item relative scroll-mt-24 flex h-9 items-center" style={{ paddingLeft: TRONCO + 16 }}>
+  return <li data-faixa-de={de} data-faixa-ate={ate} data-foco={foco || undefined} className="ecos-timeline-item relative scroll-mt-24 flex h-9 items-center max-lg:h-11" style={{ paddingLeft: TRONCO + 16 }}>
     <Tronco futuro style={{ top: 0, height: ultimo ? "50%" : "100%" }} />
     <span aria-hidden className="absolute h-[5px] w-[5px] -translate-x-1/2 rounded-full border border-text-muted/50 bg-base" style={{ left: TRONCO }} />
-    <span className="text-xs text-text-muted"><span className="first-letter:uppercase inline-block">{rotulo}</span> · nada programado</span>
+    <span className="text-xs text-text-muted max-lg:text-[13px]"><span className="first-letter:uppercase inline-block">{rotulo}</span> · nada programado</span>
   </li>;
 }

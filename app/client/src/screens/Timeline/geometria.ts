@@ -13,6 +13,8 @@ export const REGISTRO = RAMO + 16;
 export const RECUO_LISTA = REGISTRO + 14;
 export const ALTURA_CURVA = 16;
 export const ALTURA_CABECALHO = 40;
+/** Cabeçalho do dia no celular: alvo de toque maior e título maior. */
+export const ALTURA_CABECALHO_MOVEL = 48;
 /** O botão do item começa antes dos trilhos para o realce do hover abraçar os pontos, como na referência. */
 export const RECUO_ITEM = RECUO_LISTA - 16;
 

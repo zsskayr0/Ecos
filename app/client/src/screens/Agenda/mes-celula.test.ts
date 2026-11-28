@@ -10,8 +10,13 @@ describe("calcularVisiveis", () => {
     // cabem 3 linhas; com 7 itens: 2 chips + "+5 itens"
     expect(calcularVisiveis(7, 44 + 24 * 3)).toEqual({ visiveis: 2, resto: 5 });
   });
-  it("célula muito baixa mostra só o +N", () => {
-    expect(calcularVisiveis(4, 50)).toEqual({ visiveis: 0, resto: 4 });
+  it("célula muito baixa ainda mostra um item, e o resto vira +N", () => {
+    expect(calcularVisiveis(4, 50)).toEqual({ visiveis: 1, resto: 3 });
+    expect(calcularVisiveis(0, 50)).toEqual({ visiveis: 0, resto: 0 });
+  });
+  it("célula compacta (número pequeno) cabe mais itens", () => {
+    expect(calcularVisiveis(6, 130, 30)).toEqual({ visiveis: 3, resto: 3 });
+    expect(calcularVisiveis(6, 130)).toEqual({ visiveis: 2, resto: 4 });
   });
   it("sem medida usa 3 itens", () => {
     expect(calcularVisiveis(5, 0)).toEqual({ visiveis: 2, resto: 3 });

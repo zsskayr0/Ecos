@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, ChevronRight, Globe2, Ruler } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronRight, Globe2, Ruler, Wallet } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TOM } from "@/components/common/MenuSuspenso";
 import { Toggle } from "@/components/common/Toggle";
@@ -21,6 +21,9 @@ export function CalendarPreferencesScreen() {
       <Secao titulo="Agenda">
         <Linha Icone={CalendarClock} titulo="Mostrar prazos no calendário" descricao="Marca na Agenda as tarefas que têm prazo. Fica na sua conta e vale em todos os aparelhos.">
           <Toggle checked={calendario.deadlines} onChange={(deadlines) => alterarCalendario({ deadlines })} label="Mostrar prazos no calendário" />
+        </Linha>
+        <Linha Icone={Wallet} titulo="Mostrar contas do Cofre" descricao="Põe na Agenda e na Timeline as contas a vencer das recorrências do Cofre pessoal. Com o Cofre trancado elas não aparecem.">
+          <Toggle checked={prefs.agendaContasCofre} onChange={(agendaContasCofre) => alterar({ agendaContasCofre })} label="Mostrar contas do Cofre" />
         </Linha>
         <Linha Icone={Ruler} titulo="Encaixe inicial" descricao="Passo ao arrastar e redimensionar blocos. Dá para trocar a qualquer momento na própria Agenda.">
           <Seletor valor={String(prefs.agendaEncaixe)} opcoes={ENCAIXES} onChange={(v) => alterar({ agendaEncaixe: Number(v) as typeof prefs.agendaEncaixe })} label="Encaixe inicial da Agenda" />

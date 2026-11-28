@@ -41,6 +41,9 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); localStorage.clear(); });
 
+/** No desktop estas visões são híbridas: Hoje leva a Timeline até hoje, sem popup. */
+const HIBRIDAS = ["mes", "semana", "tres_dias", "dia"];
+
 describe('botão "Hoje" é consistente em todas as visões', () => {
   // [modo, um dia dentro do período que contém hoje, um dia de outro período]
   const CASOS: [string, string, string][] = [
@@ -52,7 +55,15 @@ describe('botão "Hoje" é consistente em todas as visões', () => {
     ["seis_meses", "2026-07-01", "2027-03-01"],
     ["anual", "2026-01-10", "2025-05-05"],
   ];
-  for (const [modo, dentro, fora] of CASOS) {
+  it("mes (desktop): Hoje marca hoje e a Timeline vai até ele, sem popup", async () => {
+    await abrir("mes", "2026-06-15");
+    clicarHoje();
+    await waitFor(() => expect(salvo().dia).toBe("2026-09-22"));
+    clicarHoje();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull();
+  });
+  for (const [modo, dentro, fora] of CASOS.filter(([m]) => !HIBRIDAS.includes(m))) {
     it(`${modo}: período já contém hoje → abre o popup do dia`, async () => {
       await abrir(modo, dentro);
       clicarHoje();
@@ -86,6 +97,7 @@ describe('botão "Hoje" é consistente em todas as visões', () => {
 describe("clicar num dia não move o período", () => {
   for (const modo of ["dia", "tres_dias", "semana", "quinzenal"]) {
     it(`${modo}: o número abre o popup e as colunas visíveis continuam as mesmas`, async () => {
+      if (HIBRIDAS.includes(modo)) window.matchMedia = ((q: string) => ({ matches: q.includes("max-width"), media: q, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as never;
       await abrir(modo, "2026-09-21");
       const antes = [...document.querySelectorAll("[data-cabecalho-dia]")].map((e) => (e as HTMLElement).dataset.cabecalhoDia);
       const alvo = document.querySelector<HTMLElement>(`[data-cabecalho-dia="${antes.at(-1)}"] button`)!;
@@ -93,6 +105,17 @@ describe("clicar num dia não move o período", () => {
       expect(await screen.findByRole("dialog", { name: /Tarefas de/ })).toBeTruthy();
       expect([...document.querySelectorAll("[data-cabecalho-dia]")].map((e) => (e as HTMLElement).dataset.cabecalhoDia)).toEqual(antes);
       expect(salvo().dia).toBe("2026-09-21");
+    });
+  }
+});
+
+describe("visões de horário no desktop (híbridas)", () => {
+  for (const modo of ["dia", "tres_dias", "semana"]) {
+    it(`${modo}: Hoje não abre popup`, async () => {
+      await abrir(modo, "2026-09-22");
+      clicarHoje();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull();
     });
   }
 });

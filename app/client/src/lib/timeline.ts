@@ -14,7 +14,8 @@ export type Natureza = "programado" | "registro";
 export type Alvo =
   | { tipo: "tarefa" | "nota"; id: string }
   | { tipo: "evento"; id: string; ocorrencia?: string }
-  | { tipo: "transacao"; id: string };
+  | { tipo: "transacao"; id: string }
+  | { tipo: "recorrencia"; id: string };
 
 export type Situacao = "normal" | "atrasada" | "concluida";
 
@@ -113,6 +114,9 @@ function itemDaTarefa(t: TarefaResumo, agora: Date): ItemTimeline | null {
 }
 
 function itemDoEvento(e: EventoLocal): ItemTimeline {
+  if (e.recorrenciaId) {
+    return { chave: `${e.id}`, dia: e.inicio, minutos: null, natureza: "programado", situacao: "normal", icone: "transacao", titulo: e.titulo, detalhe: e.legenda, valorCentavos: e.valorCentavos, cor: e.corHex, alvo: { tipo: "recorrencia", id: e.recorrenciaId } };
+  }
   if (e.transacaoId) {
     return { chave: `transacao:${e.transacaoId}`, dia: e.inicio, minutos: null, natureza: "programado", situacao: "normal", icone: "transacao", titulo: e.titulo, detalhe: e.legenda, valorCentavos: e.valorCentavos, cor: e.corHex, alvo: { tipo: "transacao", id: e.transacaoId } };
   }
@@ -258,10 +262,11 @@ export type TrechoTimeline = { tipo: "dia"; dia: DiaTimeline } | { tipo: "vazio"
  * Some com os dias passados vazios e junta dias futuros vazios seguidos numa faixa só ("27 nov – 1 dez · nada
  * programado"), para a lista não virar uma sequência de "Nada programado". Hoje aparece sempre como dia.
  */
-export function trechosDaTimeline(dias: DiaTimeline[], hoje: string): TrechoTimeline[] {
+export function trechosDaTimeline(dias: DiaTimeline[], hoje: string, todosOsDias = false): TrechoTimeline[] {
   const trechos: TrechoTimeline[] = [];
   for (const d of dias) {
-    if (d.itens.length > 0 || d.dia === hoje) { trechos.push({ tipo: "dia", dia: d }); continue; }
+    // Ao lado da grade do mês (todosOsDias) cada dia aparece, mesmo vazio: a coluna acompanha a grade dia a dia.
+    if (todosOsDias || d.itens.length > 0 || d.dia === hoje) { trechos.push({ tipo: "dia", dia: d }); continue; }
     if (d.dia < hoje) continue;
     const ultimo = trechos[trechos.length - 1];
     if (ultimo?.tipo === "vazio" && somarDiasISO(ultimo.ate, 1) === d.dia) ultimo.ate = d.dia;

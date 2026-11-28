@@ -90,6 +90,8 @@ describe("dia de conclusão nas visões de horário", () => {
 
 describe("texto do dia vazio no popup", () => {
   async function abrirPopup(dia: string, itens: TarefaResumo[]) {
+    // No desktop o mês põe o dia na Timeline ao lado; o popup do dia é do celular.
+    window.matchMedia = ((q: string) => ({ matches: q.includes("max-width"), media: q, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as never;
     localStorage.setItem("ecos:agenda:visualizacao", JSON.stringify({ modo: "mes", dia }));
     vi.mocked(tarefas.listar).mockImplementation(async (p) => ({ items: p?.concluida_de ? itens : [], next_cursor: null }) as never);
     vi.mocked(agenda.blocos).mockResolvedValue([]);

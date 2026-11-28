@@ -3,7 +3,7 @@ import { Dialog } from "@/components/common/Dialog";
 import { useArrastarRolagem } from "@/lib/arrastar-rolagem";
 import { createPortal } from "react-dom";
 import { CalendarDays, CheckCircle2, ChevronDown, Clock, Hourglass, LayoutDashboard, ListChecks, Lock, Cloud, Repeat, Wallet, X } from "lucide-react";
-import type { EventoLocal } from "@/lib/eventos-locais";
+import { doCofre, type EventoLocal } from "@/lib/eventos-locais";
 import type { TarefaResumo } from "@/lib/api";
 import { formatDuracao, formatMoeda } from "@/lib/format";
 
@@ -89,8 +89,8 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   const arrastarAbas = useArrastarRolagem();
   const [indicador, setIndicador] = useState<{ left: number; width: number } | null>(null);
 
-  const eventos = useMemo(() => eventosDoDia.filter((e) => !e.transacaoId).sort(porHorario), [eventosDoDia]);
-  const lancamentos = useMemo(() => eventosDoDia.filter((e) => !!e.transacaoId).sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR")), [eventosDoDia]);
+  const eventos = useMemo(() => eventosDoDia.filter((e) => !doCofre(e)).sort(porHorario), [eventosDoDia]);
+  const lancamentos = useMemo(() => eventosDoDia.filter((e) => doCofre(e)).sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR")), [eventosDoDia]);
   const tarefas = useMemo(() => [...(tarefasDoDia ?? [])].sort((a, b) => (a.scheduled_at ?? "9").localeCompare(b.scheduled_at ?? "9")), [tarefasDoDia]);
   const pendentes = useMemo(() => tarefas.filter((t) => t.status === "pendente"), [tarefas]);
   const concluidas = useMemo(() => {
@@ -143,7 +143,7 @@ export function DiaMaximizado({ dia, hoje, eventosDoDia, tarefasDoDia, concluida
   const proximos = [...eventos.filter((e) => e.minutos !== null)].slice(0, 3);
 
   const linhaEvento = (e: EventoLocal, i: number) => {
-    const lanc = !!e.transacaoId;
+    const lanc = doCofre(e);
     const horario = e.legenda ?? (e.minutos === null ? "Dia inteiro" : `${hhmm(e.minutos)} – ${hhmm(Math.min(1440, e.minutos + e.duracaoMin))} · ${formatDuracao(e.duracaoMin)}`);
     return (
       <li key={e.id} style={{ ["--i" as string]: i }} className="ecos-cascata">

@@ -12,6 +12,9 @@ export type Repeticao = {
  * Evento como a Agenda o desenha: um item por dia (um evento de vários dias ou uma série vira vários itens); `minutos ===
  * null` = dia inteiro. Vem do servidor (`lib/eventos-agenda.ts`); `id` é único por item (`<idDoServidor>@<dia>`).
  */
+/** Item que vem do Cofre: lançamento ou conta a vencer. */
+export const doCofre = (e: { transacaoId?: string; recorrenciaId?: string }) => !!e.transacaoId || !!e.recorrenciaId;
+
 export type EventoLocal = {
   id: number | string;
   titulo: string;
@@ -34,6 +37,8 @@ export type EventoLocal = {
   visibilidade?: "privado" | "google";
   /** Item que vem de uma transação do Cofre (dia inteiro, só leitura): abrir leva ao lançamento. */
   transacaoId?: string;
+  /** Conta a vencer de uma recorrência do Cofre que ainda não virou lançamento (dia inteiro, só leitura). */
+  recorrenciaId?: string;
   /** Linha abaixo do título (lançamento: o valor com sinal). */
   legenda?: string;
   /** Lançamento: valor com sinal, em centavos (entrada positiva, saída negativa). */

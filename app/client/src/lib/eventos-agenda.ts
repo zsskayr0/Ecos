@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { eventos as eventosApi, vault, type Evento, type ExcecaoEvento, type TransacaoApi } from "@/lib/api";
+import { eventos as eventosApi, financeiro, vault, type Evento, type ExcecaoEvento, type OcorrenciaRecorrente, type RecorrenciaApi, type TransacaoApi } from "@/lib/api";
+import { lerPreferenciasAplicativo } from "@/lib/preferencias-aplicativo";
 import { formatMoeda } from "@/lib/format";
 import { dataLocalISO, instanteLocalISO, type Posicao } from "@/lib/agenda-tempo";
 import type { EventoLocal } from "@/lib/eventos-locais";
@@ -165,16 +166,45 @@ function comProvisorio(e: Evento, p: Provisorio | undefined): Evento {
  * recarrega depois de qualquer criação/edição. `mover` atualiza na hora e desfaz se o servidor recusar; com `ocorrencia`
  * (início original) mexe só naquela ocorrência de uma série.
  */
+/** Cor do Cofre na Agenda e na Timeline: lançamento em roxo; conta a vencer num roxo mais claro. */
+export const COR_COFRE = "#8b5cf6";
+export const COR_COFRE_A_VENCER = "#a78bfa";
+
 /** Transação do Cofre como item de dia inteiro: verde = entrada, vermelho = saída. */
 export function transacaoParaItem(t: TransacaoApi): EventoLocal {
   const sinal = t.tipo === "entrada" ? "+" : "−";
   return {
     id: `transacao:${t.id}`, transacaoId: t.id, inicio: t.data, minutos: null, duracaoMin: 60, cor: "", movivel: false,
-    corHex: t.tipo === "entrada" ? "#22c55e" : "#ef4444",
+    // Cofre em roxo (o sinal no valor diz se entra ou sai).
+    corHex: COR_COFRE,
     titulo: `${t.descricao}${t.status === "pendente" ? " (pendente)" : ""}`,
     legenda: `${sinal}${formatMoeda(t.valor_centavos)}`,
     valorCentavos: t.tipo === "entrada" ? t.valor_centavos : -t.valor_centavos,
   };
+}
+
+/**
+ * Conta a vencer: ocorrência de recorrência do Cofre que ainda não virou lançamento. As que já viraram aparecem como
+ * lançamento (pela lista de transações), então ficam de fora aqui: cada conta aparece uma vez só.
+ */
+export function contaParaItem(o: OcorrenciaRecorrente, regra: RecorrenciaApi): EventoLocal {
+  const entrada = regra.tipo === "entrada";
+  const parcela = o.parcela && regra.total_parcelas ? ` ${o.parcela}/${regra.total_parcelas}` : "";
+  return {
+    id: `conta:${o.recorrencia_id}:${o.data}`, recorrenciaId: o.recorrencia_id, inicio: o.data, minutos: null, duracaoMin: 60, cor: "", movivel: false,
+    corHex: COR_COFRE_A_VENCER,
+    titulo: `${regra.descricao}${parcela} (a ${entrada ? "receber" : "vencer"})`,
+    legenda: `${entrada ? "+" : "−"}${formatMoeda(o.valor_centavos)}`,
+    valorCentavos: entrada ? o.valor_centavos : -o.valor_centavos,
+  };
+}
+
+export function contasDoPeriodo(ocorrencias: OcorrenciaRecorrente[], regras: RecorrenciaApi[]): EventoLocal[] {
+  const porId = new Map(regras.map((r) => [r.id, r]));
+  return ocorrencias.flatMap((o) => {
+    const regra = porId.get(o.recorrencia_id);
+    return !o.transacao_id && regra ? [contaParaItem(o, regra)] : [];
+  });
 }
 
 export function useEventosDoPeriodo(de: string, ate: string, versao: number, espaco?: string, incluirTransacoes = false) {
@@ -201,6 +231,16 @@ export function useEventosDoPeriodo(de: string, ate: string, versao: number, esp
     })().then((l) => { if (vivo) setTransacoes(l); }).catch(() => { if (vivo) setTransacoes([]); });
     return () => { vivo = false; };
   }, [de, ate, versao, comTransacoes, espacoDoCofre]);
+  // Contas a vencer das recorrências: só no Cofre pessoal (a API de recorrências não é por espaço) e se a preferência deixar.
+  const [contas, setContas] = useState<EventoLocal[]>([]);
+  useEffect(() => {
+    if (!comTransacoes || espacoDoCofre !== "pessoal" || !lerPreferenciasAplicativo().agendaContasCofre) { setContas([]); return; }
+    let vivo = true;
+    Promise.all([financeiro.ocorrenciasDoPeriodo({ data_de: de, data_ate: ate }), financeiro.recorrencias()])
+      .then(([ocorrencias, regras]) => { if (vivo) setContas(contasDoPeriodo(ocorrencias ?? [], regras ?? [])); })
+      .catch(() => { if (vivo) setContas([]); });
+    return () => { vivo = false; };
+  }, [de, ate, versao, comTransacoes, espacoDoCofre]);
   const [provisorio, setProvisorio] = useState<Record<string, Provisorio>>({});
 
   useEffect(() => {
@@ -216,12 +256,12 @@ export function useEventosDoPeriodo(de: string, ate: string, versao: number, esp
   const eventos = useMemo(() => {
     const janela = janelaDosDias(de, ate);
     const doCofre = transacoes.map(transacaoParaItem);
-    return [...doCofre, ...brutos.flatMap((e) => {
+    return [...doCofre, ...contas, ...brutos.flatMap((e) => {
       const provisorios = Object.entries(provisorio).filter(([chave]) => chave === e.id || chave.startsWith(`${e.id}|`));
       const atual = provisorios.reduce((acc, [, p]) => comProvisorio(acc, p), e);
       return eventoParaItens(atual, janela.de, janela.ate);
     })];
-  }, [brutos, transacoes, provisorio, de, ate]);
+  }, [brutos, transacoes, contas, provisorio, de, ate]);
 
   const mover = useCallback(async (servidorId: string, destino: Posicao, ocorrencia?: string) => {
     const evento = brutos.find((e) => e.id === servidorId);

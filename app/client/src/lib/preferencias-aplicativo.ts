@@ -114,6 +114,8 @@ export interface PreferenciasAplicativo {
   capturaEnter: "nota" | "tarefa";
   /** Encaixe (passo de arrastar e redimensionar) inicial da Agenda, em minutos. */
   agendaEncaixe: 5 | 10 | 15 | 30 | 60;
+  /** Agenda e Timeline mostram as contas a vencer das recorrências do Cofre (as que ainda não viraram lançamento). */
+  agendaContasCofre: boolean;
 
   /* Nova tarefa e Nova nota: como o item já nasce */
   /** Data que uma tarefa nova já traz (`hoje` = "date stick"). */
@@ -205,6 +207,7 @@ export const PADRAO_PREFERENCIAS_APLICATIVO: PreferenciasAplicativo = {
   visualizacaoTarefasMobile: "agrupada",
   capturaEnter: "nota",
   agendaEncaixe: 15,
+  agendaContasCofre: true,
   tarefaNovaData: "nenhuma",
   tarefaNovaHorario: "",
   tarefaNovaPasta: "contexto",

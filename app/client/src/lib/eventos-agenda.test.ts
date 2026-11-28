@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Evento } from "@/lib/api";
 import { COR_EVENTO_PADRAO, eventoParaItens, intervaloDoDestino, janelaDosDias, ocorrenciaEfetiva } from "./eventos-agenda";
+import { contasDoPeriodo } from "./eventos-agenda";
+import type { OcorrenciaRecorrente, RecorrenciaApi } from "./api";
 
 const L = (a: number, m: number, d: number, h = 0, mi = 0) => new Date(a, m - 1, d, h, mi);
 const evento = (extra: Partial<Evento> = {}): Evento => ({
@@ -148,5 +150,22 @@ describe("ocorrenciaEfetiva", () => {
     expect(ocorrenciaEfetiva(e, L(2026, 9, 28, 10).toISOString())).toMatchObject({ titulo: "Reunião", local: "Sala 1", descricao: "pauta", inicio: L(2026, 9, 28, 10).toISOString(), fim: L(2026, 9, 28, 11).toISOString() });
     const com = semanal({ local: "Sala 1", descricao: "pauta", excecoes: [exc(L(2026, 9, 28, 10), { titulo: "X", local: "", inicio: L(2026, 9, 28, 14).toISOString() })] });
     expect(ocorrenciaEfetiva(com, L(2026, 9, 28, 10).toISOString())).toMatchObject({ titulo: "X", local: null, descricao: "pauta", inicio: L(2026, 9, 28, 14).toISOString(), fim: L(2026, 9, 28, 15).toISOString() });
+  });
+});
+
+describe("contas a vencer do Cofre", () => {
+  const regra = { id: "r1", tipo: "saida", descricao: "Aluguel", valor_centavos: 150000, total_parcelas: null } as unknown as RecorrenciaApi;
+  const parcelada = { id: "r2", tipo: "saida", descricao: "Notebook", valor_centavos: 30000, total_parcelas: 10 } as unknown as RecorrenciaApi;
+  const oc = (extra: Partial<OcorrenciaRecorrente>): OcorrenciaRecorrente => ({ recorrencia_id: "r1", data: "2026-12-05", parcela: null, transacao_id: null, status: null, valor_centavos: 150000, data_lancamento: null, ...extra });
+
+  it("só entra a ocorrência que ainda não virou lançamento (a outra já aparece como transação)", () => {
+    const itens = contasDoPeriodo([oc({}), oc({ data: "2026-11-05", transacao_id: "t1", status: "pendente" })], [regra]);
+    expect(itens.map((i) => i.inicio)).toEqual(["2026-12-05"]);
+    expect(itens[0]).toMatchObject({ recorrenciaId: "r1", minutos: null, movivel: false, valorCentavos: -150000, titulo: "Aluguel (a vencer)" });
+    expect(itens[0].transacaoId).toBeUndefined();
+  });
+  it("parcela mostra n/total; ocorrência de regra desconhecida é ignorada", () => {
+    const itens = contasDoPeriodo([oc({ recorrencia_id: "r2", parcela: 3, valor_centavos: 30000 }), oc({ recorrencia_id: "sumiu" })], [regra, parcelada]);
+    expect(itens.map((i) => i.titulo)).toEqual(["Notebook 3/10 (a vencer)"]);
   });
 });

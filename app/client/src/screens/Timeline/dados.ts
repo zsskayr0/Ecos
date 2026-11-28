@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { tarefas, timeline as timelineApi, type AtividadeTimeline, type TarefaResumo } from "@/lib/api";
 import { dataLocalISO, somarDiasISO } from "@/lib/agenda-tempo";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
@@ -45,16 +45,19 @@ export function useDadosDaTimeline(janela: Janela, versao: number) {
   const [dados, setDados] = useState<DadosTimeline | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
+  // As atrasadas (um ano para trás) não dependem da janela: mudar de dia não as busca de novo.
+  const atrasadasRef = useRef<{ chave: string; promessa: Promise<TarefaResumo[]> } | null>(null);
   useEffect(() => {
     let ativo = true;
     setErro(null);
     const hoje = dataLocalISO(new Date());
-    Promise.all([
-      carregarJanela(janela, espaco),
-      todasAsTarefas({ status: "pendente", data_de: somarDiasISO(hoje, -365), data_ate: somarDiasISO(hoje, -1), espaco, tz: fusoMinutos() }),
-    ])
+    const chave = `${hoje}|${versao}|${espaco ?? ""}`;
+    if (atrasadasRef.current?.chave !== chave) {
+      atrasadasRef.current = { chave, promessa: todasAsTarefas({ status: "pendente", data_de: somarDiasISO(hoje, -365), data_ate: somarDiasISO(hoje, -1), espaco, tz: fusoMinutos() }) };
+    }
+    Promise.all([carregarJanela(janela, espaco), atrasadasRef.current.promessa])
       .then(([[doPeriodo, atividades], atrasadas]) => { if (ativo) setDados({ tarefas: doPeriodo, atrasadas, atividades }); })
-      .catch((e) => { if (ativo) { setErro(mensagemDeErro(e, "Não foi possível carregar a timeline.")); setDados({ tarefas: [], atrasadas: [], atividades: [] }); } });
+      .catch((e) => { if (ativo) { atrasadasRef.current = null; setErro(mensagemDeErro(e, "Não foi possível carregar a timeline.")); setDados({ tarefas: [], atrasadas: [], atividades: [] }); } });
     return () => { ativo = false; };
   }, [janela.de, janela.ate, versao, espaco]);
 

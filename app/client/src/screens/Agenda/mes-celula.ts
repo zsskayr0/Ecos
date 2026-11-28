@@ -9,10 +9,14 @@ const CAPACIDADE_PADRAO = 3;
  * Quantos itens cabem numa célula do mês e quantos viram "+N itens".
  * Quando nem todos cabem, uma linha é reservada para o "+N itens", para ele nunca invadir a linha de baixo.
  */
-export function calcularVisiveis(total: number, alturaLinha: number): { visiveis: number; resto: number } {
-  const capacidade = alturaLinha > 0 ? Math.max(0, Math.floor((alturaLinha - RESERVA_CELULA_PX) / ALTURA_CHIP_PX)) : CAPACIDADE_PADRAO;
+/** Célula compacta (mês ao lado da Timeline): número pequeno no canto, sem o círculo grande. */
+export const RESERVA_CELULA_COMPACTA_PX = 30;
+
+export function calcularVisiveis(total: number, alturaLinha: number, reserva = RESERVA_CELULA_PX): { visiveis: number; resto: number } {
+  const capacidade = alturaLinha > 0 ? Math.max(0, Math.floor((alturaLinha - reserva) / ALTURA_CHIP_PX)) : CAPACIDADE_PADRAO;
   if (total <= capacidade) return { visiveis: total, resto: 0 };
-  const visiveis = Math.max(0, capacidade - 1);
+  // Pelo menos um item aparece: uma célula só com "+9 itens" não diz nada do dia.
+  const visiveis = Math.min(total, Math.max(1, capacidade - 1));
   return { visiveis, resto: total - visiveis };
 }
 

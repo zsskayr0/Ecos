@@ -78,3 +78,53 @@
   .ecos-timeline-cartao { transition: none; }
   .ecos-timeline-ramo { transition: none; }
 }
+
+/* Timeline embutida na Agenda: o cabeçalho do dia fica preso no topo da coluna (é ele o "dia em foco" da grade). */
+[data-coluna-timeline] li[data-dia] > h2 {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: rgb(var(--ecos-base-rgb));
+}
+[data-coluna-timeline] [data-dia],
+[data-coluna-timeline] [data-faixa-de] {
+  scroll-margin-top: 0;
+}
+
+/* Dia em foco: os outros dias ficam esmaecidos (voltam ao passar o mouse). */
+[data-coluna-timeline][data-com-foco] li[data-dia]:not([data-dia="atrasadas"]),
+[data-coluna-timeline][data-com-foco] li[data-faixa-de] {
+  transition: opacity 140ms ease-out;
+}
+[data-coluna-timeline][data-com-foco] li[data-dia]:not([data-foco]):not([data-dia="atrasadas"]):not(:hover),
+[data-coluna-timeline][data-com-foco] li[data-faixa-de]:not([data-foco]):not(:hover) {
+  opacity: 0.4;
+}
+
+/* Ligar a atividade ou abrir os horários do dia: o que aparece desliza para o lugar. */
+@keyframes ecos-deslize {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ecos-abre-horarios {
+  from { opacity: 0; max-height: 0; transform: translateY(-8px); }
+  to { opacity: 1; max-height: 30rem; transform: none; }
+}
+[data-coluna-timeline] li[data-natureza="registro"] {
+  animation: ecos-deslize 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+[data-coluna-timeline] [data-horarios-dia] {
+  animation: ecos-abre-horarios 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-coluna-timeline] li[data-natureza="registro"],
+  [data-coluna-timeline] [data-horarios-dia] { animation: none; }
+}
+
+/* Folga no fim da coluna: o último dia também consegue subir até o topo (e virar o dia em foco). */
+[data-coluna-timeline]::after {
+  content: "";
+  display: block;
+  height: 60vh;
+}
+

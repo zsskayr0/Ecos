@@ -39,7 +39,7 @@ function Anel({ fracao, children }: { fracao: number; children: ReactNode }) {
 
 function Linha({ icone: I, rotulo, valor, tom = "neutro" }: { icone: LucideIcon; rotulo: string; valor: ReactNode; tom?: "neutro" | "alerta" | "entrada" | "saida" }) {
   const cor = { neutro: "text-text-secondary", alerta: "text-error", entrada: "text-success", saida: "text-error" }[tom];
-  return <li className="flex items-center gap-2.5 py-1.5 text-sm">
+  return <li className="flex items-center gap-2.5 py-1.5 text-sm max-lg:py-2 max-lg:text-[15px]">
     <I size={15} aria-hidden className={`shrink-0 ${tom === "neutro" ? "text-text-muted" : cor}`} />
     <span className={`flex-1 ${tom === "alerta" ? "text-error" : "text-text-secondary"}`}>{rotulo}</span>
     <span className={`font-mono-value tabular-nums ${tom === "neutro" ? "text-text-primary" : cor}`}>{valor}</span>
@@ -78,9 +78,9 @@ export function PainelDoDia({ hoje, versao, resumo }: { hoje: string; versao: nu
         <span className="mt-0.5 text-[10px] text-text-muted">de {total}</span>
       </Anel>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-text-primary">{titulo}</p>
-        <p className="mt-0.5 text-xs text-text-muted">{total === 0 ? "Nenhuma tarefa marcada" : `${resumo.concluidas} de ${total} tarefa${total === 1 ? "" : "s"} concluída${resumo.concluidas === 1 ? "" : "s"}`}</p>
-        {frase && <p className={`mt-1.5 text-xs ${capacidade?.estourado || resumo.atrasadas > 0 ? "text-error/90" : "text-text-secondary"}`}>{frase}</p>}
+        <p className="text-sm font-medium text-text-primary max-lg:text-base">{titulo}</p>
+        <p className="mt-0.5 text-xs text-text-muted max-lg:text-[13px]">{total === 0 ? "Nenhuma tarefa marcada" : `${resumo.concluidas} de ${total} tarefa${total === 1 ? "" : "s"} concluída${resumo.concluidas === 1 ? "" : "s"}`}</p>
+        {frase && <p className={`mt-1.5 text-xs max-lg:text-[13px] ${capacidade?.estourado || resumo.atrasadas > 0 ? "text-error/90" : "text-text-secondary"}`}>{frase}</p>}
       </div>
     </div>
 
@@ -89,9 +89,9 @@ export function PainelDoDia({ hoje, versao, resumo }: { hoje: string; versao: nu
         aria-valuenow={Math.round(Math.min(1, capacidade.consumido_tarefas_min / Math.max(1, capacidade.consumido_tarefas_min + livre)) * 100)}>
         <div className={`h-full rounded-full transition-[width] duration-1000 ease-[cubic-bezier(.22,1,.36,1)] ${capacidade.estourado ? "bg-error" : "bg-cyan/70"}`} style={{ width: `${Math.min(1, capacidade.consumido_tarefas_min / Math.max(1, capacidade.consumido_tarefas_min + livre)) * 100}%` }} />
       </div>
-      {capacidade.consumido_tarefas_min > 0 && <p className="mt-1.5 text-[11px] text-text-muted">{fmtDuracao(capacidade.consumido_tarefas_min)} planejados em tarefas</p>}
+      {capacidade.consumido_tarefas_min > 0 && <p className="mt-1.5 text-[11px] text-text-muted max-lg:text-xs">{fmtDuracao(capacidade.consumido_tarefas_min)} planejados em tarefas</p>}
     </div>}
-    {temRotina === false && <button type="button" onClick={() => navigate("/perfil/rotina")} className="mx-4 mb-3 text-xs text-steel-300 hover:underline">Configurar rotina para ver o tempo livre</button>}
+    {temRotina === false && <button type="button" onClick={() => navigate("/perfil/rotina")} className="mx-4 mb-3 min-h-11 text-xs text-steel-300 hover:underline max-lg:text-[13px]">Configurar rotina para ver o tempo livre</button>}
 
     {linhas.length > 0 && <ul className="border-t border-border px-4 py-1.5">{linhas}</ul>}
   </aside>;

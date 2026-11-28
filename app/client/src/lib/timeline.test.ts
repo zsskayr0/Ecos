@@ -97,3 +97,11 @@ describe("trechosDaTimeline", () => {
     expect(t.map((x) => x.tipo === "dia" ? x.dia.dia : `${x.de}..${x.ate}`)).toEqual(["2026-11-25", "2026-11-26..2026-11-27", "2026-11-28", "2026-11-29..2026-11-29"]);
   });
 });
+
+describe("trechosDaTimeline ao lado do mês", () => {
+  it("com todosOsDias, cada dia vazio (passado ou futuro) aparece como dia próprio", () => {
+    const dias = ["2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"].map((dia) => ({ dia, itens: [] }));
+    expect(trechosDaTimeline(dias, "2026-11-27", true).map((t) => (t.tipo === "dia" ? t.dia.dia : "vazio"))).toEqual(["2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"]);
+    expect(trechosDaTimeline(dias, "2026-11-27").map((t) => t.tipo)).toEqual(["dia", "vazio"]);
+  });
+});

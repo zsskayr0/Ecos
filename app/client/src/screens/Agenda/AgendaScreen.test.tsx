@@ -1,4 +1,5 @@
 import { escolher, opcoesDe } from "@/test-helpers/escolher";
+import { diaEMinutosLocais, instanteLocalISO } from "@/lib/agenda-tempo";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,11 +150,11 @@ describe("navegação por toque", () => {
     await abrirAgenda({ modo: "mes" });
     const celula = () => document.querySelector<HTMLElement>("[data-dia-mes]")!;
     deslizar(celula(), -20, 90);
-    expect(screen.getByRole("heading", { name: "setembro de 2026" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Setembro de 2026" })).toBeTruthy();
     deslizar(celula(), -90, 10);
-    expect(await screen.findByRole("heading", { name: "outubro de 2026" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Outubro de 2026" })).toBeTruthy();
     deslizar(celula(), 90, -10);
-    expect(await screen.findByRole("heading", { name: "setembro de 2026" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Setembro de 2026" })).toBeTruthy();
   });
 
   it("avança a semana pelo cabeçalho e preserva a rolagem horizontal da grade", async () => {
@@ -487,20 +488,29 @@ describe("visão mensal: eventos e tarefas juntos", () => {
     await abrirAgenda({ modo: "mes", blocos: [], eventos: ["A", "B", "C", "D"].map((t, i) => ev(`e${i}`, `Evento ${t}`, `2026-09-22T${14 + i}:00:00Z`, `2026-09-22T${15 + i}:00:00Z`)) });
     const c = await celula("2026-09-22");
     await waitFor(() => expect(chips(c)).toEqual(["Evento A", "Evento B"]));
-    expect(c.textContent).toContain("+3 itens"); // 2 eventos escondidos + a tarefa
+    expect(c.textContent).toContain("3 mais…"); // 2 eventos escondidos + a tarefa (desktop: "N mais…", como num calendário)
   });
 
-  it("clicar no evento do mês abre o editor dele", async () => {
+  it("no desktop, clicar no evento do mês abre o popover; Editar abre o editor dele; Esc fecha", async () => {
     await abrirAgenda({ modo: "mes", blocos: [], tarefasDoServidor: [], eventos: [ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z")] });
     vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "" });
     const c = await celula("2026-09-22");
-    fireEvent.click(await waitFor(() => { const b = c.querySelector<HTMLElement>("[data-evento]"); expect(b).toBeTruthy(); return b!; }));
+    const chip = await waitFor(() => { const b = c.querySelector<HTMLElement>("[data-evento]"); expect(b).toBeTruthy(); return b!; });
+    fireEvent.click(chip);
+    const pop = await screen.findByRole("dialog", { name: "Evento: Almoço" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Evento: Almoço" })).toBeNull());
+    expect(pop.isConnected).toBe(false);
+    fireEvent.click(chip);
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Evento: Almoço" })).getByRole("button", { name: "Editar" }));
     await waitFor(() => expect(eventosApi.obter).toHaveBeenCalledWith("e1"));
     expect(await screen.findByLabelText("Título")).toBeTruthy();
   });
 });
 
 describe("o painel do dia lista os eventos (não só as tarefas)", () => {
+  // No desktop as visões de horário são híbridas (o dia vai para a Timeline); o popup do dia é do celular.
+  beforeEach(() => telaLarga(false));
   const eventosDoDia = () => [
     ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z", { local: "Sala 2" }),
     ev("s1", "Alinhamento", "2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", { rrule: "RRULE:FREQ=WEEKLY;WKST=SU;BYDAY=TU", origem_google: true }),
@@ -521,10 +531,10 @@ describe("o painel do dia lista os eventos (não só as tarefas)", () => {
     expect(screen.queryByText(/Nada agendado/)).toBeNull();
   });
 
-  it("clicar num evento do painel fecha o painel e abre o editor dele", async () => {
-    await abrirAgenda({ blocos: [], tarefasDoServidor: [], eventos: eventosDoDia() });
+  it("clicar num evento do painel fecha o painel e abre o editor dele (desktop, quinzenal)", async () => {
+    telaLarga(true);
+    await abrirAgenda({ modo: "quinzenal", blocos: [], tarefasDoServidor: [], eventos: eventosDoDia() });
     vi.mocked(eventosApi.obter).mockResolvedValue({ ...eventosDoServidor[0], descricao: "" });
-    await screen.findByRole("button", { name: /^Almoço,/ });
     abrirPainel();
     fireEvent.click(await screen.findByRole("button", { name: "Abrir evento Almoço" }));
     await waitFor(() => expect(eventosApi.obter).toHaveBeenCalledWith("e1"));
@@ -542,6 +552,8 @@ describe("o painel do dia lista os eventos (não só as tarefas)", () => {
 });
 
 describe("o popup do dia só abre pelo NÚMERO", () => {
+  // No desktop as visões de horário são híbridas (o dia vai para a Timeline); o popup do dia é do celular.
+  beforeEach(() => telaLarga(false));
   it("grade: clicar no cabeçalho, na coluna ou num bloco não abre; o número abre", async () => {
     await abrirAgenda();
     await screen.findByRole("button", { name: /^Relatório,/ });
@@ -553,16 +565,17 @@ describe("o popup do dia só abre pelo NÚMERO", () => {
     expect(await screen.findByRole("dialog", { name: /Tarefas de/ })).toBeTruthy();
   });
 
-  it("Esc fecha o popup do dia", async () => {
-    await abrirAgenda();
-    await screen.findByRole("button", { name: /^Relatório,/ });
+  it("Esc fecha o popup do dia (desktop, no planejamento quinzenal, que não é híbrido)", async () => {
+    telaLarga(true);
+    await abrirAgenda({ modo: "quinzenal" });
     fireEvent.click(document.querySelector("[data-cabecalho-dia='2026-09-22'] button")!);
     await screen.findByRole("dialog", { name: /Tarefas de/ });
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull());
   });
 
-  it("mês: clicar na célula não abre; o número dentro dela abre", async () => {
+  it("mês (celular): clicar na célula não abre; o número dentro dela abre", async () => {
+    telaLarga(false);
     await abrirAgenda({ modo: "mes", blocos: [] });
     const celula = await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-15']"); expect(c).toBeTruthy(); return c!; });
     fireEvent.click(celula);
@@ -571,7 +584,16 @@ describe("o popup do dia só abre pelo NÚMERO", () => {
     expect(await screen.findByRole("dialog", { name: /Tarefas de/ })).toBeTruthy();
   });
 
-  it("mês: o número fica no topo e no meio da célula", async () => {
+  it("mês (desktop): o número fica no topo, pequeno, no canto da célula", async () => {
+    await abrirAgenda({ modo: "mes", blocos: [] });
+    const celula = await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-15']"); expect(c).toBeTruthy(); return c!; });
+    const numero = within(celula).getByRole("button", { name: /Ver tarefas de/ });
+    expect(celula.firstElementChild).toBe(numero);
+    expect(numero.className).not.toMatch(/mx-auto/);
+  });
+
+  it("mês (celular): o número fica no topo e no meio da célula", async () => {
+    telaLarga(false);
     await abrirAgenda({ modo: "mes", blocos: [] });
     const celula = await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-15']"); expect(c).toBeTruthy(); return c!; });
     const numero = within(celula).getByRole("button", { name: /Ver tarefas de/ });
@@ -700,6 +722,7 @@ describe("preferências: início do dia e prazos (refletem sem recarregar)", () 
 
     it("desligado, a tarefa com prazo continua disponível no popup do dia (só a marca some do calendário)", async () => {
       salvarPreferenciasCalendario({ deadlines: false });
+      telaLarga(false);
       await abrirAgenda({ dia: "2026-09-22", tarefasDoServidor: [TAREFA_PRAZO], blocos: [] });
       expect(marcasDePrazo()).toHaveLength(0);
       fireEvent.click(document.querySelector("[data-cabecalho-dia='2026-09-22'] button")!);
@@ -993,5 +1016,67 @@ describe('faixa "O dia todo" na Agenda (semana)', () => {
     fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse", clientX: 450, clientY: yDe(300) });
     await waitFor(() => expect(criarBloco).toHaveBeenCalledWith("p1", { tipo: "planejado", inicio_em: "2026-09-23T08:00:00.000Z", duracao_min: 90 }));
     expect(atualizarTarefa).not.toHaveBeenCalled();
+  });
+});
+
+describe("Timeline ao lado do mês (desktop)", () => {
+  it("no desktop o mês traz a Timeline ao lado; uma barra só, com a atividade desligada por padrão e lembrada", async () => {
+    await abrirAgenda({ modo: "mes" });
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Setembro de 2026" })).toBeTruthy();
+    expect(screen.queryByText("Calendário")).toBeNull();
+    const toggle = screen.getByRole("button", { name: /Atividade/ });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(JSON.parse(localStorage.getItem("ecos.agenda.filtros")!).atividade).toBe(true);
+  });
+  it("no celular o mês continua sem a Timeline", async () => {
+    telaLarga(false);
+    await abrirAgenda({ modo: "mes" });
+    expect(screen.queryByRole("region", { name: "Timeline" })).toBeNull();
+  });
+  it("na semana (desktop) a Timeline também fica ao lado, com a mesma barra e sem o cabeçalho próprio da grade", async () => {
+    await abrirAgenda({ modo: "semana" });
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeTruthy();
+    expect(screen.queryByText("Calendário")).toBeNull();
+  });
+  it("no planejamento quinzenal a Timeline não aparece", async () => {
+    await abrirAgenda({ modo: "quinzenal" });
+    expect(screen.queryByRole("region", { name: "Timeline" })).toBeNull();
+  });
+});
+
+describe("mês no desktop: o dia vai para a Timeline, não para um popup", () => {
+  it("clicar no número do dia não abre o popup do dia", async () => {
+    await abrirAgenda({ modo: "mes", blocos: [] });
+    const celula = await waitFor(() => { const c = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-15']"); expect(c).toBeTruthy(); return c!; });
+    fireEvent.click(within(celula).getAllByRole("button")[0]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog", { name: /Tarefas de/ })).toBeNull();
+  });
+});
+
+describe("arrastar no mês (desktop)", () => {
+  const transferencia = (dados: Record<string, string>) => ({ types: Object.keys(dados), getData: (t: string) => dados[t] ?? "", setData: (t: string, v: string) => { dados[t] = v; }, dropEffect: "", effectAllowed: "" });
+  it("tarefa agendada solta noutro dia muda de dia e mantém a hora local", async () => {
+    atualizarTarefa.mockResolvedValue({} as never);
+    await abrirAgenda({ modo: "mes", blocos: [] });
+    const chip = await waitFor(() => { const b = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-22'] button[draggable='true']"); expect(b).toBeTruthy(); return b!; });
+    const dados: Record<string, string> = {};
+    fireEvent.dragStart(chip, { dataTransfer: transferencia(dados) });
+    const destino = document.querySelector<HTMLElement>("[data-dia-mes='2026-09-24']")!;
+    fireEvent.dragOver(destino, { dataTransfer: transferencia(dados) });
+    fireEvent.drop(destino, { dataTransfer: transferencia(dados) });
+    await waitFor(() => expect(atualizarTarefa).toHaveBeenCalledWith("t1", { scheduled_at: instanteLocalISO("2026-09-24", diaEMinutosLocais("2026-09-22T13:00:00Z").minutos) }));
+  });
+});
+
+describe("Meus calendários (filtro do mês híbrido)", () => {
+  it("desligar Eventos tira os eventos da grade", async () => {
+    localStorage.setItem("ecos.agenda.filtros", JSON.stringify({ eventos: false }));
+    await abrirAgenda({ modo: "mes", blocos: [], tarefasDoServidor: [], eventos: [ev("e1", "Almoço", "2026-09-22T16:00:00Z", "2026-09-22T17:00:00Z")] });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(document.querySelector("[data-dia-mes='2026-09-22'] [data-evento]")).toBeNull();
   });
 });

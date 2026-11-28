@@ -1,19 +1,21 @@
 import { SkeletonAgendaLista } from "@/components/common/SkeletonTelas";
-﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type TouchEvent } from "react";
-import type { EventoLocal } from "@/lib/eventos-locais";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type TouchEvent } from "react";
+import { doCofre, type EventoLocal } from "@/lib/eventos-locais";
 import { useEventosDoPeriodo } from "@/lib/eventos-agenda";
 import { useAbrirDocumento } from "@/lib/documento-popup";
 import { AlertTriangle, ListChecks, Clock, CheckCircle2, ChevronLeft, ChevronRight, Maximize2, X, CalendarDays, CalendarRange, CalendarPlus, Cloud, Columns3, Flag, LayoutGrid, PanelTop, Plus, Repeat, Sun, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { agenda as agendaApi, eventos as eventosApi, tarefas as tarefasApi, rotina as rotinaApi, ApiError, type BlocoPlanejado, type CategoriaEvento, type PrioridadeTarefa, type TarefaResumo } from "@/lib/api";
+import { createPortal } from "react-dom";
+import { Dialog } from "@/components/common/Dialog";
+import { agenda as agendaApi, eventos as eventosApi, tarefas as tarefasApi, rotina as rotinaApi, financeiro, vault, ApiError, type BlocoPlanejado, type CategoriaEvento, type PrioridadeTarefa, type TarefaResumo } from "@/lib/api";
 import { formatDuracao } from "@/lib/format";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CalendarClock } from "lucide-react";
-import { calcularVisiveis, classeDiaMes } from "./mes-celula";
+import { RESERVA_CELULA_COMPACTA_PX, calcularVisiveis, classeDiaMes } from "./mes-celula";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { useIsDesktop } from "@/lib/use-viewport";
 import { MenuSuspenso, TOM, type OpcaoMenu } from "@/components/common/MenuSuspenso";
-import { ENCAIXE_PADRAO, HORA_PADRAO_MIN, concluidasPorDia, horaLocal, OPCOES_ENCAIXE, aplicarPayloadNoBloco, dataLocalISO, duracaoParaAlocar, instanteLocalISO, itensDaTarefa, itemDoBloco, meioDiaLocal, payloadDoBloco, somarDiasISO, type ItemAgenda, type PayloadBloco, type Posicao } from "@/lib/agenda-tempo";
+import { diaEMinutosLocais, ENCAIXE_PADRAO, HORA_PADRAO_MIN, concluidasPorDia, horaLocal, OPCOES_ENCAIXE, aplicarPayloadNoBloco, dataLocalISO, duracaoParaAlocar, instanteLocalISO, itensDaTarefa, itemDoBloco, meioDiaLocal, payloadDoBloco, somarDiasISO, type ItemAgenda, type PayloadBloco, type Posicao } from "@/lib/agenda-tempo";
 import { useOuvirArrasteTarefa, type TarefaArrastavel } from "@/lib/arraste-tarefa";
 import { cabecalhoDaSemana, deslocamentoDoMes, primeiroDiaDaSemana } from "@/lib/formato-data";
 import { usePreferenciasCalendario } from "@/lib/preferencias-calendario";
@@ -29,6 +31,13 @@ import { useEspacoFiltro } from "@/lib/use-espaco-filtro";
 import { useAppUI } from "@/lib/ui-context";
 
 import { mensagemDeErro } from "@/lib/erros";
+import { avisarComDesfazer } from "@/lib/desfazer";
+import { iniciarArrasteMes, lerArrasteMes, temArrasteMes, type ItemArrastadoMes } from "@/lib/arraste-mes";
+import { TimelineScreen } from "../Timeline/TimelineScreen";
+import { BarraLateralAgenda } from "./BarraLateralAgenda";
+import { TIPOS_AGENDA, gravarFiltrosAgenda, lerFiltrosAgenda, tipoDoItem, type FiltrosAgenda, type TipoAgenda } from "@/lib/filtros-agenda";
+import { Activity } from "lucide-react";
+import { PopoverAncorado, quandoDoItem, type ResumoPopover } from "@/components/common/PopoverAncorado";
 type ModoAgenda = "dia" | "tres_dias" | "semana" | "quinzenal" | "mes" | "seis_meses" | "anual";
 type AncoraPopup = { left: number; top: number; width: number; height: number };
 
@@ -50,7 +59,7 @@ function lerEncaixe(): number {
 }
 
 function itemDoEvento(e: EventoLocal): ItemAgenda {
-  return { chave: `evento:${e.id}`, tipo: "evento", id: String(e.id), titulo: e.titulo, dia: e.inicio, inicioMin: e.minutos, duracaoMin: e.duracaoMin, classe: e.corHex ? "" : e.cor, corHex: e.corHex, concluida: false, transacao: !!e.transacaoId, legenda: e.legenda };
+  return { chave: `evento:${e.id}`, tipo: "evento", id: String(e.id), titulo: e.titulo, dia: e.inicio, inicioMin: e.minutos, duracaoMin: e.duracaoMin, classe: e.corHex ? "" : e.cor, corHex: e.corHex, concluida: false, transacao: doCofre(e), legenda: e.legenda };
 }
 
 /** A Agenda mostra tanto blocos com hora quanto tarefas que só possuem data/prazo. */
@@ -90,6 +99,8 @@ function limitesDoPeriodo(modo: ModoAgenda, referencia: Date): { de: string; ate
 function lerEstadoInicialAgenda(): { modo: ModoAgenda; dia: Date } {
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE_CACHE_AGENDA) ?? "{}") as { modo?: unknown; dia?: unknown };
+    // Vindo da antiga /timeline (desktop): abre no mês, onde a Timeline fica ao lado.
+    if (new URLSearchParams(window.location.search).get("modo") === "mes") salvo.modo = "mes";
     const modo: ModoAgenda = ["dia", "tres_dias", "semana", "quinzenal", "mes", "seis_meses", "anual"].includes(String(salvo.modo)) ? salvo.modo as ModoAgenda : "mes";
     // Meio-dia evita que a conversão UTC desloque o dia no fuso local.
     const dia = typeof salvo.dia === "string" ? new Date(`${salvo.dia}T12:00:00`) : new Date();
@@ -204,11 +215,36 @@ export function AgendaScreen() {
   const [eventoEmEdicao, setEventoEmEdicao] = useState<{ id: string; ocorrencia?: string } | null>(null);
   const [categoriasEvento, setCategoriasEvento] = useState<CategoriaEvento[]>([]);
   useEffect(() => { eventosApi.categorias.listar({ espaco }).then(setCategoriasEvento).catch(() => setCategoriasEvento([])); }, [versao, espaco]);
+  // Desktop, mês: clicar num item da grade abre o popover dele (resumo + ações rápidas), sem sair da tela.
+  const [popover, setPopover] = useState<{ ancora: DOMRect; origem: HTMLElement; resumo: ResumoPopover } | null>(null);
+  const resumoDoItem = (item: ItemAgenda): ResumoPopover => {
+    const quando = quandoDoItem(item.dia, item.inicioMin);
+    if (item.tipo === "tarefa" || item.tipo === "prazo") return {
+      tipo: item.tipo === "prazo" ? "Prazo de tarefa" : "Tarefa", titulo: item.titulo, quando, cor: item.corHex,
+      acoes: [
+        { rotulo: "Abrir", onClick: () => abrirDocumento(`/tarefa/${item.id}`) },
+        ...(item.concluida ? [] : [{ rotulo: "Concluir", primaria: true, onClick: () => { void tarefasApi.atualizarStatus(item.id, "concluida").then(notificar).catch((e) => setAvisoMover(mensagemDeErro(e, "Não foi possível concluir a tarefa."))); } }]),
+      ],
+    };
+    const evento = eventosLocais.find((ev) => String(ev.id) === item.id);
+    if (evento?.transacaoId) return { tipo: "Lançamento do Cofre", titulo: evento.titulo, quando, detalhe: evento.legenda, cor: evento.corHex, acoes: [{ rotulo: "Abrir lançamento", primaria: true, onClick: () => abrirDocumento(`/cofre/transacao/${evento.transacaoId}`) }] };
+    if (evento?.recorrenciaId) return { tipo: "Conta a vencer", titulo: evento.titulo, quando, detalhe: evento.legenda, cor: evento.corHex, acoes: [{ rotulo: "Ver recorrências", primaria: true, onClick: () => navigate("/cofre/recorrencias") }] };
+    return {
+      tipo: "Evento", titulo: item.titulo, quando: evento?.duracaoMin && item.inicioMin !== null ? `${quando}–${hhmm(item.inicioMin + evento.duracaoMin)}` : quando, detalhe: evento?.local, cor: item.corHex,
+      acoes: evento?.servidorId ? [{ rotulo: "Editar", primaria: true, onClick: () => setEventoEmEdicao({ id: evento.servidorId!, ocorrencia: evento.ocorrencia }) }] : [],
+    };
+  };
   const abrirItemAgenda = (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
+    if (desktop && modo === "mes" && e.currentTarget instanceof HTMLElement && item.tipo !== "bloco") {
+      const origem = e.currentTarget;
+      setPopover((atual) => (atual?.origem === origem ? null : { ancora: origem.getBoundingClientRect(), origem, resumo: resumoDoItem(item) }));
+      return;
+    }
     if (item.tipo === "tarefa" || item.tipo === "prazo") abrirDocumento(`/tarefa/${item.id}`, e.type === "click" ? (e as MouseEvent<HTMLElement>) : undefined);
     else if (item.tipo === "evento") {
       const evento = eventosLocais.find((ev) => String(ev.id) === item.id);
       if (evento?.transacaoId) { abrirDocumento(`/cofre/transacao/${evento.transacaoId}`); return; }
+      if (evento?.recorrenciaId) { navigate("/cofre/recorrencias"); return; }
       setEventoEmEdicao(evento?.servidorId ? { id: evento.servidorId, ocorrencia: evento.ocorrencia } : null);
     }
   };
@@ -403,6 +439,60 @@ export function AgendaScreen() {
     editarBloco(item.id, payloadDoBloco({ dia: item.dia, inicioMin: item.inicioMin, duracaoMin: item.duracaoMin }, destino), { imediato: origem !== "teclado" });
   }
 
+  /**
+   * Desktop, mês: um item arrastado (da grade ou da Timeline) caiu num dia. Tarefa mantém a hora (ou o prazo muda de
+   * dia), evento muda de dia com o mesmo horário, lançamento do Cofre é reagendado e conta a vencer vira lançamento
+   * pendente na data nova. Tudo com "Desfazer".
+   */
+  async function moverParaDia(arrastado: ItemArrastadoMes, dia: string) {
+    const { chave } = arrastado;
+    const rotulo = new Date(`${dia}T12:00:00`).toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(/\./g, "");
+    const feito = (desfazer: () => Promise<unknown>) => { notificar(); avisarComDesfazer(`Movido para ${rotulo}.`, desfazer, { aoDesfazer: notificar, sucesso: "Voltou para o dia de antes." }); };
+    const falhou = (e: unknown, texto: string) => setAvisoMover(mensagemDeErro(e, texto));
+    const [tipo, ...resto] = chave.split(":");
+    try {
+      if (tipo === "tarefa" || tipo === "prazo") {
+        const id = resto.join(":");
+        const tarefa = itensDoPeriodo.find((t) => t.id === id);
+        const agendada = tipo === "tarefa" ? (tarefa?.scheduled_at ?? arrastado.scheduledAt ?? null) : null;
+        if (agendada) {
+          if (diaEMinutosLocais(agendada).dia === dia) return;
+          await tarefasApi.atualizar(id, { scheduled_at: instanteLocalISO(dia, diaEMinutosLocais(agendada).minutos) });
+          feito(() => tarefasApi.atualizar(id, { scheduled_at: agendada }));
+          return;
+        }
+        const prazo = tarefa?.due_date ?? arrastado.dueDate ?? null;
+        if (prazo?.slice(0, 10) === dia) return;
+        await tarefasApi.atualizar(id, { due_date: dia });
+        feito(() => tarefasApi.atualizar(id, { due_date: prazo }));
+        return;
+      }
+      const evento = eventosLocais.find((e) => (tipo === "evento" ? `evento:${e.id}` : String(e.id)) === chave || (e.transacaoId && `transacao:${e.transacaoId}` === chave));
+      if (!evento || evento.inicio === dia) return;
+      if (evento.transacaoId) {
+        const id = evento.transacaoId;
+        await financeiro.reagendar(id, dia);
+        feito(() => financeiro.reagendar(id, evento.inicio));
+        return;
+      }
+      if (evento.recorrenciaId) {
+        const rid = evento.recorrenciaId;
+        const { transacao_id } = await financeiro.concluir(rid, evento.inicio, dia, { confirmar: false });
+        feito(() => vault.transacoes.excluir(transacao_id));
+        return;
+      }
+      if (!evento.servidorId) return;
+      if (!evento.movivel) { setAvisoMover("Evento de vários dias: para mudar a data, clique nele e edite."); return; }
+      const servidorId = evento.servidorId;
+      const original: Posicao = { dia: evento.inicio, inicioMin: evento.minutos, duracaoMin: evento.duracaoMin };
+      await moverEventoNoServidor(servidorId, { ...original, dia }, evento.ocorrencia);
+      feito(() => moverEventoNoServidor(servidorId, original, evento.ocorrencia));
+    } catch (e) {
+      falhou(e, "Não foi possível mover o item. Nada mudou.");
+      notificar();
+    }
+  }
+
   /** Uma tarefa foi solta no calendário (arrasto ou diálogo): reserva `destino.duracaoMin` de tempo. A tarefa em si não muda. */
   async function alocarTarefa(tarefa: TarefaArrastavel, destino: Posicao) {
     if (destino.inicioMin === null) return;
@@ -448,9 +538,108 @@ export function AgendaScreen() {
 
   const ehHojeFn = (d: Date) => paraISO(d) === paraISO(hoje);
   const pendentes = blocos?.filter((b) => b.status === "pendente").length ?? 0;
+  // Desktop, mês: a Timeline fica ao lado e acompanha o dia marcado (o popup do dia continua, pela grade de horários).
+  const mesComTimeline = desktop && modo === "mes";
+  // Visão híbrida (barra lateral + Timeline + grade) também nas visões de horário.
+  const tempoHibrido = desktop && (modo === "semana" || modo === "tres_dias" || modo === "dia");
+  const hibrida = mesComTimeline || tempoHibrido;
+  // Desktop, mês: os dias são quadrados em qualquer resolução. A altura disponível decide o lado do dia; a grade fica
+  // com 7 lados de largura e a Timeline fica com o resto (mas nunca menos que 17rem).
+  const areaDividida = useRef<HTMLDivElement>(null);
+  const colunaMes = useRef<HTMLDivElement>(null);
+  const [tamanhoMes, setTamanhoMes] = useState<{ largura: number; altura: number; timeline: number; lateral: boolean } | null>(null);
+  const linhasDoMes = (() => { const { offset, totalDias } = gerarDiasDoMes(diaAtual); return Math.ceil((offset + totalDias) / 7); })();
+  useLayoutEffect(() => {
+    const area = areaDividida.current;
+    const coluna = colunaMes.current;
+    if (!hibrida || !area || (mesComTimeline && !coluna) || typeof ResizeObserver === "undefined") { setTamanhoMes(null); return; }
+    const medir = () => {
+      // Visões de horário: só decide se a barra lateral cabe; a grade de horas fica com o resto.
+      if (!mesComTimeline || !coluna) {
+        const lateral = area.clientWidth >= 1440;
+        setTamanhoMes((t) => (t && t.largura === 0 && t.lateral === lateral ? t : { largura: 0, altura: 0, timeline: 0, lateral }));
+        return;
+      }
+      // A altura vem da linha da grade (o pai), não da própria coluna: ela pode ter ficado mais baixa na medida anterior.
+      const altura = area.clientHeight - (area.querySelector<HTMLElement>(":scope > header")?.offsetHeight ?? 0);
+      const semana = coluna.querySelector<HTMLElement>("[data-cabecalho-semana]")?.offsetHeight ?? 37;
+      const bordas = 2;
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize || "16");
+      const [minTimeline, maxTimeline, vao] = [17 * rem, 30 * rem, 16];
+      // A barra lateral (mini calendário + calendários) só entra quando a tela tem folga para ela.
+      const lateral = area.clientWidth >= 1440 ? 16 * rem + 2 * vao : 0;
+      const livre = area.clientWidth - lateral;
+      // Dia quadrado até onde der; em tela larga ele pode alargar até 1,4× a altura (como num calendário comum) e,
+      // se ainda sobrar espaço, o conjunto fica centralizado em vez de esticar a Timeline em linhas enormes.
+      const alturaDia = (altura - semana - bordas) / linhasDoMes;
+      const larguraDia = Math.max(40, Math.floor(Math.min(alturaDia * 1.4, (livre - minTimeline - vao - bordas) / 7)));
+      const ladoAlto = Math.max(40, Math.floor(Math.min(alturaDia, larguraDia)));
+      const largura = larguraDia * 7 + bordas;
+      const alturaMes = ladoAlto * linhasDoMes + semana + bordas;
+      const timeline = Math.floor(Math.max(minTimeline, Math.min(maxTimeline, livre - largura - vao)));
+      const comLateral = lateral > 0;
+      setTamanhoMes((t) => (t && t.largura === largura && t.altura === alturaMes && t.timeline === timeline && t.lateral === comLateral ? t : { largura, altura: alturaMes, timeline, lateral: comLateral }));
+    };
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(area);
+    if (coluna) obs.observe(coluna);
+    return () => obs.disconnect();
+  }, [mesComTimeline, hibrida, linhasDoMes]);
+  // "Meus calendários": o que aparece na grade e na Timeline (a atividade é um deles).
+  const [filtros, setFiltros] = useState<FiltrosAgenda>(lerFiltrosAgenda);
+  const alternarFiltro = (tipo: TipoAgenda) => setFiltros((f) => { const novo = { ...f, [tipo]: !f[tipo] }; gravarFiltrosAgenda(novo); return novo; });
+  const mostrarAtividade = filtros.atividade;
+  const alternarAtividade = () => alternarFiltro("atividade");
+  const diaEmFocoTimeline = paraISO(diaMarcado ?? diaAtual);
+  const modoRef = useRef(modo);
+  modoRef.current = modo;
+  const focarDiaDaTimeline = useCallback((iso: string) => {
+    const [a, m, d] = iso.split("-").map(Number);
+    const data = new Date(a, m - 1, d);
+    setDiaMarcado(data);
+    setDiaPopup(data);
+    setDiaAtual((atual) => {
+      if (modoRef.current === "mes") return atual.getFullYear() === a && atual.getMonth() === m - 1 ? atual : data;
+      const { de, ate } = limitesDoPeriodo(modoRef.current, atual);
+      return iso >= de && iso <= ate ? atual : data;
+    });
+  }, []);
+  const [versaoPedidoDia, setVersaoPedidoDia] = useState(0);
+  /** Pontinhos do mini calendário: as cores dos tipos que cada dia carregado tem (respeitando os filtros). */
+  // O mini calendário tem carga própria do mês que mostra: assim os pontinhos existem no mês inteiro, também na
+  // semana/dia (que só carregam o período da grade) e quando a pessoa navega o mini calendário pelas setas.
+  const [mesMini, setMesMini] = useState(() => paraISO(new Date(diaAtual.getFullYear(), diaAtual.getMonth(), 1)));
+  const fimMesMini = (() => { const [a, m] = mesMini.split("-").map(Number); return paraISO(new Date(a, m, 0)); })();
+  const [tarefasMini, setTarefasMini] = useState<TarefaResumo[]>([]);
+  useEffect(() => {
+    if (!hibrida) return;
+    let vivo = true;
+    const tz = -new Date(`${mesMini}T12:00:00`).getTimezoneOffset();
+    tarefasApi.listar({ data_de: mesMini, data_ate: fimMesMini, tz, espaco, limit: 500 })
+      .then((r) => { if (vivo) setTarefasMini(r.items); }).catch(() => { if (vivo) setTarefasMini([]); });
+    return () => { vivo = false; };
+  }, [hibrida, mesMini, fimMesMini, espaco, versao]);
+  const { eventos: eventosMini } = useEventosDoPeriodo(mesMini, fimMesMini, versao, espaco, hibrida);
+  const marcasDoMes = useMemo(() => {
+    const cor = new Map(TIPOS_AGENDA.map((t) => [t.tipo, t.cor]));
+    const marcas = new Map<string, string[]>();
+    const marcar = (dia: string, tipo: TipoAgenda) => {
+      if (!filtros[tipo]) return;
+      const c = cor.get(tipo)!;
+      const l = marcas.get(dia);
+      if (!l) marcas.set(dia, [c]); else if (!l.includes(c)) l.push(c);
+    };
+    for (const t of tarefasMini) for (const i of itensDaTarefa(t, { mostrarPrazos })) if (!i.concluida) marcar(i.dia, tipoDoItem(i));
+    for (const e of eventosMini) marcar(e.inicio, tipoDoItem({ ...e, tipo: "evento" }));
+    return marcas;
+  }, [tarefasMini, eventosMini, mostrarPrazos, filtros]);
   const selecionarDia = (data: Date, alvo?: HTMLElement) => {
+    setVersaoPedidoDia((n) => n + 1);
     setDiaPopup(data);
     setDiaMarcado(data);
+    // Desktop, mês: o dia não abre popup; a Timeline ao lado rola até ele e o põe em foco.
+    if (hibrida) { setTarefasAbertas(false); return; }
     const pai = agendaRef.current?.getBoundingClientRect();
     const retangulo = alvo?.getBoundingClientRect();
     if (desktop && pai && retangulo) setAncoraPopup({ left: retangulo.left - pai.left, top: retangulo.top - pai.top, width: retangulo.width, height: retangulo.height });
@@ -524,13 +713,40 @@ export function AgendaScreen() {
   }
 
   // Mês recolhido (celular): o resumo do dia vai embutido embaixo do calendário, em vez de abrir a folha.
-  const renderResumoDoDia = (dia: Date) => <ResumoEmbutido key={paraISO(dia)} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(dia))} onAbrirEvento={(ev, manterAberto) => { if (!manterAberto) setTarefasAbertas(false); if (ev.transacaoId) { abrirDocumento(`/cofre/transacao/${ev.transacaoId}`); return; } if (!desktop && ev.servidorId) { navigate(`/eventos?evento=${encodeURIComponent(ev.servidorId)}${ev.ocorrencia ? `&ocorrencia=${encodeURIComponent(ev.ocorrencia)}` : ""}`); return; } setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} dia={dia} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(dia)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(dia)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(dia))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />;
+  /** A grade de horários de um dia: a mesma no popup, no resumo do celular e no dia expandido da Timeline. */
+  const gradeDoDia = (iso: string) => <GradeTempo concluidas={concluidasNoDia} dias={[iso]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === iso)} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />;
+  const renderResumoDoDia = (dia: Date) => <ResumoEmbutido key={paraISO(dia)} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(dia))} onAbrirEvento={(ev, manterAberto) => { if (!manterAberto) setTarefasAbertas(false); if (ev.transacaoId) { abrirDocumento(`/cofre/transacao/${ev.transacaoId}`); return; } if (ev.recorrenciaId) { navigate("/cofre/recorrencias"); return; } if (!desktop && ev.servidorId) { navigate(`/eventos?evento=${encodeURIComponent(ev.servidorId)}${ev.ocorrencia ? `&ocorrencia=${encodeURIComponent(ev.ocorrencia)}` : ""}`); return; } setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} dia={dia} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(dia)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={gradeDoDia(paraISO(dia))} />;
 
   return (
     <div ref={agendaRef} className={`relative flex min-h-0 flex-col ${desktop ? "h-full px-4 pt-1 pb-4" : "h-[calc(100dvh-13rem-var(--ecos-safe-top)-var(--ecos-safe-bottom))] min-h-[30rem] px-3 pt-1"}`}>
       <div ref={areaRef} className="flex min-h-0 flex-1 flex-col overflow-hidden" onTouchStart={iniciarGestoPeriodo} onTouchMove={acompanharGestoPeriodo} onTouchEnd={concluirGestoPeriodo} onTouchCancel={() => { toquePeriodo.current = null; }}>
-      {modo === "mes" && (
-        <VisaoMes onAbrirItem={abrirItemAgenda} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} eventos={eventosLocais} concluidas={concluidasNoDia} onSelecionar={selecionarDia} marcado={diaMarcado} aoMarcar={(d) => { setDiaPopup(d); setDiaMarcado(d); }} aoHojeRecolhido={() => { setDiaAtual(hoje); setDiaPopup(hoje); setDiaMarcado(hoje); }} renderDia={renderResumoDoDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
+      {(modo === "mes" || tempoHibrido) && (
+        <div ref={areaDividida} style={hibrida && tamanhoMes ? { gridTemplateColumns: mesComTimeline ? `${tamanhoMes.timeline}px ${tamanhoMes.largura}px${tamanhoMes.lateral ? " 16rem" : ""}` : `minmax(17rem,24rem) minmax(0,1fr)${tamanhoMes.lateral ? " 16rem" : ""}` } : undefined} className={hibrida ? "grid min-h-0 flex-1 grid-cols-[minmax(17rem,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] justify-center gap-x-4" : "contents"}>
+        {/* Uma barra só para as duas colunas: o mês, a navegação e o que mostrar valem para a Timeline e para a grade. */}
+        {hibrida && <header style={{ gridColumn: "1 / -1" }} className="flex flex-wrap items-center justify-between gap-3 pb-3 pt-1">
+          <div className="flex items-baseline gap-3"><h1 className="font-display text-2xl text-text-primary">{mesComTimeline ? nomeDoMes(diaAtual) : rotuloDoPeriodoTempo(modo, diaAtual)}</h1><span className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Agenda</span></div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!tamanhoMes?.lateral && <button type="button" onClick={alternarAtividade} aria-pressed={mostrarAtividade} title={mostrarAtividade ? "Ocultar o registro de atividade" : "Mostrar o registro de atividade"}
+              className={`flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${mostrarAtividade ? "border-cyan/40 bg-cyan/10 text-cyan" : "border-border bg-surface-1 text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}>
+              <Activity size={15} aria-hidden />Atividade
+            </button>}
+            <AcoesAgenda modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onAlocar={() => setAlocarAberto(true)} />
+          </div>
+        </header>}
+        {modo === "mes" && <div ref={colunaMes} style={mesComTimeline && tamanhoMes ? { width: tamanhoMes.largura, height: tamanhoMes.altura, gridColumn: 2, gridRow: 2 } : undefined} className={mesComTimeline ? "col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col self-start" : "contents"}>
+        <VisaoMes filtros={mesComTimeline ? filtros : undefined} semCabecalho={mesComTimeline} onMoverParaDia={mesComTimeline ? (a, dia) => { void moverParaDia(a, dia); } : undefined} onAbrirItem={abrirItemAgenda} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} itens={itensDoPeriodo} eventos={eventosLocais} concluidas={concluidasNoDia} onSelecionar={selecionarDia} marcado={diaMarcado} aoMarcar={(d) => { setDiaPopup(d); setDiaMarcado(d); }} aoHojeRecolhido={() => { setDiaAtual(hoje); setDiaPopup(hoje); setDiaMarcado(hoje); }} renderDia={renderResumoDoDia} onAlocarTarefa={alocarNoDia} mostrarPrazos={mostrarPrazos} onAlocar={() => setAlocarAberto(true)} />
+        </div>}
+        {tempoHibrido && <div style={{ gridColumn: 2, gridRow: 2 }} className="flex min-h-0 min-w-0 flex-col">
+          <VisaoTempo semCabecalho concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />
+        </div>}
+        {/* A Timeline fica à esquerda (ordem visual; no DOM continua depois da grade). */}
+        {/* Barra lateral à direita da grade, com respiro: mini calendário e "Meus calendários". */}
+        {hibrida && tamanhoMes?.lateral && <div style={{ gridColumn: 3, gridRow: 2 }} className="ml-2 flex min-h-0 min-w-0 flex-col border-l border-border/60 pl-5">
+          <BarraLateralAgenda mesInicial={diaAtual} onMudarMes={(m) => setMesMini(paraISO(m))} periodo={tempoHibrido ? limitesDoPeriodo(modo, diaAtual) : undefined} hoje={paraISO(hoje)} diaFoco={diaEmFocoTimeline} marcas={marcasDoMes} onSelecionar={(d) => { if (d.getMonth() !== diaAtual.getMonth() || d.getFullYear() !== diaAtual.getFullYear()) setDiaAtual(d); selecionarDia(d); }} filtros={filtros} onAlternar={alternarFiltro} />
+        </div>}
+        {hibrida && <div style={{ gridColumn: 1, gridRow: 2 }} className="col-start-1 row-start-2 flex min-h-0 min-w-0 flex-col border-r border-border/60 [&>section]:min-h-0 [&>section]:flex-1"><TimelineScreen embutida={{ diaEmFoco: diaEmFocoTimeline, onDiaEmFoco: focarDiaDaTimeline, mostrarAtividade, filtros, versaoPedido: versaoPedidoDia, onNovoNoDia: (dia) => abrirCaptura("tarefa", dia), horarios: mesComTimeline ? { ...limitesDoPeriodo(modo, diaAtual), render: gradeDoDia } : undefined }} /></div>}
+        {popover && <PopoverAncorado ancora={popover.ancora} origem={popover.origem} resumo={popover.resumo} onFechar={() => setPopover(null)} />}
+        </div>
       )}
       {modo === "quinzenal" && (
         <PlanejamentoQuinzenal
@@ -546,14 +762,14 @@ export function AgendaScreen() {
           onSelecionarDia={(dia, alvo) => selecionarDia(meioDiaLocal(dia), alvo)}
         />
       )}
-      {(modo === "tres_dias" || modo === "semana") && (
+      {!tempoHibrido && (modo === "tres_dias" || modo === "semana") && (
         <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />
       )}
-      {modo === "dia" && <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />}
+      {!tempoHibrido && modo === "dia" && <VisaoTempo concluidas={concluidasNoDia} pedidoAgora={pedidoAgora} modo={modo} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} diaAtual={diaAtual} hoje={hoje} onSelecionar={selecionarDia} eventos={eventosLocais} tarefas={itensDoPeriodo} blocos={blocosDeTempo} inicioMin={inicioMin} mostrarPrazos={mostrarPrazos} onRemoverItem={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} onAlocar={() => setAlocarAberto(true)} encaixe={encaixe} onMudarEncaixe={setEncaixe} onMoverItem={moverItem} onAbrirItem={abrirItemAgenda} />}
       {(modo === "seis_meses" || modo === "anual") && <VisaoPeriodos modo={modo} diaAtual={diaAtual} hoje={hoje} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...eventosLocais.map(itemDoEvento)]} concluidas={concluidasNoDia} onMudarModo={setModo} onHoje={irParaHoje} onNavegar={navegarPeriodo} onAbrirEvento={() => setCriadorEventoAberto(true)} onSelecionar={selecionarDia} onAbrirMes={(mes) => { setDiaAtual(mes); setModo("mes"); }} />}
       </div>
 
-      {tarefasAbertas && <PopupTarefas onMaximizar={setMaximizadoAberto} sheet={!desktop} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(diaFoco))} onAbrirEvento={(ev, manterAberto) => { if (!manterAberto) setTarefasAbertas(false); if (ev.transacaoId) { abrirDocumento(`/cofre/transacao/${ev.transacaoId}`); return; } if (!desktop && ev.servidorId) { navigate(`/eventos?evento=${encodeURIComponent(ev.servidorId)}${ev.ocorrencia ? `&ocorrencia=${encodeURIComponent(ev.ocorrencia)}` : ""}`); return; } setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={<GradeTempo concluidas={concluidasNoDia} dias={[paraISO(diaFoco)]} hoje={paraISO(hoje)} itens={[...itensDoPeriodo.flatMap((t) => itensDaTarefa(t, { mostrarPrazos })), ...blocosDeTempo.map(itemDoBloco), ...eventosLocais.map(itemDoEvento)].filter((i) => i.dia === paraISO(diaFoco))} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={setEncaixe} onSelecionarDia={() => {}} onAbrirItem={abrirItemAgenda} onMover={moverItem} onRemover={removerBloco} onAlocarTarefa={alocarTarefa} onCriarNoHorario={criarTarefaNoHorario} onAbrirTarefaCriada={(id) => abrirDocumento(`/tarefa/${id}`)} onAbrirCriacaoCompleta={() => abrirCaptura("tarefa")} />} />}
+      {tarefasAbertas && <PopupTarefas onMaximizar={setMaximizadoAberto} sheet={!desktop} eventosDoDia={eventosLocais.filter((ev) => ev.inicio === paraISO(diaFoco))} onAbrirEvento={(ev, manterAberto) => { if (!manterAberto) setTarefasAbertas(false); if (ev.transacaoId) { abrirDocumento(`/cofre/transacao/${ev.transacaoId}`); return; } if (ev.recorrenciaId) { navigate("/cofre/recorrencias"); return; } if (!desktop && ev.servidorId) { navigate(`/eventos?evento=${encodeURIComponent(ev.servidorId)}${ev.ocorrencia ? `&ocorrencia=${encodeURIComponent(ev.ocorrencia)}` : ""}`); return; } setEventoEmEdicao(ev.servidorId ? { id: ev.servidorId, ocorrencia: ev.ocorrencia } : null); }} key={`${modo}-${dataStr}`} ancora={ancoraPopup} dia={diaFoco} blocos={blocos} concluidasDoDia={concluidasNoDia.get(paraISO(diaFoco)) ?? []} capacidade={capacidade} semRotina={semRotina} erro={erro} pendentes={pendentes} onFechar={() => setTarefasAbertas(false)} onAjustarRotina={() => navigate("/perfil/rotina")} abrirDocumento={abrirDocumento} visaoDia={gradeDoDia(paraISO(diaFoco))} />}
       {avisoMover && (
         <div role="alert" className="ecos-fade-in absolute left-1/2 top-3 z-40 flex max-w-[90%] -translate-x-1/2 items-start gap-2 rounded-xl border border-error/40 bg-base px-4 py-3 text-sm text-error shadow-nav">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -589,7 +805,25 @@ function AcoesAgenda({ modo, onMudarModo, onHoje, onNavegar = () => {}, onAbrirE
   return <div className="flex flex-wrap items-center gap-1.5 sm:gap-2"><button onClick={() => onNavegar(-1)} className="group flex h-9 w-8 items-center justify-center rounded-lg border sm:w-9 border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Período anterior"><ChevronLeft size={18} className="transition-transform duration-300 ease-out group-hover:-translate-x-1 group-active:-translate-x-2.5 group-active:duration-500" /></button><MenuSuspenso ariaLabel="Escolher período da agenda" valor={modo} opcoes={PERIODOS} onChange={onMudarModo} corAtiva={atual?.cor ?? TOM.aco} classeGatilho="group flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-1 px-2.5 text-sm font-medium text-text-secondary transition-all sm:px-3 hover:bg-surface-2 hover:text-text-primary active:scale-95" gatilho={() => <><Icone size={16} className="transition-transform duration-300 ease-out group-hover:-rotate-12 group-hover:scale-125 group-active:rotate-[360deg] group-active:scale-90 group-active:duration-700" /><span>{atual?.rotulo}</span></>} /><button onClick={() => onNavegar(1)} className="group flex h-9 w-8 items-center justify-center rounded-lg border sm:w-9 border-border bg-surface-1 text-text-muted transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95" aria-label="Próximo período"><ChevronRight size={18} className="transition-transform duration-300 ease-out group-hover:translate-x-1 group-active:translate-x-2.5 group-active:duration-500" /></button><button onClick={(e) => onHoje(e.currentTarget)} className="rounded-lg border border-border bg-surface-1 px-2.5 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary sm:px-3">Hoje</button><button onClick={onAbrirEvento} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><Plus size={16} className="transition-transform duration-500 ease-out group-hover:rotate-90 group-active:rotate-[450deg] group-active:duration-700" /><span className="hidden sm:inline">Evento</span><span className="sr-only sm:hidden">Novo evento</span></button>{onAlocar && <button onClick={onAlocar} className="group flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 text-sm font-medium text-text-secondary transition-all hover:bg-surface-2 hover:text-text-primary active:scale-95"><RelogioAnimado /><span className="hidden sm:inline">Alocar tempo</span><span className="sr-only sm:hidden">Alocar tempo</span></button>}</div>;
 }
 
-function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, itens, eventos, concluidas, marcado, aoMarcar, aoHojeRecolhido, renderDia, onSelecionar, onAlocarTarefa, mostrarPrazos, onAlocar }: { aoMarcar: (d: Date) => void; aoHojeRecolhido: () => void; renderDia: (dia: Date) => import("react").ReactNode; eventos: EventoLocal[]; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; itens: TarefaResumo[]; concluidas: Map<string, TarefaResumo[]>; marcado: Date | null; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, dia: string) => void; mostrarPrazos: boolean; onAlocar?: () => void }) {
+/**
+ * Chip do mês por tipo, para a grade não virar um bloco âmbar só:
+ * evento = cor da categoria (no style); tarefa = neutro com a barra da prioridade; prazo = contorno discreto, só a
+ * bandeira em âmbar; Cofre = a cor do lançamento/conta (no style).
+ */
+function estiloChipMes(item: ItemAgenda): { classe: string; barra?: string } {
+  if (item.tipo === "evento") return { classe: "pl-2" };
+  if (item.tipo === "prazo") return { classe: "border border-dashed border-warning/40 bg-transparent text-text-secondary" };
+  const alta = item.classe.includes("error");
+  return { classe: "bg-surface-2 pl-2 text-text-primary", barra: alta ? "rgb(var(--ecos-error-rgb, 239 68 68))" : "rgb(var(--ecos-cyan-rgb, 34 211 238))" };
+}
+
+/** "Novembro de 2026" (só a primeira letra maiúscula; `capitalize` virava "Novembro De 2026"). */
+function nomeDoMes(d: Date): string {
+  const nome = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+}
+
+function VisaoMes({ filtros, semCabecalho, onMoverParaDia, onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, itens, eventos, concluidas, marcado, aoMarcar, aoHojeRecolhido, renderDia, onSelecionar, onAlocarTarefa, mostrarPrazos, onAlocar }: { aoMarcar: (d: Date) => void; aoHojeRecolhido: () => void; renderDia: (dia: Date) => import("react").ReactNode; eventos: EventoLocal[]; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; itens: TarefaResumo[]; concluidas: Map<string, TarefaResumo[]>; marcado: Date | null; onSelecionar: (d: Date, alvo?: HTMLElement) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, dia: string) => void; mostrarPrazos: boolean; onAlocar?: () => void; semCabecalho?: boolean; filtros?: FiltrosAgenda; onMoverParaDia?: (item: ItemArrastadoMes, dia: string) => void }) {
   const { offset, totalDias, ano, mes } = gerarDiasDoMes(diaAtual);
   // Celular: o mês abre "expandido" (células retangulares, com os itens por título) e pode ser recolhido (células quadradas, só pontinhos)
   // arrastando a alça embaixo da grade; no recolhido, a lista do dia selecionado ocupa o espaço que sobra.
@@ -609,11 +843,11 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
     setDiaSobre(null);
     if (dia) onAlocarTarefa(e.tarefa, dia);
   });
-  const nomeMes = diaAtual.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const nomeMes = nomeDoMes(diaAtual);
   // A altura de cada linha do mês decide quantos itens cabem por célula (o resto vira "+N itens").
   const gradeMes = useRef<HTMLDivElement>(null);
-  // Celular: só as semanas que o mês usa (5 ou 6); no desktop a grade tem sempre 6 linhas.
-  const linhasMes = desktopMes ? 6 : Math.ceil((offset + totalDias) / 7);
+  // Só as semanas que o mês usa (5 ou 6): a sexta linha só do mês seguinte era espaço morto.
+  const linhasMes = Math.ceil((offset + totalDias) / 7);
   const [larguraGrade, setLarguraGrade] = useState(0);
   const areaMes = useRef<HTMLDivElement>(null);
   const [alturaArea, setAlturaArea] = useState(0);
@@ -661,19 +895,20 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
   // Agrupa por dia uma única vez por mudança de dados: antes cada uma das 42 células refazia flatMap/filter sobre tudo.
   const { tarefasPorDia, eventosPorDia } = useMemo(() => {
     const tarefasPorDia = new Map<string, ItemAgenda[]>();
-    for (const t of itens) for (const i of itensDaTarefa(t, { mostrarPrazos })) { const l = tarefasPorDia.get(i.dia); if (l) l.push(i); else tarefasPorDia.set(i.dia, [i]); }
+    const passa = (tipo: TipoAgenda) => !filtros || filtros[tipo];
+    for (const t of itens) for (const i of itensDaTarefa(t, { mostrarPrazos })) { if (!passa(tipoDoItem(i))) continue; const l = tarefasPorDia.get(i.dia); if (l) l.push(i); else tarefasPorDia.set(i.dia, [i]); }
     const eventosPorDia = new Map<string, EventoLocal[]>();
-    for (const e of eventos) { const l = eventosPorDia.get(e.inicio); if (l) l.push(e); else eventosPorDia.set(e.inicio, [e]); }
+    for (const e of eventos) { if (!passa(tipoDoItem({ ...e, tipo: "evento" }))) continue; const l = eventosPorDia.get(e.inicio); if (l) l.push(e); else eventosPorDia.set(e.inicio, [e]); }
     return { tarefasPorDia, eventosPorDia };
-  }, [itens, eventos, mostrarPrazos]);
+  }, [itens, eventos, mostrarPrazos, filtros]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
-        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-xl lg:text-2xl capitalize text-text-primary">{nomeMes}</h1></div>
+      {!semCabecalho && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
+        <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-xl lg:text-2xl text-text-primary">{nomeMes}</h1></div>
         <AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={hojeDoMes} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} onAlocar={onAlocar} />
-      </div>
-      <div className="grid grid-cols-7 border-b border-border bg-surface-1">
+      </div>}
+      <div data-cabecalho-semana className="grid grid-cols-7 border-b border-border bg-surface-1">
         {(primeiroDiaDaSemana() ? ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"] : ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]).map((nome) => <div key={nome} className="border-r border-border px-1 py-2 text-center text-xs font-medium text-text-muted last:border-r-0 lg:px-3 lg:text-left"><span className="lg:hidden" aria-label={nome}>{nome[0]}</span><span className="hidden lg:inline">{nome}</span></div>)}
       </div>
       <div ref={areaMes} className="flex min-h-0 flex-1 flex-col overflow-hidden"><div ref={gradeMes} {...{ ...arrastoMes, style: undefined }} className="grid min-h-0 flex-1 grid-cols-7 overflow-hidden" style={{ ...arrastoMes.style, gridTemplateRows: `repeat(${linhasMes}, minmax(0, 1fr))` }}>
@@ -691,16 +926,24 @@ function VisaoMes({ onAbrirItem, modo, onMudarModo, onHoje, onNavegar, onAbrirEv
           const eventosDoDia = (eventosPorDia.get(paraISO(data)) ?? []).slice().sort((a, b) => (a.minutos ?? -1) - (b.minutos ?? -1) || a.titulo.localeCompare(b.titulo, "pt-BR")).map(itemDoEvento);
           // Ordem fixa: eventos, tarefas e, por último, lançamentos do Cofre.
           const itensDoDia = [...eventosDoDia.filter((i) => !i.transacao), ...tarefasDoDia, ...eventosDoDia.filter((i) => i.transacao)];
-          const { visiveis: cabem, resto } = calcularVisiveis(itensDoDia.length, alturaLinha);
+          const { visiveis: cabem, resto } = calcularVisiveis(itensDoDia.length, alturaLinha, semCabecalho ? RESERVA_CELULA_COMPACTA_PX : undefined);
           const ativo = !!marcado && paraISO(data) === paraISO(marcado);
           const ehHoje = paraISO(data) === paraISO(hoje);
           const iso = paraISO(data);
           const concluidasDoDia = concluidas.get(iso) ?? [];
-          return <div key={numeroDoDia} data-dia-mes={iso} className={`group relative min-h-0 overflow-hidden border-b border-r border-border p-1 text-left lg:min-h-[84px] lg:p-2 transition-colors duration-200 ${diaSobre === iso ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : "bg-base"}`}>
-            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => tocarNoDia(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${classeDiaMes({ ehHoje, ativo })}`}>{numeroDoDia}</button>{concluidasDoDia.length > 0 && <span data-concluidas={concluidasDoDia.length} title={`Concluída${concluidasDoDia.length === 1 ? "" : "s"}: ${concluidasDoDia.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute hidden lg:flex items-center gap-0.5 rounded-pill bg-success/15 px-1 py-0.5 text-[9px] font-semibold text-success lg:right-1.5 lg:top-1.5 lg:px-1.5 lg:text-[10px]"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{concluidasDoDia.length}<span className="sr-only"> {concluidasDoDia.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>}{(itensDoDia.length > 0 || concluidasDoDia.length > 0) && <span aria-hidden data-concluidas={concluidasDoDia.length || undefined} className={`mt-1.5 flex-wrap justify-center gap-1 lg:hidden ${recolhido ? "flex" : "hidden"}`}>{itensDoDia.slice(0, 4).map((t) => <i key={t.chave} style={t.tipo === "evento" && t.corHex ? { backgroundColor: t.corHex } : undefined} className={`h-1.5 w-1.5 rounded-full ${corDoPonto(t)}`} />)}{concluidasDoDia.length > 0 && <i className="h-1.5 w-1.5 rounded-full bg-success" />}</span>}{itensDoDia.slice(0, cabem).map((item) => {
+          const soltar = onMoverParaDia ? {
+            onDragOver: (e: import("react").DragEvent) => { if (!temArrasteMes(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (diaSobre !== iso) setDiaSobre(iso); },
+            onDragLeave: (e: import("react").DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDiaSobre((d) => (d === iso ? null : d)); },
+            onDrop: (e: import("react").DragEvent) => { const a = lerArrasteMes(e); setDiaSobre(null); if (!a) return; e.preventDefault(); onMoverParaDia(a, iso); },
+          } : {};
+          return <div key={numeroDoDia} data-dia-mes={iso} {...soltar} className={`group relative min-h-0 overflow-hidden border-b border-r border-border p-1 text-left lg:min-h-[84px] lg:p-2 transition-colors duration-200 ${diaSobre === iso ? "bg-cyan/10 ring-1 ring-inset ring-cyan/60" : "bg-base"}`}>
+            <button type="button" aria-label={`Ver tarefas de ${data.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}`} onClick={(e) => tocarNoDia(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className={semCabecalho
+              ? `flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-medium tabular-nums transition-colors ${classeDiaMes({ ehHoje, ativo })}`
+              : `mx-auto flex h-7 w-7 items-center justify-center rounded-full text-sm transition-all duration-300 ease-out hover:-rotate-12 hover:scale-110 active:rotate-[360deg] active:scale-95 active:duration-700 ${classeDiaMes({ ehHoje, ativo })}`}>{numeroDoDia}</button>{concluidasDoDia.length > 0 && <span data-concluidas={concluidasDoDia.length} title={`Concluída${concluidasDoDia.length === 1 ? "" : "s"}: ${concluidasDoDia.map((t) => `${horaLocal(t.concluida_em!)} ${t.titulo}`).join(" · ")}`} className="absolute hidden lg:flex items-center gap-0.5 rounded-pill bg-success/15 px-1 py-0.5 text-[9px] font-semibold text-success lg:right-1.5 lg:top-1.5 lg:px-1.5 lg:text-[10px]"><CheckCircle2 size={11} strokeWidth={2} aria-hidden />{concluidasDoDia.length}<span className="sr-only"> {concluidasDoDia.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</span></span>}{(itensDoDia.length > 0 || concluidasDoDia.length > 0) && <span aria-hidden data-concluidas={concluidasDoDia.length || undefined} className={`mt-1.5 flex-wrap justify-center gap-1 lg:hidden ${recolhido ? "flex" : "hidden"}`}>{itensDoDia.slice(0, 4).map((t) => <i key={t.chave} style={t.tipo === "evento" && t.corHex ? { backgroundColor: t.corHex } : undefined} className={`h-1.5 w-1.5 rounded-full ${corDoPonto(t)}`} />)}{concluidasDoDia.length > 0 && <i className="h-1.5 w-1.5 rounded-full bg-success" />}</span>}{itensDoDia.slice(0, cabem).map((item) => {
               const ehEvento = item.tipo === "evento";
-              return <button type="button" key={item.chave} data-marca={item.tipo === "prazo" ? "prazo" : undefined} data-evento={ehEvento ? "" : undefined} title={item.transacao && item.legenda ? `${item.titulo} · ${item.legenda}` : item.titulo} onClick={(e) => onAbrirItem(item, e)} style={ehEvento && item.corHex ? { backgroundColor: `${item.corHex}26`, color: `color-mix(in srgb, ${item.corHex} 70%, var(--ecos-text-primary))`, boxShadow: `inset 3px 0 0 ${item.corHex}` } : undefined} className={`mt-1 ${recolhido ? "hidden" : "flex"} h-5 w-full min-w-0 items-center overflow-hidden rounded px-1 text-left text-[10px] leading-5 lg:flex lg:px-1.5 lg:text-[11px] font-medium transition-[filter] hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${ehEvento ? "pl-2" : item.classe}`}><span className="min-w-0 flex-1 truncate">{(item.tipo === "prazo" || item.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline" />}{ehEvento && item.inicioMin !== null && <span className="mr-1 hidden font-mono-value opacity-70 lg:inline">{hhmm(item.inicioMin)}</span>}{item.transacao ? <span className="fonte-cofre">{item.titulo}{item.legenda && <span className="text-[10px] opacity-80"> · {item.legenda}</span>}</span> : item.titulo}</span></button>;
-            })}{resto > 0 && <span className={`mt-1 h-5 truncate text-[11px] leading-5 text-text-muted lg:block ${recolhido ? "hidden" : "block"}`}>+{resto}<span className="hidden lg:inline"> {resto === 1 ? "item" : "itens"}</span></span>}
+              const arrastavel = !!onMoverParaDia && !item.concluida && item.tipo !== "bloco";
+              return <button type="button" key={item.chave} draggable={arrastavel} onDragStart={arrastavel ? (e) => iniciarArrasteMes(e, { chave: item.chave }) : undefined} onDragEnd={() => setDiaSobre(null)} data-marca={item.tipo === "prazo" ? "prazo" : undefined} data-evento={ehEvento ? "" : undefined} title={item.transacao && item.legenda ? `${item.titulo} · ${item.legenda}` : item.titulo} onClick={(e) => onAbrirItem(item, e)} style={ehEvento && item.corHex ? { backgroundColor: `${item.corHex}26`, color: `color-mix(in srgb, ${item.corHex} 70%, var(--ecos-text-primary))`, boxShadow: `inset 3px 0 0 ${item.corHex}` } : estiloChipMes(item).barra ? { boxShadow: `inset 3px 0 0 ${estiloChipMes(item).barra}` } : undefined} className={`mt-1 ${recolhido ? "hidden" : "flex"} h-5 w-full min-w-0 items-center overflow-hidden rounded px-1 text-left text-[10px] leading-5 lg:flex lg:px-1.5 lg:text-[11px] font-medium transition-[filter] hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan ${estiloChipMes(item).classe} ${item.concluida ? "line-through opacity-45" : ""}`}><span className="min-w-0 flex-1 truncate">{(item.tipo === "prazo" || item.comPrazo) && <Flag size={10} aria-label="Prazo" className="mr-1 inline text-warning" />}{!semCabecalho && ehEvento && item.inicioMin !== null && <span className="mr-1 hidden font-mono-value opacity-70 lg:inline">{hhmm(item.inicioMin)}</span>}{item.transacao ? <span className="fonte-cofre">{item.titulo}{item.legenda && <span className="text-[10px] opacity-80"> · {item.legenda}</span>}</span> : item.titulo}</span>{semCabecalho && item.inicioMin !== null && item.tipo !== "prazo" && <span className="ml-1.5 shrink-0 font-mono-value text-[10px] opacity-70">{hhmm(item.inicioMin)}</span>}</button>;
+            })}{resto > 0 && semCabecalho && <button type="button" onClick={(e) => tocarNoDia(data, e.currentTarget.closest<HTMLElement>("[data-dia-mes]") ?? e.currentTarget)} className="mt-1 block h-5 px-1.5 text-left text-[11px] leading-5 text-text-muted hover:text-text-primary">{resto} mais…</button>}{resto > 0 && !semCabecalho && <span className={`mt-1 h-5 truncate text-[11px] leading-5 text-text-muted lg:block ${recolhido ? "hidden" : "block"}`}>+{resto}<span className="hidden lg:inline"> {resto === 1 ? "item" : "itens"}</span></span>}
           </div>;
         })}
       </div>
@@ -721,7 +964,15 @@ function corDoPonto(t: ItemAgenda): string {
   return t.tipo === "prazo" ? "bg-warning" : t.tipo === "evento" ? "bg-violet" : t.classe.includes("error") ? "bg-error" : "bg-cyan";
 }
 
-function VisaoTempo({ concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, onSelecionar, eventos, tarefas, blocos, inicioMin, mostrarPrazos, encaixe, onMudarEncaixe, onAbrirItem, onMoverItem, onRemoverItem, onAlocarTarefa, onCriarNoHorario, onAbrirTarefaCriada, onAbrirCriacaoCompleta, onAlocar }: { concluidas: Map<string, TarefaResumo[]>; onCriarNoHorario: (dados: NovaTarefaRapida) => Promise<string>; onAbrirTarefaCriada: (id: string) => void; onAbrirCriacaoCompleta: () => void; pedidoAgora: number; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; onSelecionar: (d: Date, alvo?: HTMLElement) => void; eventos: EventoLocal[]; tarefas: TarefaResumo[]; blocos: BlocoPlanejado[]; inicioMin: number; mostrarPrazos: boolean; encaixe: number; onMudarEncaixe: (encaixe: number) => void; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; onMoverItem: (item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") => void; onRemoverItem: (item: ItemAgenda) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, destino: Posicao) => void; onAlocar: () => void }) {
+/** "23 nov – 29 nov 2026": o período das visões de horário. */
+function rotuloDoPeriodoTempo(modo: ModoAgenda, diaAtual: Date): string {
+  const quantidade = modo === "dia" ? 1 : modo === "tres_dias" ? 3 : 7;
+  const inicio = modo === "dia" || modo === "tres_dias" ? diaAtual : inicioDaSemana(diaAtual);
+  if (quantidade === 1) { const t = inicio.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); return t.charAt(0).toUpperCase() + t.slice(1); }
+  return `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, quantidade - 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`.replace(/\./g, "");
+}
+
+function VisaoTempo({ semCabecalho, concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNavegar, onAbrirEvento, diaAtual, hoje, onSelecionar, eventos, tarefas, blocos, inicioMin, mostrarPrazos, encaixe, onMudarEncaixe, onAbrirItem, onMoverItem, onRemoverItem, onAlocarTarefa, onCriarNoHorario, onAbrirTarefaCriada, onAbrirCriacaoCompleta, onAlocar }: { concluidas: Map<string, TarefaResumo[]>; onCriarNoHorario: (dados: NovaTarefaRapida) => Promise<string>; onAbrirTarefaCriada: (id: string) => void; onAbrirCriacaoCompleta: () => void; pedidoAgora: number; modo: ModoAgenda; onMudarModo: (modo: ModoAgenda) => void; onHoje: (alvo: HTMLElement) => void; onNavegar: (direcao: number) => void; onAbrirEvento: () => void; diaAtual: Date; hoje: Date; onSelecionar: (d: Date, alvo?: HTMLElement) => void; eventos: EventoLocal[]; tarefas: TarefaResumo[]; blocos: BlocoPlanejado[]; inicioMin: number; mostrarPrazos: boolean; encaixe: number; onMudarEncaixe: (encaixe: number) => void; onAbrirItem: (item: ItemAgenda, e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void; onMoverItem: (item: ItemAgenda, destino: Posicao, origem: "ponteiro" | "teclado" | "menu") => void; onRemoverItem: (item: ItemAgenda) => void; onAlocarTarefa: (tarefa: TarefaArrastavel, destino: Posicao) => void; onAlocar: () => void; semCabecalho?: boolean }) {
   const quantidade = modo === "dia" ? 1 : modo === "tres_dias" ? 3 : modo === "quinzenal" ? 14 : 7;
   const inicio = modo === "dia" || modo === "tres_dias" ? diaAtual : inicioDaSemana(diaAtual);
   const rotulo = `${inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${somarDias(inicio, quantidade - 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
@@ -733,10 +984,10 @@ function VisaoTempo({ concluidas, pedidoAgora, modo, onMudarModo, onHoje, onNave
   }, [dias, tarefas, blocos, eventos, mostrarPrazos]);
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-base">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
+      {!semCabecalho && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 lg:px-5 lg:py-4">
         <div><p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">Calendário</p><h1 className="font-display text-xl lg:text-2xl text-text-primary">{rotulo}</h1></div>
         <AcoesAgenda modo={modo} onMudarModo={onMudarModo} onHoje={onHoje} onNavegar={onNavegar} onAbrirEvento={onAbrirEvento} onAlocar={onAlocar} />
-      </div>
+      </div>}
       <GradeTempo concluidas={concluidas} rolarParaAgora={pedidoAgora} dias={dias} hoje={paraISO(hoje)} itens={itens} inicioMin={inicioMin} encaixe={encaixe} onMudarEncaixe={onMudarEncaixe} onSelecionarDia={(dia, alvo) => onSelecionar(meioDiaLocal(dia), alvo)} onAbrirItem={onAbrirItem} onMover={onMoverItem} onRemover={onRemoverItem} onAlocarTarefa={onAlocarTarefa} onCriarNoHorario={onCriarNoHorario} onAbrirTarefaCriada={onAbrirTarefaCriada} onAbrirCriacaoCompleta={onAbrirCriacaoCompleta} />
     </section>
   );
@@ -834,13 +1085,13 @@ function EventosDoDia({ eventos, onAbrir, lancamentos = false }: { eventos: Even
       <ul className="flex flex-col gap-2">
         {ordenados.map((e) => {
           const hora = e.legenda ?? (e.minutos === null ? "Dia inteiro" : `${hhmm(e.minutos)} – ${hhmm(Math.min(24 * 60, e.minutos + e.duracaoMin))} · ${formatDuracao(e.duracaoMin)}`);
-          const fonte = e.transacaoId ? "fonte-cofre" : "font-mono-value";
+          const fonte = doCofre(e) ? "fonte-cofre" : "font-mono-value";
           return (
             <li key={e.id}>
               <button type="button" onClick={() => onAbrir(e)} aria-label={`Abrir evento ${e.titulo}`} className="flex w-full items-stretch overflow-hidden rounded-2xl border border-border bg-surface-1 text-left transition-colors hover:bg-surface-2">
                 <span aria-hidden className="w-1.5 shrink-0" style={{ backgroundColor: e.corHex ?? "#0891B2" }} />
                 <div className="min-w-0 flex-1 px-3 py-3">
-                  <p className={`truncate text-[15px] font-medium text-text-primary ${e.transacaoId ? "fonte-cofre" : ""}`}>{e.titulo}</p>
+                  <p className={`truncate text-[15px] font-medium text-text-primary ${doCofre(e) ? "fonte-cofre" : ""}`}>{e.titulo}</p>
                   <p className={`${fonte} text-xs text-text-muted`}>{hora}{e.local ? ` · ${e.local}` : ""}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 pr-3 text-text-muted">
@@ -868,10 +1119,10 @@ function CorpoDoDia({ visao, visaoDia, semRotina, erro, capacidade, pendentes, o
           {semRotina && <button onClick={onAjustarRotina} className="mb-4 flex w-full items-start gap-3 rounded-xl border border-steel-400/40 bg-steel-700/15 p-3 text-left text-sm text-text-primary"><CalendarClock size={18} className="shrink-0 text-steel-300" />Você ainda não contou sobre a sua rotina. <span className="font-semibold text-steel-300">Ajustar rotina</span></button>}
           {erro && <div className="mb-4 flex gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error"><AlertTriangle size={16} className="shrink-0" />{erro}</div>}
           {capacidade?.estourado && <div className="mb-4 flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-text-primary"><AlertTriangle size={18} className="shrink-0 text-warning" /><p>{pendentes} {pendentes === 1 ? "tarefa soma" : "tarefas somam"} {formatDuracao(capacidade.consumido_tarefas_min)}, mas o dia só tem {formatDuracao(capacidade.disponivel_producao_total_min !== undefined ? Math.max(0, capacidade.disponivel_producao_total_min - capacidade.consumido_eventos_externos_min) : capacidade.consumido_tarefas_min)} de produção disponível.</p></div>}
-          <EventosDoDia eventos={eventosDoDia.filter((e) => !e.transacaoId)} onAbrir={onAbrirEvento} />
+          <EventosDoDia eventos={eventosDoDia.filter((e) => !doCofre(e))} onAbrir={onAbrirEvento} />
           <ListaDeTarefas blocos={blocos} abrirDocumento={abrirDocumento} dia={paraISO(dia)} concluidas={concluidasDoDia.length} temEventos={eventosDoDia.length > 0} />
           <ConcluidasDoDia tarefas={concluidasDoDia} abrirDocumento={abrirDocumento} />
-          <EventosDoDia lancamentos eventos={eventosDoDia.filter((e) => !!e.transacaoId)} onAbrir={onAbrirEvento} />
+          <EventosDoDia lancamentos eventos={eventosDoDia.filter((e) => doCofre(e))} onAbrir={onAbrirEvento} />
         
   </div>;
 }
@@ -886,6 +1137,7 @@ function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro,
   const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const [visao, setVisao] = useState<"feed" | "dia">("feed");
   const [maximizado, setMaximizado] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
   const [ponto, setPonto] = useState(PONTOS_FOLHA[0]);
   const [arrasto, setArrasto] = useState<{ altura: number } | null>(null);
   const gesto = useRef<{ id: number; y0: number; h0: number; t0: number; moveu: boolean } | null>(null);
@@ -933,10 +1185,11 @@ function FolhaDoDia({ dia, blocos, concluidasDoDia, capacidade, semRotina, erro,
       <section role="dialog" aria-modal="true" aria-label={`Tarefas de ${titulo}`} style={{ height: altura, transition: arrasto ? "none" : "height 220ms cubic-bezier(0.22, 1, 0.36, 1)" }} className="ecos-fade-in flex w-full flex-col overflow-hidden rounded-t-2xl border-t border-border bg-base pb-[var(--ecos-safe-bottom)] shadow-nav">
         <div {...alca} className="shrink-0 cursor-grab">
           <div aria-hidden className="mx-auto mt-2 h-1 w-10 rounded-full bg-border" />
-          <header className="flex items-center justify-between border-b border-border px-4 py-2"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-on-steel" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={() => setMaximizado(true)} aria-label="Maximizar o dia" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><Maximize2 size={17} /></button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><X size={19} /></button></div></header>
+          <header className="flex items-center justify-between border-b border-border px-4 py-2"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Agenda</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-on-steel" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={() => (visao === "dia" ? setTelaCheia(true) : setMaximizado(true))} aria-label={visao === "dia" ? "Ampliar os horários do dia" : "Maximizar o dia"} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><Maximize2 size={17} /></button><button type="button" onClick={onFechar} aria-label="Fechar tarefas" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><X size={19} /></button></div></header>
         </div>
         <CorpoDoDia eventosDoDia={eventosDoDia} onAbrirEvento={onAbrirEvento} visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
       </section>
+      {telaCheia && visao === "dia" && <HorariosTelaCheia titulo={titulo} onFechar={() => setTelaCheia(false)}>{visaoDia}</HorariosTelaCheia>}
     </div>
   );
 }
@@ -946,12 +1199,26 @@ function ResumoEmbutido({ dia, blocos, concluidasDoDia, capacidade, semRotina, e
   const titulo = dia.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const [visao, setVisao] = useState<"feed" | "dia">("feed");
   const [maximizado, setMaximizado] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
   if (maximizado) return <DiaMaximizado dia={dia} hoje={paraISO(dia) === paraISO(new Date())} eventosDoDia={eventosDoDia} tarefasDoDia={blocos} concluidasDoDia={concluidasDoDia} capacidade={capacidade} semRotina={semRotina} onAjustarRotina={onAjustarRotina} onAbrirEvento={(e) => onAbrirEvento(e, true)} abrirDocumento={abrirDocumento} onFechar={() => setMaximizado(false)} />;
   return (
     <>
-      <header className="flex shrink-0 items-center justify-between px-4 py-2"><div className="min-w-0"><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-on-steel" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={() => setMaximizado(true)} aria-label="Maximizar o dia" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><Maximize2 size={17} /></button></div></header>
+      <header className="flex shrink-0 items-center justify-between px-4 py-2"><div className="min-w-0"><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><div className="flex gap-1"><button type="button" onClick={() => setVisao((v) => (v === "feed" ? "dia" : "feed"))} aria-label={visao === "feed" ? "Ver o dia por horários" : "Ver lista de tarefas"} className={`flex h-10 w-10 items-center justify-center rounded-lg ${visao === "dia" ? "bg-steel-700 text-on-steel" : "text-text-muted active:bg-surface-2"}`}>{visao === "feed" ? <Clock size={17} /> : <ListChecks size={17} />}</button><button type="button" onClick={() => (visao === "dia" ? setTelaCheia(true) : setMaximizado(true))} aria-label={visao === "dia" ? "Ampliar os horários do dia" : "Maximizar o dia"} className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><Maximize2 size={17} /></button></div></header>
       <CorpoDoDia eventosDoDia={eventosDoDia} onAbrirEvento={onAbrirEvento} visao={visao} visaoDia={visaoDia} semRotina={semRotina} erro={erro} capacidade={capacidade} pendentes={pendentes} onAjustarRotina={onAjustarRotina} blocos={blocos} dia={dia} concluidasDoDia={concluidasDoDia} abrirDocumento={abrirDocumento} />
+      {telaCheia && visao === "dia" && <HorariosTelaCheia titulo={titulo} onFechar={() => setTelaCheia(false)}>{visaoDia}</HorariosTelaCheia>}
     </>
+  );
+}
+
+/** Celular: os horários do dia em tela cheia. No mês recolhido a grade ocupava só o que sobrava embaixo do calendário, pequeno demais
+ * para arrastar tarefas e blocos; aqui ela ganha a tela toda (o voltar do Android e o X fecham). */
+function HorariosTelaCheia({ titulo, onFechar, children }: { titulo: string; onFechar: () => void; children: import("react").ReactNode }) {
+  return createPortal(
+    <Dialog rotulo={`Horários de ${titulo}`} onFechar={onFechar} fecharNoScrim={false} className="fixed inset-0 z-[80] flex flex-col bg-base pb-[var(--ecos-safe-bottom)] pt-[var(--ecos-safe-top)]">
+      <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-4 py-2"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Horários</p><h2 className="truncate font-display text-base capitalize text-text-primary">{titulo}</h2></div><button type="button" onClick={onFechar} aria-label="Fechar horários" className="flex h-10 w-10 items-center justify-center rounded-lg text-text-muted active:bg-surface-2"><X size={19} /></button></header>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+    </Dialog>,
+    document.body,
   );
 }
 

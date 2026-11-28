@@ -34,6 +34,8 @@ function corDoPonto(item: ItemTimeline): string {
 
 export interface AcoesItem {
   onAbrir: (item: ItemTimeline, e: MouseEvent<HTMLButtonElement>) => void;
+  /** Embutida na Agenda: começa o arrasto do item para um dia da grade (devolve false se ele não se move). */
+  onArrastar?: (item: ItemTimeline, e: import("react").DragEvent<HTMLButtonElement>) => boolean;
   onConcluir: (item: ItemTimeline) => void;
   onAdiar: (item: ItemTimeline) => void;
 }
@@ -106,7 +108,7 @@ export function LinhaItem({ item, indice, ramo, enfase, mostrarData, acoes }: {
   const atrasada = item.situacao === "atrasada";
   const concluida = item.situacao === "concluida";
   const horario = mostrarData ? `${item.dia.slice(8, 10)}/${item.dia.slice(5, 7)}`
-    : item.minutos === null ? (item.icone === "prazo" ? "Prazo" : item.icone === "transacao" ? "Cofre" : "Dia todo") : rotuloHorario(item.minutos);
+    : item.minutos === null ? (item.icone === "prazo" ? "" : item.icone === "transacao" ? "Cofre" : "Dia todo") : rotuloHorario(item.minutos);
 
   const corPonto = atrasada ? "bg-error" : concluida ? "bg-success" : corDoPonto(item);
   const corTexto = atrasada && enfase ? "text-error" : concluida ? "text-text-muted line-through decoration-text-muted/50" : registro ? "text-text-secondary" : "text-text-primary";
@@ -114,36 +116,37 @@ export function LinhaItem({ item, indice, ramo, enfase, mostrarData, acoes }: {
   // Só o evento pinta o ponto com a própria cor; o lançamento do Cofre fica roxo e a cor dele vai só no valor.
   const corDoPontoProprio = item.icone === "evento" ? corPropria : undefined;
 
-  const classe = "relative flex items-center gap-3 rounded-xl py-2 pr-3 transition-colors";
+  // No celular: linha mais alta (alvo de toque ≥ 48px) e tipografia maior; a geometria do trilho não muda.
+  const classe = "relative flex items-center gap-2 rounded-xl max-lg:gap-3 py-2 pr-3 transition-colors max-lg:min-h-12 max-lg:py-2.5";
   const estilo: CSSProperties = { marginLeft: -RECUO_ITEM, paddingLeft: RECUO_ITEM, width: `calc(100% + ${RECUO_ITEM}px)` };
   const conteudo = <>
-    <span className={`w-12 shrink-0 text-right text-xs tabular-nums ${atrasada ? "text-error/80" : "text-text-muted"}`}>{horario}</span>
-    <Icone size={15} aria-hidden className={`shrink-0 ${atrasada && enfase ? "text-error" : registro ? "text-cyan/70" : "text-text-secondary"}`} style={item.icone !== "transacao" && corPropria ? { color: corPropria } : undefined} />
-    <span className={`min-w-0 flex-1 truncate text-left text-[14px] ${corTexto}`}>
+    <span className={`w-12 shrink-0 whitespace-nowrap text-right text-[11px] lg:-ml-3 tabular-nums max-lg:w-14 max-lg:text-[13px] ${atrasada ? "text-error/80" : "text-text-muted"}`}>{horario}</span>
+    <Icone size={15} aria-hidden className={`shrink-0 max-lg:h-[19px] max-lg:w-[19px] ${atrasada && enfase ? "text-error" : registro ? "text-cyan/70" : "text-text-secondary"}`} style={item.icone !== "transacao" && corPropria ? { color: corPropria } : undefined} />
+    <span className={`min-w-0 flex-1 truncate text-left text-[14px] max-lg:text-[16px] ${corTexto}`}>
       {registro && <span className="text-text-muted">{item.detalhe} · </span>}{item.titulo}
     </span>
-    {!registro && item.detalhe && <span className={`shrink-0 text-xs tabular-nums ${item.icone === "transacao" ? "fonte-cofre" : ""} ${item.detalhe === "Alta" ? "text-warning" : "text-text-muted"}`} style={item.icone === "transacao" ? { color: item.cor } : undefined}>{item.detalhe}</span>}
-    {atrasada && enfase && <span className="shrink-0 rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">Atrasada</span>}
-    {concluida && !registro && <Check size={14} aria-hidden className="shrink-0 text-success" />}
+    {!registro && item.detalhe && <span className={`shrink-0 text-xs tabular-nums max-lg:text-[13px] ${item.icone === "transacao" ? "fonte-cofre" : ""} ${item.detalhe === "Alta" ? "text-warning" : "text-text-muted"}`} style={item.icone === "transacao" ? { color: item.cor } : undefined}>{item.detalhe}</span>}
+    {atrasada && enfase && <span className="shrink-0 rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error max-lg:text-[11px]">Atrasada</span>}
+    {concluida && !registro && <Check size={14} aria-hidden className="shrink-0 text-success max-lg:h-[17px] max-lg:w-[17px]" />}
   </>;
 
-  return <li data-item-timeline={item.chave} data-situacao={item.situacao} className="ecos-timeline-item group/linha relative hover:z-20 focus-within:z-20" style={{ "--i": indice } as CSSProperties}>
+  return <li data-item-timeline={item.chave} data-situacao={item.situacao} data-natureza={item.natureza} className="ecos-timeline-item group/linha relative hover:z-20 focus-within:z-20" style={{ "--i": indice } as CSSProperties}>
     {item.alvo
-      ? <button type="button" onClick={(e) => acoes.onAbrir(item, e)} aria-label={`${registro ? `${item.detalhe} ` : ""}${item.titulo}${atrasada ? " (atrasada)" : ""}`} style={estilo} className={`${classe} hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70`}>{conteudo}</button>
+      ? <button type="button" onClick={(e) => acoes.onAbrir(item, e)} draggable={!!acoes.onArrastar && item.natureza !== "registro" && item.situacao !== "concluida"} onDragStart={(e) => { if (!acoes.onArrastar?.(item, e)) e.preventDefault(); }} aria-label={`${registro ? `${item.detalhe} ` : ""}${item.titulo}${atrasada ? " (atrasada)" : ""}`} style={estilo} className={`${classe} hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/70`}>{conteudo}</button>
       : <div style={estilo} className={classe}>{conteudo}</div>}
     {ramo?.porLinha && ramo.trilho && <TrilhoDaLinha />}
     {ramo && <RamoRegistro ramo={ramo} />}
-    <span aria-hidden className={`pointer-events-none absolute top-1/2 z-10 h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform duration-200 group-hover/linha:scale-150 ${corPonto} ${registro ? "ring-2 ring-cyan/15" : ""}`}
+    <span aria-hidden className={`pointer-events-none absolute top-1/2 z-10 h-[6px] w-[6px] max-lg:h-[8px] max-lg:w-[8px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform duration-200 group-hover/linha:scale-150 ${corPonto} ${registro ? "ring-2 ring-cyan/15" : ""}`}
       style={{ left: x(registro ? REGISTRO : RAMO), backgroundColor: corDoPontoProprio }} />
     {item.alvo && <CartaoDetalhes item={item} acoes={acoes} />}
   </li>;
 }
 
 export function MarcadorAgora({ agora, trilho }: { agora: Date; /** Dia com registro: o trilho é desenhado por linha. */ trilho?: boolean }) {
-  return <li aria-label="Agora" data-agora className="ecos-timeline-item relative flex h-6 items-center">
+  return <li aria-label="Agora" data-agora className="ecos-timeline-item relative flex h-6 items-center max-lg:h-8">
     {trilho && <TrilhoDaLinha />}
     <span aria-hidden className="ecos-timeline-agora absolute z-10 h-[9px] w-[9px] -translate-x-1/2 rounded-full bg-cyan" style={{ left: x(RAMO) }} />
     <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-cyan/60 to-transparent" />
-    <span className="ml-2 text-[11px] font-medium tabular-nums text-cyan">{rotuloHorario(agora.getHours() * 60 + agora.getMinutes())}</span>
+    <span className="ml-2 text-[11px] font-medium tabular-nums text-cyan max-lg:text-[13px]">{rotuloHorario(agora.getHours() * 60 + agora.getMinutes())}</span>
   </li>;
 }

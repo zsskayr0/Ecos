@@ -102,13 +102,18 @@ function RedirecionarNota() {
   return <Navigate to={`/notas/nota/${id}`} replace />;
 }
 
+/** No desktop a Timeline vive ao lado do mês da Agenda; no celular continua sendo uma tela própria. */
+function TimelineOuAgenda() {
+  return useIsDesktop() ? <Navigate to="/agenda?modo=mes" replace /> : tela(TimelineScreen, <SkeletonHoje />);
+}
+
 export const screenRoutes = (
   <>
     <Route path="/" element={<Navigate to="/feed" replace />} />
 
     <Route path="/feed" element={<FeedScreen />} />
     <Route path="/inicio" element={tela(HomeScreen, <SkeletonHoje />)} />
-    <Route path="/timeline" element={tela(TimelineScreen, <SkeletonHoje />)} />
+    <Route path="/timeline" element={<TimelineOuAgenda />} />
     <Route path="/hoje" element={<Navigate to="/timeline" replace />} />
     {/* Link legado: a administração agora pertence a Configurações. */}
     <Route path="/pastas" element={<Navigate to="/configuracoes/organizacao" replace />} />
