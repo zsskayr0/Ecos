@@ -321,6 +321,8 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
 #[derive(Debug, Deserialize)]
 pub struct CriarTarefaPayload {
+    /// Em branco é aceito: o título nasce do começo do corpo (o front deixa passar tudo; o servidor acompanha).
+    #[serde(default)]
     pub titulo: String,
     #[serde(default)]
     pub corpo: Option<String>,
@@ -346,12 +348,12 @@ pub struct CriarTarefaPayload {
 }
 
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
-    if payload.titulo.trim().is_empty() {
+    let Some(titulo) = naming::titulo_ou_do_corpo(&payload.titulo, payload.corpo.as_deref().unwrap_or("")) else {
         return Err(AppError::validation(vec![CampoInvalido {
             campo: "titulo".into(),
             motivo: "não pode ser vazio".into(),
         }]));
-    }
+    };
     let espaco: Espaco = payload
         .espaco
         .as_deref()
@@ -370,17 +372,17 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     std::fs::create_dir_all(&dir)?;
 
-    let nome_arquivo = naming::nome_padrao(true, &payload.titulo);
+    let nome_arquivo = naming::nome_padrao(true, &titulo);
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &nome_arquivo, "md");
 
     let agora = Utc::now();
     let fm = TarefaFrontMatter {
         id: new_id(),
-        titulo: payload.titulo.clone(),
+        titulo: titulo.clone(),
         tipo: Default::default(),
         adiada_de: None,
         adiamentos: 0,
-        aliases: vec![payload.titulo.clone()],
+        aliases: vec![titulo.clone()],
         extras: Default::default(),
         status: TarefaStatus::Pendente,
         scheduled_at: payload.scheduled_at,
@@ -547,7 +549,24 @@ fn mudou_molde(antes: &TarefaFrontMatter, corpo_antes: &str, fm: &TarefaFrontMat
         || antes.subtarefas.iter().map(|s| &s.titulo).ne(fm.subtarefas.iter().map(|s| &s.titulo))
 }
 
+/// Título que o índice já guarda para a tarefa (uma leitura pontual).
+async fn titulo_indexado(state: &AppState, id: &str) -> Option<String> {
+    let id = id.to_string();
+    state
+        .db
+        .with_read(move |conn| Ok(conn.query_row("SELECT titulo FROM tarefa WHERE id = ?1", [&id], |r| r.get::<_, String>(0)).optional()?))
+        .await
+        .ok()
+        .flatten()
+}
+
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(mut payload): Json<AtualizarTarefaPayload>) -> AppResult<Json<serde_json::Value>> {
+    // Título em branco no meio da digitação: o resto da edição segue e o título atual fica.
+    payload.titulo = payload.titulo.filter(|t| !t.trim().is_empty());
+    // O mesmo título de antes não é renomeação (ver `notas::atualizar`): evita planejar a troca de links a cada autosave.
+    if payload.titulo.is_some() && titulo_indexado(&state, &id).await == payload.titulo {
+        payload.titulo = None;
+    }
     if payload.reescrever_links {
         if let Some(titulo) = payload.titulo.take() {
             crate::routes::renomear::renomear_com_links(&state, &usuario, ecos_core::wikilink::TipoItem::Tarefa, &id, &titulo, payload.escopo.as_deref()).await?;

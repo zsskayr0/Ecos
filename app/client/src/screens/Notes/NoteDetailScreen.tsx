@@ -10,6 +10,7 @@ import { DetailHeader, DETAIL_ACTION } from "@/components/layout/DetailHeader";
 import { notas, ApiError } from "@/lib/api";
 import { guardarRascunhoNota, lerRascunhoNota, removerRascunhoNota } from "@/lib/offline-store";
 import { cabeNoKeepalive, lerConflito, quedaSuspeita, type NotaNoServidor } from "@/lib/nota-sincronia";
+import { conflitoFalso, ehFalhaTransitoria, tituloEfetivo, useReenvioAutomatico } from "@/lib/salvamento-otimista";
 import { ConflitoNota } from "@/components/editor/ConflitoNota";
 import { HistoricoNota } from "@/components/editor/HistoricoNota";
 import { TempoEdicao } from "@/components/common/TempoEdicao";
@@ -121,42 +122,52 @@ function NoteDetailMobile() {
   useEffect(() => { definirTituloJanela?.((editando ? tituloEdit : nota?.titulo ?? "").trim()); }, [definirTituloJanela, editando, nota?.titulo, tituloEdit]);
 
   /** 409: monta o "o que está no servidor" (do corpo do erro ou, se faltar, relendo a nota). */
-  async function tratarConflito(e: unknown): Promise<boolean> {
+  async function tratarConflito(e: unknown, base?: { titulo: string; corpo: string }, atual?: { titulo: string; corpo: string }): Promise<boolean | "falso"> {
     if (!id || !(e instanceof ApiError) || e.status !== 409) return false;
     const c = lerConflito(e.dados) ?? await notas.obter(id).then((n) => ({ titulo: n.titulo, corpo: n.corpo, versao: n.versao ?? 0, atualizado_em: n.atualizado_em })).catch(() => null);
     if (!c) return false;
+    // Só a versão subiu (fila offline enviada depois, arquivar/revisar em outro lugar): adota e salva de novo, sem perguntar.
+    if (base && atual && conflitosFalsos.current < 3 && conflitoFalso(c, base, atual)) { conflitosFalsos.current += 1; baseVersaoRef.current = c.versao; return "falso"; }
     setConflito(c);
     return true;
   }
+  const conflitosFalsos = useRef(0);
+  /** Falha que passa sozinha (limite de pedidos, servidor ocupado): o salvamento insiste sem a pessoa digitar de novo. */
+  const [falhaPassageira, setFalhaPassageira] = useState(false);
 
   // Rascunho no aparelho (IndexedDB) imediato + envio após uma pequena pausa; voltar ou fechar
   // não descarta o texto enquanto o servidor estiver disponível.
   useEffect(() => {
-    if (!editando || !id || !nota || (tituloEdit === nota.titulo && corpoEdit === nota.corpo)) return;
+    if (!editando || !id || !nota || (tituloEfetivo(tituloEdit, nota.titulo) === nota.titulo && corpoEdit === nota.corpo)) return;
     editouRef.current = true;
-    // Título vazio nunca é gravado (nem como rascunho nem no servidor): o servidor recusa e a nota parece sem título.
-    if (!tituloEdit.trim()) return;
-    const gravacao = guardarRascunhoNota(id, { titulo: tituloEdit, corpo: corpoEdit, baseVersao: baseVersaoRef.current });
+    // Título em branco não é uma edição a enviar (o servidor manteria o atual): o corpo segue salvando normalmente.
+    const gravacao = guardarRascunhoNota(id, { titulo: tituloEfetivo(tituloEdit, nota.titulo), corpo: corpoEdit, baseVersao: baseVersaoRef.current });
     gravacaoRascunho.current = gravacao;
     void gravacao.then((ok) => { if (gravacaoRascunho.current === gravacao) gravacaoRascunho.current = null; setSemRascunhoLocal(!ok); });
     if (conflito || quedaPendente) return;
     const timer = window.setTimeout(async () => {
       if (quedaSuspeita(nota.corpo, corpoEdit) && quedaConfirmadaRef.current !== nota.corpo) { setQuedaPendente(true); return; }
-      setSalvando(true); setErro(null);
+      setSalvando(true); setErro(null); setFalhaPassageira(false);
       try {
-        const r = await notas.atualizar(id, { ...(tituloEdit !== nota?.titulo ? { titulo: tituloEdit } : {}), corpo: corpoEdit, ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
+        const r = await notas.atualizar(id, { ...(tituloEdit.trim() && tituloEdit !== nota.titulo ? { titulo: tituloEdit } : {}), ...(corpoEdit !== nota.corpo ? { corpo: corpoEdit } : {}), ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
         if (typeof r?.versao === "number") baseVersaoRef.current = r.versao;
-        setNota((atual) => atual ? { ...atual, titulo: tituloEdit, corpo: corpoEdit, versao: baseVersaoRef.current } : atual);
+        conflitosFalsos.current = 0;
+        setNota((atual) => atual ? { ...atual, titulo: tituloEfetivo(tituloEdit, atual.titulo), corpo: corpoEdit, versao: baseVersaoRef.current } : atual);
         void removerRascunhoNota(id);
         notificar();
       } catch (e) {
-        if (!(await tratarConflito(e))) setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações."));
+        const tratado = await tratarConflito(e, nota, { titulo: tituloEdit, corpo: corpoEdit });
+        // Falso conflito: a base nova já foi adotada; trocar o objeto da nota reexecuta este efeito e salva de novo.
+        if (tratado === "falso") setNota((atual) => (atual ? { ...atual } : atual));
+        else if (!tratado) { setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações.")); setFalhaPassageira(ehFalhaTransitoria(e)); }
       }
       finally { setSalvando(false); }
     }, 600);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, nota, editando, tituloEdit, corpoEdit, notificar, conflito, quedaPendente]);
+  // Falha passageira: reexecuta o efeito acima com espera crescente, sem a pessoa precisar digitar de novo.
+  useReenvioAutomatico(falhaPassageira && !conflito && !quedaPendente, () => setNota((atual) => (atual ? { ...atual } : atual)));
 
   // Fechar a página: último envio com `keepalive` quando cabe (< 60 KB); acima disso vale o rascunho no IndexedDB,
   // e o `beforeunload` segura a saída enquanto ele ainda está sendo gravado. Sair da nota marca um ponto no histórico.
@@ -164,14 +175,18 @@ function NoteDetailMobile() {
     if (!id) return;
     const pendente = () => {
       const a = atualRef.current;
-      if (!a.editando || !a.nota || (a.tituloEdit === a.nota.titulo && a.corpoEdit === a.nota.corpo)) return null;
+      if (!a.editando || !a.nota || (tituloEfetivo(a.tituloEdit, a.nota.titulo) === a.nota.titulo && a.corpoEdit === a.nota.corpo)) return null;
       return a;
     };
-    const payload = (a: NonNullable<ReturnType<typeof pendente>>) => ({ titulo: a.tituloEdit, corpo: a.corpoEdit, ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
+    const payload = (a: NonNullable<ReturnType<typeof pendente>>) => ({
+      ...(a.tituloEdit.trim() && a.nota && a.tituloEdit !== a.nota.titulo ? { titulo: a.tituloEdit } : {}),
+      ...(a.nota && a.corpoEdit !== a.nota.corpo ? { corpo: a.corpoEdit } : {}),
+      ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}),
+    });
     const aoSair = () => {
       const a = pendente();
       if (a && a.nota) {
-        void guardarRascunhoNota(id, { titulo: a.tituloEdit, corpo: a.corpoEdit, baseVersao: baseVersaoRef.current });
+        void guardarRascunhoNota(id, { titulo: tituloEfetivo(a.tituloEdit, a.nota.titulo), corpo: a.corpoEdit, baseVersao: baseVersaoRef.current });
         const bloqueado = !!a.conflito || (quedaSuspeita(a.nota.corpo, a.corpoEdit) && quedaConfirmadaRef.current !== a.nota.corpo);
         if (!bloqueado) notas.atualizarAoSair(id, payload(a));
       }
@@ -244,7 +259,8 @@ function NoteDetailMobile() {
     setErro(null);
     if (conflito) { setErro("Escolha antes qual versão manter."); return; }
     if (quedaSuspeita(nota.corpo, corpoEdit) && quedaConfirmadaRef.current !== nota.corpo) { setQuedaPendente(true); return; }
-    const titulo = tituloEdit, corpo = corpoEdit, anterior = nota;
+    // Título em branco não renomeia: a nota guarda o que já tinha (o servidor faz o mesmo).
+    const titulo = tituloEfetivo(tituloEdit, nota.titulo), corpo = corpoEdit, anterior = nota;
     setSalvando(true);
     setNota({ ...nota, titulo, corpo });
     setFechando(true);
@@ -252,11 +268,14 @@ function NoteDetailMobile() {
     timerFechar.current = window.setTimeout(() => { setFechando(false); preservandoScroll(document.querySelector(".ecos-detail-content"), () => setEditando(false)); }, 50);
     const voltarParaEdicao = (msg: string | null) => { window.clearTimeout(timerFechar.current); setFechando(false); setNota(anterior); setTituloEdit(titulo); setCorpoEdit(corpo); setEditando(true); if (msg) setErro(msg); };
     try {
+      const enviar = () => notas.atualizar(id, { ...(titulo !== anterior.titulo ? { titulo } : {}), ...(corpo !== anterior.corpo ? { corpo } : {}), ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
       try {
-        await notas.atualizar(id, { ...(titulo !== anterior.titulo ? { titulo } : {}), corpo, ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
+        await enviar();
       } catch (e) {
-        if (await tratarConflito(e)) { voltarParaEdicao(null); return; }
-        throw e;
+        const tratado = await tratarConflito(e, anterior, { titulo, corpo });
+        if (tratado === "falso") await enviar(); // só a versão tinha subido: a base nova já foi adotada
+        else if (tratado) { voltarParaEdicao(null); return; }
+        else throw e;
       }
       const atualizada = await notas.obter(id);
       baseVersaoRef.current = atualizada.versao;

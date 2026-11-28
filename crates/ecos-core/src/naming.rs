@@ -28,6 +28,37 @@ pub fn sanitizar_nome_arquivo(titulo: &str) -> String {
     }
 }
 
+/// Tamanho máximo de um título derivado do corpo (o arquivo ainda é truncado por `TAMANHO_MAXIMO`).
+const TITULO_DERIVADO_MAXIMO: usize = 120;
+
+/// Título para quando a pessoa não escreveu um: a primeira linha com texto do corpo (sem marcadores de Markdown),
+/// cortada numa fronteira de palavra se for longa demais. `None` se o corpo também está em branco.
+pub fn titulo_do_corpo(corpo: &str) -> Option<String> {
+    let linha = corpo.lines().map(|l| l.trim()).find(|l| !l.is_empty() && !l.chars().all(|c| matches!(c, '-' | '*' | '_' | '`' | '=' | '#')))?;
+    let limpa = linha
+        .trim_start_matches(|c: char| matches!(c, '#' | '>' | '-' | '*' | '+' | ' '))
+        .trim_start_matches("[ ]")
+        .trim_start_matches("[x]")
+        .trim_start_matches("[X]")
+        .trim();
+    let limpa = if limpa.is_empty() { linha } else { limpa };
+    if limpa.chars().count() <= TITULO_DERIVADO_MAXIMO {
+        return Some(limpa.to_string());
+    }
+    let corte: String = limpa.chars().take(TITULO_DERIVADO_MAXIMO).collect();
+    let cabe = match corte.rfind(char::is_whitespace) {
+        Some(i) if i > TITULO_DERIVADO_MAXIMO / 2 => corte[..i].trim_end(),
+        _ => corte.trim_end(),
+    };
+    Some(format!("{cabe}…"))
+}
+
+/// O título que a pessoa escreveu, ou — se ficou em branco — o derivado do corpo. `None` se não há nem um nem outro.
+pub fn titulo_ou_do_corpo(titulo: &str, corpo: &str) -> Option<String> {
+    let t = titulo.trim();
+    if t.is_empty() { titulo_do_corpo(corpo) } else { Some(titulo.to_string()) }
+}
+
 /// Resolve colisão de nome na mesma pasta com sufixo `(2)`, `(3)`, ... —
 /// seção 1.5/1.6. Toca o filesystem (só `Path::exists`), por isso não
 /// funciona em WASM puro, mas tanto o cliente Tauri quanto o servidor rodam
@@ -132,6 +163,25 @@ mod tests {
     fn trunca_nome_muito_longo() {
         let titulo = "a".repeat(500);
         assert!(sanitizar_nome_arquivo(&titulo).chars().count() <= TAMANHO_MAXIMO);
+    }
+
+    #[test]
+    fn titulo_vem_do_corpo_quando_em_branco() {
+        assert_eq!(titulo_do_corpo("\n\n# Plano da semana\nresto"), Some("Plano da semana".into()));
+        assert_eq!(titulo_do_corpo("- [ ] Comprar pão\n- leite"), Some("Comprar pão".into()));
+        assert_eq!(titulo_do_corpo("---\n\nTexto"), Some("Texto".into()));
+        assert_eq!(titulo_do_corpo("  \n \n"), None);
+        assert_eq!(titulo_ou_do_corpo("  ", "Ideia solta"), Some("Ideia solta".into()));
+        assert_eq!(titulo_ou_do_corpo("Meu título", "outro"), Some("Meu título".into()));
+        assert_eq!(titulo_ou_do_corpo("", ""), None);
+    }
+
+    #[test]
+    fn titulo_derivado_longo_corta_em_palavra_inteira() {
+        let corpo = "palavra ".repeat(40);
+        let t = titulo_do_corpo(&corpo).unwrap();
+        assert!(t.ends_with('…') && t.chars().count() <= TITULO_DERIVADO_MAXIMO + 1, "{t}");
+        assert!(t.trim_end_matches('…').ends_with("palavra"), "{t}");
     }
 
     #[test]

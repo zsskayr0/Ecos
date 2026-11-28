@@ -48,6 +48,29 @@ async fn nota_sem_titulo_e_recusada() {
 }
 
 #[tokio::test]
+async fn titulo_em_branco_com_corpo_nasce_do_corpo_e_patch_em_branco_mantem_o_titulo() {
+    let e = nova();
+    let (_, token) = e.admin("diogo").await;
+
+    // O front deixa passar tudo: sem título mas com texto, a nota existe e o título vem da primeira linha.
+    let (st, criada) = e.chamar("POST", "/api/v1/notas", Some(&token), Some(json!({ "titulo": "", "corpo": "\n# Reunião de quinta\ncomprar café" }))).await;
+    assert_eq!(st, StatusCode::OK, "{criada}");
+    assert_eq!(criada["titulo"], "Reunião de quinta");
+    let id = criada["id"].as_str().unwrap().to_string();
+
+    // Título apagado no meio da digitação: o corpo grava e o título atual fica (sem renomear nem recusar).
+    let (st, r) = e.chamar("PATCH", &format!("/api/v1/notas/{id}"), Some(&token), Some(json!({ "titulo": "  ", "corpo": "novo texto", "reescrever_links": true }))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let (_, lida) = e.chamar("GET", &format!("/api/v1/notas/{id}"), Some(&token), None).await;
+    assert_eq!((lida["titulo"].as_str(), lida["corpo"].as_str().map(str::trim)), (Some("Reunião de quinta"), Some("novo texto")), "{lida}");
+
+    // A tarefa segue a mesma regra.
+    let (st, tarefa) = e.chamar("POST", "/api/v1/tarefas", Some(&token), Some(json!({ "titulo": "", "corpo": "Pagar a luz" }))).await;
+    assert_eq!(st, StatusCode::OK, "{tarefa}");
+    assert_eq!(tarefa["titulo"], "Pagar a luz");
+}
+
+#[tokio::test]
 async fn tarefa_criar_ler_editar_e_excluir() {
     let e = nova();
     let (_, token) = e.admin("diogo").await;

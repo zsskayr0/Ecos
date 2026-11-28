@@ -201,6 +201,8 @@ pub async fn listar(State(state): State<AppState>, Extension(usuario): Extension
 
 #[derive(Debug, Deserialize)]
 pub struct CriarNotaPayload {
+    /// Em branco é aceito: o título nasce do começo do corpo (o front deixa passar tudo; o servidor acompanha).
+    #[serde(default)]
     pub titulo: String,
     #[serde(default)]
     pub corpo: Option<String>,
@@ -216,12 +218,13 @@ pub struct CriarNotaPayload {
 }
 
 pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Json(payload): Json<CriarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
-    if payload.titulo.trim().is_empty() {
+    // Sem título e sem corpo não há o que guardar; com qualquer um dos dois a nota é criada.
+    let Some(titulo) = naming::titulo_ou_do_corpo(&payload.titulo, payload.corpo.as_deref().unwrap_or("")) else {
         return Err(AppError::validation(vec![CampoInvalido {
             campo: "titulo".into(),
             motivo: "não pode ser vazio".into(),
         }]));
-    }
+    };
     let espaco: Espaco = payload
         .espaco
         .as_deref()
@@ -240,15 +243,15 @@ pub async fn criar(State(state): State<AppState>, Extension(usuario): Extension<
     };
     std::fs::create_dir_all(&dir)?;
 
-    let nome_arquivo = naming::nome_padrao(false, &payload.titulo);
+    let nome_arquivo = naming::nome_padrao(false, &titulo);
     let caminho_absoluto = naming::caminho_sem_colisao(&dir, &nome_arquivo, "md");
 
     let agora = Utc::now();
     let front_matter = NotaFrontMatter {
         id: new_id(),
-        titulo: payload.titulo.clone(),
+        titulo: titulo.clone(),
         tipo: Default::default(),
-        aliases: vec![payload.titulo.clone()],
+        aliases: vec![titulo.clone()],
         arquivada: false,
         extras: [("versao".to_string(), serde_yaml::Value::Number(1.into()))].into_iter().collect(),
         modo: payload.modo.unwrap_or_default(),
@@ -384,7 +387,25 @@ pub struct AtualizarNotaPayload {
     pub base_versao: Option<u64>,
 }
 
+/// Título que o índice já guarda para a nota (uma leitura pontual).
+async fn titulo_indexado(state: &AppState, id: &str) -> Option<String> {
+    let id = id.to_string();
+    state
+        .db
+        .with_read(move |conn| Ok(conn.query_row("SELECT titulo FROM nota WHERE id = ?1", [&id], |r| r.get::<_, String>(0)).optional()?))
+        .await
+        .ok()
+        .flatten()
+}
+
 pub async fn atualizar(State(state): State<AppState>, Extension(usuario): Extension<UsuarioAutenticado>, Path(id): Path<String>, Json(mut payload): Json<AtualizarNotaPayload>) -> AppResult<Json<serde_json::Value>> {
+    // Título em branco no meio da digitação (a pessoa apagou para reescrever): o resto da edição segue e o título atual fica.
+    payload.titulo = payload.titulo.filter(|t| !t.trim().is_empty());
+    // O mesmo título de antes não é renomeação: sem isto, cada autosave com "Atualizar links" ligado planejava a troca de links
+    // carregando todos os itens da pessoa (e gravando um diário de desfazer) para não mudar nada.
+    if payload.titulo.is_some() && titulo_indexado(&state, &id).await == payload.titulo {
+        payload.titulo = None;
+    }
     if payload.reescrever_links && payload.titulo.is_some() {
         // A renomeação grava antes do PATCH (e soma versão): confere a base aqui e não de novo depois.
         if let Some(base) = payload.base_versao.take() {

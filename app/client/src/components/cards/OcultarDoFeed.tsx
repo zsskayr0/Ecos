@@ -11,7 +11,9 @@ export function OcultarDoFeed({ id, espaco, pasta, tags = [], rotulo }: { id: st
   const { notificar } = useRefreshBus();
   async function ocultar(alvo: { tipo: "item" | "pasta" | "tag"; ref: string; espaco?: string }, aviso: string) {
     setAberto(false);
-    try { await feed.ocultar(alvo, true); avisar(`${aviso} Você pode desfazer em Configurações › Feed.`); notificar(); } catch { avisar("Não foi possível atualizar o Feed.", "erro"); }
+    // Otimista: o aviso já confirma; o Feed recarrega quando o servidor responde (e o aviso de erro substitui o de sucesso se ele recusar).
+    avisar(`${aviso} Você pode desfazer em Configurações › Feed.`);
+    try { await feed.ocultar(alvo, true); notificar(); } catch { avisar("Não foi possível atualizar o Feed.", "erro"); }
   }
   return (
     <>

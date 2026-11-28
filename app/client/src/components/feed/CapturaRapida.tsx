@@ -10,25 +10,18 @@ import { mensagemDeErro } from "@/lib/erros";
 import { avisar } from "@/lib/toast";
 import { consumirFocoNaCaptura } from "@/lib/primeiros-passos";
 import { dataDoPrazoRapido, ehDispositivoDeToque, type PrazoRapido } from "@/lib/captura-toque";
-const TITULO_MAX = 120;
-
-/** Primeira linha vira título; o resto, corpo. Linha única longa demais vai inteira para o corpo. */
-function separar(texto: string): { titulo: string; corpo: string } {
-  const [primeira, ...resto] = texto.trim().split("\n");
-  if (primeira.length > TITULO_MAX) return { titulo: primeira.slice(0, 60).trim() + "…", corpo: texto.trim() };
-  return { titulo: primeira.trim(), corpo: resto.join("\n").trim() };
-}
-
+import { separarCaptura } from "@/lib/salvamento-otimista";
 /**
  * Captura rápida no topo do Feed. No toque, Enter quebra a linha e os botões "Nota"/"Tarefa" enviam; Hoje/Amanhã
  * definem o prazo da tarefa. Com teclado físico: Enter cria uma nota (ou tarefa, se assim estiver nas preferências), Ctrl+Enter o outro, Shift+Enter quebra a linha.
- * O item aparece na hora (o feed é atualizado pelo refresh-bus).
+ * Otimista: o campo esvazia na hora e a pessoa já pode capturar a próxima coisa; o envio segue em segundo plano (vários ao
+ * mesmo tempo, sem fila na frente). Se o servidor recusar, o texto volta ao campo — nunca se perde.
  */
 export function CapturaRapida() {
   const { espacoAtivo } = useAppUI();
   const { notificar } = useRefreshBus();
   const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
+  const [enviando, setEnviando] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -36,24 +29,29 @@ export function CapturaRapida() {
   const [prazo, setPrazo] = useState<PrazoRapido | null>(null);
   useEffect(() => { if (consumirFocoNaCaptura()) campo.current?.focus(); }, []);
 
-  async function criar(tipo: "nota" | "tarefa") {
-    if (!texto.trim() || enviando) return;
-    const { titulo, corpo } = separar(texto);
-    setEnviando(true); setErro(null);
-    try {
-      const criado = tipo === "nota"
-        ? await notas.criar({ titulo, corpo, espaco: espacoAtivo })
-        : await tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo, ...(prazo ? { due_date: dataDoPrazoRapido(prazo) } : {}) });
-      setTexto(""); setPrazo(null); notificar();
+  function criar(tipo: "nota" | "tarefa") {
+    if (!texto.trim()) return;
+    const enviado = texto, prazoEnviado = prazo;
+    const { titulo, corpo } = separarCaptura(enviado);
+    // Otimista: o campo já fica livre para a próxima ideia.
+    setTexto(""); setPrazo(null); setErro(null);
+    campo.current?.focus();
+    setEnviando((n) => n + 1);
+    const envio = tipo === "nota"
+      ? notas.criar({ titulo, corpo, espaco: espacoAtivo })
+      : tarefas.criar({ titulo, corpo: corpo || undefined, espaco: espacoAtivo, ...(prazoEnviado ? { due_date: dataDoPrazoRapido(prazoEnviado) } : {}) });
+    envio.then((criado) => {
+      notificar();
       // Confirmação visível + próximo passo: abrir o item recém-criado.
       const rota = tipo === "nota" ? `/notas/nota/${criado.id}` : `/tarefa/${criado.id}`;
       avisar(tipo === "nota" ? "Nota salva no Feed." : "Tarefa criada no Feed.", "sucesso", { rotulo: "Abrir", aoClicar: () => navigate(rota) });
-    } catch (e) {
-      setErro(mensagemDeErro(e, "Não consegui salvar a captura. Confira sua conexão e tente de novo."));
-    } finally {
-      setEnviando(false);
-      campo.current?.focus();
-    }
+    }, (e) => {
+      const mensagem = mensagemDeErro(e, "Não consegui salvar a captura. Confira sua conexão e tente de novo.");
+      // O texto volta: ao campo se ele ainda está livre; se a pessoa já escreveu outra coisa, fica à frente do que ela escreveu.
+      setTexto((atual) => (atual.trim() ? `${enviado}\n\n${atual}` : enviado));
+      if (prazoEnviado) setPrazo((p) => p ?? prazoEnviado);
+      setErro(mensagem);
+    }).finally(() => setEnviando((n) => Math.max(0, n - 1)));
   }
 
   return (
@@ -69,7 +67,7 @@ export function CapturaRapida() {
           e.preventDefault();
           const { capturaEnter } = lerPreferenciasAplicativo();
           const outro = capturaEnter === "nota" ? "tarefa" : "nota";
-          void criar(e.ctrlKey || e.metaKey ? outro : capturaEnter);
+          criar(e.ctrlKey || e.metaKey ? outro : capturaEnter);
         }}
         placeholder="O que está na sua cabeça?"
         aria-label="Captura rápida"
@@ -86,9 +84,9 @@ export function CapturaRapida() {
             ))}
           </span>
           <span className="ml-auto flex items-center gap-2">
-            {enviando && <Loader2 size={15} className="animate-spin text-text-muted" />}
-            <button type="button" disabled={enviando} onClick={() => void criar("tarefa")} className="flex min-h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 text-xs text-text-primary hover:bg-surface-3 disabled:opacity-40"><CheckSquare size={14} className="text-cyan" />Tarefa{prazo ? ` · ${prazo === "hoje" ? "hoje" : "amanhã"}` : ""}{!toque && <kbd className="text-[10px] text-text-muted">Ctrl+↵</kbd>}</button>
-            <button type="button" disabled={enviando} onClick={() => void criar("nota")} className="flex min-h-8 items-center gap-1.5 rounded-lg bg-steel-500 px-2.5 text-xs font-medium text-white hover:bg-steel-400 disabled:opacity-40"><FileText size={14} />Nota<kbd className="text-[10px] text-white/70">↵</kbd></button>
+            {enviando > 0 && <Loader2 size={15} className="animate-spin text-text-muted" />}
+            <button type="button" onClick={() => criar("tarefa")} className="flex min-h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 text-xs text-text-primary hover:bg-surface-3 disabled:opacity-40"><CheckSquare size={14} className="text-cyan" />Tarefa{prazo ? ` · ${prazo === "hoje" ? "hoje" : "amanhã"}` : ""}{!toque && <kbd className="text-[10px] text-text-muted">Ctrl+↵</kbd>}</button>
+            <button type="button" onClick={() => criar("nota")} className="flex min-h-8 items-center gap-1.5 rounded-lg bg-steel-500 px-2.5 text-xs font-medium text-white hover:bg-steel-400 disabled:opacity-40"><FileText size={14} />Nota<kbd className="text-[10px] text-white/70">↵</kbd></button>
           </span>
         </div>
       )}

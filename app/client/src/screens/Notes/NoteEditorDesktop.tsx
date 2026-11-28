@@ -15,6 +15,7 @@ import { AcoesFocusContext, AcoesEsquerdaFocusContext, AcoesJanelaContext, ModoF
 import { ApiError, lixeira, notas, type AtualizarNotaPayload } from "@/lib/api";
 import { guardarRascunhoNota, lerRascunhoNota, removerRascunhoNota, type RascunhoNota } from "@/lib/offline-store";
 import { cabeNoKeepalive, lerConflito, quedaSuspeita, type NotaNoServidor } from "@/lib/nota-sincronia";
+import { conflitoFalso, ehFalhaTransitoria, tituloEfetivo, useReenvioAutomatico } from "@/lib/salvamento-otimista";
 import { ConflitoNota } from "@/components/editor/ConflitoNota";
 import { HistoricoNota } from "@/components/editor/HistoricoNota";
 import { NotasLaterais } from "@/components/editor/NotasLaterais";
@@ -48,7 +49,12 @@ interface CamposNota {
   espaco: string;
 }
 
-const iguais = (a: CamposNota, b: CamposNota) => JSON.stringify(a) === JSON.stringify(b);
+/** Campo a campo (sem serializar o corpo inteiro a cada tecla): textos iguais saem no primeiro `===`. */
+const iguais = (a: CamposNota, b: CamposNota) =>
+  a.titulo === b.titulo && a.corpo === b.corpo && a.pasta === b.pasta && a.espaco === b.espaco
+  && a.tags.length === b.tags.length && a.tags.every((t, i) => t === b.tags[i]);
+/** Título em branco não é uma edição a enviar (o servidor manteria o atual): o resto da nota segue salvando. */
+const semMudanca = (atual: CamposNota, base: CamposNota) => iguais({ ...atual, titulo: tituloEfetivo(atual.titulo, base.titulo) }, base);
 const tagsFinais = (c: CamposNota) => [...new Set([...c.tags, ...descriptionTags(c.corpo)])];
 
 /** O backend não devolve a pasta: ela vem do caminho do arquivo (ver `pastaDoArquivo`). */
@@ -65,7 +71,7 @@ function camposDaNota(n: NotaApi): CamposNota {
 function aplicarRascunho(original: CamposNota, r: RascunhoNota | undefined): CamposNota {
   if (!r) return original;
   return {
-    titulo: r.titulo,
+    titulo: r.titulo.trim() ? r.titulo : original.titulo,
     corpo: r.corpo,
     tags: Array.isArray(r.tags) ? r.tags : original.tags,
     pasta: r.pasta !== undefined ? r.pasta : original.pasta,
@@ -73,11 +79,11 @@ function aplicarRascunho(original: CamposNota, r: RascunhoNota | undefined): Cam
   };
 }
 
-/** Só manda o que mudou: mover de pasta renomeia o arquivo no servidor. */
+/** Só manda o que mudou: mover de pasta renomeia o arquivo no servidor e reenviar o mesmo título a cada autosave faz o servidor reexaminar os links. */
 function montarPayload(atual: CamposNota, base: CamposNota, baseVersao: number | undefined): AtualizarNotaPayload {
   return {
-    titulo: atual.titulo,
-    corpo: atual.corpo,
+    ...(atual.titulo.trim() && atual.titulo !== base.titulo ? { titulo: atual.titulo } : {}),
+    ...(atual.corpo !== base.corpo ? { corpo: atual.corpo } : {}),
     ...(JSON.stringify(tagsFinais(atual)) !== JSON.stringify(tagsFinais(base)) ? { tags: tagsFinais(atual) } : {}),
     ...(atual.pasta !== base.pasta ? { pasta: atual.pasta ?? "" } : {}),
     ...(atual.espaco !== base.espaco ? { espaco: atual.espaco } : {}),
@@ -208,12 +214,12 @@ export function NoteEditorDesktop() {
     finally { setRestaurando(false); }
   };
 
-  const sujo = !!valor && !!salvo && !iguais(valor, salvo);
+  const sujo = !!valor && !!salvo && !semMudanca(valor, salvo);
 
   // Cada edição vai antes para o rascunho no aparelho (IndexedDB); a rede vem depois.
   useEffect(() => {
     if (!id || !valor || !salvo) return;
-    if (iguais(valor, salvo)) { void removerRascunhoNota(id); return; }
+    if (semMudanca(valor, salvo)) { void removerRascunhoNota(id); return; }
     if (!valor.titulo.trim() && !valor.corpo.trim() && (salvo.titulo.trim() || salvo.corpo.trim())) return;
     const gravacao = guardarRascunhoNota(id, { ...valor, baseVersao: baseVersaoRef.current });
     gravacaoRascunho.current = gravacao;
@@ -224,36 +230,59 @@ export function NoteEditorDesktop() {
     });
   }, [id, valor, salvo]);
 
+  // A lista (feed, explorador) só precisa saber de cada salvamento quando o título muda ou de tempos em tempos: avisar
+  // a cada pausa de digitação fazia todas as telas abertas recarregarem enquanto a pessoa ainda escrevia.
+  const ultimoAviso = useRef(0);
+  const timerAviso = useRef(0);
+  const avisarListas = useCallback((agora: boolean) => {
+    const t = Date.now();
+    if (agora || t - ultimoAviso.current > 4_000) { window.clearTimeout(timerAviso.current); timerAviso.current = 0; ultimoAviso.current = t; notificar(); return; }
+    if (!timerAviso.current) timerAviso.current = window.setTimeout(() => { timerAviso.current = 0; ultimoAviso.current = Date.now(); notificar(); }, 4_000);
+  }, [notificar]);
+  useEffect(() => () => window.clearTimeout(timerAviso.current), []);
+  /** Falha que passa sozinha (limite de pedidos, servidor ocupado): o salvamento insiste sem a pessoa digitar de novo. */
+  const [falhaPassageira, setFalhaPassageira] = useState(false);
+  const conflitosFalsos = useRef(0);
+
   const sincronizar = useCallback(async () => {
     if (!id) return;
     if (emCurso.current) { await emCurso.current; return sincronizar(); }
     const atual = valorRef.current;
     const base = salvoRef.current;
-    if (conflitoRef.current || !atual || !base || !atual.titulo.trim() || iguais(atual, base)) return;
+    if (conflitoRef.current || !atual || !base || semMudanca(atual, base)) return;
     if (quedaSuspeita(base.corpo, atual.corpo) && quedaConfirmadaRef.current !== base.corpo) { setQuedaPendente(true); return; }
+    let repetir = false;
     const pedido = (async () => {
-      setSalvando(true); setErro(null);
+      setSalvando(true); setErro(null); setFalhaPassageira(false);
       try {
         const resposta = await notas.atualizar(id, montarPayload(atual, base, baseVersaoRef.current));
         if (typeof resposta?.versao === "number") baseVersaoRef.current = resposta.versao;
-        setSalvo(atual);
+        conflitosFalsos.current = 0;
+        // Título em branco não foi enviado: o que vale como "salvo" é o título que o servidor continua tendo.
+        setSalvo({ ...atual, titulo: tituloEfetivo(atual.titulo, base.titulo) });
         setNota((n) => (n ? { ...n, atualizado_em: new Date().toISOString() } : n));
         if (valorRef.current && iguais(valorRef.current, atual)) void removerRascunhoNota(id);
-        notificar();
+        avisarListas(atual.titulo.trim() !== "" && atual.titulo !== base.titulo);
       } catch (e) {
         // Nota apagada em outro lugar: o servidor recusa (nunca recria); o rascunho local fica guardado.
         if (e instanceof ApiError && e.status === 404) { setNaoEncontrada(true); return; }
         // Mudou em outro lugar desde a nossa base: para o autosave e deixa a pessoa escolher (o rascunho fica).
         if (e instanceof ApiError && e.status === 409) {
           const c = lerConflito(e.dados) ?? await notas.obter(id).then((n) => ({ titulo: n.titulo, corpo: n.corpo, versao: n.versao ?? 0, atualizado_em: n.atualizado_em })).catch(() => null);
+          // Só a versão subiu (fila offline enviada depois, arquivar/revisar em outro lugar): adota e salva de novo, sem perguntar.
+          if (c && conflitosFalsos.current < 3 && conflitoFalso(c, base, atual)) { conflitosFalsos.current += 1; baseVersaoRef.current = c.versao; repetir = true; return; }
           if (c) { setConflito(c); return; }
         }
         setErro(mensagemDeErro(e, "Não foi possível sincronizar as alterações."));
+        setFalhaPassageira(ehFalhaTransitoria(e));
       } finally { setSalvando(false); }
     })();
     emCurso.current = pedido;
     try { await pedido; } finally { emCurso.current = null; }
-  }, [id, notificar]);
+    if (repetir) return sincronizar();
+  }, [id, avisarListas]);
+
+  useReenvioAutomatico(falhaPassageira && !conflito && !quedaPendente, () => { void sincronizar(); });
 
   useEffect(() => {
     if (!sujo || conflito || quedaPendente) return;
@@ -266,14 +295,14 @@ export function NoteEditorDesktop() {
   useEffect(() => {
     const pendenteNaSaida = () => {
       const atual = valorRef.current, base = salvoRef.current;
-      if (!id || !atual || !base || iguais(atual, base)) return null;
+      if (!id || !atual || !base || semMudanca(atual, base)) return null;
       return { atual, base };
     };
     const aoSair = () => {
       const p = pendenteNaSaida();
       if (p && id) {
         void guardarRascunhoNota(id, { ...p.atual, baseVersao: baseVersaoRef.current });
-        const bloqueado = !!conflitoRef.current || !p.atual.titulo.trim() || (quedaSuspeita(p.base.corpo, p.atual.corpo) && quedaConfirmadaRef.current !== p.base.corpo);
+        const bloqueado = !!conflitoRef.current || (quedaSuspeita(p.base.corpo, p.atual.corpo) && quedaConfirmadaRef.current !== p.base.corpo);
         if (!bloqueado) notas.atualizarAoSair(id, montarPayload(p.atual, p.base, baseVersaoRef.current));
       }
       if (id && editouRef.current) notas.versoes.fecharAoSair(id);
@@ -292,9 +321,13 @@ export function NoteEditorDesktop() {
       // Saiu da nota dentro do app: envia o que faltava e marca um ponto de fechamento no histórico.
       const editou = editouRef.current;
       editouRef.current = false;
-      void sincronizar().finally(() => { if (editou && id) void notas.versoes.fechar(id).catch(() => undefined); });
+      void sincronizar().finally(() => {
+        // Ao sair, as listas recebem a versão final sem esperar o intervalo do aviso.
+        if (editou) notificar();
+        if (editou && id) void notas.versoes.fechar(id).catch(() => undefined);
+      });
     };
-  }, [id, sincronizar]);
+  }, [id, sincronizar, notificar]);
 
   const manterMeu = () => {
     if (!conflito) return;
@@ -347,15 +380,24 @@ export function NoteEditorDesktop() {
     }
   }
 
+  /** Otimista: a nota já aparece revisada; se o servidor recusar, volta e avisa. */
   async function marcarRevisado() {
-    if (!id) return;
+    if (!id || !nota) return;
+    const anterior = nota.ultima_revisao_em;
+    setNota((n) => (n ? { ...n, ultima_revisao_em: new Date().toISOString() } : n));
+    avisar("Nota marcada como revisada.", "sucesso");
     try {
+      // Um autosave em voo soma versão: a base precisa estar em dia antes de pedir.
+      if (emCurso.current) await emCurso.current;
       const r = await notas.atualizar(id, { marcar_revisado: true, ...(baseVersaoRef.current !== undefined ? { base_versao: baseVersaoRef.current } : {}) });
       if (typeof r?.versao === "number") baseVersaoRef.current = r.versao;
-      setNota(await notas.obter(id));
-      notificar();
-      avisar("Nota marcada como revisada.", "sucesso");
-    } catch (e) { avisar(mensagemDeErro(e, "Não foi possível marcar como revisada."), "erro"); }
+      const atualizada = await notas.obter(id).catch(() => null);
+      if (atualizada) setNota((n) => (n ? { ...n, ultima_revisao_em: atualizada.ultima_revisao_em, atualizado_em: atualizada.atualizado_em } : n));
+      avisarListas(true);
+    } catch (e) {
+      setNota((n) => (n ? { ...n, ultima_revisao_em: anterior } : n));
+      avisar(mensagemDeErro(e, "Não foi possível marcar como revisada."), "erro");
+    }
   }
 
   async function excluir() {
@@ -485,7 +527,7 @@ export function NoteEditorDesktop() {
 
         <div ref={raizNota} className="flex min-w-0 flex-col gap-4">
           <div className={`flex min-w-0 items-center gap-3 ${modoFocus ? "border-b border-border pb-2" : ""}`}>
-            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Título da nota" onKeyDown={tabParaCorpo} className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
+            <input aria-label="Título da nota" value={valor.titulo} onChange={(e) => mudar({ titulo: e.target.value })} onBlur={() => void sincronizar()} placeholder="Título da nota" onKeyDown={tabParaCorpo} className={modoFocus ? CAMPO_TITULO_FOCUS : CAMPO_TITULO} />
             {!modoFocus && !acoesJanela && <BotaoCopiarCaminho variante="icone" tipo="nota" espaco={valor.espaco} pasta={valor.pasta} titulo={valor.titulo} />}
             {!modoFocus && escrevendo && !noPainel && <button type="button" onClick={() => setDetalhesAbertos((v) => !v)} aria-pressed={detalhesAbertos} aria-label="Detalhes da nota" title="Detalhes: pasta, tags, equipe e conexões" className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><PanelRight size={17} /></button>}
             {!modoFocus && <button type="button" onClick={() => alternarSumarioLateral()} aria-pressed={sumarioAberto} aria-label={rotuloSumario} title={rotuloSumario} className="flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border border-border text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary aria-pressed:bg-surface-2"><ListTree size={17} /></button>}

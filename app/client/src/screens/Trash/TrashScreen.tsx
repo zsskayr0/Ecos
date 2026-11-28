@@ -28,13 +28,19 @@ export function TrashScreen() {
   async function restaurar(item: ItemLixeira) {
     setRestaurando(item.id);
     setErro(null);
+    // Otimista: o item sai da lixeira na hora; se o servidor recusar, volta para o mesmo lugar e o erro aparece.
+    const antes = itens;
+    setItens((lista) => lista?.filter((i) => i.id !== item.id) ?? []);
+    setMensagem(`${item.nome} foi restaurado em ${DESTINO[item.tipo] ?? "Media"}.`);
+    avisar(`${item.nome} restaurado.`, "sucesso");
     try {
       await lixeira.restaurar(item.id);
-      setItens((lista) => lista?.filter((i) => i.id !== item.id) ?? []);
-      setMensagem(`${item.nome} foi restaurado em ${DESTINO[item.tipo] ?? "Media"}.`);
       notificar();
-      avisar(`${item.nome} restaurado.`, "sucesso");
-    } catch (e) { setErro(mensagemDeErro(e, "Não foi possível restaurar o arquivo. Tente novamente.")); }
+    } catch (e) {
+      setItens(antes);
+      setMensagem(null);
+      setErro(mensagemDeErro(e, "Não foi possível restaurar o arquivo. Tente novamente."));
+    }
     finally { setRestaurando(null); }
   }
   return <div className="px-4 pt-1 pb-nav-safe">

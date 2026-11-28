@@ -27,13 +27,16 @@ export function LinksQuebradosScreen() {
   }, [versao, tentativa]);
 
   async function criar(item: LinkPendente) {
+    // Otimista: o link some da lista e o aviso já confirma; se o servidor recusar, o link volta e o erro aparece.
+    const anterior = lista;
     setCriando(chaveDe(item));
+    setLista((l) => l?.filter((x) => chaveDe(x) !== chaveDe(item)) ?? null);
+    avisar(`Nota “${item.titulo}” criada.`, "sucesso");
     try {
       await notas.criar({ titulo: item.titulo, espaco: item.espaco, ...(item.pasta_sugerida ? { pasta: item.pasta_sugerida } : {}) });
-      setLista((l) => l?.filter((x) => chaveDe(x) !== chaveDe(item)) ?? null);
-      avisar(`Nota “${item.titulo}” criada.`, "sucesso");
       notificar();
     } catch (e) {
+      setLista((atual) => (atual && !atual.some((x) => chaveDe(x) === chaveDe(item)) ? anterior ?? atual : atual));
       avisar(mensagemDeErro(e, "Não foi possível criar a nota."), "erro");
     } finally {
       setCriando(null);

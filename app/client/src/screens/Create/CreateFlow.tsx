@@ -5,6 +5,7 @@ import { useAppUI, type TipoCaptura } from "@/lib/ui-context";
 import { useRefreshBus } from "@/lib/refresh-bus";
 import { notas, pastas, tarefas, vault, type FormaPagamento, type PrioridadeTarefa, type SubtarefaInput } from "@/lib/api";
 import { avisar } from "@/lib/toast";
+import { ehFalhaTransitoria, esperaDoReenvio, tituloParaCriar } from "@/lib/salvamento-otimista";
 import { hojeISO } from "@/lib/format";
 import { taskScheduledAt, taskTags } from "@/lib/task-fields";
 import { tagsPadraoDaPasta, unirTags } from "@/lib/tags-pasta";
@@ -115,6 +116,10 @@ export const MIN_CARACTERES_CRIACAO = 3;
 export function temConteudoMinimo(texto: string): boolean {
   return texto.trim().length >= MIN_CARACTERES_CRIACAO;
 }
+/** Ao fechar vale tudo o que a pessoa escreveu: título com o mínimo ou qualquer texto no corpo (o servidor tira o título dele). */
+export function podeSalvarAoFechar(draft: Pick<CapturaDraft, "texto" | "corpo">): boolean {
+  return temConteudoMinimo(draft.texto) || draft.corpo.trim().length > 0;
+}
 
 /** Keep the explicitly selected date and local time together on the wire. */
 function scheduledAtReal(draft: CapturaDraft): string | undefined {
@@ -166,9 +171,21 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   const [notasPendentes, setNotasPendentes] = useState<File[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [itemCriado, setItemCriado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
+  const [itemCriado, setItemCriadoEstado] = useState<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
+  /** Espelho síncrono de `itemCriado`: um envio que termina depois de a tela fechar ainda precisa saber que o item já existe (senão criaria outro). */
+  const itemCriadoRef = useRef<{ tipo: "nota" | "tarefa"; id: string } | null>(null);
+  const setItemCriado = (v: { tipo: "nota" | "tarefa"; id: string } | null) => { itemCriadoRef.current = v; setItemCriadoEstado(v); };
   const ultimoEnvio = useRef<string | null>(null);
   const envioEmCurso = useRef(false);
+  /** Pedido de salvar que chegou com outro envio em voo: roda assim que ele termina, com o texto mais novo (nada é descartado). */
+  const refazer = useRef<TipoCaptura | null>(null);
+  const salvarRef = useRef<(tipo?: TipoCaptura) => Promise<boolean>>(async () => false);
+  /** Tipo da última captura aberta (nota/tarefa): depois que `capturaAberta` vira `null` ainda é preciso saber o que gravar. */
+  const ultimoTipoAberto = useRef<TipoCaptura | null>(null);
+  if (capturaAberta === "nota" || capturaAberta === "tarefa") ultimoTipoAberto.current = capturaAberta;
+  /** Falhas seguidas do autosave (espera crescente entre tentativas) e o rascunho que o servidor recusou de vez (só uma edição nova tenta de novo). */
+  const falhasSeguidas = useRef(0);
+  const chaveRecusada = useRef<string | null>(null);
   // Sobe a cada captura encerrada: um envio ainda em voo não pode "reviver" o item da captura anterior na próxima.
   const sessaoCaptura = useRef(0);
 
@@ -313,7 +330,16 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   // Criar é sempre criar: a próxima captura não herda texto nem id da anterior (senão sobrescreveria a nota/tarefa antiga).
   useEffect(() => {
     if (capturaAberta !== null || (!itemCriado && ultimoEnvio.current === null && draft === rascunhoVazio())) return;
-    if (itemCriado) avisar(itemCriado.tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
+    // Antes de recomeçar em branco: o que foi digitado nos últimos 600 ms (antes do autosave) também precisa ser gravado.
+    const tipoAberto = ultimoTipoAberto.current;
+    const faltaGravar = (tipoAberto === "nota" || tipoAberto === "tarefa") && (!!itemCriadoRef.current || podeSalvarAoFechar(draft)) && ultimoEnvio.current !== JSON.stringify({ tipo: tipoAberto, draft });
+    if (faltaGravar && tipoAberto) {
+      const onde = tipoAberto === "nota" ? "Salvo em Notas" : "Salvo em Tarefas";
+      void salvarRef.current(tipoAberto).then((ok) => {
+        if (ok) avisar(onde);
+        else avisar(`Não consegui salvar a ${tipoAberto}. O texto ficou guardado neste aparelho.`, "erro", { rotulo: "Recuperar", aoClicar: () => abrirCaptura(tipoAberto) });
+      });
+    } else if (itemCriado) avisar(itemCriado.tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
     padraoAplicado.current = { nota: false, tarefa: false };
     sessaoCaptura.current += 1;
     setDraft(rascunhoVazio());
@@ -323,10 +349,11 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
     try { localStorage.removeItem(CHAVE_RASCUNHO); } catch { /* cache indisponível */ }
   }, [capturaAberta, itemCriado, draft]);
 
-  const salvar = useCallback(async (): Promise<boolean> => {
-    const tipo = capturaAberta as TipoCaptura;
+  const salvarComo = useCallback(async (tipoForcado?: TipoCaptura): Promise<boolean> => {
+    const tipo = (tipoForcado ?? capturaAberta) as TipoCaptura;
     setErro(null);
-    if (!draft.texto.trim()) {
+    // Nota/tarefa sem título mas com texto no corpo passa: o servidor tira o título do começo do corpo.
+    if (!draft.texto.trim() && !((tipo === "nota" || tipo === "tarefa") && draft.corpo.trim())) {
       setErro("Preenche o campo principal antes de salvar.");
       return false;
     }
@@ -334,7 +361,8 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       setErro("O valor da transação deve ser maior que zero.");
       return false;
     }
-    if (envioEmCurso.current) return false;
+    // Já há um envio em voo: este fica para logo depois, com o texto mais novo (antes era descartado e o final do título se perdia).
+    if (envioEmCurso.current) { if (tipo === "nota" || tipo === "tarefa") refazer.current = tipo; return false; }
     envioEmCurso.current = true;
     setSalvando(true);
     const sessao = sessaoCaptura.current;
@@ -364,19 +392,22 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
         }
       } else if (tipo === "nota") {
         const dados = payloadReal("nota", draft, draft.espacoNota ?? espacoAtivo);
-        if (itemCriado?.tipo === "nota") await notas.atualizar(itemCriado.id, dados);
+        const jaCriada = itemCriadoRef.current?.tipo === "nota" ? itemCriadoRef.current : null;
+        if (jaCriada) await notas.atualizar(jaCriada.id, dados);
         else {
-          const criado = await notas.criar(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] });
+          const criado = await notas.criar({ ...(dados as { titulo: string; corpo?: string; pasta?: string; tags?: string[] }), titulo: tituloParaCriar(String(dados.titulo ?? ""), String(dados.corpo ?? "")) });
           if (sessao === sessaoCaptura.current) setItemCriado({ tipo: "nota", id: criado.id });
         }
       } else {
         const dados = payloadReal("tarefa", draft, draft.espacoTarefa ?? espacoAtivo);
-        if (itemCriado?.tipo === "tarefa") await tarefas.atualizar(itemCriado.id, dados);
+        const jaCriada = itemCriadoRef.current?.tipo === "tarefa" ? itemCriadoRef.current : null;
+        if (jaCriada) await tarefas.atualizar(jaCriada.id, dados);
         else {
-          const criado = await tarefas.criar(dados as unknown as Parameters<typeof tarefas.criar>[0]);
+          const criado = await tarefas.criar({ ...(dados as unknown as Parameters<typeof tarefas.criar>[0]), titulo: tituloParaCriar(String(dados.titulo ?? ""), String(dados.corpo ?? "")) });
           if (sessao === sessaoCaptura.current) setItemCriado({ tipo: "tarefa", id: criado.id });
         }
       }
+      falhasSeguidas.current = 0; chaveRecusada.current = null;
       notificar();
       // Chegou ao servidor: o texto guardado por uma falha anterior não precisa mais ser oferecido (vale mesmo com a
       // captura já fechada, que é o caso do salvar otimista ao fechar).
@@ -391,16 +422,25 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       return true;
     } catch (e) {
       setErro(mensagemDeErro(e, "Não consegui falar com o servidor. Confira o endereço e sua conexão."));
+      // Falha passageira: o autosave tenta de novo com espera crescente. Recusa do servidor: só uma edição nova tenta de novo.
+      falhasSeguidas.current += 1;
+      chaveRecusada.current = ehFalhaTransitoria(e) ? null : JSON.stringify({ tipo: capturaAberta, draft });
       // Com o servidor fora do ar, o texto não pode sumir se a janela for fechada: fica neste aparelho até ser recuperado.
-      if ((tipo === "nota" || tipo === "tarefa") && draft.texto.trim()) {
+      if ((tipo === "nota" || tipo === "tarefa") && (draft.texto.trim() || draft.corpo.trim())) {
         try { localStorage.setItem(CHAVE_RASCUNHO_FALHA, JSON.stringify({ tipo, draft })); } catch { /* cache indisponível */ }
       }
       return false;
     } finally {
       envioEmCurso.current = false;
       setSalvando(false);
+      // Havia outro pedido esperando: sai agora, com o texto mais novo.
+      const pendente = refazer.current;
+      refazer.current = null;
+      if (pendente) window.setTimeout(() => { void salvarRef.current(pendente); }, 0);
     }
-  }, [capturaAberta, draft, espacoAtivo, fecharTudo, itemCriado, location.pathname, navigate, notificar]);
+  }, [capturaAberta, draft, espacoAtivo, fecharTudo, location.pathname, navigate, notificar]);
+  salvarRef.current = salvarComo;
+  const salvar = useCallback(() => salvarComo(), [salvarComo]);
 
   // Fechar pelo X: com conteúdo mínimo, grava o que falta e avisa onde ficou; abaixo disso, descarta sem criar nada.
   // Se a gravação falhar, a captura continua aberta (com o erro na tela) em vez de perder o texto.
@@ -414,7 +454,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
       return;
     }
     const tipo = capturaAberta;
-    if ((tipo === "nota" || tipo === "tarefa") && (itemCriado || temConteudoMinimo(draft.texto))) {
+    if ((tipo === "nota" || tipo === "tarefa") && (itemCriado || podeSalvarAoFechar(draft))) {
       const emDia = ultimoEnvio.current === JSON.stringify({ tipo, draft });
       const onde = tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas";
       if (emDia) avisar(onde);
@@ -437,7 +477,7 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   aoDesmontar.current = () => {
     const tipo = capturaAberta;
     if (tipo !== "nota" && tipo !== "tarefa") return;
-    if (!itemCriado && !temConteudoMinimo(draft.texto)) return;
+    if (!itemCriadoRef.current && !podeSalvarAoFechar(draft)) return;
     if (ultimoEnvio.current !== JSON.stringify({ tipo, draft })) void salvar();
     avisar(tipo === "nota" ? "Salvo em Notas" : "Salvo em Tarefas");
   };
@@ -447,11 +487,14 @@ export function CreateFlow({ embedded = false, onTitleChange, pastaContexto, con
   // O rascunho local é escrito imediatamente, portanto fechar a janela não perde texto.
   useEffect(() => {
     if (capturaAberta !== "nota" && capturaAberta !== "tarefa") return;
-    if (!draft.texto.trim()) return;
+    // Com o item já criado, até o título apagado (para reescrever) deixa o corpo seguir salvando.
+    if (!draft.texto.trim() && !(itemCriado && draft.corpo.trim())) return;
     if (!itemCriado && !temConteudoMinimo(draft.texto)) return;
     const chave = JSON.stringify({ tipo: capturaAberta, draft });
-    if (ultimoEnvio.current === chave || salvando) return;
-    const timer = window.setTimeout(() => { void salvar(); }, 600);
+    if (ultimoEnvio.current === chave || salvando || chaveRecusada.current === chave) return;
+    // Depois de uma falha passageira, espera crescente (2 s, 5 s, 15 s, 30 s) em vez de insistir a cada 600 ms.
+    const espera = falhasSeguidas.current > 0 ? esperaDoReenvio(falhasSeguidas.current - 1) : 600;
+    const timer = window.setTimeout(() => { void salvar(); }, espera);
     return () => window.clearTimeout(timer);
   }, [capturaAberta, draft, itemCriado, salvar, salvando]);
 

@@ -118,18 +118,27 @@ export function ListaDeItens({ itens: itensDoServidor, modo, chave, mostrarCriad
   }, [tipoPastas]);
   useEffect(() => { equipes.listarMinhas().then(setEquipesDisponiveis).catch(() => setEquipesDisponiveis([])); }, []);
 
-  async function moverSelecionados(pasta: string | null) {
-    if (!itensSelecionados.length || processando) return;
-    setProcessando(true); setErroAcao(null);
-    try {
-      // Cada atualização reindexa a árvore no servidor; sequencial evita que
-      // várias reindexações concorrentes se anulem ou deixem o SQLite ocupado.
-      for (const item of itensSelecionados) {
+  /**
+   * Otimista (mover, prioridade e equipe): o menu fecha e a seleção some na hora; o servidor recebe os pedidos em segundo
+   * plano, um de cada vez (cada atualização reindexa a árvore; em paralelo as reindexações se anulariam), e a lista
+   * recarrega quando ele confirma. Se algum falhar, o aviso diz e a lista recarrega com o que realmente aconteceu.
+   */
+  function emSegundoPlano(fazer: () => Promise<void>, falha: string) {
+    setSelecionados(new Set()); ancora.current = null; setErroAcao(null);
+    setMenuMoverAberto(false); setMenuPrioridadeAberto(false); setMenuEquipeAberto(false);
+    setProcessando(true);
+    void fazer().catch((e) => { setErroAcao(mensagemDeErro(e, falha)); notificar(); }).finally(() => setProcessando(false));
+  }
+  function moverSelecionados(pasta: string | null) {
+    if (!itensSelecionados.length) return;
+    const alvo = [...itensSelecionados];
+    const anteriores = alvo.map((item) => ({ item, pasta: pastaDoItem(item) }));
+    emSegundoPlano(async () => {
+      for (const item of alvo) {
         if (item.tipo === "nota") await notas.atualizar(item.id, { pasta: pasta ?? "" });
         else await tarefas.atualizar(item.id, { pasta: pasta ?? "" });
       }
-      setSelecionados(new Set()); ancora.current = null; notificar();
-      const anteriores = itensSelecionados.map((item) => ({ item, pasta: pastaDoItem(item) }));
+      notificar();
       avisarComDesfazer(
         `${anteriores.length === 1 ? "Item movido" : `${anteriores.length} itens movidos`}.`,
         async () => {
@@ -140,31 +149,28 @@ export function ListaDeItens({ itens: itensDoServidor, modo, chave, mostrarCriad
         },
         { aoDesfazer: notificar, sucesso: "Movimento desfeito." },
       );
-    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível mover os itens selecionados.")); }
-    finally { setProcessando(false); setMenuMoverAberto(false); }
+    }, "Não foi possível mover os itens selecionados.");
   }
-  async function alterarPrioridade(prioridade: "baixa" | "media" | "alta") {
-    if (!tarefasSelecionadas.length || processando) return;
-    setProcessando(true); setErroAcao(null);
-    try {
-      for (const item of tarefasSelecionadas) await tarefas.atualizar(item.id, { prioridade });
+  function alterarPrioridade(prioridade: "baixa" | "media" | "alta") {
+    if (!tarefasSelecionadas.length) return;
+    const alvo = [...tarefasSelecionadas];
+    emSegundoPlano(async () => {
+      for (const item of alvo) await tarefas.atualizar(item.id, { prioridade });
       notificar();
       avisar("Prioridade alterada.", "sucesso");
-    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível alterar a prioridade.")); }
-    finally { setProcessando(false); setMenuPrioridadeAberto(false); }
+    }, "Não foi possível alterar a prioridade.");
   }
-  async function mudarEquipe(espaco: string) {
-    if (!itensSelecionados.length || processando) return;
-    setProcessando(true); setErroAcao(null);
-    try {
-      for (const item of itensSelecionados) {
+  function mudarEquipe(espaco: string) {
+    if (!itensSelecionados.length) return;
+    const alvo = [...itensSelecionados];
+    emSegundoPlano(async () => {
+      for (const item of alvo) {
         if (item.tipo === "nota") await notas.atualizar(item.id, { espaco });
         else await tarefas.atualizar(item.id, { espaco });
       }
-      setSelecionados(new Set()); ancora.current = null; notificar();
+      notificar();
       avisar("Equipe alterada.", "sucesso");
-    } catch (e) { setErroAcao(mensagemDeErro(e, "Não foi possível alterar a equipe.")); }
-    finally { setProcessando(false); setMenuEquipeAberto(false); }
+    }, "Não foi possível alterar a equipe.");
   }
   /** Otimista: as tarefas já aparecem concluídas e a seleção some; o servidor é avisado em segundo plano e, se falhar, tudo volta. */
   function concluirSelecionadas() {
